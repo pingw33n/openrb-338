@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 09:20'
 labels:
   - testmachine
   - docs
@@ -34,3 +35,9 @@ Copy the .rbs songs that ship with the installation into the scratchpad and list
 - [ ] #2 The shipped .rbs songs are listed with their SHA-256 in docs/test_machine.md
 - [ ] #3 The agent brief doc-001 points to docs/test_machine.md (already does; verify the paths it names are right)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+From task-001 (2026-10-26): the app is in C:\ReBirth RB-338, outside the rcs root C:\re, so rcs ls/get/put cannot reach it; use exec with absolute paths (cmd.exe /c dir|copy, certutil). Copy the shipped songs and mods into C:\re\rb\ with exec cmd.exe /c copy (or robocopy), then rcs get them. Startup shows a modal 'Failed opening MIDI input' box (title 'ReBirth RB-338', not foreground); find the preference that stops it (MIDI input port: none) so a start is unattended. The main window title is the song name ('Untitled song').
+<!-- SECTION:NOTES:END -->

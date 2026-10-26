@@ -3,7 +3,7 @@ id: doc-001
 title: agent-brief
 type: guide
 created_date: '2026-10-26 09:03'
-updated_date: '2026-10-26 09:03'
+updated_date: '2026-10-26 09:20'
 ---
 The shared brief for agents working on rb, the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. Read in this order:
 1. The root `AGENTS.md` (the backlog and commit rules).
@@ -63,7 +63,15 @@ Use the idalib MCP tools only. Never drive IDA from the shell, and never use the
 
 The original ReBirth runs on a Windows machine, reached with dcre's `~/dev/dcre/common/tools/rcs_client.py`. Its commands are `info`, `ls`, `get`, `put`, `rm`, `exec`, `ps`, `kill`, `input`, `screenshot`; see `--help`. Its config is `~/dev/dcre/common/tools/rcs_client.toml`, and remote paths are relative to the server's root.
 
-**rb's folder on the machine.** Everything rb puts there lives under `rb/` on the server's root. The installation's layout and how to drive the app are written in `docs/test_machine.md`, created by the setup task in m-0. Read it before you use the machine.
+**The installation.** ReBirth 2.01 is installed in `C:\ReBirth RB-338`, outside the rcs server's root (`C:\re`).
+- rcs file commands (`ls`, `get`, `put`) and `exec --cwd` refuse paths there (HTTP 403).
+- `exec` of a program with absolute paths works. Use `cmd.exe /c dir`, `certutil` and `tasklist` to read the installation.
+- Start the app with `exec cmd.exe /c start "" /D "C:\ReBirth RB-338" "C:\ReBirth RB-338\Rebirth.exe"`, then find its PID with `tasklist`, and stop it with `taskkill /PID <pid>`.
+- At start the app shows a modal "Failed opening MIDI input" box, window title "ReBirth RB-338". Dismiss it with `rcs_client.py input --window "ReBirth RB-338" key:enter`.
+
+**rb's working folder.** Everything rb puts on the machine (songs, renders, tools) lives under `rb/` on the server's root, i.e. `C:\re\rb`.
+
+**The full description.** The installation's layout and how to drive the app are written in `docs/test_machine.md`, created by task-002. Read it before you use the machine.
 
 **Permits.** The machine is shared with other projects through `locky`, a local semaphore server with leases (`locky --help`, `locky list`). The semaphore is `redc-win-run`.
 - Read the permit count from `locky list`; never assume it.
