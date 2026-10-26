@@ -17,3 +17,6 @@
 //!   stored as `f32`. The plan (task-019) is to generate the tables with f64 maths, diff them
 //!   against dumps of the real tables, and embed the dumped tables as binary blobs if any `f32`
 //!   entry differs.
+
+pub mod load;
+pub mod song;

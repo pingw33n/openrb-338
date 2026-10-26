@@ -8,6 +8,11 @@ guess or only partly traced. `docs/RBS42.txt` is the file format; its errors are
 Everything was also checked against the 18 songs in `tests/songs/shipped/` (17 are file version 4.1,
 `ReBirth 1.0 Default Song.rbs` is 4.2).
 
+Two implementations follow this document: `tools/rbhost/rbsmsg.py` (for rbhost) and
+`crates/rb-engine/src/load.rs` (the engine, task-018), which also covers the 4.0 paths. The test
+`crates/rb-engine/tests/rbsmsg_corpus.rs` checks that both give the same messages for every
+shipped and diagnostic song.
+
 ## 1. Transport [C]
 
 The exe sends through the shared-memory port object `dword_4DA5EC` (vtable slot 2). All multi-byte
@@ -106,8 +111,20 @@ Do not confuse the song messages 21 and 35 (song-handler table at `0x10151D6C`, 
 | MIXR (0x4352C0) | 4×7-byte channels converted (§4.1) | 4×5-byte channels; all four "enabled" forced to 1 (0x435708) | 4×5-byte channels as stored |
 | GLOB vintage byte (0x434063) | 0 | 0 | GLOB[482] |
 | 808 tom tunings 10, 13, 16 (0x432DA2) | `v/2 + 32` | `v/2 + 32` | as stored |
-| Mixer track (0x4364DC) | `sub_437380` converter [G, not traced] | `sub_436B6F` | `sub_436B6F` |
+| Mixer track (0x4364DC) | `sub_437380` converter (§5.1) | `sub_436B6F` | `sub_436B6F` |
 | 808 track (0x4366F6) | `sub_436F5A`: ctrls 10, 13, 16 get `v/2 + 32` | same | `sub_436B6F` |
+
+**What "4.0", "4.1" and "4.2" mean [C] (task-018).** The exe keeps the version as a CVersion
+(`sub_47D768`) and compares the key `major << 16 | minor << 8 | revision` (`sub_47D9ED`). The
+constants are CVersion(4,0) at 0x4DB938 (`sub_43295F`), (4,1) at 0x4DB928 (`sub_4329A2`) and (4,2)
+at 0x4DB918 (`sub_4329E5`), all with revision 0. Two tests are used:
+- `sub_47DA82` is **equality**: the 4.0 MIXR converter (0x4352C0) and the 4.0 mixer track
+  (0x4364DC) run only for exactly 4.0.0, the 4.1 enable forcing (0x435708) only for exactly 4.1.0.
+- `sub_47DAB5(file, 4.2, 4.2)` is key >= 4.2.0 and major <= 4: the GLOB vintage byte (0x43405E), the
+  808 chunk tunings (0x432D95) and the 808 track (0x4366F6).
+
+So a file of version 4.1.1 gets neither the 4.1 enable forcing nor any 4.2 path; 4.0.1 is read like
+4.1 without the forcing. Every shipped and diagnostic song has revision 0.
 
 ## 3. Msg 36: globals [C]
 
@@ -185,6 +202,11 @@ is 0 in every shipped song; the TRAK values are 0..4.
 The 4.0 layout has 7 bytes per channel: `[?, level, pan, send, dist, PCF flag, comp flag]`. The
 converter (0x4352C0) sets enabled = 1, compressor id = (MIXR[1] != 0) or `c+2` for a channel with the
 comp flag, PCF id = `c+1` for a channel with the PCF flag. No 4.0 song was available to check.
+[C] (task-018) The parse `sub_433B86` copies MIXR[0], MIXR[1] and the four 7-byte channels at
+`MIXR[16 + 12c]`, the same offsets as the 5-byte channels of later versions. The target struct starts
+from `sub_433BEA`'s defaults (master 100, compressor id 0, PCF id 0). The channels are processed in
+order 0..3, so the last channel with a flag wins. MIXR[2] (the later PCF id) is not read, and channel
+byte 0 is ignored. `sub_438D43` packs the result like a 4.1 mixer.
 
 ### 4.2 Delay, `5/86`, 6 bytes
 
@@ -310,6 +332,39 @@ offsets.
 with no accepted event is not sent. Each batch waits for the reply; `'K'` throws out of memory. The
 DLL appends them with `sub_10021010` (song msg 37, 0x100127EB).
 
+**The 808 track before 4.2 (`sub_436F5A`) [C] (task-018).** The tom tuning `v/2 + 32` (`sub_432E1B`,
+called at 0x437139 for controllers 10, 13 and 16) is applied **before** the range check:
+`sub_42FD00` at 0x4371A3 gets the tuned byte. A file value of 190 thus becomes 127 and is accepted,
+and 192 becomes 128 and is dropped. The rest equals `sub_436B6F`.
+
+### 5.1 The mixer track of a 4.0 file (`sub_437380`) [C] (task-018)
+
+This is checked in the disassembly (the switch at 0x43764E, jump table 0x437C73). The old mixer
+track has 8 controllers per channel c, starting at `4 + 8c`. Each event is remapped before the
+validation:
+
+| Old controller | New controller | New value |
+|---|---|---|
+| 0 | 0 (not accepted) | unchanged |
+| 1 (master compressor flag) | 1 | 1 if the value is non-zero, else see below |
+| `4 + 8c` | `5 + 6c` (not accepted, so the event is dropped) | unchanged |
+| `5..8 + 8c` (level, pan, send, dist) | `6..9 + 6c` | unchanged |
+| `9 + 8c` (PCF flag) | 2 | `c + 1` if non-zero, else see below |
+| `10 + 8c` (compressor flag) | 1 | `c + 2` if non-zero, else see below |
+| 2, 3, 11, 19, 27, above 34 | unchanged | unchanged |
+
+Unchanged controllers then pass the normal checks, so an old 19 or 27 lands on the 808 pan or the
+909 dist of the new numbering.
+
+**Flag off.** A flag event of value 0 becomes value 0 only if its tick is greater than the tick of
+the last event of the same kind: compressor (`var_18`) or PCF (`var_14`). Both start at 0 and are
+compared signed (`jg`). Otherwise the event is dropped. Every compressor or PCF flag event sets its
+tracker to its tick, the dropped ones excepted. The trackers are updated in the switch, before the
+tick check `sub_42FD60` (0x437A32), so an event whose tick is later found invalid still updates
+them. So an off event at tick 0 is always dropped. After the switch the checks of `sub_436B6F`
+follow (0x437A28..0x437A8D): the running position advances on every valid tick, even when the event
+is then dropped.
+
 ## 6. What decides the state at an export [C]
 
 The song's global byte 0 (song mode) decides:
@@ -414,5 +469,6 @@ Follow-up: task-034.
   starts the startup-sound preview (task-004, `docs/export_state.md` §3, §8).
 - [G] The constructor values of the controllers that a song-mode song never sets.
 - [G] The msg-41 song-mode rule for delay, PCF, distortion, compressor, 808 and 909.
-- [G] The 4.0 mixer-track converter `sub_437380`.
+- [C] The 4.0 mixer-track converter `sub_437380` (§5.1, task-018). No 4.0 song is available to test
+  it against the app.
 - [G] Global byte 2 (msg 35 id 2, `0x10021194`) and byte 22 (`+0x16E`).

@@ -320,6 +320,9 @@ fn check_size(name: &str, start: usize, body: &[u8], want: usize) -> Result<(), 
 pub struct Head {
     pub major: u8,
     pub minor: u8,
+    /// HEAD byte 7. Rebirth.exe compares the whole version (major, minor, revision): its "4.0"
+    /// and "4.1" paths need exactly revision 0 (docs/song_load.md section 2).
+    pub revision: u8,
     pub copyright: String,
     raw: Vec<u8>,
 }
@@ -337,6 +340,7 @@ impl Head {
         Ok(Head {
             major: raw[5],
             minor: raw[6],
+            revision: raw[7],
             copyright: get_z(raw, 9, 129),
             raw: raw.to_vec(),
         })
@@ -352,6 +356,7 @@ impl Head {
         };
         raw[5] = self.major;
         raw[6] = self.minor;
+        raw[7] = self.revision;
         put_z(&mut raw, 9, 129, &self.copyright, "HEAD")?;
         Ok(raw)
     }
@@ -493,6 +498,13 @@ impl Mixer {
             channels: [ch(0), ch(1), ch(2), ch(3)],
             raw: r.to_vec(),
         })
+    }
+
+    /// The 64-byte MIXR body as it is written. A version 4.0 file stores 7-byte channels at the
+    /// same offsets (16 + 12 * channel), whose bytes 5 and 6 (PCF and compressor flags) only
+    /// this gives access to (docs/song_load.md section 4.1).
+    pub fn bytes(&self) -> Vec<u8> {
+        self.build()
     }
 
     fn build(&self) -> Vec<u8> {
