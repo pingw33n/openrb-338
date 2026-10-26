@@ -11,6 +11,10 @@ labels:
   - testmachine
 milestone: m-0
 dependencies:
+  - TASK-009
+  - TASK-013
+  - TASK-006
+  - TASK-007
   - TASK-011
   - TASK-012
 priority: high
