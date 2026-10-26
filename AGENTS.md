@@ -110,3 +110,13 @@ Body, in this order:
 5. The attribution line the harness gives.
 
 Everything else goes into the task's notes or a knowledge document.
+
+## Build and test
+
+The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, `crates/rb-cli`, whose binary is `rb`). The toolchain is pinned in `rust-toolchain.toml`.
+
+- Build: `cargo build --release`
+- Test: `cargo test`
+- Lint: `cargo clippy --all-targets -- -D warnings`
+- Format: `cargo fmt --all`
+- Run: `cargo run --release -p rb-cli -- <args>`
