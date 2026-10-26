@@ -1,10 +1,11 @@
 ---
 id: TASK-013
 title: 'Decide: reference capture protocol and the engine''s pass criterion'
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 09:23'
 labels:
   - decision
   - tests
@@ -29,3 +30,9 @@ Options for the pass criterion: byte-exact; within ±1 LSB per sample (x87 trans
 
 Recommendation: option 3, byte-exact for rbhost references, with any tolerance only where a specific, documented cause (for example a table entry that cannot be reproduced) requires it.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by @pingw33n on 2026-10-26: option 3, as recommended. rbhost renders are the bulk reference corpus; app exports (rb_export.py under the protocol the determinism experiment recommends) form a smaller set that checks rbhost. The engine's pass criterion is byte-exact against the rbhost references; a tolerance is allowed only where a specific, documented cause requires it (for example a table entry that cannot be reproduced), recorded with its reason. Decided ahead of task-012's results: if the validation shows rbhost cannot match the app, this decision is reopened.
+<!-- SECTION:FINAL_SUMMARY:END -->
