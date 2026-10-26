@@ -484,8 +484,11 @@ commands are in `tools/experiments/task010/` (README.md); the WAVs are not kept.
   period of 680.80 samples) the offsets between fresh-process exports are +0.0951 and +0.2850 periods.
   **Fitted** to whole idle buffers of 1024 frames at the idle increment
   `1024 · 1.8538e-4 / 2 = 0.09491` periods, they are `k` = 1 and 3 buffers with misfits of 0.0001 and
-  0.0002 periods (`phase.py`). [G] So a fresh export is a function of the song and of `k = N/16`
-  only; the fit is consistent with that, it does not prove it. Across the six fresh first exports of
+  0.0002 periods (`phase.py`). So a fresh export is a function of the song and of `k = N/16`
+  only. This is a fit here. Task-012 confirmed it [C] for fresh exports (one process per song, the
+  §11.5 protocol) of the 145 diagnostic songs (§13). There, rbhost reproduced every export byte for
+  byte: 142 songs at exactly one `N` and 3 silent songs at every `N`, with nothing else varied. [G]
+  It holds for songs or protocols outside that set: not tested. Across the six fresh first exports of
   `303_accent0` (P1 ×3, P2 ×3) `k` took the values 0, 0, +1 (P1) and +3, +3, +3 (P2), relative to
   P1 r1; P4's three runs had `k` = 0.
   [G, unexplained] Why all three P2 first exports landed on the same `k` (+3), which no P1 run hit:
@@ -619,4 +622,226 @@ blocks, export" of §9 reproduces the app exactly, including the export's own st
 The number of blocks rendered between the export's stop and its locate (`--post-stop-blocks`, 0..160)
 and whether locate and play are drained by the first chunk or before it made no difference for
 `303_accent0`. A fit is needed per export; `tools/rbhost/run.py --idle-sweep A:B:S --match APP.wav`
-does it. The full corpus comparison is task-012's.
+does it. The comparison over all 145 diagnostic songs is §13.
+
+## 13. rbhost against the app over the diagnostic songs (task-012)
+
+Measured on 2026-10-26 on the 145 songs of `tests/songs/diag/songs/` (README there).
+
+- **App:** `tools/rb_export.py --restore-prf --startup-sound off --wait-after-open 10`, a fresh
+  process per song (§11.5; prefs sha256 `dc34d28e7903`). It ran as seven invocations: a first one of
+  3 songs (`silence`, `303_accent0`, `808_snare`), then six of 24, 24, 24, 24, 24 and 22 songs.
+  About 25 s per song, 62 min for the 145.
+- **rbhost:** `tools/rbhost/run.py` at the commit of task-011 (7838f84, `rbhost.exe` sha256
+  `6f28d8318c87`), unchanged by this task. It rendered every song at `--idle-blocks 9088` (the `N`
+  of the task-011 session). It then rendered every song once per `N` in 8704..9472, steps of 16
+  (49 values), and each render was compared with the app's samples. That took about 0.7 s per render,
+  95 min for all.
+- **Comparison:** `tools/rbcmp.py` (exact).
+
+**Results.** Every [C] below is measured on these 145 exports; each [G] is an inference or an
+empirical fit.
+
+- **[C] Every app export is reproduced byte for byte by rbhost.** For each of the 145 songs one `N` in
+  the window gives a WAV whose sha256 (header included) equals the app's. No difference is left to
+  explain and no fix to rbhost was needed: its song loading (`rbsmsg.py`, `docs/song_load.md`) is
+  right for every feature the set isolates (303 2.0 and Vintage, both 303s, every 808 and 909 voice
+  and knob, accents, flams, distortion, PCF, compressors, delay, mixer automation, shuffle, loop
+  chase, odd tempos).
+- **[C] At a fixed `N` = 9088**, 47 songs are equal and 98 differ. Each of the 98 matches at
+  another `N`, so they differ by `N` only. The split by 303 notes is read from the `.rbs` files
+  (`tools/rbs.py`). A song "has 303 notes" when a TB-303 pattern holds a non-rest step within its
+  length. 60 songs have notes and 85 do not.
+  - 43 of the songs with notes differ from frame 64..194, i.e. the first 303 note, with a max |d| of
+    433..37659 on 153614..660910 samples. [G] The cause is the 303 phase (§7.2). The other 17 are
+    equal at 9088.
+  - 55 of the songs without notes differ by ±1 LSB on 166..52350 samples, from frame 2889..44325.
+    [G] The cause is the 303 idle output (§11.2). The other 30 are equal at 9088.
+  - No song with notes differs by only ±1 LSB, and no song without notes differs by more.
+- **[C] Fitted `N`.** For 142 songs exactly one `N` of the 49 matches. The fitted values are 9040 (3
+  songs), 9056 (5), 9072 (25), 9088 (44), 9104 (37), 9120 (16), 9136 (9), 9152 (2) and 9264 (1,
+  `pcf_on_909`). So `N` spreads over 8 steps of 16 between fresh processes run by the same runner.
+- **[G] `N` follows the runner's timeline, as an empirical fit.** The runner's sidecar has the times
+  of "song opened" and "export started". Let `N_t = round((t_export_started − t_song_opened) ·
+  44100/64)`. Over the 142 songs with a unique fit, `N − N_t` is 47.6 ± 14.6 blocks (min 3, max 82).
+  This is a fit to these 142 points, not a mechanism: the fixed offset of about 48 blocks (70 ms) is
+  not attributed. The open-to-export time was 13.08..13.21 s for 141 songs and 13.38 s for
+  `pcf_on_909`. That song's late export start explains its high `N` (9264): its `N − N_t` is 47,
+  inside the spread. Seeding a sweep at `N_t + 48` with ±48 blocks (7 renders) would have found every
+  fit here. [G] Whether that window holds in other sessions is not tested.
+- **[C] Which songs depend on `N`.**
+  - In 140 songs all 49 renders differ from one another.
+  - `delay_straight_fb0` and `delay_triplet_fb0` have 43 and 42 distinct renders: some `N` give the
+    same file. Their matching `N` is still unique.
+  - Three songs export the same file for every `N`: `silence`, `pcf_lp_wave127` and
+    `pcf_bp_wave127`. All three are **all zeros**, in the app as in rbhost (sha256 `0a90d04342bf`).
+    The two PCF songs with wave 127 therefore silence the 808 completely. [G] Why (the PCF's wave
+    127 mode) is not traced.
+  - [C] This refutes the expectation that songs without 303 notes match at any `N`: every non-silent
+    export depends on its `N`, drum-only songs included. [G] The mechanism is the idle 303 output
+    (§11.2), present because the template's 303 channels are at level 100. Every song carries that
+    idle output, so these data cannot isolate the delay's own dependence on `N` through its write
+    pointer (§7.4).
+- **[C] Drum counters (§7.3).** With one process per song, the global drum counters start at 0 in both
+  the app and rbhost, and every drum song matched without `--drum-counters`. A capture that exports
+  several songs in one process needs the counters carried over (rbhost's `--drum-counters`) or one
+  process per song.
+
+The table lists every pair:
+- **sha256** is the first 12 hex digits of the app's WAV, equal to rbhost's at the fitted `N`.
+- **Distinct renders** counts the distinct rbhost WAVs among the 49 `N` of the window.
+- **rbhost at N = 9088 vs app** gives rbcmp's first differing frame, max |d| and differing-sample
+  count.
+
+The per-`N` hashes and the sidecars are in task-012's notes and in the scratchpad of that run; the
+WAVs are not kept.
+
+| Song | sha256 (app = rbhost at the fit) | Fitted N | Distinct renders, 49 N | rbhost at N = 9088 vs app |
+|---|---|---|---|---|
+| `303_accent0` | `1efcc1325788` | 9088 | 49 | equal |
+| `303_accent127` | `f23880cf6d62` | 9088 | 49 | equal |
+| `303_env0` | `96757f1156f5` | 9088 | 49 | equal |
+| `303_env127_decay0` | `f0094483c8e5` | 9072 | 49 | frame 66, max 6586, 310586 samples |
+| `303_env127_decay127` | `e04b490f725e` | 9104 | 49 | frame 66, max 7042, 316696 samples |
+| `303_res0` | `233c94b17f1b` | 9088 | 49 | equal |
+| `303_res127` | `b27a3a501f51` | 9072 | 49 | frame 66, max 7400, 326244 samples |
+| `303_res64` | `3f39d74e468e` | 9120 | 49 | frame 66, max 4880, 312022 samples |
+| `303_saw_highcut` | `b25f951c55be` | 9104 | 49 | frame 66, max 7573, 317194 samples |
+| `303_saw_lowcut` | `dc2c09cf1a14` | 9072 | 49 | frame 66, max 4593, 314560 samples |
+| `303_slide` | `db11fa67f5ef` | 9104 | 49 | frame 66, max 4899, 350228 samples |
+| `303_slide_accent` | `906c6effcb7b` | 9104 | 49 | frame 66, max 15602, 350294 samples |
+| `303_square_highcut` | `c968a8a8ba29` | 9088 | 49 | equal |
+| `303_square_lowcut` | `28311f6420da` | 9072 | 49 | frame 72, max 2804, 322614 samples |
+| `303_tune_hi` | `a86b2f3b2362` | 9120 | 49 | frame 66, max 6113, 332670 samples |
+| `303_tune_lo` | `9b765fa0a2b8` | 9104 | 49 | frame 66, max 6369, 304670 samples |
+| `303_two_voices` | `d27b3812eaa3` | 9088 | 49 | equal |
+| `303_vintage_accent` | `313a45507fee` | 9104 | 49 | frame 64, max 16380, 153614 samples |
+| `303_vintage_highcut` | `7a54c5c131a3` | 9104 | 49 | frame 64, max 7580, 156880 samples |
+| `303_vintage_lowcut` | `ee706433f8f8` | 9088 | 49 | equal |
+| `303_vintage_res127` | `05379a896504` | 9088 | 49 | equal |
+| `303_vintage_saw` | `f97f44baea9e` | 9072 | 49 | frame 64, max 6083, 156456 samples |
+| `303_vintage_slide` | `49e663700b79` | 9088 | 49 | equal |
+| `303_vintage_square` | `f3256864bc9c` | 9104 | 49 | frame 68, max 3544, 156970 samples |
+| `808_accent_level0` | `ceacf47658c1` | 9088 | 49 | equal |
+| `808_accent_level127` | `ef860e2097f1` | 9072 | 49 | frame 3095, max 1, 4360 samples |
+| `808_bass` | `1777d26884f2` | 9088 | 49 | equal |
+| `808_bass_knobs_hi` | `4e481bc1759c` | 9056 | 49 | frame 3029, max 1, 7908 samples |
+| `808_bass_knobs_lo` | `7c04b5742c87` | 9072 | 49 | frame 22108, max 1, 478 samples |
+| `808_clap` | `7baf8a0ae5ee` | 9088 | 49 | equal |
+| `808_clap_knobs_hi` | `49cee9613c89` | 9056 | 49 | frame 3050, max 1, 7954 samples |
+| `808_clap_knobs_lo` | `4b3195169558` | 9072 | 49 | frame 22125, max 1, 196 samples |
+| `808_closed_hihat` | `d08d90061aa0` | 9072 | 49 | frame 3264, max 1, 796 samples |
+| `808_cow_bell` | `d5aaba11b213` | 9120 | 49 | frame 3116, max 1, 8256 samples |
+| `808_cymbal` | `61c364ef6f34` | 9088 | 49 | equal |
+| `808_cymbal_knobs_hi` | `4db360394e4d` | 9072 | 49 | frame 3226, max 1, 4314 samples |
+| `808_cymbal_knobs_lo` | `13ac9a3314f2` | 9136 | 49 | frame 3148, max 1, 4490 samples |
+| `808_hi_tom` | `471b99229d93` | 9088 | 49 | equal |
+| `808_low_tom` | `56a4d54cd441` | 9152 | 49 | frame 3090, max 1, 10244 samples |
+| `808_lowtom_knobs_hi` | `9584ea4839e5` | 9088 | 49 | equal |
+| `808_lowtom_knobs_lo` | `1133d93a841b` | 9088 | 49 | equal |
+| `808_mid_tom` | `0797ecee0803` | 9104 | 49 | frame 3186, max 1, 1678 samples |
+| `808_open_hihat` | `999c011a8c62` | 9104 | 49 | frame 3170, max 1, 4374 samples |
+| `808_openhat_knobs_hi` | `bd4630626097` | 9072 | 49 | frame 3215, max 1, 4406 samples |
+| `808_openhat_knobs_lo` | `0d5a289800c8` | 9088 | 49 | equal |
+| `808_rim_shot` | `a258cbe5946d` | 9104 | 49 | frame 22019, max 1, 300 samples |
+| `808_snare` | `1a2a932b9518` | 9040 | 49 | frame 3012, max 1, 4284 samples |
+| `808_snare_knobs_hi` | `f9853eaea353` | 9120 | 49 | frame 2999, max 1, 3112 samples |
+| `808_snare_knobs_lo` | `9ab19d2b0d04` | 9136 | 49 | frame 2984, max 1, 3612 samples |
+| `909_accent_level0` | `1bcb48792767` | 9120 | 49 | frame 3169, max 1, 7962 samples |
+| `909_accent_level127` | `f82632bd225c` | 9088 | 49 | equal |
+| `909_bass` | `62b37761b09a` | 9088 | 49 | equal |
+| `909_bass_knobs_hi` | `c923e6688c48` | 9120 | 49 | frame 3176, max 1, 7502 samples |
+| `909_bass_knobs_lo` | `578cacfe5148` | 9104 | 49 | frame 3164, max 1, 3426 samples |
+| `909_clap` | `dee1bbdad692` | 9152 | 49 | frame 3110, max 1, 12730 samples |
+| `909_closed_hihat` | `ddce0b504c8c` | 9072 | 49 | frame 3258, max 1, 704 samples |
+| `909_closedhat_knobs_hi` | `55ddb3004c06` | 9072 | 49 | frame 3097, max 1, 1484 samples |
+| `909_closedhat_knobs_lo` | `f0f65d893468` | 9104 | 49 | frame 3165, max 1, 552 samples |
+| `909_crash` | `ddca672ae7c5` | 9088 | 49 | equal |
+| `909_crash_ride_knobs_hi` | `7aee827e727c` | 9088 | 49 | equal |
+| `909_crash_ride_knobs_lo` | `e6234ec61aaf` | 9104 | 49 | frame 3223, max 1, 4338 samples |
+| `909_flam_interval0` | `befaf990677f` | 9104 | 49 | frame 3079, max 1, 4258 samples |
+| `909_flam_interval127` | `9017530fce09` | 9104 | 49 | frame 3237, max 1, 4264 samples |
+| `909_flam_interval64` | `f3a33e24a363` | 9104 | 49 | frame 3003, max 1, 4280 samples |
+| `909_hi_tom` | `dffe5e204355` | 9136 | 49 | frame 3147, max 1, 10636 samples |
+| `909_hightom_knobs_hi` | `04d5d1ff1df9` | 9088 | 49 | equal |
+| `909_hightom_knobs_lo` | `93a009670370` | 9120 | 49 | frame 3109, max 1, 7448 samples |
+| `909_low_tom` | `096e4ca24f5e` | 9088 | 49 | equal |
+| `909_mid_tom` | `8f42848e7328` | 9120 | 49 | frame 3394, max 1, 7530 samples |
+| `909_open_hihat` | `d3ce643ced75` | 9104 | 49 | frame 2950, max 1, 4168 samples |
+| `909_openhat_knobs_hi` | `dd0421cf4c52` | 9136 | 49 | frame 2950, max 1, 10914 samples |
+| `909_openhat_knobs_lo` | `df43b22db910` | 9120 | 49 | frame 3129, max 1, 6112 samples |
+| `909_ride` | `30f1e6e3e18d` | 9104 | 49 | frame 3169, max 1, 4078 samples |
+| `909_rim_shot` | `3c97b95c2707` | 9104 | 49 | frame 2889, max 1, 1150 samples |
+| `909_snare` | `bb19aa626958` | 9072 | 49 | frame 3333, max 1, 2378 samples |
+| `909_snare_knobs_hi` | `cb69e39398c5` | 9088 | 49 | equal |
+| `909_snare_knobs_lo` | `9f9f4fdfa0f5` | 9088 | 49 | equal |
+| `comp_ch_808` | `a4c74554723b` | 9088 | 49 | equal |
+| `comp_ch_a100_t10` | `0056ba3c333c` | 9088 | 49 | equal |
+| `comp_ch_a127_t0` | `f75d0c82532a` | 9072 | 49 | frame 66, max 20042, 321696 samples |
+| `comp_ch_a30_t64` | `d2ddf1715ba8` | 9072 | 49 | frame 66, max 22599, 311254 samples |
+| `comp_master_a100_t10` | `4b9526520619` | 9088 | 49 | equal |
+| `comp_master_a127_t0` | `dd3a0e32f87c` | 9072 | 49 | frame 65, max 22606, 347762 samples |
+| `delay_303` | `1b87af67a939` | 9088 | 49 | equal |
+| `delay_automated` | `cbb901e13ba0` | 9088 | 49 | equal |
+| `delay_pan0` | `ffec7b63fdc2` | 9088 | 49 | equal |
+| `delay_pan127` | `2344daf196f9` | 9088 | 49 | equal |
+| `delay_straight_fb0` | `897c3a2c23c8` | 9088 | 43 | equal |
+| `delay_straight_fb127` | `90b8f931400a` | 9136 | 49 | frame 16602, max 1, 52350 samples |
+| `delay_straight_fb64` | `dece122a73fc` | 9088 | 49 | equal |
+| `delay_straight_steps1` | `8c7ccd66dd11` | 9120 | 49 | frame 5608, max 1, 384 samples |
+| `delay_straight_steps8` | `4ec0af3fa961` | 9072 | 49 | frame 44325, max 1, 166 samples |
+| `delay_triplet_fb0` | `3a1bbc4279aa` | 9088 | 42 | equal |
+| `delay_triplet_fb127` | `4f0758c75fc3` | 9104 | 49 | frame 22148, max 1, 542 samples |
+| `delay_triplet_fb64` | `ea7cb17ea4fa` | 9104 | 49 | frame 22174, max 1, 304 samples |
+| `dist_a0_s0` | `7ff5cd6c43e5` | 9104 | 49 | frame 66, max 9085, 311248 samples |
+| `dist_a100_s0` | `1025b84dadce` | 9120 | 49 | frame 66, max 3052, 239828 samples |
+| `dist_a100_s127` | `435a92ee730a` | 9136 | 49 | frame 66, max 3601, 340990 samples |
+| `dist_a100_s64` | `e09067db77d7` | 9072 | 49 | frame 66, max 5441, 307484 samples |
+| `dist_a127_s0` | `3f22671dd4ea` | 9040 | 49 | frame 66, max 3052, 250396 samples |
+| `dist_a20_s0` | `23f36775827f` | 9104 | 49 | frame 66, max 8557, 313428 samples |
+| `dist_disabled` | `1913f0b38ab7` | 9040 | 49 | frame 66, max 13566, 324192 samples |
+| `dist_drums` | `0a95ab0cf20b` | 9088 | 49 | equal |
+| `drums_kit` | `5c5d2740d423` | 9056 | 49 | frame 3167, max 1, 8288 samples |
+| `full_mix` | `a0209a74de1f` | 9088 | 49 | equal |
+| `loop_bar1` | `55206391fff1` | 9072 | 49 | frame 66, max 6087, 316732 samples |
+| `loop_bar2` | `f8d7db30e5d9` | 9088 | 49 | equal |
+| `loop_chase` | `f2c254c3efd8` | 9120 | 49 | frame 66, max 7485, 297717 samples |
+| `loop_events_inside` | `81c9130fa77e` | 9104 | 49 | frame 66, max 13602, 317568 samples |
+| `mixer_delay_send_sweep` | `a527798d81bf` | 9104 | 49 | frame 44139, max 1, 1038 samples |
+| `mixer_dist_switch` | `4c9751a6bafb` | 9136 | 49 | frame 66, max 13098, 297228 samples |
+| `mixer_level_sweep_303` | `eae1464e1897` | 9136 | 49 | frame 66, max 37659, 296776 samples |
+| `mixer_level_sweep_808` | `8257d686dea6` | 9120 | 49 | frame 2950, max 1, 7680 samples |
+| `mixer_level_sweep_909` | `646c782f3907` | 9104 | 49 | frame 3207, max 1, 4234 samples |
+| `mixer_master_full` | `0ffaee122ebe` | 9088 | 49 | equal |
+| `mixer_master_low` | `764ff57d42a0` | 9104 | 49 | frame 66, max 691, 238234 samples |
+| `mixer_pan_sweep_303` | `538abcff76ed` | 9072 | 49 | frame 66, max 13618, 282177 samples |
+| `mixer_pan_sweep_808` | `ea7ac0812033` | 9088 | 49 | equal |
+| `mixer_pan_sweep_909` | `37e2d010ae78` | 9104 | 49 | frame 3458, max 1, 4149 samples |
+| `mixer_pcf_switch` | `5defe493ae3a` | 9120 | 49 | frame 66, max 13578, 660910 samples |
+| `pcf_bp_freq10_res100` | `b28f95a70765` | 9104 | 49 | frame 68, max 2394, 310570 samples |
+| `pcf_bp_freq120_res20` | `e055f3fbfd74` | 9104 | 49 | frame 66, max 7559, 210196 samples |
+| `pcf_bp_wave0` | `689f23f372e3` | 9072 | 49 | frame 3244, max 1, 4286 samples |
+| `pcf_bp_wave127` | `0a90d04342bf` | any (all 49) | 1 | equal |
+| `pcf_bp_wave64` | `c898db62df89` | 9072 | 49 | frame 3244, max 1, 4292 samples |
+| `pcf_lp_amount0_decay64` | `c25526c2a26a` | 9120 | 49 | frame 2937, max 1, 8098 samples |
+| `pcf_lp_amount127_decay0` | `25584881a6e2` | 9056 | 49 | frame 3251, max 1, 8142 samples |
+| `pcf_lp_amount127_decay127` | `451c0e537f04` | 9104 | 49 | frame 2990, max 1, 4336 samples |
+| `pcf_lp_freq10_res100` | `23152bd1f24d` | 9056 | 49 | frame 85, max 433, 289246 samples |
+| `pcf_lp_freq120_res20` | `745862b6d5a2` | 9088 | 49 | equal |
+| `pcf_lp_wave0` | `e691094ae2e4` | 9072 | 49 | frame 3635, max 1, 4476 samples |
+| `pcf_lp_wave127` | `0a90d04342bf` | any (all 49) | 1 | equal |
+| `pcf_lp_wave64` | `24089c045896` | 9088 | 49 | equal |
+| `pcf_on_909` | `36c0139063f7` | 9264 | 49 | frame 2989, max 1, 1974 samples |
+| `shuffle_303_g0` | `85325fa2a694` | 9104 | 49 | frame 66, max 6290, 316304 samples |
+| `shuffle_303_g127` | `fb4a0ac9cd15` | 9088 | 49 | equal |
+| `shuffle_303_g64` | `6c4367a53cfe` | 9104 | 49 | frame 66, max 6226, 332286 samples |
+| `shuffle_drums_g127` | `b410d100e1fc` | 9088 | 49 | equal |
+| `shuffle_drums_g64` | `8732d3542b64` | 9120 | 49 | frame 3135, max 1, 7972 samples |
+| `shuffle_flag_off` | `85325fa2a694` | 9104 | 49 | frame 66, max 6290, 316304 samples |
+| `silence` | `0a90d04342bf` | any (all 49) | 1 | equal |
+| `tempo_143_21` | `63c85fd17ab5` | 9104 | 49 | frame 66, max 13602, 272884 samples |
+| `tempo_200_003` | `7f91c01bd798` | 9136 | 49 | frame 66, max 13523, 209664 samples |
+| `tempo_66_667` | `c8f40d95d3e2` | 9072 | 49 | frame 194, max 13622, 489292 samples |
+| `tempo_97_3` | `8565a4cc7ff7` | 9104 | 49 | frame 130, max 13598, 368074 samples |
+
+`shuffle_flag_off` and `shuffle_303_g0` export the same file, as their README rows expect.

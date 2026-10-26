@@ -591,11 +591,13 @@ runs `N` idle blocks (a multiple of 16) between its activation and the export.
 **Reference-capture protocol:** `docs/export_state.md` §9 (fresh process, startup sound off, open the
 song, wait a fixed time, export, quit), measured by task-010 (`docs/export_state.md` §11: byte-identical
 when the 303s are silent, on two songs; otherwise the differences fit whole idle buffers `N/16`
-[G: a fit, not a proof], and no settling residual was seen between waits of 3, 10 and 30 s). It leaves `N` unknown, so model
+([C] on the 145 diagnostic songs: a fit in task-010, confirmed by task-012's matches below), and no settling residual was seen between waits of 3, 10 and 30 s). It leaves `N` unknown, so model
 "load, activate, `N` idle blocks, export" and fit `N`. [C] That model reproduces app exports byte for
-byte: `tools/rbhost` matched three songs of one session exactly (`303_accent0` and `808_snare`
-with the fitted `N`, and `silence`)
-(`docs/export_state.md` §12, task-011).
+byte: `tools/rbhost` matched three songs of one session exactly (`docs/export_state.md` §12,
+task-011). It then matched the fresh app exports of all 145 diagnostic songs
+(`docs/export_state.md` §13, task-012): 142 at exactly one `N` in 9040..9264, and 3 silent songs at
+every `N`. [C] So, on that set and under the §11.5 protocol, a fresh export depends on the song and
+`N` only. [G] It holds for other songs and protocols: not tested.
 
 **Diagnostic songs worth building:**
 - Silence: expect all zeros, since the 1e-6 offsets truncate to 0.
