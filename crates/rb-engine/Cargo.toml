@@ -7,3 +7,5 @@ publish.workspace = true
 
 [dependencies]
 rbs = { path = "../rbs" }
+# The tables' transcendentals, pinned so the tables are the same everywhere (task-048).
+libm = "=0.2.16"

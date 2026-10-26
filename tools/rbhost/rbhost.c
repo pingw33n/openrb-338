@@ -358,6 +358,8 @@ static const TableDef TABLES[] = {
     {"t808", 0x1014CBD8, 128 * 2, "u16", "[128]", "808 tom step T808, 808 ctor sub_10026F70 (first)"},
     {"t909", 0x1014E54C, 128 * 2, "u16", "[128]", "909 tom step T909, 909 ctor sub_1002A380 (first)"},
     {"dt909", 0x1014E64C, 16 * 4, "f32", "[16]", "909 decay table DT, 909 ctor sub_1002A380 (first)"},
+    {"smooth303", 0x1012470C, 3 * 4, "f32", "[3]", "303 cutoff smoother {b2, A, g}, static init sub_10026BB0"},
+    {"smooth_pcf", 0x10100260, 3 * 4, "f32", "[3]", "PCF cutoff smoother {b2, A, g}, static init sub_10017840"},
 };
 
 static void dump_tables(const char *dir) {

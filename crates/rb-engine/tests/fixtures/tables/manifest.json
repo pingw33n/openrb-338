@@ -1,0 +1,18 @@
+{
+  "what": "tables",
+  "dll_base": "0x10000000",
+  "items": [
+    {"name": "t", "file": "t.bin", "address": "0x10054550", "size": 512, "type": "f32", "shape": [128], "note": "level curve T, sub_100046B0 (song ctor, once)"},
+    {"name": "pan", "file": "pan.bin", "address": "0x10034550", "size": 131072, "type": "f32", "shape": [128,128,2], "note": "PAN[a][b] = {L,R}, sub_100046B0"},
+    {"name": "pitch303", "file": "pitch303.bin", "address": "0x10125364", "size": 24576, "type": "f32", "shape": [6144], "note": "303 pitch table, 303 ctor sub_10023920 (once)"},
+    {"name": "filt303", "file": "filt303.bin", "address": "0x1012b364", "size": 131072, "type": "f32", "shape": [8,1024,4], "note": "303 FILT {c0,c1,c2,c3}, sub_100234A0"},
+    {"name": "pcf_lp", "file": "pcf_lp.bin", "address": "0x1010c270", "size": 49152, "type": "f32", "shape": [8,512,3], "note": "PCF low-pass {c0,c1,c2}, sub_100172C4"},
+    {"name": "pcf_bp", "file": "pcf_bp.bin", "address": "0x10100270", "size": 49152, "type": "f32", "shape": [8,512,3], "note": "PCF band-pass {c0,c1,c2}, sub_10017574"},
+    {"name": "dist_w", "file": "dist_w.bin", "address": "0x100d47a4", "size": 32768, "type": "f32", "shape": [32,256], "note": "distortion waveshaper W, sub_10011210 (once)"},
+    {"name": "t808", "file": "t808.bin", "address": "0x1014cbd8", "size": 256, "type": "u16", "shape": [128], "note": "808 tom step T808, 808 ctor sub_10026F70 (first)"},
+    {"name": "t909", "file": "t909.bin", "address": "0x1014e54c", "size": 256, "type": "u16", "shape": [128], "note": "909 tom step T909, 909 ctor sub_1002A380 (first)"},
+    {"name": "dt909", "file": "dt909.bin", "address": "0x1014e64c", "size": 64, "type": "f32", "shape": [16], "note": "909 decay table DT, 909 ctor sub_1002A380 (first)"},
+    {"name": "smooth303", "file": "smooth303.bin", "address": "0x1012470c", "size": 12, "type": "f32", "shape": [3], "note": "303 cutoff smoother {b2, A, g}, static init sub_10026BB0"},
+    {"name": "smooth_pcf", "file": "smooth_pcf.bin", "address": "0x10100260", "size": 12, "type": "f32", "shape": [3], "note": "PCF cutoff smoother {b2, A, g}, static init sub_10017840"}
+  ]
+}

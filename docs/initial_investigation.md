@@ -132,6 +132,8 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
 **Shared tables, built once in the mixer ctor by `0x100046B0` [C]:**
 - `T[128]`: `T[127] = 1`. For i = 126 down to 1, `T[i] = f32(T[i+1] - f32(1/24)*T[i+1])`, i.e. about
   (23/24)^(127-i). `T[0] = 0`. This curve is used for every level, send and amount knob.
+  [C] task-019: the step f32(1/24) = 0x3D2AAAAB is data at 0x1014F8E4 (section `.data1`, which is
+  in the file), read at 0x100046C3.
 - `PAN[a][b]` gives `{L,R}` with `d = b-64` and `q = (d*d)>>5`:
   ```
   L = T[d>0 ? clamp(a-q,0,127) : a]
@@ -178,6 +180,10 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
   3. If any f32 entries differ, embed the dumped tables as binary blobs.
 
   All of these tables live in BSS (zero in the file) and are listed in §8.
+  [C] task-019, the outcome: step 1 alone gives every table bit for bit (§10 item 4); nothing is
+  embedded. The CRT pow 0x1002DDF0 is a table-driven x87 routine (tables at 0x10156000,
+  0x10156410, 0x10156818, exponential in `sub_1002E3E0`); it was not emulated, since an f64 `pow`
+  (the `libm` crate) already gives the same stored values.
 
 ---
 
@@ -283,6 +289,11 @@ k = (2^(3/12)*110 / 44100) / 2^(3072/768)
 tab[i] = f32(2^(i/768) * k)
 ```
 The phase runs from -1 to 1, so frequency = tab·22050; index 3072 is 65.4 Hz.
+[C] task-019, the exact order (0x10023A89..0x10023B7E): `s = pow(2, 1/12)`;
+`v = (((1*s)*(s*s))*55)*2` (the cube by the compiler's squaring loop; 55.0 at 0x10153A98, 2.0 at
+0x10153A80); `p = pow(2, 1/768)` (f64 `0x3F55555555555555`); `k = (v*(1/44100)) / pow(p, 3072)`
+(1/44100 at 0x10153AB0); `tab[i] = f32(pow(p, i)*k)`, all with the CRT pow 0x1002DDF0. The
+tune table at 0x10033F90 is i16[32].
 
 ### 6.2 DSP (Vintage engine, inline in 0x10023F10; per 64 samples, control values every 4 samples) [C]
 
@@ -293,6 +304,8 @@ the RBS "Vintage ReBirth sound" (`docs/song_load.md` §3). No shipped song uses 
 R  = reso*f32(1/127)
 cs = (A*cs1 + (cut*0.0022834645669291337 + 0.46)*g) - b2*cs2; cs2 = cs1; cs1 = f32(cs)   // cutoff smoother
      // A = f32 0x3FF797CF, b2 = 0x3F7068F3, g = 0x3B9CA9F1 (static init 0x10026BB0)
+     // [C] task-019: stored at 0x1012470C {b2, A, g}; w = f64 0x3FB015BF8C180485 (f32 0.0628 widened):
+     // A = f32(exp(-w/2) * (cos(w)*2)), b2 = f32(exp(-w)), g = f32((1 - A) + b2), A unrounded in g
 amp = (double)amp + 1e-6f;  E = (double)E + 1e-6f
 kA = 0.10166666666666667 - R*0.066666666666666666
 em = envmod*0.0029921259842519685 + 0.08
@@ -326,6 +339,11 @@ for r in 0..8:
     c2 = ((1-c3)*(c1+(1-c0))) / ((D'+1)*0.8)
 // π = 3.141592654, 2π = 6.283185308 (decimal literals); exp via f2xm1/fscale; pow = CRT
 ```
+[C] task-019, the exact operand order (0x1002351C..0x100237BC; every intermediate a qword):
+`q = (((((i*128)*(1/1024))*i)*128)*(1/1024))*0.000125 - 0.3`, clamped by `> 1 → 1` then `< 0 → 0`;
+`D = q*m8C + (1-q)*m94` with `m94 = r*(1/6) + 0.5`; `1/D` is computed once and multiplied
+(`(W*-π)*(1/D)`, `(W*-2π)*(1/D)`); `c0 = exp(...)*(cos(W*2π)*2)`; `D' + 1` adds f32 1.0. The
+generated table is bit-identical to the dump (crates/rb-engine/src/tables).
 
 ### 6.3 ReBirth 2.0 engine (0x100248C4) [C]
 
@@ -419,6 +437,19 @@ and voice offsets are in the agent notes; the formulas are summarised here.
 
 `DT[j]`: start at 1.0 and subtract 2.5e-5 per index going down, stored f32 (computed at init).
 
+[C] task-019, the static drum tables and the exact builders:
+- 808: `SD` sample slots i16[5] at 0x10034090 (1..5), SEQ808 u16[32] at 0x1003409C, `N` noise
+  sample slots u16[4] at 0x100340DC (6..9), TONE8 f32[8] at 0x100340E4, DEC16 f32[16] at
+  0x10034104.
+- 909: `SD` sample slots i16[5] at 0x10034210 (4..8), SEQ909 u16[32] at 0x1003421C (values 0..2),
+  `SDN` slots u16[4] at 0x1003425C (9, 10, 11, and an unused 0), C8 f32[8] at 0x10034264.
+- T808 (0x10027061..0x10027141): `s = pow(2, 1/192)`, `k = 256 / (1*s^64)` with s^64 by six
+  squarings, `T808[i] = trunc(pow(s, i)*k)` (fistp under a truncating control word, low 16 bits).
+  T909 (0x1002A471..) is the same with `pow(2, 1/144)`. `T808[64]` is exactly 256 only because
+  `pow(s, 64)` equals the squared value bit for bit; for the 909 it is 256 + 6 f64 ulps.
+- DT (0x1002A551..0x1002A57C): `x = 1f`; for j = 15 down to 0, `DT[j] = f32(x)`, `x = x - 2.5e-5`
+  with x kept in the x87 register (f64), not re-rounded to f32.
+
 ### 7.4 Samples and RBM mods [C, except where noted]
 
 - **Built-in samples.** DLL resources of type `"AIFF"`:
@@ -482,6 +513,13 @@ out = f32(clamp(g*x, -th, th))
 `byte_100D47A0`; [C] task-011: corrected from "0x10011210", the builder's address). Uses `fsin`, with phase increment `(t²/961)*(π/8) + π/1024`:
 - `W[t][128±k] = ±f32((sin(ph)*256*(1-y) + 256*y*y)*0.7)` with `y = k/128`.
 - `W[t][0] = -W[t][255]`.
+- [C] task-019, exact: the constants are f32 1/961 = 0x3A88642A (0x10151C00), and "π/8" =
+  0x3EC90FD0 (0x10151C04) and "π/1024" = 0x3B490FD0 (0x10151C08), which are not f32(π/8) =
+  0x3EC90FDB but π cut short; with f32(π/8) 7780 of the 8192 entries come out 1-2 ulps off.
+  `inc = (t*t*c961)*cπ8 + cπ1024` in f64. For e = 128..255, with `ph`, `y` and `z` starting at 0
+  and advancing (f64) by `inc`, 1/128 and 1/128 after each entry:
+  `v = ((sin(ph)*256f)*(1 - y) + ((y*z)*256f))*0.7`, then `W[t][e] = f32(v)` and
+  `W[t][256-e] = f32(-v)`, in that order, so `W[t][128]` is -0.0.
 
 ### 8.2 PCF
 
@@ -498,6 +536,8 @@ This uses the absolute song position, so the pattern stays phase-locked to the s
 
 **Cutoff base.** A 2-pole smoother towards `freq*4`, with coefficients from `exp`/`cos` at
 w = 0.0628 (static init 0x10017840). It starts at 0.
+[C] task-019: the constants {b2, A, g} at 0x10100260 are bit-identical to the 303 smoother's
+(§6.2): the same code with the same constants (0x10152490..0x101524B0).
 
 **Envelope, per 4 samples.**
 - `E *= dec`
@@ -517,6 +557,11 @@ w = 0.0628 (static init 0x10017840). It starts at 0.
 - LP: `c2 = 2(1-c0+c1)/((Qg+1)*0.8)`.
 - BP: `c2 = 3*cos(πF)*sqrt(1-c0+c1)/((Qg+1)*0.8)`.
 - `Qg = Q>4 ? 3 : Q`.
+- [C] task-019, exact (LP 0x10017310..0x1001753F, BP 0x100175C0..0x10017803): as FILT (§6.2) but
+  `base = 0.4/pow(K, 511)` and `W = (pow(K, i)*base)*aW` with the constant K itself (not
+  recomputed), the index scale 1/512, so `q = (i/4)^2*0.000125 - 0.3`, and no c3.
+  LP: `c2 = ((c1 + (1-c0))*2f) / ((D'+1f)*0.8)`. BP: `c2 = ((cos(W*π)*sqrt((1f-c0) + c1))*3f) /
+  ((D'+1f)*0.8)`, π = 3.141592654; D' = 3 when D > 4 (BP reuses its f32 3.0 at 0x10152484).
 
 ### 8.3 Compressor (mono 0x1000EC70, stereo 0x1000EDE0)
 
@@ -645,9 +690,23 @@ reached through `dword_1011D0B0`.
    | T808 | 0x1014CBD8 | u16[128] | 808 ctor `sub_10026F70`, first instance (`word_1014CCD8`) |
    | T909 | 0x1014E54C | u16[128] | 909 ctor `sub_1002A380`, first instance (`word_1014E68C`) |
    | DT | 0x1014E64C | f32[16] | 909 ctor, the same block |
+   | 303 smoother | 0x1012470C | f32[3] {b2, A, g} | static init `sub_10026BB0` (task-019) |
+   | PCF smoother | 0x10100260 | f32[3] {b2, A, g} | static init `sub_10017840` (task-019) |
 
    Dumped values agree with the formulas of §4, §6 and §7.3 at the points checked (T[127] = 1,
    T808[64] = T909[64] = 256, T808[0] = 203, T909[0] = 188, DT[15] = 1.0, pitch[3072]·22050 = 65.406).
+
+   [C] task-019: every table above is generated in Rust (`crates/rb-engine/src/tables`) with
+   plain f64 arithmetic in the builders' operand order and `pow`/`exp`/`cos`/`sin` of the
+   pure-Rust `libm` crate (pinned `=0.2.16`, decided in task-048), and is bit-identical to the
+   dump (fixtures in `crates/rb-engine/tests/fixtures/tables`); none is embedded and no x87 or CRT
+   emulation is needed. macOS's system libm (Rust std) gave the same tables. Across the f32 stores
+   the nearest f64 value is at least 1358 f64 ulps from an f32 rounding midpoint (FILT 1625, PCF
+   1358, the others far more; the unit test `store_margins` measures and asserts it). The only
+   fragile entry is `T808[64]` (§7.3). The static-init list is the function
+   pointer array at 0x10030010..0x10030060 (0x10003740, 0x10017840, 0x1001A920, 0x10021CD0,
+   0x10026BB0). Builder constants sit in `.data1` (0x1014F000..) and `_data` (0x10156000..),
+   which are in the file, unlike `.data` above 0x10034400.
 5. **Export start state** (§9): traced in `docs/export_state.md` (task-004); the protocol is
    settled by experiment in task-010.
 6. **Loop-end wrap inside the final pre-rendered block.** The last block can wrap to the loop start
