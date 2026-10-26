@@ -399,7 +399,8 @@ and its packets have the intended layout. rbhost and the Rust engine use the int
 | Delay step mode 0 = quarter notes, 1 = triplets | 0 = 1/3 beat (triplets), 1 = 1/4 beat (sixteenths) |
 | Selected pattern 0x00 to 0x20 | 0..31 (the exe rejects 32 in tracks) |
 | 303 waveform 0 = triangle | 0 = saw |
-| USRI is 512 bytes | 712 bytes in real files; the exe requires 712 |
+| USRI is 512 bytes | 712 bytes in real files; the exe requires 712. From the 18 shipped songs (tools/rbs.py): title ZSTRING at 0 (41), text ZSTRING at 41 (401 bytes, not 201), web page ZSTRING at 442 (101), show-on-open byte at 543; bytes 544..711 hold leftover junk that the engine does not use |
+| TRAK accumulated position must not exceed 31976 | `Alloy Cowboy Resurrection.rbs` has events above 31976 in every track, up to 41024; the exe drops those at or above 32000 (tick 768000, section 5) |
 
 ## 11. Open items
 
