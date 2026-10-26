@@ -5,15 +5,17 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 16:14'
 labels:
   - cli
 milestone: m-1
 dependencies:
   - TASK-021
   - TASK-020
+  - TASK-023
 priority: high
 type: feature
-ordinal: 28000
+ordinal: 23500
 ---
 
 ## Description
@@ -28,3 +30,9 @@ The `rb` command: `rb render IN.rbs -o OUT.flac|OUT.ogg|OUT.wav` renders the son
 - [ ] #2 An integration test decodes the FLAC output and finds it sample-identical to the WAV output
 - [ ] #3 The encoder crates and why they were chosen are in the task's notes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-26, per the user: run this task once there is something to listen to, right after the TB-303 devices (task-023) and before the drums and effects (task-024..027).
+<!-- SECTION:NOTES:END -->
