@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-complex'
 created_date: '2026-10-26 09:06'
-updated_date: '2026-10-26 10:12'
+updated_date: '2026-10-26 14:02'
 labels:
   - re
   - rbm
@@ -35,4 +35,6 @@ RBM mod samples are scrambled (docs/initial_investigation.md section 7.4): the D
 
 <!-- SECTION:NOTES:BEGIN -->
 From task-003 (2026-10-26, docs/song_load.md section 9): the file behind app field this[325] is Rb20ful.dat on the ReBirth CD (volume "ReBirth Win"), found and validated by sub_406A79 / sub_4063DF (magic 0x03E1F11E, string RB338V20, major version 4; strings stored encoded, decode s[j] -= s[j+1] from the end); sub_4065F2 fills 2048-byte pages from it at offsets derived from runtime values. The test machine has the CD mounted (drive E:, seen in Explorer on 2026-10-26); read it with rcs by absolute path (doc-001).
+
+Supervisor 2026-10-26: RB20FUL.DAT on the CD (E:\RB20FUL.DAT) is 134,217,984 bytes = 256-byte header (magic 03 E1 F1 1E, then BC 01 01 00 00, then the Propellerhead copyright string, zero-padded) + 2^27 bytes of key material, which fits the derivation's page offset 256 + sum % (0x8000000 - 2048). RB20UPD.DAT is 128 bytes (magic 07 F1 E1 3B). Details and the CD layout: task-036.
 <!-- SECTION:NOTES:END -->
