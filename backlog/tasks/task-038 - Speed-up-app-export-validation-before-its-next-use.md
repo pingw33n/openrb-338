@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 15:08'
+updated_date: '2026-10-26 15:55'
 labels:
   - tools
   - testmachine
@@ -37,3 +38,12 @@ Keep the results identical: re-run a sample of task-012's comparisons with the o
 - [ ] #2 rb_export.py waits are cut (polling instead of fixed sleeps where possible) and the fit runs candidates in parallel and/or seeds them from a signal estimate of N
 - [ ] #3 A sample of task-012's comparisons re-run with the optimized tools gives the same verdicts and N; docs/export_state.md reflects any protocol change
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-26: inputs from task-012 and a timing run.
+- N from the runner's timeline (docs/export_state.md section 13, [G] empirical fit over 142 songs): N - round((export started - song opened) * 44100/64) = 47.6 +- 14.6 blocks (range 3..82), so a window of about 7 candidate renders around that estimate would have found every task-012 fit; the sidecars of tools/rb_export.py hold the timestamps.
+- task-012's full run: 145 app exports in about 62 min (7 invocations), rbhost sweeps of 49 N values per song.
+- rbhost on a full song (Calm, 14,003,446 frames = 5.3 min), measured 2026-10-26 by hand on the machine: upload of rbhost.exe + message file 0.34 s; render 2.52 s at 0 idle blocks, 2.69 s at 9,088 idle blocks (about 125x realtime; idle blocks cost ~0.17 s per 9,088); download of the 56 MB WAV 2.1 s. So about half of a full-song render is the download: compare hashes on the machine.
+<!-- SECTION:NOTES:END -->
