@@ -53,7 +53,7 @@ Device vtables in the DLL (slot = index):
 
 | Class | vtable | Notable slots |
 |---|---|---|
-| CTB303Device | 0x10033FD4 | [1] step 0x100253A0, [5] reset 0x10026CC0, [6] note-off 0x10025630, [10] host msg 0x100256E0, [11] setParam 0x10026180, [14] **audio 0x10023F10** (2.0) → vintage 0x100248C4 |
+| CTB303Device | 0x10033FD4 | [1] step 0x100253A0, [5] reset 0x10026CC0, [6] note-off 0x10025630, [10] host msg 0x100256E0, [11] setParam 0x10026180, [14] **audio 0x10023F10** (inline: Vintage sound) → 2.0 sound 0x100248C4 (§6.3) |
 | CTR808Device | 0x10034154 | [14] **audio 0x100280B0**, step 0x10027690, [11] setParam 0x10029050 |
 | CTR909Device | 0x10034294 | [14] **audio 0x1002B6F0**, step 0x1002AAC0, [11] setParam 0x1002C6D0 |
 | CDistInsert | 0x10033144 | [15] process 0x10010A50, update 0x10010894 |
@@ -135,7 +135,8 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
 - `lev = on ? level : 0`.
 - Pan targets: `tgtL = 1e-6f + PAN[lev][pan].L`, and likewise for R.
 - Send target: `T[lev]*T[send] + 1e-6f`. An alternative pan-dependent send formula is selected by
-  flag `+0x16D`.
+  flag `+0x16D`, the sound-model byte (GLOB[482]): zero (2.0 sound) gives the plain send, non-zero
+  (Vintage) the pan-dependent one (`docs/song_load.md` §3, §7).
 - Master target: `2*T[master] + 1e-6f`.
 - Initial values: channel gains 1e-6; master current and target 1.0.
 
@@ -210,19 +211,20 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
 
 ### 5.2 Host message protocol
 
-Packets have the form `[78, dev, msg, payload…]`. The DLL dispatcher is `0x1001CDF0`, which calls
-`devices[dev]->0x10011ED0`.
+Packets have the form `[78, song, msg, payload…]`, multi-byte values big-endian. The DLL dispatcher
+is `0x1001CDF0`, which calls the song object's handler `0x10011ED0`; `song` is the slot the engine
+returned for the song (top-level msg 52), not a device.
 
 | msg | Meaning |
 |---|---|
-| 35 `{id,val}` | Set global parameter. Ids: 0 song mode, 1 play/stop, 3 loop on, 4 tempo (BPM×1000), 8 locate, 12 loop start, 16 loop end, 20 shuffle, 21 sound model flag (§6.3) |
-| 36 | Bulk-set the global struct |
-| 37 | Batch of track events, 7 bytes each `{i32 pos, ctrl, val}` |
+| 35 `{id,val}` | Set global parameter. Ids: 0 song mode, 1 play/stop, 3 loop on, 4 tempo (BPM×1000), 8 locate, 12 loop start, 16 loop end, 20 shuffle, 21 sound model flag (§6.3). Ids 4, 8, 12, 16 carry a u32 |
+| 36 | Bulk-set the global struct (23 bytes) |
+| 37 | Track events: `[track, u32, u32]`, then 7 bytes each `[99, u32 tick, ctrl, val]` |
 | 33 | Full reset |
-| 41 | Device data (patterns) |
+| 41 | Device data `[dev, sub, payload]` (parameters and patterns) |
 | 55 / 56 | Load a mod sample bank / select the built-in bank |
 
-The EXE turns the RBS into these messages. That converter has **not** been traced yet (§10).
+The EXE's conversion of an `.rbs` into these messages is in `docs/song_load.md` [C].
 
 ---
 
@@ -237,7 +239,8 @@ cutoff, reso, envmod, decay, accent, waveform (0 = saw, 1 = square).
 
 **Internal pattern format.** 98 bytes: `[shuffle, len, 16 × {note 0..12, slide, accent, up, down, rest}]`.
 - `rest == 0` means play.
-- [G] RBS flags map as: rest = !(flags & 0x10), slide = bit0, accent = bit1, up = bit2, down = bit3.
+- [C] RBS flags map as: rest = bit4 (0x10 set = rest), slide = bit0, accent = bit1, up = bit2,
+  down = bit3, each as 0/1 (`sub_434309`; `docs/song_load.md` §4.6). The guess rest = !bit4 was wrong.
 
 **Step function (0x100253A0).**
 - `v = (tick' - patStart) % (48*len)`, `step = v/48`.
@@ -246,12 +249,13 @@ cutoff, reso, envmod, decay, accent, waveform (0 = saw, 1 = square).
 - On a bar line, the pending pattern and enable flag are latched.
 
 **Note-on (0x10023CD4).** `^k` below means repeated squaring of a float value in double precision,
-with the result stored as f32. k = 4 for the 2.0 sound, k = 64 for vintage.
+with the result stored as f32. k = 64 for the 2.0 sound (flag +21 zero), k = 4 for Vintage
+(non-zero). These labels were swapped in the survey; `docs/song_load.md` §3 has the evidence.
 ```
 accEnvCoef = f32(((reso/12700 + 0.99) * 0.999)^k)
 if !accent: accAmt = 0;  envDecay = f32((0.99999 - (1 - decay*f32(1/127))^2 * 0.0003)^k)
 else:       envDecay = f32(0.99969f^k);  accAmt = f32(accentKnob * 3/127)
-if play: gate = 1; ampIn,ampFb = 2.0:(0.1,0.9) vintage:(1.0,0)
+if play: gate = 1; ampIn,ampFb = 2.0:(1.0,0) vintage:(0.1,0.9)
          if !prevSlide: E = 1.0; retrig = 1
 pitchTarget = ((tuneTab[tune>>2] + note + 12*up - 12*down)*64 + 3072) * 16
               // tuneTab @0x10033F90 = -12,-12,-11..-1,0×6,1..12,12
@@ -260,7 +264,7 @@ prevSlide = slide
 ```
 
 **Note-off (0x10023C74).** Skipped while the current step slides; this is how a slide ties notes.
-Sets gate = 0 and `ampIn,ampFb` = 2.0:(0.1,0.9), vintage:(0.063,0.937).
+Sets gate = 0 and `ampIn,ampFb` = 2.0:(0.063,0.937), vintage:(0.1,0.9).
 
 **Glide, per block.** `pitchCur = (11*pitchCur + pitchTarget)/12` (u32 division; it can stall short
 of the target). Then `inc = pitchTab[pitchCur>>4]`.
@@ -272,7 +276,10 @@ tab[i] = f32(2^(i/768) * k)
 ```
 The phase runs from -1 to 1, so frequency = tab·22050; index 3072 is 65.4 Hz.
 
-### 6.2 DSP (2.0 engine, 0x10023F10; per 64 samples, control values every 4 samples) [C]
+### 6.2 DSP (Vintage engine, inline in 0x10023F10; per 64 samples, control values every 4 samples) [C]
+
+The survey called this the 2.0 engine. It runs when the sound-model flag +21 is non-zero, which is
+the RBS "Vintage ReBirth sound" (`docs/song_load.md` §3). No shipped song uses it.
 
 ```
 R  = reso*f32(1/127)
@@ -312,17 +319,23 @@ for r in 0..8:
 // π = 3.141592654, 2π = 6.283185308 (decimal literals); exp via f2xm1/fscale; pow = CRT
 ```
 
-### 6.3 Vintage engine (0x100248C4) [C]
+### 6.3 ReBirth 2.0 engine (0x100248C4) [C]
+
+The survey called this the vintage engine. It runs when flag +21 is zero: the RBS "ReBirth 2.0
+sound", every file before version 4.2 and every shipped song.
 
 - Control values are computed once per 64 samples with `^64` coefficients.
 - Resonance is continuous: rows l and l+1 of FILT are interpolated, with `rf = reso*0.0078732288f`
   and `l = trunc(rf*7)`.
 - Coefficients ramp linearly every 2 samples from the stored start values (+0xCF4..+0xD00).
 - On retrigger, the start c2 is 0, giving a click-free attack.
-- The sample loop is identical to the 2.0 engine.
+- The sample loop is identical to the Vintage engine (§6.2).
 
-**Selection.** The engine is chosen by global flag +21: non-zero selects 2.0, zero selects vintage.
-[G] +21 = !GLOB[482] (the RBS vintage byte). Verify this in the EXE.
+**Selection.** The engine is chosen by global flag +21 (song object +0x16D), tested at 0x10023F2D:
+zero selects this engine (2.0 sound), non-zero the inline Vintage engine of §6.2.
+[C] +21 = GLOB[482] unchanged (0 for files before version 4.2); the exe does not invert it, and the
+menu item "Vintage ReBirth Synth Sound" is checked when it is 1 (`docs/song_load.md` §3). The guess
++21 = !GLOB[482] was wrong; it was the engine labels that were swapped.
 
 ---
 
@@ -358,7 +371,8 @@ after each pair.
   - `base = acc*AC*0.03125 + 1`.
   - Step value 1 or 3 gives base×0.8; value 2 or 4 gives base×2.0. Values 3 and 4 also flam (§5).
   - Instruments trigger in **descending** order.
-  - [G] RBS 909 values 0..3 must be mapped to the internal 1..4 levels.
+  - [C] RBS 909 values 0..3 reach the step function unchanged (no shift to 1..4): 1 = ×0.8, 2 = ×2.0,
+    3 = ×0.8 with flam; 4 never occurs. The AC column holds 0 or 2 (`docs/song_load.md` §4.8).
 - **Bass drum.** Two voices alternate, driven by a global flag. On each new hit, the other voice's m
   is set to 0.99 (a fade). All other instruments are monophonic and hard-restart on retrigger.
 - **Snare noise order.** Not random. It follows fixed 32-entry sequences, SEQ808 at 0x1003409C and
@@ -523,8 +537,8 @@ D = min((u32)(26460000*steps)/(u32)q, 0x1FFFF)
 fb = f32(fbByte/127)                // 127 = infinite repeats
 ```
 - Pan gains: `f32(1e-6 + PAN[127][pan])`, smoothed with 0.9/0.1 per block.
-- [G] The code gives mode 0 = triplet-ish (1/3 beat) and mode ≠ 0 = 16ths, the opposite of
-  RBS42.txt. Check the EXE converter.
+- [C] Mode 0 = triplet steps (1/3 beat), mode ≠ 0 = 16ths (test at 0x1000F7E5). The exe passes the
+  RBS byte unchanged, so RBS42.txt has the polarity backwards (`docs/song_load.md` §4.2).
 
 **Per sample.**
 ```
@@ -540,8 +554,10 @@ w++
 
 ## 9. State at export start: the main byte-exactness risk
 
-Nothing below is reset by stop, locate or play. Msg 33 (full reset) is sent only *after* an export,
-and on song load [C].
+Nothing below is reset by stop, locate or play. Msg 33 (full reset) is sent only *after* an export
+(and after the benchmark) [C]. It is **not** sent on song load: opening a song makes a new song in the
+engine (top-level msg 52) and sends its data (`docs/song_load.md` §2) [C]. [G] Whether the new song
+gets new device objects, and so fresh 303 and effect state, is not traced.
 
 | State | Effect on the export |
 |---|---|
@@ -555,7 +571,7 @@ and on song load [C].
 
 **Proposed reference-capture protocol** (to be confirmed experimentally on the test machine):
 1. Start ReBirth fresh with the startup sound and demo song disabled if possible.
-2. Open the song. This sends msg 33, a full reset.
+2. Open the song. This creates a new song in the engine (msg 52); it does not send msg 33.
 3. Export immediately without pressing Play.
 4. Repeat each export twice, and once after a restart, to measure how deterministic it is.
 
@@ -578,14 +594,19 @@ reached through `dword_1011D0B0`.
 
 ## 10. Work items and open questions
 
-1. **RBS → engine message conversion in the EXE** (not traced). Determine:
-   - Track position scaling. RBS deltas are in 24-PPQ units, so ×8 is expected.
-   - 303 step flags → internal 6-byte steps. Beware the copy-protection scrambler in `sub_420FB7`.
-   - The 909 step value mapping.
-   - Delay mode polarity, PCF and comp routing values, and the vintage flag polarity (+21 vs GLOB[482]).
-   - Whether the pattern-mode device chunk values or the song-mode chase decide the export's initial
-     knob values. A chase at locate implies the TRAK events decide.
-2. **Mixer flag `+0x16D`** (send pan-dependence, set by host msg 21): what value it has during export.
+1. **RBS → engine message conversion in the EXE**: traced in `docs/song_load.md` (task-003) [C].
+   - Track position scaling: tick = RBS position × 24, not ×8; the RBS unit is a 32nd note (§5 there).
+   - 303 step flags: rest = bit4, the others as listed in §6.1. The scrambler in `sub_420FB7` and its
+     siblings only fire without the genuine `Rb20ful.dat` pages, which a normal load always has (§9
+     there).
+   - 909 step values pass unchanged (§7.2).
+   - Delay mode 0 = triplets (§8.4); PCF id 1..4 = channel 0..3, comp id 1 master, 2..5 channel 0..3;
+     +21 = GLOB[482] unchanged, and the 303 engine labels of §6.2 / §6.3 were swapped.
+   - Pattern mode: the device chunks decide. Song mode: the TRAK chase decides every automatable
+     value; the chunks give patterns, mixer master and channel enables (§6 there).
+2. **Mixer flag `+0x16D`**: it is the sound-model byte, written by msg 36 byte 21 and msg 35 id 21
+   (the "host msg 21" case at 0x10012696 is msg 35's id 21). During an export it holds the song's
+   GLOB[482], 0 for every shipped song (`docs/song_load.md` §7) [C].
 3. **RBM key table** source file and the stride in the obfuscated EXE code (§7.4).
 4. **Table generation fidelity.** Dump the BSS tables from a live process and diff them against Rust:
    - 303 FILT (0x1012B364), pitch table (0x10125364)
