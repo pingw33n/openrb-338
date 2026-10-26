@@ -89,7 +89,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
   - a priority, a milestone and its dependencies.
 
   `--ordinal` is the queue order. `Draft` holds ideas.
-- **Task ownership.** While a task is assigned to an agent, only that agent edits its file. The supervisor adds the merge comment in the task's squashed commit and runs `backlog doctor` after the merge.
+- **Task ownership.** While a task is assigned to an agent, only that agent edits its file. The supervisor adds the merge comment in the task's squashed commit, pushes main to `origin` (github.com/pingw33n/rb, private) after each merge, and runs `backlog doctor` after the push. Agents never push.
 - **Standing rules.**
   - Never edit `original/`, `ida/` or a committed reference render by hand.
   - Facts about the original carry addresses and are checked against the disassembly, not only Hex-Rays.
