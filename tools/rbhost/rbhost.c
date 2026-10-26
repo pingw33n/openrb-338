@@ -29,6 +29,9 @@
  *   --dump-tables DIR       write the run-time tables (investigation section 10 item 4) after the
  *                           song is created, with DIR/manifest.json
  *   --dump-state DIR        write the engine objects at export start, with DIR/manifest.json
+ *   --dump-float DIR        write DIR/float.bin: the float output of every export chunk before
+ *                           the int16 conversion (unk_100E012C left, unk_100F012C right), as f32
+ *                           L,R pairs per frame (task-023)
  *   -v                      log every reply
  */
 #define WIN32_LEAN_AND_MEAN
@@ -454,14 +457,15 @@ static void usage(void) {
     fprintf(stderr,
             "usage: rbhost [--dll PATH] [--idle-blocks N] [--post-stop-blocks M] [--drum-counters A,B,C,D]\n"
             "              [--startup-sound] [--first-chunk-drain] [--no-untitled] [--idle-fpu-cw HEX]\n"
-            "              [--dump-tables DIR] [--dump-state DIR] [-v]\n"
+            "              [--dump-tables DIR] [--dump-state DIR] [--dump-float DIR] [-v]\n"
             "              SONG.rbhm OUT.wav\n");
     exit(2);
 }
 
 int main(int argc, char **argv) {
     const char *dll_path = "C:\\ReBirth RB-338\\ReBirth.dll";
-    const char *msg_path = NULL, *wav_path = NULL, *tables_dir = NULL, *state_dir = NULL;
+    const char *msg_path = NULL, *wav_path = NULL, *tables_dir = NULL, *state_dir = NULL, *float_dir = NULL;
+    FILE *float_out = NULL;
     long idle_blocks = 0, post_stop_blocks = 0;
     int drum[4], drum_set = 0, startup_sound = 0, first_chunk_drain = 0, untitled = 1, i;
     long size;
@@ -489,6 +493,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--idle-fpu-cw") && i + 1 < argc) idle_cw = (int)strtol(argv[++i], NULL, 0);
         else if (!strcmp(a, "--dump-tables") && i + 1 < argc) tables_dir = argv[++i];
         else if (!strcmp(a, "--dump-state") && i + 1 < argc) state_dir = argv[++i];
+        else if (!strcmp(a, "--dump-float") && i + 1 < argc) float_dir = argv[++i];
         else if (!strcmp(a, "-v")) verbose = 1;
         else if (a[0] == '-') usage();
         else if (!msg_path) msg_path = a;
@@ -610,6 +615,22 @@ int main(int argc, char **argv) {
             else last = 1;
             step = ((double)(int32_t)tempo * (double)n) * (192.0 / 2646000000.0);
             call_safe(chunk_buf, n);
+            if (n > 0 && float_dir) {
+                /* sub_100139E0's float output of this call, before the int16 conversion */
+                const float *fl = (const float *)va(0x100E012C), *fr = (const float *)va(0x100F012C);
+                int32_t k;
+                if (!float_out) {
+                    char path[MAX_PATH];
+                    CreateDirectoryA(float_dir, NULL);
+                    snprintf(path, sizeof path, "%s\\float.bin", float_dir);
+                    float_out = fopen(path, "wb");
+                    if (!float_out) die("cannot write %s", path);
+                }
+                for (k = 0; k < n; k++) {
+                    fwrite(fl + k, 4, 1, float_out);
+                    fwrite(fr + k, 4, 1, float_out);
+                }
+            }
             if (n > 0) {
                 fwrite(chunk_buf, 4, n, wav);
                 frames += n;
@@ -640,6 +661,7 @@ int main(int argc, char **argv) {
     fseek(wav, 0, SEEK_SET);
     fwrite(header, 1, sizeof header, wav);
     fclose(wav);
+    if (float_out) fclose(float_out);
     fprintf(stderr, "rbhost: slot %d, %u messages, idle %ld + %ld blocks, %u frames written to %s (%lu ms)\n",
             slot, count, idle_blocks, post_stop_blocks, frames, wav_path, (unsigned long)(GetTickCount() - t0));
     fflush(stderr);

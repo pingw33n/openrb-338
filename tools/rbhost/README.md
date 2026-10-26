@@ -28,12 +28,16 @@ it imports (msvcrt, winmm, version).
 tools/rbhost/run.py -o OUT tests/songs/diag/songs/303_accent0.rbs        # OUT/303_accent0.wav + .json
 tools/rbhost/run.py --runs 2 -o OUT SONG.rbs                             # OUT/SONG.1.wav, OUT/SONG.2.wav
 tools/rbhost/run.py --dump-tables --dump-state -o OUT SONG.rbs           # OUT/SONG.tables/, OUT/SONG.state/
+tools/rbhost/run.py --dump-float -o OUT SONG.rbs                         # OUT/SONG.float/float.bin
 tools/rbhost/run.py --idle-sweep 6400:9600:16 --match APP.wav -o OUT SONG.rbs   # fit N to an app export
 ```
 
 `run.py` holds one permit of `redc-win-run` (rbhost takes neither the keyboard nor the screen) and
 stops only the processes it started. The sidecar JSON has the arguments, rbhost's log, the hashes and
 the RIFF check of `tools/rb_export.py` (the frame count must equal the export length formula).
+`float.bin` (`--dump-float`, task-023) is the export's float output before the int16 conversion,
+f32 left/right pairs per frame, read from `sub_100139E0`'s buffers `unk_100E012C`/`unk_100F012C`
+after each chunk; it does not change the render.
 
 On the machine, `rbhost.exe [options] SONG.rbhm OUT.wav` (`rbsmsg.py SONG.rbs SONG.rbhm` makes the
 message file). rbhost does not write to the installation; it loads the DLL from `C:\ReBirth RB-338\ReBirth.dll` unless `--dll`

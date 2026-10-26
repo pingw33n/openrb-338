@@ -358,6 +358,24 @@ value every block), `+0xCB4` (smoothed pitch `(11*old + target)/12`, 0x10024940)
 [G] The Vintage engine's own fields (investigation §6.2) were not mapped to offsets; its oscillator
 phase behaves the same way (it is free-running in the inline loop).
 
+**[C] Corrections (task-023, from the traced code and rbhost `--dump-state` on `303_saw_lowcut`).**
+The labels above are partly swapped; the full field map is investigation §6.4. `+0xCA8` is the
+envelope E (1.0 at note-on), `+0xCD4` the amp; `+0xCBC` is the accent envelope, `+0xCC0`/`+0xCC4`
+the cutoff smoother, `+0xCC8`/`+0xCCC` the amp's input and feedback, `+0xCD0` the gate (f32),
+`+0xCA1` the slide flag. `+0xCA0` is set by note-on of a played step that does not follow a slide
+(0x10023E5B), whatever the gate. The Vintage engine uses the same fields except `+0xCA0` and
+`+0xCF4..+0xD00`. At the export start of the corpus protocol (rbhost with its untitled song,
+`--idle-blocks 9088`) both 303s have amp, E, accent envelope, filter state and amp constants all 0:
+the ctor leaves the amp's input and feedback at 0 and the activation over the untitled song does not
+call this song's slot 6, so the **idle output is exactly 0**, not an amp floor; the export start state
+equals the Rust engine's bit for bit (phase `0xBE2E1C20`, pre-filter, smoother, coefficients). The
+first note-off of the export (a played step, or a rest step's gate-off 24 ticks after it) sets the
+release constants, and from then on a 303 without notes outputs its amp floor (2.0 sound:
+`amp → 1e-6·0.937/0.063 ≈ 1.49e-5`) times the filtered free-running oscillator, whose phase depends
+on `N`: that is the mechanism of the ±1 LSB `N`-dependence of the songs without 303 notes (§11.2,
+§13). With `--no-untitled` the new song's slot 6 runs at activation instead, which sets the release
+constants before the idle blocks.
+
 ### 7.3 Drums
 
 | State | Address | Init / reset | Class | Effect |

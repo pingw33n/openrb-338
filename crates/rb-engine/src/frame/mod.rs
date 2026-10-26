@@ -97,10 +97,13 @@ pub trait SongDevice {
     /// block whose tick passed the last one, playing, in either mode; the 303's step function
     /// uses `shuffled` when the pattern's shuffle flag is set (0x100253D0).
     fn step(&mut self, _tick: i32, _shuffled: i32, _tempo: i32) {}
-    /// Slot 2: the position moved to `tick` (locate, the loop wrap, pattern mode).
-    fn relocate(&mut self, _tick: i32) {}
-    /// Slot 3: play started (0x1001F7E4).
-    fn start(&mut self) {}
+    /// Slot 2: the position moved to `tick` (locate, the loop wrap, pattern mode). `now` is
+    /// `trunc(pos)` of the song's position at the call (`sub_1001F870`), which the 303's slot 2
+    /// reads instead of its argument (0x100255E9); it differs from `tick` at the loop wrap and
+    /// when pattern mode is entered.
+    fn relocate(&mut self, _tick: i32, _now: i32) {}
+    /// Slot 3: play started (0x1001F7E4); `now` is `trunc(pos)` (the 303 reads it, 0x100255B9).
+    fn start(&mut self, _now: i32) {}
     /// Slot 4: stop (`sub_10021840`, only when the song was playing).
     fn stop(&mut self) {}
     /// Slot 5: msg 33's reset (0x100141D2).
@@ -116,6 +119,13 @@ pub trait SongDevice {
     fn data(&mut self, _payload: &[u8], _song_mode: bool) {}
     /// Slot 11: set controller `ctrl` (a track event, the chase).
     fn set_param(&mut self, _ctrl: u8, _value: u8) {}
+    /// Not a slot: the song's sound-model byte (`song+0x16D`, msg 36 byte 21) changed. The 303
+    /// reads the byte at note-on, note-off and in its audio (`sub_10013DA0()+0x15`).
+    fn set_sound_model(&mut self, _vintage: bool) {}
+    /// Slots 7 and 8, called once on every device by the song ctor (0x10011941, 0x10011985,
+    /// slot 8 with tick 0) with the device's own track: the 303's set the track's quantisation
+    /// and insert its initial events.
+    fn init_track(&mut self, _track: &mut crate::seq::Track) {}
 }
 
 /// A mixer channel's sound source: TB-303 #1, #2, TR-808 or TR-909.
@@ -168,6 +178,15 @@ impl Devices {
         }
     }
 
+    /// The devices implemented so far, placeholders for the rest: the two TB-303s
+    /// ([`crate::tb303::Tb303`]); silent drums, bypassing inserts, an idle send.
+    pub fn implemented() -> Self {
+        let mut d = Self::placeholders();
+        d.channels[0] = Box::new(crate::tb303::Tb303::new());
+        d.channels[1] = Box::new(crate::tb303::Tb303::new());
+        d
+    }
+
     /// The device with id `d` (`sub_10011E60`, `sub_10012B40`: the device list searched by id).
     pub fn device_mut(&mut self, d: song::Device) -> &mut dyn SongDevice {
         use song::Device as D;
@@ -214,12 +233,14 @@ impl Devices {
     }
 }
 
-/// A placeholder source that outputs the guard value only.
+/// A placeholder source that outputs zeros: what an idle TR-808 or TR-909 outputs (their audio
+/// slots 0x100280B0 and 0x1002B6F0 zero the bus, and a voice that is not active adds nothing:
+/// the tests of its byte `+8` at 0x1001E4D7, 0x1001E707, 0x1001E9A7; task-023).
 pub struct Silent;
 impl SongDevice for Silent {}
 impl ChannelDevice for Silent {
     fn process(&mut self, bus: &mut Block, _ctx: &BlockContext) {
-        bus.fill(GUARD);
+        bus.fill(0.0);
     }
 }
 
@@ -739,13 +760,19 @@ fn block_mut(buf: &mut [f32], at: usize) -> &mut Block {
 }
 
 impl Engine {
-    /// A new song as the ctor `sub_10011350` leaves it: the constructor state, the tempo 140000
-    /// (`sub_1001FCD0`, 0x100119BF), a locate to 0 (0x100119CC, which relocates every device),
-    /// then one mixer update with the mixer device's default parameters (0x100119D4). The
-    /// devices' ctor-time slots 7 and 8 (0x10011980..0x100119B5) are the devices' own business.
+    /// A new song as the ctor `sub_10011350` leaves it: the constructor state, every device's
+    /// slot 7 then slot 8 with its own track ([`SongDevice::init_track`], 0x10011941 and
+    /// 0x10011985), the tempo 140000 (`sub_1001FCD0`, 0x100119BF), a locate to 0 (0x100119CC,
+    /// which relocates every device), then one mixer update with the mixer device's default
+    /// parameters (0x100119D4).
     pub fn new(tables: Arc<Tables>, devices: Devices) -> Self {
         let mut e = Engine::with_state(tables, devices, EngineState::default());
         let f = &mut e.frame;
+        for d in song::Device::ALL {
+            f.devices
+                .device_mut(d)
+                .init_track(&mut f.seq.tracks[d.id() as usize]);
+        }
         f.seq.set_tempo(140_000);
         f.seq.locate(0, &mut f.devices);
         f.mixer_update();
@@ -811,6 +838,8 @@ impl Engine {
         seq.globals.vintage = g.vintage;
         seq.globals.byte22 = g.byte22;
         f.vintage = g.is_vintage();
+        let v = f.vintage;
+        f.devices.for_each(|d| d.set_sound_model(v));
     }
 
     /// Song msg 41 (0x1001285E): device `d`'s data block, with the current song mode.

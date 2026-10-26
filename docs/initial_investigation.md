@@ -311,9 +311,10 @@ lastTick = t
 A circular singly linked list whose head is the list itself with tick `0x7FFFFFFF`; nodes are
 `{next, tick, ctrl, value}`. `+0x228` points at the last applied node, `+0x84` is the chase state
 (128 bytes), `+4` the hold mask, `+0x104` the device id, list `+0xD + ctrl` a quantisation in 24-tick
-units (1 for every controller from the ctor).
+units (1 for every controller from the ctor; [C] task-023: 32 for controllers 0 and 1 of the 303
+tracks, set by the 303's slot 7 from the song ctor, §6.4).
 - **Insert** (`sub_10014750`, from msg 37's `sub_10021010`): the tick is rounded up to a multiple of
-  `24q` (`sub_100146E4`, no change for loaded ticks), an event above 767231 after that is dropped,
+  `24q` (`sub_100146E4`, no change for loaded ticks with q = 1), an event above 767231 after that is dropped,
   and the node is linked before the first node whose tick is not below it, unless a node of the same
   tick has the same controller, whose value is replaced. So the events of one tick are applied in
   **reverse arrival order**, and one controller has at most one event per tick.
@@ -506,11 +507,107 @@ zero selects this engine (2.0 sound), non-zero the inline Vintage engine of §6.
 menu item "Vintage ReBirth Synth Sound" is checked when it is 1 (`docs/song_load.md` §3). The guess
 +21 = !GLOB[482] was wrong; it was the engine labels that were swapped.
 
+[C] task-023, the block in operand order (0x100248C4..0x1002539A, traced instruction by instruction):
+```
+pitch = (11*pitch + target)/12 (u32); inc = PITCH[pitch>>4]
+cs = (A*cs1 + (cut*0.0022834645669291337 + 0.46)*g) - b2*cs2; cs2 = cs1; cs1 = f32(cs)
+amp0 = amp + 1e-6f; amp = f32(amp0); amp1 = amp0*ampFb + gate*ampIn      // once per block
+E0 = 1e-6f + E; E = f32(E0)
+acc = accCoef*accEnv + E0*((1 - accCoef)*accAmt); accEnv = f32(acc)
+G = amp1*(acc + 1); em = envmod*0.0029921259842519685 + 0.08
+kA = 0.10166666666666667 - (reso*f64(1/127))*(1/15)     // dbl_10153C08, not the f32 1/127 of §6.2
+rf = reso*0.0078732288f
+if retrig (+0xCA0):                                       // set by note-on without slide
+    C = clamp((kA*f32(acc)) + (((E0 - 0.4)*em) + cs)); k = ROW(f32(C), rf)
+    start = {k.c0, k.c1, 0, k.c3}; retrig = 0             // +0xCF4, +0xCF8, +0xCFC, +0xD00
+E1 = E0*decay
+C = clamp((kA*f32(acc)) + (((E1 - 0.4)*em) + cs)); t = ROW(f32(C), rf)
+d0 = (t.c0 - start.c0)/32; d1 = ...; d2 = (t.c2*G - start.c2G)/32; d3 = ...
+32×: 2 samples of §6.2's sample loop with {c0, c1, c2G, c3}; then each += its d
+block end: the four coefficients, ph, s, y1, y2, o as f32; E = f32(E1); amp = f32(amp1)
+```
+`clamp` is `> 1 → 1` then `< 0 → 0`. `ROW` is `sub_10023800`: `idx = trunc(C*1023f)`,
+`r = rf*7f` (kept in a register), `l = trunc(r)` (the low word), `frac = r - l`, and each of the four
+coefficients `f32(lo + (hi - lo)*frac)` from FILT rows `l` and `l + 1` (reso 127 gives
+`l = 6`, so `l + 1` stays in the table). Within a block only the output samples are stored as
+f32; every state runs in f64 until the block end.
+
+### 6.4 Device state, sequencing and slots [C] (task-023)
+
+Implemented in `crates/rb-engine/src/tb303.rs`; every TB-303 song of the diagnostic corpus with the
+delay disabled renders byte-identical to rbhost in both sound models (§8.4 for why the delay matters).
+
+**Fields** (`CTB303Device`, 0xD04 bytes): `+4` patStart (CDevice, 0 from `sub_10010304`), `+0x30`
+the pattern-mode parameter copy (12 bytes), `+0x3C` 32 patterns of 98 bytes, `+0xC7C` the live
+parameters (12 bytes; byte 9, `+0xC85`, is the step function's last step), `+0xC88..+0xC93` the
+panel's "changed" flags (set by setParam, read only by the panel update 0x10026700), `+0xC94` the
+playing pattern, `+0xC95` the enable latched at the bar line, `+0xC96` the wrap flag, `+0xC98` the
+pending gate-off position (-1 none), `+0xC9C` the last pattern position, `+0xCA0` the retrigger flag
+(read and cleared only by the 2.0 engine), `+0xCA1` the slide flag of the last step, `+0xCA4` the
+phase, `+0xCA8` the envelope E, `+0xCAC` its decay, `+0xCB0`/`+0xCB4` the target and gliding pitch,
+`+0xCB8` the accent amount, `+0xCBC` the accent envelope, `+0xCC0`/`+0xCC4` the cutoff smoother,
+`+0xCC8`/`+0xCCC` the amp's input and feedback, `+0xCD0` the gate (f32 0 or 1), `+0xCD4` the amp,
+`+0xCDC`/`+0xCE0` y1/y2, `+0xCE4` the pre-filter s, `+0xCE8` the DC blocker o, `+0xCEC` the accent
+feedback, `+0xCF4..+0xD00` the 2.0 coefficients `{c0, c1, c2·G, c3}`. `+0xCD8` and `+0xCF0` are
+cleared by the ctor and reset and never read.
+
+**Ctor `0x10023920`**: both parameter blocks `{1, 0, 64, 20, 90, 20, 100, 64, 0, 0, 0, 0}`
+(`sub_10018C20`), every pattern 16 steps of rests (`sub_10018D20`, `sub_10018D30`), all state 0
+except `cs1 = cs2 = 0.5`, enable 1, gate-off -1. The amp's input and feedback are 0, so a 303 that has
+not had a note-off since its song was created outputs exactly 0 (with an "untitled" song active the
+activation does not call its slot 6, `docs/export_state.md` §3; checked with rbhost `--dump-state`).
+
+**Step (slot 1, 0x100253A0)** with `tick` and `shuffled` from the clock:
+```
+t' = pattern.shuffle ? shuffled : tick
+v = (u32)(t' - (songMode ? patStart : 0)) % (48*len)     // div, unsigned
+if lastPos - v > 24 (signed): if gateOff >= 0: note-off, gateOff = -1; wrap = 1
+lastPos = v; step = v/48
+if gateOff >= 0:
+    if !enableLatch: slide = 0
+    if v >= gateOff: note-off, gateOff = -1
+elif step != lastStep or wrap:
+    gateOff = v + 24; wrap = 0
+    if (tick/48) & 15 == 0 (C remainder, the UNshuffled tick):
+        if livePattern != pattern: patStart = 768*(tick/768); pattern = livePattern
+        enableLatch = liveEnable
+    enableLatch ? note-on(step of the (new) pattern) : note-off
+    lastStep = step                                      // the step index of the old pattern's length
+```
+A rest step goes through note-on too: it sets the accent and decay coefficients, the pitch target
+(and the pitch unless the last step slid) and the slide flag, but not the gate, the amp constants,
+E or the retrigger flag. Note-on uses `n = 6` squarings (`^64`) for the 2.0 sound and `n = 2`
+(`^4`) for Vintage, each `fmul st, st` from the stored f32, stored back as f32.
+
+**Other slots.** Slot 2 (0x100255E0) ignores its argument and reads `trunc(pos)` of the song
+(`sub_1001F870`): patStart = its bar, pattern = livePattern, enableLatch = liveEnable. Slot 3
+(0x100255B0): wrap = 1, patStart = the bar of `trunc(pos)`. Slot 4 is slot 6. Slot 5 (0x10026CC0)
+clears the flags and the DSP state of the field list (phase, E, amp, filters, pitch, accent, gate,
+amp constants), sets `cs1 = cs2 = 0.5`, gate-off -1, then slot 6; it keeps `+0xCA0`, the patterns, the
+pattern position and the 2.0 coefficients. Slot 6 (0x10025630): slide = 0, note-off. Slot 9
+(0x10026B60): song mode on copies the live block into `+0x30`, off copies it back. Msg 39
+(0x10025CB0, `sub_10018EF0`): the 12 bytes into `+0x30`, the patterns, and in pattern mode the 12
+bytes live (so `+0xC85` becomes 0). Slot 11 (0x10026180): controllers 0..8 set the live byte; every
+controller sets its `+0xC88` flag.
+
+**Song ctor slots 7 and 8.** The song ctor calls slot 7 on every device (0x10011941), then slot 8
+with tick 0 (0x10011985), before its tempo, locate and mixer update. The 303's slot 7 (0x10026C40)
+sets the quantisation of controllers 0 and 1 of its track to 32 units of 24 ticks, a bar
+(`sub_10021560` → `sub_10014600`, list `+0xD + ctrl`), so a loaded enable or pattern event is moved
+to the next bar line; slot 8 (0x10025650) inserts a tick-0 event of each controller 0..8 with the
+ctor's value (`sub_1001F900` → `sub_10014750`), which a song's own tick-0 event then replaces. The
+808's and the 909's slots 7 and 8 were not read (their tasks).
+
 ---
 
 ## 7. Drums (808, 909)
 
 ### 7.1 Voices (all mono; they add into the device's float bus, in a fixed order) [C]
+
+[C] task-023: the devices' audio slots (808 0x100280B0, 909 0x1002B6F0) first zero the bus (and
+any separate output bus), and a voice whose active byte `+8` is 0 adds nothing (tests at
+0x1001E4D7, 0x1001E707, 0x1001E9A7), so an idle drum machine outputs exactly 0, not the 1e-6 guard
+(the export-start dump of rbhost has the drum channels' peak meters at 0.0).
 
 Samples are raw int16 values (`fild`). The 1/32768 factor is folded into the gain:
 `g = f32(gain*2^-15)`. Each voice keeps `hold` (in blocks, multiplier 1.0 while held) and a per-pair
@@ -748,6 +845,29 @@ w++
 - [C] Corrected by task-004: the write pointer (delay `+0x6C`) is per delay object, 0 when the song
   is created, and never reset afterwards; the buffer is global and is refilled with 1e-6 by msg 33,
   on a song switch, and once when a disabled delay runs (`docs/export_state.md` §6.1, §7.4).
+- [C] task-023: an **enabled** delay changes the output even with every send at 0. The send bus is
+  filled with the 1e-6 guard and every channel adds `bus*sendGain` with `sendGain = 1e-6` at send 0
+  (§4), so the delay line carries the guard plus 1e-6 × the channels' signal, and the delay adds
+  it, D samples later, into the master at a gain of about 1 (pan 64: `1e-6 + PAN[127][64]`).
+  rbhost `--dump-float` on `303_saw_lowcut` (delay enabled, steps 3, 16ths, feedback 0, no send):
+  the float output at frame 0, before any note, is 1.2676785e-6 = 2e-6 × master gain; the engine
+  without a delay gives 6.338391e-7 = 1e-6 × master (the master guard alone). Missing, it flips
+  the int16 truncation of 3516 frames (7032 samples) of `303_saw_lowcut` and 1656 frames of
+  `303_vintage_saw`, all by -1 LSB; the part fed by the 303 starts after D = 16537 samples at 120
+  BPM. Proof that this is the whole difference: with a test-only model of the delay (the code
+  below, in `crates/rb-engine/tests/corpus_tb303.rs`) the engine renders all 36 TB-303-only diag
+  songs equal to their corpus references. Only the disabled path (0x1000FAD1) leaves L/R
+  untouched. Every song of `tests/songs/diag` has the delay enabled (the template's).
+- [C] task-023, the enabled block 0x1000F940..0x1000FACE and the update 0x1000F754 (every 16
+  blocks, when the block counter `+0x30 & 15 == 0` before it is incremented, so in the first
+  block): `q = mode == 0 ? 3*T/100 : 4*T/100` (signed `idiv`, T = the song's tempo from
+  `sub_1001FCF0`), `D = min((u32)(26460000*steps)/(u32)q, 0x1FFFF)` (`+0x68`), targets
+  `f32(1e-6f + PAN[127][pan][k])` (`+0x54`, `+0x58`), `fb = f32(fbByte*(1/127))` (`+0x64`). Per block
+  `g = g*0.9 + t*0.1` is stored as f32 (`+0x5C`, `+0x60`) but the loop uses the unrounded value; per
+  sample, from `r = (w - D) & 0x1FFFF`: `x = buf[r]; L = f32(x*gL + L); R = f32(R + x*gR);
+  buf[w] = f32(x*fb + send[i]); send[i] = 1e-6`; r and w advance (`w` is `+0x6C`, never reset). At
+  the corpus export start (rbhost dump) `D = 16537`, `w = 57344` (9088 blocks × 64 mod 2^17), the
+  counter 9088 and both gains f32 1.0000005.
 
 ---
 

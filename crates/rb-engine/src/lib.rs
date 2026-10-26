@@ -23,3 +23,4 @@ pub mod load;
 pub mod seq;
 pub mod song;
 pub mod tables;
+pub mod tb303;

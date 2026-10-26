@@ -15,8 +15,9 @@ machine, and stops only the processes it started. Before every run it lists Rebi
 (empty) list as "rebirth_exe_pids_before".
 
 rbhost options passed through: --idle-blocks N, --post-stop-blocks M, --drum-counters A,B,C,D,
---startup-sound, --first-chunk-drain, --dll PATH (remote), --dump-tables, --dump-state (both
-download into OUTDIR/<stem>.tables/ and OUTDIR/<stem>.state/), -v.
+--startup-sound, --first-chunk-drain, --dll PATH (remote), --dump-tables, --dump-state,
+--dump-float (download into OUTDIR/<stem>.tables/, OUTDIR/<stem>.state/ and
+OUTDIR/<stem>.float/), -v.
 """
 import argparse
 import json
@@ -117,7 +118,7 @@ def render(args, client, permits, outdir, exe_sha):
             if args.v:
                 rargs.append("-v")
             dumps = {}
-            for opt in ("tables", "state"):
+            for opt in ("tables", "state", "float"):
                 if getattr(args, "dump_" + opt):
                     d = "%s_%s" % (args.tag, opt)
                     try:
@@ -184,6 +185,7 @@ def main(argv):
     ap.add_argument("--no-untitled", action="store_true", help="no untitled song before the song")
     ap.add_argument("--dump-tables", action="store_true")
     ap.add_argument("--dump-state", action="store_true")
+    ap.add_argument("--dump-float", action="store_true", help="the export's float output, before int16")
     ap.add_argument("-v", action="store_true")
     args = ap.parse_args(argv)
     outdir = os.path.abspath(args.outdir)

@@ -94,13 +94,20 @@ impl Track {
         self.next
     }
 
-    /// `sub_100146E4`: the tick rounded up to a multiple of `24*q` (q = 1 for every controller,
-    /// so a loaded tick, already a multiple of 24, is unchanged).
+    /// `sub_100146E4`: the tick rounded up to a multiple of `24*q`. q is 1 from the list ctor, so
+    /// a loaded tick, already a multiple of 24, is unchanged, except on the 303 tracks, whose
+    /// controllers 0 and 1 have q = 32 (a bar) from the 303's slot 7 ([`Track::set_quant`]).
     fn quantise(&self, tick: i32, ctrl: u8) -> i32 {
         let q = self.quant.get(ctrl as usize).copied().unwrap_or(1) as i32;
         let unit = 24 * q;
         // lea ebx, [edx+eax*8-1]; cdq; idiv ecx; imul eax, ecx
         tick.wrapping_add(unit).wrapping_sub(1) / unit * unit
+    }
+
+    /// `sub_10014600(list, ctrl, q)`: controller `ctrl`'s quantisation becomes `q` 24-tick units
+    /// (the 303's slot 7 sets 32 for controllers 0 and 1).
+    pub fn set_quant(&mut self, ctrl: u8, q: u8) {
+        self.quant[ctrl as usize & 127] = q;
     }
 
     /// `sub_10014750`, the insert of song msg 37 (`sub_10021010`): the tick is quantised and an
@@ -306,7 +313,7 @@ impl Sequencer {
                     t = trunc(self.pos);
                     // 0x1001F182 tests song mode again, which holds here
                     self.chase_all(ls, devices);
-                    devices.for_each(|d| d.relocate(ls));
+                    devices.for_each(|d| d.relocate(ls, t));
                 }
                 self.advance_all(t, devices);
                 // 0x1001F35F: pos > 767231
@@ -342,7 +349,7 @@ impl Sequencer {
             self.chase_all(p, devices);
         }
         self.pos = p as f64;
-        devices.for_each(|d| d.relocate(p));
+        devices.for_each(|d| d.relocate(p, p));
         self.last_tick = p;
     }
 
@@ -375,7 +382,8 @@ impl Sequencer {
     pub fn play(&mut self, devices: &mut Devices) {
         if !self.playing() {
             self.globals.play = 1;
-            devices.for_each(|d| d.start());
+            let now = self.tick_pos();
+            devices.for_each(|d| d.start(now));
         }
     }
 
@@ -390,7 +398,8 @@ impl Sequencer {
         if mode != 0 {
             self.locate(self.saved_tick, devices);
         } else {
-            devices.for_each(|d| d.relocate(0));
+            let now = self.tick_pos();
+            devices.for_each(|d| d.relocate(0, now));
             self.saved_tick = self.tick_pos();
         }
     }

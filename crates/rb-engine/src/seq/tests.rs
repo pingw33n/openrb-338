@@ -31,10 +31,10 @@ impl SongDevice for Probe {
     fn step(&mut self, tick: i32, shuffled: i32, tempo: i32) {
         self.push(format!("step {tick} {shuffled} {tempo}"));
     }
-    fn relocate(&mut self, tick: i32) {
+    fn relocate(&mut self, tick: i32, _now: i32) {
         self.push(format!("relocate {tick}"));
     }
-    fn start(&mut self) {
+    fn start(&mut self, _now: i32) {
         self.push("start".into());
     }
     fn stop(&mut self) {

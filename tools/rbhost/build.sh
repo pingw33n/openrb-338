@@ -16,6 +16,7 @@ if [ ! -x "$cc" ]; then
 fi
 out=${1:-$here/build/rbhost.exe}
 mkdir -p "$(dirname "$out")"
+# -Wl,--no-insert-timestamp: no link time in the PE header, so a build is byte-reproducible.
 "$cc" -std=c11 -O2 -Wall -Wextra -Wno-unused-parameter -msse2 -mfpmath=sse -static \
-    -o "$out" "$here/rbhost.c"
+    -Wl,--no-insert-timestamp -o "$out" "$here/rbhost.c"
 echo "$out"
