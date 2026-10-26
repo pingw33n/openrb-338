@@ -9,3 +9,8 @@ publish.workspace = true
 rbs = { path = "../rbs" }
 # The tables' transcendentals, pinned so the tables are the same everywhere (task-048).
 libm = "=0.2.16"
+
+[dev-dependencies]
+# The corpus tests: the manifest and the reference WAVs' sha256.
+serde_json = "1"
+sha2 = "0.10"

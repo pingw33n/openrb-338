@@ -87,6 +87,14 @@ Device vtables in the DLL (slot = index):
    ```
    The file's length is therefore set by this double-precision accumulation, with the final partial
    chunk truncated. Replicate it exactly.
+   [C] task-021, from the disassembly of 0x428139..0x4281DB: start, end and tempo are 32-bit
+   `fild`s; `192.0/2646000000.0` is divided at run time from `dbl_4BBE08` (192.0) and `dbl_4BBE10`
+   (2646000000.0); `n = __ftol((end - pos) / (tempo * (192/2646e6)))` (truncation); the step is
+   `(tempo * n) * (192/2646e6)` (`fild tempo; fimul n`), stored as a double; the chunk is rendered
+   and written before `pos += step`. A final `n` of 0 still makes a 0-frame call. Rust:
+   `crates/rb-engine/src/frame/export.rs`, which matches the frame count of all 153 diagnostic and
+   shipped references of `tests/refs`; for "Fast Forward" (140 BPM, 250 bars) it is 18899999,
+   one less than the exact 18900000. 152 of the 153 end on a chunk that is not a multiple of 64.
 5. Afterwards sends msg 35 `{1,0}`, then msg 33 (full engine reset), then
    `SafeSoundCallback(NULL,0,0)` (0x427DD6), then restarts the realtime channel (slot 1, 0x427DE7).
    What msg 33 resets: `docs/export_state.md` §6.4.
@@ -105,6 +113,12 @@ Device vtables in the DLL (slot = index):
 3. Per sample, L then R:
    `i16 = trunc_toward_zero(clamp((double)f32 * 32768.0, -32768.0, 32767.0))`.
    There is **no dithering**. The clamp constants are f32 32767.0 and -32768.0.
+   [C] task-021 (0x10013C3C..0x10013D24): the scale is `dbl_10151F70` = 32768.0, the bounds
+   `flt_10151F78` = 32767.0 and `flt_10151F7C` = -32768.0; the product is tested against the upper
+   bound first (`fcom`, C0|C3), so a NaN falls through to the lower test and becomes -32768; the
+   conversion is `fistp qword` under a truncating control word. It converts the call's float
+   output buffers `unk_100E012C` (L) and `unk_100F012C` (R); `n` is clamped to 0x4000 first
+   (0x100139ED). Only output channels 0 and 1 are enabled (`byte_100DF754[0..1]` = 1, 2..17 = 0).
 4. Then mixes in a "preview sample" player (field +1064) with saturation. It is only active while a
    UI preview or startup sound plays.
 
@@ -129,6 +143,31 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
                m = mOld*0.93 + mTgt*0.07 (stored f32; the unrounded value is used); master *= m (constant over the block)
 ```
 
+[C] task-021, details from the disassembly of 0x10013444 (Rust: `crates/rb-engine/src/frame`):
+- The argument is the 18-entry output pointer array of `sub_100139E0`. The master buses are
+  entries 0 (L) and 1 (R); each is filled with 1e-6 (`0x358637BD`) only when its pointer is
+  non-null (a null one is replaced by the unfilled scratch `song+0x140C`/`+0x150C`).
+- Channel c's own output entry is 2, 3, 4 or 11. It is always null in the app, so the device
+  renders into the shared scratch `unk_1010012C` (a process global, overwritten by each device in
+  turn), and only then is the channel mixed into the master (`cmp eax, ebp; jnz` at 0x100136B1).
+  A device gets `float **` (slot 14, 0x10013580), an insert `float *` (slot 15).
+- Each block first advances the meter index `song+0xA0`: `i = (i + 23) & 63` (0x10013481). The
+  channel peak (`+0xB8` of the channel block) and the master peaks (`song+0`, `+4`, after the
+  master gain) take `|bus[i]|` when larger. Display only.
+- The channel block is 44 bytes at `song+0xA4 + 44c`: `+0` R target, `+4` L target, `+8` R gain,
+  `+0xC` L gain, `+0x10` send gain, `+0x14` peak, `+0x18` the send bus pointer (`song+0x160C`),
+  `+0x1C` word 1, `+0x20/+0x24/+0x28` the dist, PCF and comp insert pointers, called in that order.
+- Send: `send[i] = f32(bus[i]*sendGain + send[i])`. The mixer never refills the send bus: the
+  delay does, with 1e-6, in both its enabled and disabled paths (0x1000F940).
+- Smoothing (0x100136B7): `nL = oldL*0.93 + tgtL*0.07` and likewise for R, in f64
+  (`dbl_10151F48` = 0.93, `dbl_10151F50` = 0.07); `f32(n)` is stored; the ramp step
+  `(n - old) * (1/32)` (`dbl_10151F58`) is kept as a double. The mix loop runs in x87 registers
+  from the stored old gains: samples 2p and 2p+1 use `old + p` steps, added one at a time, and
+  each output sample is `f32(bus*g + master)`. The L gain mixes into entry 0, the R gain into 1.
+- Master (0x100138AE): `m = mOld*0.93 + mTgt*0.07`, `f32(m)` stored, every master sample becomes
+  `f32(x * m)` with the unrounded m, after the send effect (slot 14 with `(song+0x1FC[i], L, R)`)
+  and the master compressor (slot 14 with `(L, R)`).
+
 **Shared tables, built once in the mixer ctor by `0x100046B0` [C]:**
 - `T[128]`: `T[127] = 1`. For i = 126 down to 1, `T[i] = f32(T[i+1] - f32(1/24)*T[i+1])`, i.e. about
   (23/24)^(127-i). `T[0] = 0`. This curve is used for every level, send and amount knob.
@@ -149,6 +188,20 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
   (Vintage) the pan-dependent one (`docs/song_load.md` §3, §7).
 - Master target: `2*T[master] + 1e-6f`.
 - Initial values: channel gains 1e-6; master current and target 1.0.
+- [C] task-021 (0x10012C14): the L target (`+0xA8`) is `f32(1e-6 + PAN[lev][pan][0])`, the R target
+  (`+0xA4`) `f32(1e-6 + PAN[lev][pan][1])`; the send is `f32(T[lev]*T[send] + 1e-6)`, or with
+  Vintage `f32((PAN[0] + PAN[1]) * T[send] * 0.5 + 1e-6)` (`dbl_10151F20` = 0.5, `dbl_10151F28` =
+  1e-6f widened to double); the master target `f32(2.0*T[master] + 1e-6)` (`flt_10151F40`). The
+  routing is rebuilt each update: dist when the channel's dist byte is set, PCF when `pcfId == c+1`,
+  comp when `compId == c+2`, the master comp when `compId == 1`. Then slot 16 (the effects' update)
+  runs on dist, PCF and comp, in that order (`song+0x1EC` list, 0x100130A4), routed or not. The
+  meters: channel byte `T[lev]*peak` (127 above 1.0, else `trunc(x*127)`), then `peak *= 0.92`
+  (`flt_10151F38`); master likewise.
+- [C] task-021: the update runs only from the block and once at the end of the song ctor
+  (0x100119D4; the only other xref, 0x10012C10, is a fall-through). The ctor's update reads the
+  mixer device's constructor values (`sub_10019CC0`, `sub_10019D50`): master 100, comp and PCF off,
+  every channel enabled, level 100, pan 64, send 0, no dist. The load's msg 41 does not run an
+  update, so the first 6 blocks after the ctor smooth towards those targets.
 
 **Routing [C]:**
 - Dist is per channel, with one shared parameter set.

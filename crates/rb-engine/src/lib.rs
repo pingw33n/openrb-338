@@ -18,6 +18,7 @@
 //!   same on every platform; task-048); every entry is
 //!   bit-identical to dumps of the original's tables (task-019), so none is embedded.
 
+pub mod frame;
 pub mod load;
 pub mod song;
 pub mod tables;
