@@ -595,8 +595,10 @@ with tick 0 (0x10011985), before its tempo, locate and mixer update. The 303's s
 sets the quantisation of controllers 0 and 1 of its track to 32 units of 24 ticks, a bar
 (`sub_10021560` → `sub_10014600`, list `+0xD + ctrl`), so a loaded enable or pattern event is moved
 to the next bar line; slot 8 (0x10025650) inserts a tick-0 event of each controller 0..8 with the
-ctor's value (`sub_1001F900` → `sub_10014750`), which a song's own tick-0 event then replaces. The
-808's and the 909's slots 7 and 8 were not read (their tasks).
+ctor's value (`sub_1001F900` → `sub_10014750`), which a song's own tick-0 event then replaces.
+[C] task-024: the 808's slot 7 is the same function 0x10026C40; its slot 8 (0x10029DA0) inserts
+tick-0 events of controllers 0..28 from its pattern-mode copy `+0x30` (§7.2). The 909's were not
+read (task-025).
 
 ---
 
@@ -623,6 +625,28 @@ after each pair.
 
 - The voice gains and states (g, y) are stored as f32 only at block end.
 - Sample buffers carry 512 zero samples of padding. Voices always render the full 64 samples.
+- [C] task-024, the details from the disassembly (Rust: `crates/rb-engine/src/drums.rs`, unit
+  tests against hand-computed blocks; the 808 corpus songs match byte for byte):
+  - Fields of every class: `+4` the sample object (a trigger with a null one keeps the last), `+8`
+    active, `+0xC` the read pointer, `+0x10` frames left, `+0x14` hold, `+0x18` g, `+0x1C` m.
+    FILTER `+0x20` c, `+0x24` y; DUAL `+0x20` B's pointer, `+0x24` g2, `+0x28` B's sample;
+    PITCHED `+0x20` the sample base, `+0x24` step, `+0x28` phase, `+0x2C` `frames << 8`.
+  - Trigger `sub_1001E2B4(sample, f32 gain, m, hold)`: `g = f32(gain * 2^-15)`
+    (`dbl_10153640` = 0x3F00000000000000), pointer = the sample's start, left = its frame count
+    (`CWaveSample+0x4C`), active. FILTER (0x1001E5C0) then sets `y = 0` and c; DUAL (0x1001E820)
+    B, g2 and `left = min(lenA, lenB)`; PITCHED (0x1001EAD0) step, phase 0 and the end.
+  - Per block: the multiplier is 1.0 while `hold > 0` (and hold is decremented), else m. SIMPLE
+    (0x1001E300): `out = f32(out + g*s)`; after the block the voice ends if the unrounded g is
+    below `3e-8f` (`fcom` with `flt_1015364C` = 0x3300D959, before the f32 store) or when
+    `left -= 64` reaches 0 or less. FILTER (0x1001E4D0): `y = y*c + g*s` and `out = f32(out + y)`
+    per sample, y in the x87 stack for the whole block. DUAL (0x1001E700):
+    `out = f32(out + (A + B*g2)*g1)`; the multiplier applies to g2; g1 is constant (written back
+    unchanged), and the end test compares g1's bits as an integer with 0x3300D959, so it ends at
+    the first block only if g1 started below 3e-8. PITCHED (0x1001E9A0):
+    `s = i16(a + ((f*(b - a)) >> 8))` (imul, arithmetic shift, then the low 16 bits),
+    `out = f32(out + s*g)`, phase += step per sample; it ends when the phase is above
+    `frames << 8` (unsigned); there is no gain test.
+  - Slot 1 (0x1001EB30, all classes): active = 0, `+0x18` = 0.
 - Each device zeroes its bus, then calls voices in a fixed order. This order affects f32 summation:
   - **808:** BD-A, BD-B, SD, LT, MT, HT, RS/CL, CP/MA, CB, OH, CH, CY.
   - **909:** BD-A, BD-B, SD, LT, MT, HT, RS, CP, CH, OH, Crash, Ride.
@@ -633,6 +657,31 @@ after each pair.
 - **808 (step 0x10027690).**
   - `accent = f32(acc*AC*0.03125f + 1)`.
   - Instruments trigger in ascending order. As a result, OH and CH on the same step leaves OH cut.
+  - [C] task-024 (Rust: `crates/rb-engine/src/tr808.rs`): the step function is the 303's position
+    logic (§6.4) without the gate-off: `v = (u32)(t' - base) % (48*len)`, the wrap flag
+    `+0x18D2` when `lastPos - v > 24`, and on a new step (`v/48` differs from the live byte 29,
+    `+0x18AD`) or a wrap: at the bar line of the unshuffled tick the pending pattern
+    (`patStart = 768*(tick/768)`) and the enable latch `+0x18D1`; if latched, the accent is
+    stored at `+0x190C` and columns 1..11 with a non-zero byte trigger through `sub_10027894`
+    (jump table at 0x10153F58 + 4i). The latch is 1 from the ctor. "OH cut" means the choke: CH
+    clears every SIMPLE voice's hold (0x10027F40, `sub_1001E3C0(0)`), so an OH triggered on the
+    same step decays (m = 0.998) from its first block.
+  - [C] Fields (0x1910 bytes, ctor `sub_10026F70`): `+0x30` the pattern-mode parameters (32
+    bytes; ctor `sub_10018FB0`: 1, 0, 40, 100, 64, 64, 100, 64, 64, 100, 64, 0, 100, 64, 0, 100,
+    64, 0, 100, 0, 100, 0, 100, 100, 0, 100, 100, 100, 100, 0, 0, 0), `+0x50` 32 patterns of 194
+    bytes (ctor: length 16, no steps), `+0x1890` the live parameters (byte 29 the last step),
+    `+0x18B0` 32 "changed" flags (panel only, 0x100291A0), `+0x18D0` the playing pattern,
+    `+0x18D4` the last position, `+0x18D8` the mod's sample table (slot n at `+4n`, the built-in
+    kit slot n = resource 999 + n), `+0x18DC` five SIMPLE voices (RS/CL, CP/MA, CB, OH, CH),
+    `+0x18F0` three PITCHED (LT/LC, MT/MC, HT/HC), `+0x18FC` three FILTER (BD A, BD B, CY),
+    `+0x1908` the DUAL (SD). The voice-select switches in `sub_10027894` jump through constant
+    table entries (0x10153F88..0x1015401C) that IDA shows as computed jumps; each resolves to
+    one fixed voice.
+  - [C] Slots: 2 (0x10028030) and 3 (0x10028080) as the 303's; 4 (0x100106C0) and 5
+    (0x1000F4F0) call 6; 6 (0x1002A2D0) is slot 1 on every voice; 9 (0x10029E30) copies the 32
+    bytes between `+0x30` and `+0x1890` like the 303; 11 (0x10029050) sets live controllers
+    0..28; msg 56 (0x1002884C, `sub_10019490`) the parameters and patterns into `+0x30`, and in
+    pattern mode all 32 bytes live. The audio (0x100280B0) zeroes the bus first.
 - **909 (step 0x1002AAC0).**
   - `base = acc*AC*0.03125 + 1`.
   - Step value 1 or 3 gives base×0.8; value 2 or 4 gives base×2.0. Values 3 and 4 also flam (§5).
@@ -661,6 +710,23 @@ and voice offsets are in the agent notes; the formulas are summarised here.
 | CY | FILTER, like BD but without the `(1-coef)` factor |
 | OH | SIMPLE, `L = lvl>>1`, `m = 0.998f`, `hold = 4*decay` blocks |
 | CH | SIMPLE, `L = (2*lvl)/3`, then sets hold = 0 on all five SIMPLE voices, so OH starts decaying (the choke) |
+
+[C] task-024, checked in the disassembly and by the corpus (`crates/rb-engine/src/tr808.rs`;
+`k` is `f32(1/127)` = 0x3C010204, every product in f64 in this order, one f32 store of the gain,
+then the voice's `f32(gain * 2^-15)`):
+- BD and CY (`sub_1002A0B4`): `x = (((L*k)*L)*0.005f)*acc`, BD `gain = (1.0 - c)*x`, CY
+  `gain = x`; `m = DEC16[decay>>3]`, hold 0. The BD's voice: with `word_1014CBD0` non-zero
+  voice B plays, voice A's m becomes 0.99f (0x3F7D70A4) and the flag 0; else voice A plays,
+  B's m becomes 0.99 and the flag 1 (a fade of the other voice, whatever its state).
+- SD (`sub_1002A1E4`): `g1 = f32((((L*k)*L)*0.025f)*acc)`, `g2 = f32((snappy*k)*(snappy*k))`,
+  `m = 1`, hold 0, so neither gain decays: the snare plays until its shorter sample ends. A is
+  slot `SD[(tone*5)>>7] + 1` (SD1..SD5), B is slot `N[SEQ808[c]] + 1` (N1..N4) with the counter
+  pre-incremented.
+- Toms (`sub_1002A004`): PITCHED voice `i - 3`, `m = 1`, hold 0; LT (selector set) / LC uses
+  controllers 9..11, MT / MC 12..14, HT / HC 15..17 (level, tuning, selector).
+- RS/CL, CP/MA, CB, OH and CH (inline in `sub_10027894`): SIMPLE voices 0..4, `m = 1` and hold 0
+  except OH (`m = 0.998f` = 0x3F7F7CEE, `hold = 4*decay`). Their gain never decays, so they end
+  with their sample; OH decays after its hold or a CH.
 
 **909 [C]:**
 
@@ -926,7 +992,7 @@ runs `N` idle blocks (a multiple of 16) between its activation and the export.
 | Mixer and effect smoothed gains | [G] Settle to their targets while idle (expected from the smoothing, not proven) |
 | Delay buffer (global) and write pointer (per song) | [C] Cleared to 1e-6 on a song switch and by msg 33; the pointer advances 64 per enabled block and depends on `N` |
 | Compressor env and G, PCF filter and envelope | Fresh per song, settle while idle [G] |
-| Snare noise counters and BD alternation flags (global) | [C] `word_1014CBD4`, `word_1014E548`, `word_1014CBD0`, `word_1014E544`: shift by every snare or bass drum hit since the DLL loaded; an export of an 8-hit 808 snare loop moves `word_1014CBD4` by 9 (fitted to exports, `docs/export_state.md` §11.2; [G] the ninth hit is step 0 triggered by the dropped tail) |
+| Snare noise counters and BD alternation flags (global) | [C] `word_1014CBD4`, `word_1014E548`, `word_1014CBD0`, `word_1014E544`: shift by every snare or bass drum hit since the DLL loaded; an export of an 8-hit 808 snare loop moves `word_1014CBD4` by 9 (fitted to exports, `docs/export_state.md` §11.2). [G] The ninth hit is step 0, triggered by the loop wrap in the dropped tail of the last chunk: derived from the engine model (task-024), not observed, since the corpus cannot see the dropped frames (`docs/export_state.md` §5) |
 
 **Reference-capture protocol:** `docs/export_state.md` §9 (fresh process, startup sound off, open the
 song, wait a fixed time, export, quit), measured by task-010 (`docs/export_state.md` §11: byte-identical

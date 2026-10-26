@@ -13,6 +13,7 @@ mod aiff;
 mod pe;
 
 use std::fmt;
+use std::sync::Arc;
 
 pub use aiff::PADDING;
 
@@ -89,6 +90,14 @@ impl Sample {
         })
     }
 
+    /// A sample of the given audio, padded as a loaded one is.
+    pub fn from_audio(audio: &[i16]) -> Sample {
+        let mut data = Vec::with_capacity(audio.len() + PADDING);
+        data.extend_from_slice(audio);
+        data.resize(audio.len() + PADDING, 0);
+        Sample { data }
+    }
+
     /// The number of audio frames, not counting the padding.
     pub fn frames(&self) -> usize {
         self.data.len() - PADDING
@@ -108,7 +117,7 @@ impl Sample {
 /// The 46 built-in samples, by resource ID.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SampleSet {
-    samples: Vec<Sample>,
+    samples: Vec<Arc<Sample>>,
 }
 
 impl SampleSet {
@@ -126,9 +135,9 @@ impl SampleSet {
                 .iter()
                 .find(|r| r.id == id)
                 .ok_or(SampleError::Missing(id))?;
-            samples.push(
+            samples.push(Arc::new(
                 Sample::from_aiff(r.data).map_err(|e| SampleError::Resource(id, Box::new(e)))?,
-            );
+            ));
         }
         Ok(SampleSet { samples })
     }
@@ -139,6 +148,25 @@ impl SampleSet {
     /// If `id` is outside the range.
     pub fn get(&self, id: u16) -> &Sample {
         &self.samples[(id - FIRST_ID) as usize]
+    }
+
+    /// The sample with resource ID `id`, shared (the drum voices keep the sample they play).
+    ///
+    /// # Panics
+    /// If `id` is outside the range.
+    pub fn shared(&self, id: u16) -> Arc<Sample> {
+        self.samples[(id - FIRST_ID) as usize].clone()
+    }
+
+    /// A set made of `samples`, in resource ID order from 1000 (for tests and tools).
+    ///
+    /// # Panics
+    /// If there are not exactly [`COUNT`] samples.
+    pub fn from_samples(samples: Vec<Sample>) -> SampleSet {
+        assert_eq!(samples.len(), COUNT);
+        SampleSet {
+            samples: samples.into_iter().map(Arc::new).collect(),
+        }
     }
 
     /// TR-808 sample `i` (an index into [`NAMES_808`]).

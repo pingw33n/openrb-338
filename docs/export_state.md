@@ -267,9 +267,14 @@ L = rem     // stored at 0x10013BBA, may be <= 0
 
 So the first sample of every export is sample 0 of a block rendered after the locate and play. (The
 loop-end wrap inside the export's last partial block, investigation §10 item 6, affects the
-exported samples only through the dropped ones; [G] but the notes it triggers at the loop start
-seem to run, so a drum hit on the loop's first step moves the global drum counters of §7.3 once more
-per export: inferred from the +9 snare-counter fit of §11.2, not traced.)
+exported samples only through the dropped ones. [G] But the notes it triggers at the loop start
+run, so a drum hit on the loop's first step moves the global drum counters of §7.3 once more
+per export. The count is measured ([C], +9 for `808_snare`, §11.2); the mechanism is derived from
+the engine model of task-024, not observed (the corpus cannot see the dropped frames): in the
+model the last chunk's partial block is rendered whole into the leftover block
+(`sub_100139E0`, 0x10013BAA), that block's sequencer tick (0x1001346A → `sub_1001EF20`) wraps to
+the loop start and calls the 808's step (slot 1, 0x10027690) for step 0, and the model's
+`808_snare` export (8 hits inside the loop, one on step 0) ends with the counter at 9.)
 
 ## 6. Reset points [C]
 
@@ -381,7 +386,7 @@ constants before the idle blocks.
 | State | Address | Init / reset | Class | Effect |
 |---|---|---|---|---|
 | Voice active flag, gain `g` | voice `+8`, `+0x18` (FILTER_VOICE process 0x1001E4D0) | cleared by stop, msg 33 and the activation switch (0x1001EB30) | fixed (no hit while idle; an inactive voice is not processed) | — |
-| Voice sample pointer, samples left, hold, multiplier `m`, FILTER coefficient `c`, FILTER state `y` | voice `+0xC`, `+0x10`, `+0x14`, `+0x1C`, `+0x20`, `+0x24` | never cleared; [G] whether the voice constructors and the trigger (`sub_1001E5C0`, `sub_1001E820`) set `y` is not read | fixed while idle (frozen while inactive) | `y` feeds the first sample of the next FILTER_VOICE hit [G] |
+| Voice sample pointer, samples left, hold, multiplier `m`, FILTER coefficient `c`, FILTER state `y` | voice `+0xC`, `+0x10`, `+0x14`, `+0x1C`, `+0x20`, `+0x24` | never cleared; [C] task-024: every trigger sets the pointer, frames left, hold, g and m (`sub_1001E2B4`), the FILTER trigger `sub_1001E5C0` sets `y = 0` and c, the FILTER ctor `sub_1001E3E0` sets c = y = 0 | fixed while idle (frozen while inactive) | none: [C] a hit resets everything the voice reads (task-024); `y` does not carry into the next hit |
 | 808 snare noise counter | `word_1014CBD4` (`sub_1002A1E4`, pre-increment `& 31`) | BSS: 0 at DLL load; never reset | **global** | which noise sample each snare hit uses: `c = (c+1) & 31` per hit (0x1002A25D..0x1002A27D), then sample slot `word_100340DC[word_1003409C[c]]`; `word_1003409C` is 32 words with values 0..3 (`0,1,2,3,1,0,3,1,0,3,2,1,0,2,3,1,0,2,3,2,0,1,2,0,3,1,2,0,1,3,2,1`) and `word_100340DC[0..3]` = 6, 7, 8, 9, so four noise samples in a 32-hit sequence (both tables are 16-bit words, read as `mov bx, word_1003409C[ecx*2]` at 0x1002A28C and `mov si, word_100340DC[ebx*2]` at 0x1002A29D; values read from the database's bytes for task-010; the model fits the exports, §11.3) |
 | 909 snare noise counter | `word_1014E548` (`sub_1002DC54`) | same | **global** | same, SEQ909 |
 | 808 bass-drum voice toggle | `word_1014CBD0` (0x1002A106 / 0x1002A12A) | same | **global** | which BD voice a hit uses and which one fades |
@@ -540,9 +545,9 @@ commands are in `tools/experiments/task010/` (README.md); the WAVs are not kept.
   after the hit): a hit sounds like the same-position hit of another export exactly when the model
   `noise = word_1003409C[(s + h + 1) & 31]` gives the same sample, with the starting counters `s` =
   0, 9, 18, 27, 4 (the unique fit, `snare.py chain`). So the counter advances by **9 per export of
-  an 8-hit loop** (a fit to one five-export run). [G] The ninth hit is the step-0 hit triggered by the
-  loop-end wrap in the dropped tail of the last chunk (§5): that explains the 9, but the trigger was
-  not observed directly or traced in the sequencer.
+  an 8-hit loop** (a fit to one five-export run). [G] The ninth hit is the step-0 hit triggered by
+  the loop-end wrap in the dropped tail of the last chunk (§5): derived from task-024's engine
+  model, which gives the 9; the trigger itself is not observable in an export.
   After a 3 s play (P3) the fit gives `s = 7` in all three runs; after a `drums_kit` export (4 snare
   hits, none on step 0) `s = 4`. Within one export the hits differ among themselves even with the
   same noise sample (their offsets within the 64-frame block differ), so only same-position hits
@@ -564,7 +569,8 @@ commands are in `tools/experiments/task010/` (README.md); the WAVs are not kept.
   exports: one five-export run fitted uniquely, and the P3 and P4 counters (7 and 4) agree with the
   hits that preceded them.
 - [G] The loop-end wrap in the dropped tail of the last export chunk triggers the loop's first step
-  (one more drum hit per export when step 0 has one): inferred from the +9 fit only.
+  (one more drum hit per export when step 0 has one): inferred from the +9 fit here, and derived
+  from the engine model of task-024 (§5), which gives the same +9; not observed directly.
 - [G] The startup sound did not reach an export in the two runs with it on (one run per variant,
   §11.4).
 

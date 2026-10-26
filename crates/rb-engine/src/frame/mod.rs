@@ -23,6 +23,8 @@ mod tests;
 
 use std::sync::Arc;
 
+use crate::process::ProcessState;
+use crate::samples::SampleSet;
 use crate::seq::Sequencer;
 use crate::song;
 use crate::tables::Tables;
@@ -163,6 +165,9 @@ pub struct Devices {
     pub pcf: Box<dyn InsertEffect>,
     pub comp: Box<dyn InsertEffect>,
     pub delay: Box<dyn SendEffect>,
+    /// The process globals the devices share (the drum counters); a caller may preset them
+    /// before an export ([`ProcessState::set_drum_counters`]).
+    pub process: ProcessState,
 }
 
 impl Devices {
@@ -175,15 +180,21 @@ impl Devices {
             pcf: Box::new(Bypass),
             comp: Box::new(Bypass),
             delay: Box::new(IdleSend),
+            process: ProcessState::new(),
         }
     }
 
     /// The devices implemented so far, placeholders for the rest: the two TB-303s
-    /// ([`crate::tb303::Tb303`]); silent drums, bypassing inserts, an idle send.
-    pub fn implemented() -> Self {
+    /// ([`crate::tb303::Tb303`]) and, given the drum samples, the TR-808
+    /// ([`crate::tr808::Tr808`]); a silent TR-909 (and a silent TR-808 without samples, which
+    /// is exact for a song whose 808 plays no step), bypassing inserts, an idle send.
+    pub fn implemented(samples: Option<Arc<SampleSet>>) -> Self {
         let mut d = Self::placeholders();
         d.channels[0] = Box::new(crate::tb303::Tb303::new());
         d.channels[1] = Box::new(crate::tb303::Tb303::new());
+        if let Some(s) = samples {
+            d.channels[2] = Box::new(crate::tr808::Tr808::new(s, d.process.clone()));
+        }
         d
     }
 
@@ -867,6 +878,11 @@ impl Engine {
             // 0x1001BDF3: slot 6 on this song's own devices
             Activation::NoneCurrent => self.frame.devices.silence_all(),
         }
+    }
+
+    /// The process globals of this song's devices.
+    pub fn process_state(&self) -> &ProcessState {
+        &self.frame.devices.process
     }
 
     pub fn state(&self) -> EngineState {

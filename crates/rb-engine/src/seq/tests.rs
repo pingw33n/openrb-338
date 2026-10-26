@@ -78,6 +78,7 @@ fn probes(log: &Log) -> Devices {
         pcf: Box::new(p("pcf")),
         comp: Box::new(p("comp")),
         delay: Box::new(p("delay")),
+        process: Default::default(),
     }
 }
 

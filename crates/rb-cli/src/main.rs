@@ -120,8 +120,12 @@ fn drums_playing(song: &Song) -> Vec<&'static str> {
     // initial selection (controller 1, `params[1]`) plus the values of its controller-1 track
     // events (tracks 3 and 4, docs/song_load.md section 5). With no such event the initial
     // selection plays throughout.
+    // The enable flag counts as on when the chunk or any enable event (controller 0) sets it.
     let plays = |params: &[u8], track: usize, patterns: &[DrumPattern]| {
-        params[0] != 0
+        (params[0] != 0
+            || song.tracks[track]
+                .iter()
+                .any(|e| e.ctrl == 0 && e.value != 0))
             && std::iter::once(params[1])
                 .chain(
                     song.tracks[track]
@@ -225,7 +229,10 @@ fn load_samples(explicit: Option<&Path>, drums: &[&str]) -> Result<SampleSet, Fa
 
 /// The devices the song uses that the engine does not implement yet (task-024..027, m-2).
 fn unimplemented_devices(song: &Song) -> Vec<&'static str> {
-    let mut v = drums_playing(song);
+    let mut v: Vec<_> = drums_playing(song)
+        .into_iter()
+        .filter(|&d| d != "TR-808")
+        .collect();
     for (name, on) in [
         ("distortion", song.dist.params[0]),
         ("delay", song.delay.params[0]),
@@ -298,13 +305,13 @@ fn render(
         );
     }
     // The drum samples are loaded only for a song that plays a drum machine; a 303-only song
-    // renders without a ReBirth.dll. The engine's drum devices (task-024) will take the set;
-    // until then loading it checks the DLL and the error path.
+    // renders without a ReBirth.dll (its drum machines play no step, so the silent placeholders
+    // the engine uses without samples are exact).
     let drums = drums_playing(&song);
-    let _samples = if drums.is_empty() {
+    let samples = if drums.is_empty() {
         None
     } else {
-        Some(load_samples(rebirth_dll, &drums)?)
+        Some(Arc::new(load_samples(rebirth_dll, &drums)?))
     };
     let missing = unimplemented_devices(&song);
     if !missing.is_empty() {
@@ -314,7 +321,7 @@ fn render(
         );
     }
 
-    let mut engine = Engine::new(Arc::new(Tables::new()), Devices::implemented());
+    let mut engine = Engine::new(Arc::new(Tables::new()), Devices::implemented(samples));
     let samples = export::export_song(&mut engine, &song, idle_blocks);
     let bytes = encode::encode(format, &samples, quality)
         .map_err(|e| fail(1, format!("encoding failed: {e}")))?;
