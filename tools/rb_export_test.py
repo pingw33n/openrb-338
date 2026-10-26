@@ -48,5 +48,39 @@ class ExportTest(unittest.TestCase):
             self.check(wav_bytes(100, rate=48000), 100)
 
 
+class TasklistTest(unittest.TestCase):
+    class FakeClient:
+        def __init__(self, rc, out):
+            self.rc, self.out = rc, out
+
+        def exec(self, program, args, cwd=""):
+            return {"id": 1}
+
+        def proc(self, pid):
+            return {"running": False, "exit_code": self.rc}
+
+        def output(self, pid):
+            return self.out, b""
+
+    def pids(self, rc, out):
+        return rb_export.Machine(self.FakeClient(rc, out), None).rebirth_pids()
+
+    def test_listing(self):
+        self.assertEqual(self.pids(0, b'"Rebirth.exe","1234","Console","1","9,000 K"\r\n'), [1234])
+
+    def test_none_running(self):
+        self.assertEqual(self.pids(0, b"INFO: No tasks are running which match the specified criteria.\r\n"), [])
+
+    def test_nonzero_exit(self):
+        with self.assertRaises(rb_export.Failure):
+            self.pids(1, b"")
+
+    def test_unparseable(self):
+        with self.assertRaises(rb_export.Failure):
+            self.pids(0, b"garbage\r\n")
+        with self.assertRaises(rb_export.Failure):
+            self.pids(0, b"")
+
+
 if __name__ == "__main__":
     unittest.main()

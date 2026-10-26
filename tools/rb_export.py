@@ -195,11 +195,25 @@ class Machine:
 
     def rebirth_pids(self):
         rc, out = self.run("tasklist", ["/FI", "IMAGENAME eq " + APP_EXE, "/FO", "CSV", "/NH"])
+        if rc != 0:
+            raise Failure("tasklist exited with %s: %s" % (rc, out.strip()))
         pids = []
+        listing = False
         for line in out.splitlines():
+            if not line.strip():
+                continue
+            # tasklist prints "INFO: No tasks are running..." (exit 0) when nothing matches
+            if line.startswith("INFO:"):
+                listing = True
+                continue
             parts = [x.strip('"') for x in line.split('","')]
-            if len(parts) >= 2 and parts[0].strip('"').lower() == APP_EXE.lower():
+            if len(parts) < 2 or not parts[1].isdigit():
+                raise Failure("unexpected tasklist output: %r" % line)
+            listing = True
+            if parts[0].lower() == APP_EXE.lower():
                 pids.append(int(parts[1]))
+        if not listing:
+            raise Failure("tasklist printed nothing")
         return pids
 
     def start_app(self):
