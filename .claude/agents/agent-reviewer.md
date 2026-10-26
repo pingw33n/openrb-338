@@ -16,7 +16,7 @@ What to read:
 What to check:
 - Each acceptance criterion against the evidence.
 - The standing rules: no edits to original/, ida/ or committed references, f32 store points and operand order in engine code, and facts about the original recorded in docs/.
-- The commit message format.
+- The commit message format. The Co-Authored-By line names the task agent's model, not yours: Opus 5.5 for `@agent-complex`, Sonnet 5.5 for `@agent-worker`, Haiku 5.5 for `@agent-chore` (the task's assignee). Flag it only if it does not match the assignee.
 - That the branch holds one commit for the task, with the task going from To Do to Done in it.
 - That the tests the task claims were run: `cargo test` and the corpus comparison for engine changes.
 

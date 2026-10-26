@@ -3,7 +3,7 @@ id: doc-001
 title: agent-brief
 type: guide
 created_date: '2026-10-26 09:03'
-updated_date: '2026-10-26 09:51'
+updated_date: '2026-10-26 16:09'
 ---
 The shared brief for agents working on rb, the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. Read in this order:
 1. The root `AGENTS.md` (the backlog and commit rules).
@@ -84,6 +84,7 @@ The original ReBirth runs on a Windows machine, reached with dcre's `~/dev/dcre/
 ## Testing
 
 - The Rust code: `cargo test`, with every test passing.
+- The Python tools: `/usr/bin/python3 -W error::ResourceWarning -m unittest discover -s tools -p '*_test.py'` and the same with `-s tools/rbhost` (the test files are named `*_test.py`, so plain `discover` finds none).
 - A change to the engine's output is checked against the reference corpus with the comparator tool (m-0). The commit message states the result: exact, within the tolerance, or the first differing sample.
 - A tool change is tested by running it on at least one song, with what ran in the notes.
 - A docs-only change needs nothing.
