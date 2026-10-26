@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-complex'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 10:38'
 labels:
   - tools
   - re
@@ -33,3 +34,9 @@ Write `rbhost` (C, i686 Windows, cross-built on the Mac with llvm-mingw: see ~/d
 - [ ] #2 Two renders of the same song by rbhost are byte-identical
 - [ ] #3 --dump-tables writes every table of section 10 item 4 with a manifest of addresses and sizes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+From task-004 (2026-10-26, docs/export_state.md): use the shared-memory port names and protocol of section 2.7 and the export sequence of section 4. Besides the plain offline render, rbhost needs an idle-block option (--idle-blocks N, N a multiple of 16) that renders N 64-frame blocks of the active, stopped song before the export, as the app's realtime stream does while stopped (sections 2.4, 7, 9): the 303 oscillator phase and the delay write pointer depend on N, so the app's exports can be reproduced by fitting N. Also an option to preset the four process-global drum counters (section 7.5) and to mix the startup sound through the preview player (section 8) for the comparison with app exports.
+<!-- SECTION:NOTES:END -->

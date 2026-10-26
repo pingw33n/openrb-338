@@ -4,7 +4,7 @@ title: 'RE: engine side of song creation and song-mode defaults'
 status: To Do
 assignee: []
 created_date: '2026-10-26 10:05'
-updated_date: '2026-10-26 10:11'
+updated_date: '2026-10-26 10:38'
 labels:
   - re
   - docs
@@ -36,3 +36,9 @@ Read-only IDA work on headless copies (doc-001); write the results into docs/son
 - [ ] #2 The song-mode msg-41 rule is confirmed or refuted for each of the six other devices
 - [ ] #3 sub_437380's controller mapping and the meaning of global bytes 2 and 22 are documented, or marked unresolved with what was tried
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+From task-004 (2026-10-26): item 1 is answered in part: docs/export_state.md section 3 shows every load (msg 52) creates new device objects [C], so no per-song state survives a load. The constructor default of every automatable parameter (the rest of item 1) and items 2-4 remain.
+<!-- SECTION:NOTES:END -->

@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-complex'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 10:38'
 labels:
   - tests
   - testmachine
@@ -31,3 +32,9 @@ Measure how deterministic the original's export is under each capture protocol, 
 - [ ] #2 Every observed difference is attributed to a named piece of engine state, or listed as unexplained
 - [ ] #3 docs/export_state.md has a results section with the recommended protocol
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+From task-004 (2026-10-26): test the capture protocol proposed in docs/export_state.md section 9 (restored preferences with the MME driver, startup sound off, fresh process, open the song, fixed wait, export, quit) alongside the other variants, and decide (or propose as a Decide task) the 'Play Mod Startup Sound' preference: the startup sound goes through the preview player mixed into every SafeSoundCallback, export chunks included (section 8). The residual is the idle-block count N before the export (303 phase, delay write pointer) and the four process-global drum counters; measure how the exports vary with the wait and whether the variation is explained by N.
+<!-- SECTION:NOTES:END -->
