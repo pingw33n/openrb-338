@@ -82,6 +82,24 @@ impl ProcessState {
     pub(crate) fn set_bd_808(&self, v: u16) {
         self.drums[BD_808].store(v, Ordering::Relaxed);
     }
+
+    /// The 909 snare's hit: `c = (c + 1) & 31` is stored and returned (0x1002DCB8..0x1002DCED:
+    /// the word is incremented as a 32-bit value, masked, stored as a word).
+    pub(crate) fn next_snare_909(&self) -> u16 {
+        let c = (self.drums[SNARE_909].load(Ordering::Relaxed) as u32 + 1) & 31;
+        self.drums[SNARE_909].store(c as u16, Ordering::Relaxed);
+        c as u16
+    }
+
+    /// The 909 bass drum's toggle (`test edx, 0FFFFh` at 0x1002DB51).
+    pub(crate) fn bd_909(&self) -> u16 {
+        self.drums[BD_909].load(Ordering::Relaxed)
+    }
+
+    /// 0x1002DB82 (0) and 0x1002DC3B (1).
+    pub(crate) fn set_bd_909(&self, v: u16) {
+        self.drums[BD_909].store(v, Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]

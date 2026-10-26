@@ -95,8 +95,8 @@ fn drums_render_with_the_dll_from_the_flag_or_the_variable() {
 }
 
 /// Trakka Rekka has both drum machines off in their chunks; enable events of their tracks turn
-/// them on. They count as playing: the samples are needed and loaded, the TR-808 plays (no
-/// "not implemented" warning for it), the TR-909 is reported as not implemented.
+/// them on. They count as playing: the samples are needed and loaded, and both drum machines
+/// play (no "not implemented" warning names them).
 #[test]
 fn drums_enabled_only_by_track_events_load_the_samples() {
     let dir = tempfile::tempdir().unwrap();
@@ -112,13 +112,10 @@ fn drums_enabled_only_by_track_events_load_the_samples() {
     let o = render(&song, &out, &[flag(), dll.as_os_str()], None);
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(o.status.success(), "{err}");
-    let line = err
-        .lines()
-        .find(|l| l.contains("not implemented yet"))
-        .unwrap_or_else(|| panic!("{err}"));
     assert!(
-        line.contains("TR-909") && !line.contains("TR-808"),
-        "{line}"
+        !err.lines()
+            .any(|l| l.contains("not implemented yet") && l.contains("TR-")),
+        "{err}"
     );
 }
 

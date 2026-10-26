@@ -229,10 +229,7 @@ fn load_samples(explicit: Option<&Path>, drums: &[&str]) -> Result<SampleSet, Fa
 
 /// The devices the song uses that the engine does not implement yet (task-024..027, m-2).
 fn unimplemented_devices(song: &Song) -> Vec<&'static str> {
-    let mut v: Vec<_> = drums_playing(song)
-        .into_iter()
-        .filter(|&d| d != "TR-808")
-        .collect();
+    let mut v = Vec::new();
     for (name, on) in [
         ("distortion", song.dist.params[0]),
         ("delay", song.delay.params[0]),

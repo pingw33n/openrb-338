@@ -28,3 +28,4 @@ pub mod song;
 pub mod tables;
 pub mod tb303;
 pub mod tr808;
+pub mod tr909;

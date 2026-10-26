@@ -177,7 +177,10 @@ in pattern mode (`sub_1001FCB0` returns global byte 0):
   12 parameter bytes go to the live `+0xC7C..+0xC87` only in pattern mode.
 - Mixer (msg 143, 0x1001588F): pattern mode copies everything; song mode copies only the master level
   and the four channel "enabled" bytes, the ones no TRAK controller can set.
-- [G] Delay, PCF, distortion, compressor, 808 and 909 follow the same rule; their msg-41 cases were
+- [C] 808 (msg 56, 0x1002884C, task-024) and 909 (msg 73, 0x1002BE90, task-025): the parameter
+  block and the patterns go into the pattern-mode copy `+0x30`; the whole parameter block (32 or 33
+  bytes) goes live only in pattern mode (the patterns are read from `+0x50` / `+0x51` in both modes).
+- [G] Delay, PCF, distortion and compressor follow the same rule; their msg-41 cases were
   located (§1) but not read through.
 
 ### 4.1 Mixer, `0/143`, 29 bytes
@@ -284,6 +287,12 @@ Parse `sub_43348D` + `sub_43363E` + `sub_43375D` (via `sub_43392A`), pack `sub_4
 
 - The parse reorders bytes 20..22 (RimShot, Clap, HiHat level) internally and the packer puts them
   back, so the message keeps the RBS order.
+- [C] task-025: the DLL permutes them again. Its blocks (`+0x30`, live `+0x1891`) hold the hi-hat
+  level at 20, the rim shot's at 21 and the clap's at 22: msg 73's parse `sub_100196F4` stores
+  message bytes 20, 21, 22 at 21, 22, 20, the read-back `sub_10019624` inverts it, and set-param
+  (0x1002C6D0) maps controllers 20, 21, 22 (RBS order, §5) to bytes 21, 22, 20. Controller 29
+  (flam interval) is set-param's case 29 (0x1002C80B), so a TRAK event can set it
+  (`docs/initial_investigation.md` §7.2).
 - **Quirk:** the parse copies RBS byte 13 (LowTomDecay) into slot 16 (MidTomDecay) and drops RBS byte
   16 (0x433558: `mov dl,[ecx+0Dh]; mov [eax+10h],dl`). The pattern-mode MidTomDecay is therefore the
   LowTomDecay. The TRAK controller 0x10 is not affected.
@@ -482,7 +491,7 @@ Follow-up: task-034.
 - [C] Top-level msg 52/58 handling inside the DLL: a new song creates new device objects, and 58
   starts the startup-sound preview (task-004, `docs/export_state.md` §3, §8).
 - [G] The constructor values of the controllers that a song-mode song never sets.
-- [G] The msg-41 song-mode rule for delay, PCF, distortion, compressor, 808 and 909.
+- [G] The msg-41 song-mode rule for delay, PCF, distortion and compressor (808 and 909 [C], §4).
 - [C] The 4.0 mixer-track converter `sub_437380` (§5.1, task-018). No 4.0 song is available to test
   it against the app.
 - [C] Global byte 2 (msg 35 id 2, `0x10021194`) is record: it makes the loop wrap merge the

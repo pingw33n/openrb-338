@@ -266,8 +266,18 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
 - **Pattern changes and per-device enable** take effect only on absolute bar lines (`(tick/48)&15 == 0`).
 - **`patStart` reset.** Reset only at a pattern change, at start and at relocate. A pattern shorter
   than 16 steps is therefore not realigned at every bar; it keeps cycling with its own length.
-- **909 flam [C].** On a step change, `flamTick = tick + (tempo*flam)/700000 + 1` (int64). When
+- **909 flam [C].** On a step change, `flamTick = tick + (tempo*flam)/700000 + 1` (32-bit integers). When
   `tick > flamTick`, every instrument with step value 3 or 4 retriggers at gain base×1.5.
+  - [C] task-025, from the disassembly of 0x1002AAC0 (Rust: `crates/rb-engine/src/tr909.rs`; the
+    three `909_flam_interval*` songs match byte for byte): the arithmetic is 32-bit, not int64
+    (`imul eax, edx; cdq; idiv` by 0xAAE60 = 700000 at 0x1002ABBC, then `lea eax, [esi+eax+1]`),
+    with the song's BPM*1000 tempo and the **unshuffled** tick. Every new step (or wrap) stores
+    flamTick at `+0x1914` and arms the flam (`+0x1910` = 1), whatever the step holds. A later call
+    on the same step (no wrap) with the flam armed and `tick > flamTick` (signed) disarms it and
+    runs the flam pass once: the accent is recomputed from the step's AC byte and every column,
+    from 11 down to 1, whose value is above 2 (`cmp byte, 2; jbe` at 0x1002B324) retriggers at
+    `f32(accent*1.5)` (`dbl_10154350`). The flam pass skips the bar-line logic but still needs
+    the enable latch. `flam` is the live byte 29 (`+0x18AE`), set by controller 29 (see §7.2).
 
 [C] task-022, from the disassembly of `sub_1001EF20` (Rust: `crates/rb-engine/src/seq.rs`). The
 sequencer object is at `song+8` (ctor `sub_1001EC50`): `+0` the position (double), `+8` the last
@@ -649,7 +659,9 @@ after each pair.
   - Slot 1 (0x1001EB30, all classes): active = 0, `+0x18` = 0.
 - Each device zeroes its bus, then calls voices in a fixed order. This order affects f32 summation:
   - **808:** BD-A, BD-B, SD, LT, MT, HT, RS/CL, CP/MA, CB, OH, CH, CY.
-  - **909:** BD-A, BD-B, SD, LT, MT, HT, RS, CP, CH, OH, Crash, Ride.
+  - **909:** BD-A, BD-B, SD, LT, MT, HT, RS, CP, CH, OH, Crash, Ride. [C] task-025: the audio slot
+    0x1002B6F0 calls FILTER `+0x1904`, `+0x1908`, DUAL `+0x190C`, PITCHED `+0x18F0`, `+0x18F4`,
+    `+0x18F8`, SIMPLE `+0x18E0`..`+0x18EC`, PITCHED `+0x18FC`, `+0x1900` in this order.
   - [G] For export the per-instrument ReWire outputs are null, so everything sums into bus 0.
 
 ### 7.2 Triggering and accent [C]
@@ -688,6 +700,35 @@ after each pair.
   - Instruments trigger in **descending** order.
   - [C] RBS 909 values 0..3 reach the step function unchanged (no shift to 1..4): 1 = ×0.8, 2 = ×2.0,
     3 = ×0.8 with flam; 4 never occurs. The AC column holds 0 or 2 (`docs/song_load.md` §4.8).
+  - [C] task-025 (Rust: `crates/rb-engine/src/tr909.rs`; the 33 909 corpus songs match byte for
+    byte): the step function is the 808's position logic (§6.4) with the 909's offsets: pattern
+    `+0x18D3`, latch `+0x18D4` (1 from the ctor), wrap `+0x18D5`, last position `+0x18D8`, last
+    step the live byte 30 (`+0x18AF`), plus the flam (§5). Accent
+    `f32((AC*acc)*0.03125f + 1.0)` (`flt_10154368`, `dbl_10154348`) at `+0x1918`; then columns 11
+    down to 1: values 1 and 3 set the trigger gain `+0x191C` to `f32(accent*0.8)`
+    (`dbl_10154358` = 0x3FE999999999999A), 2 and 4 to `f32(accent*2.0)` (`dbl_10154360`); any other
+    value triggers nothing. Each instrument then runs through one of three identical 11-case
+    switches (0x1002AD2D, 0x1002B03C, 0x1002B359; tables at 0x1015436C, 0x10154398, 0x101543C4).
+  - [C] Fields (0x1920 bytes, ctor `sub_1002A380`): `+0x30` the pattern-mode parameters (33 bytes;
+    `sub_100195A0`, in the DLL's order: 1, 0, 32, 100, 64, 64, 127, 100, 64, 64, 64, 100, 64, 127,
+    100, 64, 127, 100, 64, 127, 100, 100, 100, 32, 127, 100, 64, 100, 64, 64, 0, 0, 0), `+0x51` 32
+    patterns of 194 bytes, `+0x1891` the live parameters (byte 29 the flam interval, 30 the last
+    step), `+0x18B2` 33 "changed" flags, `+0x18DC` the mod's sample table (slot n = resource
+    1000 + n, 25..45), `+0x18E0` four SIMPLE voices (RS, CP, CH, OH), `+0x18F0` five PITCHED (LT,
+    MT, HT, crash, ride), `+0x1904` two FILTER (BD A, BD B), `+0x190C` the DUAL (SD), `+0x1910`
+    the flam flag, `+0x1914` flamTick, `+0x1918` the accent, `+0x191C` the trigger gain.
+  - [C] The DLL keeps bytes 20..22 of its parameter blocks as hi-hat, rim shot, clap levels; the
+    RBS chunk, msg 73 and the controllers use rim shot, clap, hi-hat. Msg 73 (`'I'` at 0x1002BE90,
+    `sub_100199A0` → `sub_100196F4`) permutes in, `sub_10019624` permutes back (slot 8, the
+    host's read-back), and set-param (slot 11, 0x1002C6D0) maps controller 20 to `+0x18A6`, 21 to
+    `+0x18A7`, 22 to `+0x18A5`. Set-param takes controllers 0..29 (`cmp edx, 1Dh; ja` at
+    0x1002C6D7); Hex-Rays drops case 29 (0x1002C80B, `mov [ecx+18AEh], al`, the flam interval),
+    which IDA files under another switch.
+  - [C] Slots: 2 (0x1002B670), 3 (0x1002B6C0) as the 808's; 4, 5 call 6; 6 (0x1002DD40) slot 1 on
+    every voice; 7 is the 303's 0x10026C40 (controllers 0 and 1 quantised to a bar); 8
+    (0x1002D480) inserts tick-0 events of controllers 0..29 with the `+0x30` values in RBS order;
+    9 (0x1002D510) copies the 33 bytes between `+0x30` and `+0x1891`; msg 73 puts the block into
+    `+0x30` and, in pattern mode only, all 33 bytes live.
 - **Bass drum.** Two voices alternate, driven by a global flag. On each new hit, the other voice's m
   is set to 0.99 (a fade). All other instruments are monophonic and hard-restart on retrigger.
 - **Snare noise order.** Not random. It follows fixed 32-entry sequences, SEQ808 at 0x1003409C and
@@ -742,6 +783,33 @@ then the voice's `f32(gain * 2^-15)`):
 | CH choke | CH sets OH's m to 0.996f |
 
 `DT[j]`: start at 1.0 and subtract 2.5e-5 per index going down, stored f32 (computed at init).
+
+[C] task-025, checked in the disassembly and by the corpus (`crates/rb-engine/src/tr909.rs`;
+`k` = 0x3C010204, `gain` is the step's f32 trigger gain `+0x191C` (accent times 0.8, 2.0 or 1.5),
+every product in f64 in this order, one f32 store, then the voice's `f32(gain * 2^-15)`; every
+`DT[x]` index is `(x << 4) >> 7`, i.e. `x >> 3`; hold 0 unless noted):
+- BD (`sub_1002DB24(level, decay, tune, attack)`, controllers 3, 6, 4, 5): sample slot
+  `25 + (tune >> 5)` (bd1..bd4), `gain = f32(((((L*(L*k))*k)*gain)*(1.0 - c))`,
+  `c = C8[attack >> 4]`, `m = DT[decay >> 3]`; the voice by `word_1014E544` exactly as the 808
+  (the other voice's m becomes 0.99f).
+- SD (`sub_1002DC54(level, tone, tune, snappy)`, controllers 7, 9, 8, 10):
+  `g1 = f32(((L*(L*k))*k)*gain)`, `g2 = f32(snappy*0.01f)` (`flt_10154648` = 0x3C23D70A),
+  `m = 0.998f` (0x3F7F7CEE, on g2), `hold = tone + 30`; A is slot `25 + SD[(tune*5) >> 7]`
+  (sd1..sd5), B is slot `25 + SDN[SEQ909[c]]` (sdn1..sdn3) with `word_1014E548` pre-incremented,
+  `& 31`.
+- Toms, crash, ride (`sub_1002DA24(sample, level, tune, decay, i)`): PITCHED voice `i - 3`
+  (crash 3, ride 4), `gain = f32(((L*(L*6.2e-5f))*kv)*gain)` (`flt_10154600` = 0x38820610),
+  kv 1.2 / 1.1 / 1.4 / 0.6 / 0.6 (`flt_1015460C`, `flt_10154608`, `dword_10154604`,
+  `flt_101545FC`), `m = DT[decay >> 3]` (crash and ride pass decay 127: m = DT[15] = 1),
+  `step = T909[tune]`. The toms use controllers 11..19 (level, tune, decay each), crash 25, 26,
+  ride 27, 28.
+- RS, CP, CH, OH (`sub_1002D8B4(sample, level, decay, i)`): SIMPLE voices 0..3,
+  `gain = f32((((6.2e-5f*L)*L)*c)*gain)` with c = 1.1, 2.3, 0.8, 1.1 (`flt_101545D4`,
+  `flt_101545E4`, `flt_101545DC`); RS and CP pass decay 127 (m = DT[15] = 1), OH `m = DT[d >> 3]`,
+  CH `m = f32(DT[d >> 3]^8)` (three `fmul st, st` on the f32 DT value). CH and OH read the
+  hi-hat level (controller 22), their decays are controllers 23 and 24. CH first sets the OH
+  voice's m to 0.996f (0x3F7EF9DB, `sub_1001E3D0`); with the descending order an OH on the same
+  step is triggered first and choked at once.
 
 [C] task-019, the static drum tables and the exact builders:
 - 808: `SD` sample slots i16[5] at 0x10034090 (1..5), SEQ808 u16[32] at 0x1003409C, `N` noise

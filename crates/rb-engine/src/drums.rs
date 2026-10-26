@@ -131,6 +131,12 @@ impl Simple {
         self.v.hold = hold;
     }
 
+    /// `sub_1001E3D0`: sets the multiplier (the 909's closed hi-hat chokes the open one with
+    /// 0.996).
+    pub fn set_m(&mut self, m: f32) {
+        self.v.m = m;
+    }
+
     pub fn silence(&mut self) {
         self.v.silence();
     }

@@ -186,14 +186,16 @@ impl Devices {
 
     /// The devices implemented so far, placeholders for the rest: the two TB-303s
     /// ([`crate::tb303::Tb303`]) and, given the drum samples, the TR-808
-    /// ([`crate::tr808::Tr808`]); a silent TR-909 (and a silent TR-808 without samples, which
-    /// is exact for a song whose 808 plays no step), bypassing inserts, an idle send.
+    /// ([`crate::tr808::Tr808`]) and the TR-909 ([`crate::tr909::Tr909`]); without samples
+    /// silent drum machines (exact for a song whose drum machines play no step), bypassing
+    /// inserts, an idle send.
     pub fn implemented(samples: Option<Arc<SampleSet>>) -> Self {
         let mut d = Self::placeholders();
         d.channels[0] = Box::new(crate::tb303::Tb303::new());
         d.channels[1] = Box::new(crate::tb303::Tb303::new());
         if let Some(s) = samples {
-            d.channels[2] = Box::new(crate::tr808::Tr808::new(s, d.process.clone()));
+            d.channels[2] = Box::new(crate::tr808::Tr808::new(s.clone(), d.process.clone()));
+            d.channels[3] = Box::new(crate::tr909::Tr909::new(s, d.process.clone()));
         }
         d
     }
