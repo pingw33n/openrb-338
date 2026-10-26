@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-complex'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 10:12'
 labels:
   - re
   - rbm
@@ -29,3 +30,9 @@ RBM mod samples are scrambled (docs/initial_investigation.md section 7.4): the D
 - [ ] #1 docs/rbm.md documents the RBM container (RBM, INFO, HEAD, EMBF), the sample lookup by name and the full descrambling including the key table's source and stride
 - [ ] #2 The descrambling is shown correct on one real mod: the samples it yields parse as AIFF and match the original's loaded samples (dumped by rbhost or a debugger)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+From task-003 (2026-10-26, docs/song_load.md section 9): the file behind app field this[325] is Rb20ful.dat on the ReBirth CD (volume "ReBirth Win"), found and validated by sub_406A79 / sub_4063DF (magic 0x03E1F11E, string RB338V20, major version 4; strings stored encoded, decode s[j] -= s[j+1] from the end); sub_4065F2 fills 2048-byte pages from it at offsets derived from runtime values. The test machine has the CD mounted (drive E:, seen in Explorer on 2026-10-26); read it with rcs by absolute path (doc-001).
+<!-- SECTION:NOTES:END -->
