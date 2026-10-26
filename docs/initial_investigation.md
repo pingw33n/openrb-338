@@ -585,10 +585,12 @@ runs `N` idle blocks (a multiple of 16) between its activation and the export.
 | Mixer and effect smoothed gains | [G] Settle to their targets while idle (expected from the smoothing, not proven) |
 | Delay buffer (global) and write pointer (per song) | [C] Cleared to 1e-6 on a song switch and by msg 33; the pointer advances 64 per enabled block and depends on `N` |
 | Compressor env and G, PCF filter and envelope | Fresh per song, settle while idle [G] |
-| Snare noise counters and BD alternation flags (global) | [C] `word_1014CBD4`, `word_1014E548`, `word_1014CBD0`, `word_1014E544`: shift by every snare or bass drum hit since the DLL loaded |
+| Snare noise counters and BD alternation flags (global) | [C] `word_1014CBD4`, `word_1014E548`, `word_1014CBD0`, `word_1014E544`: shift by every snare or bass drum hit since the DLL loaded; an export of an 8-hit 808 snare loop moves `word_1014CBD4` by 9 (fitted to exports, `docs/export_state.md` §11.2; [G] the ninth hit is step 0 triggered by the dropped tail) |
 
 **Reference-capture protocol:** `docs/export_state.md` §9 (fresh process, startup sound off, open the
-song, wait a fixed time, export, quit), to be confirmed by task-010. It leaves `N` unknown, so model
+song, wait a fixed time, export, quit), measured by task-010 (`docs/export_state.md` §11: byte-identical
+when the 303s are silent, on two songs; otherwise the differences fit whole idle buffers `N/16`
+[G: a fit, not a proof], and no settling residual was seen between waits of 3, 10 and 30 s). It leaves `N` unknown, so model
 "load, activate, `N` idle blocks, export" and fit `N`.
 
 **Diagnostic songs worth building:**

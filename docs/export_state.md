@@ -27,6 +27,10 @@ names (msg 33, 35, 52, ...) are those of `docs/song_load.md` §1 and `docs/initi
   of idle (the decaying states of §7; convergence is not proven); the **303 oscillator phase never
   settles** [C] (§7.2). The protocol in §9 fixes everything else and leaves `N`
   as the one unknown, to be fitted.
+- Measured (§11): under that protocol an export is byte-identical across runs when the song's 303s
+  are silent (two songs); otherwise its differences fit whole idle buffers of 303 phase,
+  `k = N/16` [G: a fit, not a proof], and are ±1 LSB for songs without 303 notes. Each export moves the global drum counters (9 snare hits for an
+  8-hit loop, fitted; [G] the ninth is the step 0 that the dropped tail triggers).
 
 ## 2. The realtime path
 
@@ -244,8 +248,10 @@ L = rem     // stored at 0x10013BBA, may be <= 0
 - A new song starts with `L = 0`.
 
 So the first sample of every export is sample 0 of a block rendered after the locate and play. (The
-loop-end wrap inside the export's last partial block, investigation §10 item 6, only affects the
-dropped samples.)
+loop-end wrap inside the export's last partial block, investigation §10 item 6, affects the
+exported samples only through the dropped ones; [G] but the notes it triggers at the loop start
+seem to run, so a drum hit on the loop's first step moves the global drum counters of §7.3 once more
+per export: inferred from the +9 snare-counter fit of §11.2, not traced.)
 
 ## 6. Reset points [C]
 
@@ -332,7 +338,7 @@ phase behaves the same way (it is free-running in the inline loop).
 |---|---|---|---|---|
 | Voice active flag, gain `g` | voice `+8`, `+0x18` (FILTER_VOICE process 0x1001E4D0) | cleared by stop, msg 33 and the activation switch (0x1001EB30) | fixed (no hit while idle; an inactive voice is not processed) | — |
 | Voice sample pointer, samples left, hold, multiplier `m`, FILTER coefficient `c`, FILTER state `y` | voice `+0xC`, `+0x10`, `+0x14`, `+0x1C`, `+0x20`, `+0x24` | never cleared; [G] whether the voice constructors and the trigger (`sub_1001E5C0`, `sub_1001E820`) set `y` is not read | fixed while idle (frozen while inactive) | `y` feeds the first sample of the next FILTER_VOICE hit [G] |
-| 808 snare noise counter | `word_1014CBD4` (`sub_1002A1E4`, pre-increment `& 31`) | BSS: 0 at DLL load; never reset | **global** | which of the 32 SEQ808 noise samples each snare hit uses |
+| 808 snare noise counter | `word_1014CBD4` (`sub_1002A1E4`, pre-increment `& 31`) | BSS: 0 at DLL load; never reset | **global** | which noise sample each snare hit uses: `c = (c+1) & 31` per hit (0x1002A25D..0x1002A27D), then sample slot `word_100340DC[word_1003409C[c]]`; `word_1003409C` is 32 words with values 0..3 (`0,1,2,3,1,0,3,1,0,3,2,1,0,2,3,1,0,2,3,2,0,1,2,0,3,1,2,0,1,3,2,1`) and `word_100340DC[0..3]` = 6, 7, 8, 9, so four noise samples in a 32-hit sequence (both tables are 16-bit words, read as `mov bx, word_1003409C[ecx*2]` at 0x1002A28C and `mov si, word_100340DC[ebx*2]` at 0x1002A29D; values read from the database's bytes for task-010; the model fits the exports, §11.3) |
 | 909 snare noise counter | `word_1014E548` (`sub_1002DC54`) | same | **global** | same, SEQ909 |
 | 808 bass-drum voice toggle | `word_1014CBD0` (0x1002A106 / 0x1002A12A) | same | **global** | which BD voice a hit uses and which one fades |
 | 909 bass-drum voice toggle | `word_1014E544` (0x1002DB82 / 0x1002DC3B) | same | **global** | same |
@@ -376,7 +382,9 @@ byte is tested by `sub_4098C3` (called at 0x426C85) and written by `sub_4098AA` 
 `sub_40DEF2` calls with prefs `+536` (0x40E2F8). Senders: from the song load `sub_425C4D` (0x425FAB, 0x426400), `sub_426CA8`,
 `sub_426FB3`, `sub_41A0C5`; and through `sub_40ABB5` from `sub_42A799` / `sub_42A80E` [G: the Mods
 menu]. [G] Whether the built-in "Standard ReBirth" record has `+1088 = 1`, and the sample's length,
-are not known; task-010 measures it. Nothing else is mixed into the output.
+are not known. Task-010 measured that with the preference on, an export started 0.04 s after the
+open returned (about 1.5 s after the load) is identical to one with it off (§11.4, one run per
+variant): in those runs the startup sound did not reach the export. Nothing else is mixed into the output.
 
 ## 9. Proposed capture protocol
 
@@ -422,4 +430,123 @@ Exporting twice in one process is worse: the second export starts after the firs
 - [G] The port's ring layout (§2.7) and the `_SEMA` object type.
 - [G] The pending song switch while playing (`transport+0x170`).
 - [G] Field-level reset audit of the 808/909 devices, PCF, compressor and distortion constructors.
-- [G] The startup sample of the standard mod and its length.
+- [G] The startup sample of the standard mod and its length (it did not reach any export, §11.4).
+- [G] The constant phase offset of 0.0114 note periods between first and later exports in one
+  process (§11.2).
+
+## 11. Results: determinism of the export per protocol (task-010)
+
+Measured on 2026-10-26 with `tools/rb_export.py` (all runs with `--restore-prf`, so MME and 16 ×
+1024-frame buffers) and `tools/rbcmp.py`, on five diagnostic songs (`tests/songs/diag/songs/`):
+`silence`, `303_accent0`, `808_snare`, `delay_straight_fb64` (808 clap into the delay, feedback 64,
+4 bars) and `comp_ch_a100_t10` (303 #1 through the channel compressor). Each of P1–P4 was run three
+times, the extra variants once each unless noted (32 `rb_export.py` runs in all); the hashes and
+every pairwise comparison are in task-010's notes. The scripts, the variant songs and the exact
+commands are in `tools/experiments/task010/` (README.md); the WAVs are not kept.
+
+### 11.1 Results per protocol
+
+| Protocol | silence | 808_snare, delay (no 303 notes) | 303_accent0, comp (303 notes) |
+|---|---|---|---|
+| P1: fresh process, open, wait 10 s, export (§9; startup sound off) | identical ×3 | ±1 LSB on 0.03–1.6 % of the samples, from the first snare hit or the first echo on | identical or a large difference (max \|d\| 4881, 21735): 2 distinct results in 3 runs each |
+| P2: fresh process, two exports in a row | identical ×6 | first exports: ±1 LSB variants like P1 (808: 2 of 3 equal, and equal to P1 r1; delay: 2 of 3 equal); second exports differ from the first by the snare's noise (max 4940) and among themselves by ±1 LSB | first exports: 303_accent0 identical ×3 but on another `k` than any P1 run (§11.2), comp 2 of 3 equal (and equal to P1 r1); second exports differ from the first; among themselves all differ (303_accent0), 2 of 3 equal (comp) |
+| P3: fresh process, play 3 s, stop, export | identical ×3 | ±1 LSB among themselves; 808: noise of every hit differs from P1 (max 4940) | all differ (303_accent0: 2 of 3 equal) |
+| P4: load and export `drums_kit` first, then open the song in the same process | identical ×3 | ±1 LSB (identical in 3 of 3 for 808, 2 of 3 for delay); 808: differs from P1 by the snare's noise | identical ×3 (303_accent0, same as 2 P1 runs), 2 of 3 (comp) |
+| P1 with both 303s silenced (device and channel off, `808_snare`, `delay_straight_fb64`) | — | **identical ×3** | — |
+| P1 with T = 3 s and T = 30 s (one run each) | identical | ±1 LSB from P1 | phase-shifted (as P1) |
+| P1 with the startup sound on, T = 0 and 10 s (one run each) | identical | ±1 LSB from P1, i.e. another discrete `k` variant (T = 10 s: identical to P2 r3's first export, `a465d579b148`) | — |
+
+### 11.2 Attribution
+
+- **The 303 oscillator phase (`+0xCA4`, §7.2), i.e. `N`.** Within one note, the export of
+  `303_accent0` matches another run's export shifted in time by part of a period (`shift.py`, frames
+  1000..4000, left channel: rms difference 1214 at no shift and 101 at the best shift of −194 samples
+  for P1 r1 against P2 r1's first export; 989 and 34 at −65 samples for P1 r1 against P1 r3, with a
+  signal rms of 809): a phase offset. Expressed in note periods (the note at frames 1000..4000 has a
+  period of 680.80 samples) the offsets between fresh-process exports are +0.0951 and +0.2850 periods.
+  **Fitted** to whole idle buffers of 1024 frames at the idle increment
+  `1024 · 1.8538e-4 / 2 = 0.09491` periods, they are `k` = 1 and 3 buffers with misfits of 0.0001 and
+  0.0002 periods (`phase.py`). [G] So a fresh export is a function of the song and of `k = N/16`
+  only; the fit is consistent with that, it does not prove it. Across the six fresh first exports of
+  `303_accent0` (P1 ×3, P2 ×3) `k` took the values 0, 0, +1 (P1) and +3, +3, +3 (P2), relative to
+  P1 r1; P4's three runs had `k` = 0.
+  [G, unexplained] Why all three P2 first exports landed on the same `k` (+3), which no P1 run hit:
+  the runner's steps before the first export are the same for P1 and P2 (`--exports` only changes
+  what follows it); the runs were not timed precisely enough to tell.
+  The three second exports of P2 differ among themselves by whole buffers too (`k` = −11, −12, −10,
+  steps of 1 and 2), but sit 0.0114 periods off the first-export grid [G: not attributed; a
+  candidate is the 303 filter coefficients `+0xCF4..+0xD00`, which msg 33 does not reset (§6.4,
+  `sub_10026CC0`) and a fresh song has at 0]. After play (P3) the idle pitch is the last note's, so the
+  grid differs and is not checked.
+- **The 303 idle output.** With no 303 notes the residual is ±1 LSB, and it disappears when both
+  303s are silenced (§11.1, identical ×3 for both songs). [G] The mechanism: the idle 303 signal (amp
+  floor × free-running oscillator) is too small to show on its own (`silence` is all zeros) but
+  flips the truncation of louder samples, and its phase is set by `N`; its amplitude was not
+  measured. The ±1 LSB results of a song are discrete variants (the same hash recurs across runs and
+  protocols, e.g. `808_snare` `c51aafa6ef7b` in P1 r1 and P2 r1/r2, `a465d579b148` in P2 r3 and the
+  startup-sound T = 10 s run), as expected from a dependence on `k`. [G] The delay write pointer
+  (§7.4) had no visible effect: the 303-silenced delay song was identical in three runs, but `N` was
+  not recorded for those runs, so that they had different `N` is only likely (the other songs' runs
+  show `k` varying).
+- **The 808 snare noise counter (`word_1014CBD4`, §7.3).** The 40 snare hits of five exports in one
+  process (`808_snare`, `--exports 5`) were clustered by equality (within 1 LSB, first 8000 frames
+  after the hit): a hit sounds like the same-position hit of another export exactly when the model
+  `noise = word_1003409C[(s + h + 1) & 31]` gives the same sample, with the starting counters `s` =
+  0, 9, 18, 27, 4 (the unique fit, `snare.py chain`). So the counter advances by **9 per export of
+  an 8-hit loop** (a fit to one five-export run). [G] The ninth hit is the step-0 hit triggered by the
+  loop-end wrap in the dropped tail of the last chunk (§5): that explains the 9, but the trigger was
+  not observed directly or traced in the sequencer.
+  After a 3 s play (P3) the fit gives `s = 7` in all three runs; after a `drums_kit` export (4 snare
+  hits, none on step 0) `s = 4`. Within one export the hits differ among themselves even with the
+  same noise sample (their offsets within the 64-frame block differ), so only same-position hits
+  compare.
+- **Second export (P2)**: the msg 33 reset (303 phase to 0, delay cleared, §6.4), a new `k`, and the
+  drum counters moved by the first export (+9 for `808_snare`).
+- **The delay buffer after play (P3)**: the delay song's ±1 LSB residual starts at frame 85–90
+  instead of at the first echo, consistent with the leftover echoes of the play in the buffer (the
+  song is not switched before the export).
+- **Settling.** No difference beyond the ones above was found between T = 3, 10 and 30 s (one run
+  each for 3 and 30 s); every
+  exported file starts with 64 frames equal across all runs (the first difference is never before
+  frame 64). The task-008 data point (two Fonda Workout exports in one process differ) is the P2
+  case.
+
+### 11.3 What the measurements support, and how firmly
+
+- The global 808 snare counter and its 32-entry table (§7.3, read in the disassembly) fit the
+  exports: one five-export run fitted uniquely, and the P3 and P4 counters (7 and 4) agree with the
+  hits that preceded them.
+- [G] The loop-end wrap in the dropped tail of the last export chunk triggers the loop's first step
+  (one more drum hit per export when step 0 has one): inferred from the +9 fit only.
+- [G] The startup sound did not reach an export in the two runs with it on (one run per variant,
+  §11.4).
+
+### 11.4 Startup sound
+
+One run per variant, with "Play Mod Startup Sound" on: `silence` exported 0.04–0.07 s after the
+open returned (about 1.5 s after the load, `--wait-after-open 0`) is all zeros, identical to the
+export with it off; `808_snare` in the same run differs from P1 only by ±1 LSB, i.e. it is another
+discrete `k` variant (and with T = 10 s it is identical to P2 r3's first export, `a465d579b148`). So
+in these runs no startup sound reached the export: [G] either the sound is not played for the
+standard mod, or it ends within about 1.5 s of the load. Decision (task-010, on this evidence): the
+protocol keeps it off (byte 0x20A = 0, `--startup-sound off`), which costs nothing and removes the
+path for mods with a longer sample (m-2).
+
+### 11.5 Recommended protocol
+
+The protocol of §9, with T = 10 s: `rb_export.py --restore-prf --startup-sound off
+--wait-after-open 10 SONG...` (a fresh process per song, which is the runner's default). Nothing
+else is needed:
+
+- Songs whose 303s are silent are **byte-identical** across runs (measured on two songs, three runs
+  each, with both 303 devices off and their channels off at level 0; [G] any one of these is
+  probably enough, not tested).
+- Songs with no 303 notes but audible 303 channels vary by ±1 LSB on up to 1.6 % of the samples.
+- Songs with 303 notes vary with `k = N/16` (spread 3 buffers over the 6 fresh first exports of
+  `303_accent0`). [G] The export should then be reproducible by a model given `k` (not shown: no
+  model render exists yet), so rbhost (task-011/012) should take `k` as a parameter and fit it
+  (`phase.py` gives `k` modulo about 10.53 buffers from one note, so the search is short).
+
+Not recommended: two exports in one process (P2: msg 33 state and drum counters), playing before the
+export (P3: drum counters, pitch, delay contents), and loading another song first (P4) unless that
+song has no snare or bass-drum hits.
