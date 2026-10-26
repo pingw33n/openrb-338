@@ -4,6 +4,7 @@ title: Bundle a free drum kit and UI art so the original is not required
 status: To Do
 assignee: []
 created_date: '2026-10-26 14:40'
+updated_date: '2026-10-26 14:49'
 labels:
   - engine
   - ui
@@ -26,7 +27,7 @@ Drum kit. The engine plays samples into 46 slots (docs/initial_investigation.md 
 
 UI art. The future UI (after m-2) needs panel graphics with a similar look and feel; the original skin is Propellerhead's (task-036 copies it from a CD when present). Draw or source an original set under a redistributable license.
 
-RBM keys (to consider, needs a decision). Third-party mods (.rbm) have their samples scrambled with a key table derived from RB20FUL.DAT on the ReBirth CD (2^27 bytes of key material after a 256-byte header; docs/initial_investigation.md section 7.4, task-030, task-036). Reading third-party mods without the CD needs that material. Options: bundle the whole file (128 MiB, Propellerhead's data); bundle only the 2048-byte pages known mods use (if the derivation shows each mod needs few pages: compute the page set over a corpus of mods); or require the CD (task-036). Whether redistributing any of it is acceptable is the user's decision: open a Decide task for @pingw33n with what task-030 learns before doing it.
+RBM keys (to consider, needs a decision). Third-party mods (.rbm) have their samples scrambled with a key table derived from RB20FUL.DAT on the ReBirth CD (2^27 bytes of key material after a 256-byte header; docs/initial_investigation.md section 7.4, task-030, task-036). Reading third-party mods without the CD needs that material. Options: bundle the whole file (128 MiB, Propellerhead's data); bundle only the 2048-byte pages known mods use (if the derivation shows each mod needs few pages: compute the page set over a corpus of mods); or require the CD (task-036). A further option avoids keeping key material at all: an import step that, given the user's CD (or its RB20FUL.DAT), decrypts a third-party .rbm once into an unscrambled form rb stores (a plain mod container with clear AIFF samples), so the app itself runs with no key material and loads only imported mods; the CD is needed only at import time. Whether redistributing any of it is acceptable is the user's decision: open a Decide task for @pingw33n with what task-030 learns before doing it.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
