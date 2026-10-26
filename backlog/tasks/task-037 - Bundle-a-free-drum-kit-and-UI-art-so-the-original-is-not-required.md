@@ -4,7 +4,7 @@ title: Bundle a free drum kit and UI art so the original is not required
 status: To Do
 assignee: []
 created_date: '2026-10-26 14:40'
-updated_date: '2026-10-26 14:49'
+updated_date: '2026-10-26 16:23'
 labels:
   - engine
   - ui
@@ -36,3 +36,9 @@ RBM keys (to consider, needs a decision). Third-party mods (.rbm) have their sam
 - [ ] #2 An original UI art set exists under a redistributable license, covering the panels the UI needs
 - [ ] #3 A Decide task records the user's choice on bundling RBM key material, with task-030's findings on how many pages known mods need
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-26: the UI art part is covered by milestone m-3 (bundled SVG UI, our own art); this task keeps the drum kit and the RBM-key decision.
+<!-- SECTION:NOTES:END -->
