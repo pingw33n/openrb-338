@@ -696,9 +696,41 @@ and voice offsets are in the agent notes; the formulas are summarised here.
   - 808: IDs 1000..1023 (BD, SD1-5, N1-4, CB, CH, CL, CP, CY, HC, HT, LC, LT, MA, MC, MT, OH, RS).
   - Startup sound: ID 1024.
   - 909: IDs 1025..1045 (bd1-4, sd1-5, sdn1-3, lt, mt, ht, rs, hc, chh, ohh, ccy, rcy).
-  - These can be extracted from `.rsrc` once and shipped as data.
+  - rb does not ship them: `rb_engine::samples` reads them at run time from the user's
+    `ReBirth.dll` (task-016, task-020).
+  - [C] task-020, how the DLL loads them. `sub_1001A030` (0x1001A030) builds the sample table of 47
+    `CWaveSample` objects: slots 1..24 = IDs 1000..1023, slots 25..45 = IDs 1025..1045, slot 46
+    = ID 1024 (the startup sound); a mod replaces single slots (`sub_1001A500`). Each is loaded by
+    `sub_1001A3E0` → `sub_1000D630` (`FindResourceA(module, MAKEINTRESOURCE(id), "AIFF")` through
+    `sub_1000B620` at 0x1000B663: the type is the string "AIFF", the ID a 16-bit integer, no
+    language given) → `sub_10003300`.
+  - [C] The 2.01 DLL has exactly these 46 resources (one language each), all mono 16-bit AIFF;
+    1034..1036 (the 909 `sdn1`..`sdn3`) have an SSND offset of 458 bytes, the rest 0. Frame counts, 1000..1045: 72704, 8800 x9, 51200, 4992, 1816, 87040, 174430, 11680,
+    17498, 17056, 22063, 1468, 11603, 15351, 26578, 690, 84575 (1024), 22062, 22001, 22036,
+    22099, 14007, 14008, 14006, 14014, 14034, 12180 x3, 28072, 20427, 20862, 5006, 30365, 8401,
+    25811, 43690, 42458. `crates/rb-engine/tests/samples.rs` holds them with the sample sums.
 - **AIFF parsing.** COMM and SSND chunks, 16-bit only. Big-endian int16 values are used as they are.
   The sample rate is ignored, and only channel 0 of multichannel files is used.
+  - [C] task-020, the details (`sub_10003300` 0x10003300 ties them together):
+    - Chunk walk `sub_10004F94` (0x10004F94): the 12-byte header is checked by `sub_100054D4`;
+      then chunks are walked by id, a pad byte after an odd size (the reader's flag at `this+4`
+      is set for AIFF); the first chunk with the wanted id is used. [G] What `sub_100054D4`
+      accepts (whether an AIFC form type is rejected) is not confirmed; rb requires FORM+AIFF,
+      and all 46 resources pass.
+    - The drum voices read the sample as `i16` (the CWaveSample buffer: `frames + 512` i16,
+      `rb_engine::samples::Sample::padded`).
+    - COMM `sub_10001674` (0x10001674): u16 channels, u32 frames, u16 bits, 80-bit extended rate
+      (`sub_10004110`, truncated to an integer by `fistp`). `sub_100016F4` accepts a non-zero
+      channel count, frame count and rate, and bits 8..=32. `sub_10003170` then flags `bits ==
+      16`; any other depth throws `XUnsupportedFormat` (0x10003376..0x10003388).
+    - SSND `sub_10002FC4` (0x10002FC4): u32 offset, u32 blocksize; `offset > 0` bytes are
+      skipped (vtable +0x2C seek) before the audio.
+    - Mono: `2 * frames` bytes are read to the buffer start and byte-swapped in place
+      (`sub_10009990`). Multichannel: `sub_10009DD0` reads 0x4000-byte chunks, swaps, and
+      `sub_100099DC` copies channel 0 with a stride of the channel count (`a8 = 0`).
+    - `CWaveSample` ctor `sub_1000A9C0` (0x1000A9C0): `this[1]` = the rate, `this[19]` = frames,
+      buffer = `2 * frames + 1024` bytes, zeroed, so the audio starts at index 0 and 512 zero
+      samples follow it (not before it).
 - **RBM container (EXE 0x41813E / 0x414D18).** IFF-like: `RBM `, `INFO` (1280 bytes, includes the mod
   name), `HEAD`, then `EMBF` chunks. Each EMBF chunk holds a NUL-terminated file name followed by the AIFF.
   - Samples are matched by file name, e.g. `TR808BD.aif`; the list is at EXE 0x4BB388.

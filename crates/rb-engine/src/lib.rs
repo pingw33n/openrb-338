@@ -20,6 +20,7 @@
 
 pub mod frame;
 pub mod load;
+pub mod samples;
 pub mod seq;
 pub mod song;
 pub mod tables;

@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 use encode::Format;
 use rb_engine::frame::export;
 use rb_engine::frame::{Devices, Engine};
+use rb_engine::samples::SampleSet;
 use rb_engine::song::{DrumPattern, MAX_TICK, Song, TICKS_PER_BAR};
 use rb_engine::tables::Tables;
 
@@ -46,6 +47,12 @@ enum Cmd {
         /// original's own export starts from whatever the running app was doing.
         #[arg(long, default_value_t = 9088, value_name = "N")]
         idle_blocks: u32,
+        /// The ReBirth 2.01 ReBirth.dll, which holds the built-in drum samples. Needed only
+        /// when a drum machine plays. Without it the search is: the RB_REBIRTH_DLL environment
+        /// variable, then a ReBirth.dll next to the rb binary, then the usual install
+        /// locations on Windows.
+        #[arg(long, value_name = "PATH")]
+        rebirth_dll: Option<PathBuf>,
     },
 }
 
@@ -64,8 +71,16 @@ fn main() -> ExitCode {
         quality,
         range,
         idle_blocks,
+        rebirth_dll,
     } = cli.command;
-    match render(&input, &output, quality, range.as_deref(), idle_blocks) {
+    match render(
+        &input,
+        &output,
+        quality,
+        range.as_deref(),
+        idle_blocks,
+        rebirth_dll.as_deref(),
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(Fail(code, msg)) => {
             eprintln!("rb: error: {msg}");
@@ -99,8 +114,8 @@ fn parse_range(s: &str) -> Result<(u32, u32), Fail> {
     Ok((a * TICKS_PER_BAR, b * TICKS_PER_BAR))
 }
 
-/// The devices the song uses that the engine does not implement yet (task-024..027, m-2).
-fn unimplemented_devices(song: &Song) -> Vec<&'static str> {
+/// The drum machines that play in the song: "TR-808" and "TR-909".
+fn drums_playing(song: &Song) -> Vec<&'static str> {
     // A drum machine is audible when it is enabled and a pattern it plays has a step: the
     // initial selection (controller 1, `params[1]`) plus the values of its controller-1 track
     // events (tracks 3 and 4, docs/song_load.md section 5). With no such event the initial
@@ -124,6 +139,93 @@ fn unimplemented_devices(song: &Song) -> Vec<&'static str> {
     if plays(&song.tr909.params, 4, &song.tr909.patterns) {
         v.push("TR-909");
     }
+    v
+}
+
+/// The ReBirth.dll to read the drum samples from, in the order: the `--rebirth-dll` path (which
+/// must exist), the `RB_REBIRTH_DLL` environment variable (likewise), a ReBirth.dll next to the
+/// rb binary, then the Windows install locations. An explicit choice is never second-guessed
+/// by a search; the implicit locations are tried only when nothing was asked for.
+fn locate_rebirth_dll(explicit: Option<&Path>) -> Result<PathBuf, Fail> {
+    if let Some(p) = explicit {
+        return if p.is_file() {
+            Ok(p.to_path_buf())
+        } else {
+            Err(fail(
+                1,
+                format!("--rebirth-dll {}: no such file", p.display()),
+            ))
+        };
+    }
+    if let Some(p) = std::env::var_os("RB_REBIRTH_DLL").filter(|p| !p.is_empty()) {
+        let p = PathBuf::from(p);
+        return if p.is_file() {
+            Ok(p)
+        } else {
+            Err(fail(
+                1,
+                format!("RB_REBIRTH_DLL={}: no such file", p.display()),
+            ))
+        };
+    }
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(d) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    {
+        dirs.push(d);
+    }
+    if cfg!(windows) {
+        for var in ["ProgramFiles(x86)", "ProgramFiles"] {
+            if let Some(pf) = std::env::var_os(var) {
+                let pf = PathBuf::from(pf);
+                dirs.push(pf.join("Propellerhead").join("ReBirth"));
+                dirs.push(pf.join("ReBirth RB-338"));
+            }
+        }
+        dirs.push(PathBuf::from(
+            r"C:\Program Files (x86)\Propellerhead\ReBirth",
+        ));
+        dirs.push(PathBuf::from(r"C:\ReBirth RB-338"));
+    }
+    for d in dirs {
+        for name in ["ReBirth.dll", "Rebirth.dll", "rebirth.dll"] {
+            let p = d.join(name);
+            if p.is_file() {
+                return Ok(p);
+            }
+        }
+    }
+    Err(fail(
+        1,
+        "no ReBirth.dll found. Pass --rebirth-dll PATH, set RB_REBIRTH_DLL, or put it next to the rb binary",
+    ))
+}
+
+/// Loads the built-in drum samples from the ReBirth.dll that `locate_rebirth_dll` finds.
+fn load_samples(explicit: Option<&Path>, drums: &[&str]) -> Result<SampleSet, Fail> {
+    let need = format!(
+        "the song plays the {}, which needs the built-in drum samples",
+        drums.join(" and ")
+    );
+    let path =
+        locate_rebirth_dll(explicit).map_err(|Fail(c, m)| fail(c, format!("{need}; {m}")))?;
+    let bytes = std::fs::read(&path)
+        .map_err(|e| fail(1, format!("{}: cannot read: {e}", path.display())))?;
+    SampleSet::from_dll(&bytes).map_err(|e| {
+        fail(
+            1,
+            format!(
+                "{}: not a ReBirth 2.01 ReBirth.dll with the built-in samples: {e}",
+                path.display()
+            ),
+        )
+    })
+}
+
+/// The devices the song uses that the engine does not implement yet (task-024..027, m-2).
+fn unimplemented_devices(song: &Song) -> Vec<&'static str> {
+    let mut v = drums_playing(song);
     for (name, on) in [
         ("distortion", song.dist.params[0]),
         ("delay", song.delay.params[0]),
@@ -143,6 +245,7 @@ fn render(
     quality: f32,
     range: Option<&str>,
     idle_blocks: u32,
+    rebirth_dll: Option<&Path>,
 ) -> Result<(), Fail> {
     let format =
         Format::from_extension(output.extension().and_then(|e| e.to_str())).ok_or_else(|| {
@@ -194,6 +297,15 @@ fn render(
              output is the engine's song-mode render of the loop"
         );
     }
+    // The drum samples are loaded only for a song that plays a drum machine; a 303-only song
+    // renders without a ReBirth.dll. The engine's drum devices (task-024) will take the set;
+    // until then loading it checks the DLL and the error path.
+    let drums = drums_playing(&song);
+    let _samples = if drums.is_empty() {
+        None
+    } else {
+        Some(load_samples(rebirth_dll, &drums)?)
+    };
     let missing = unimplemented_devices(&song);
     if !missing.is_empty() {
         eprintln!(
