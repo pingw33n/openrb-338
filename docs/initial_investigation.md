@@ -159,6 +159,11 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
   `+0x1C` word 1, `+0x20/+0x24/+0x28` the dist, PCF and comp insert pointers, called in that order.
 - Send: `send[i] = f32(bus[i]*sendGain + send[i])`. The mixer never refills the send bus: the
   delay does, with 1e-6, in both its enabled and disabled paths (0x1000F940).
+- [C] task-022: the song has three 256-byte send buses, `song+0x160C + 0x100k`, one per send-effect
+  slot. `sub_100140B4` registers a send effect: its object at `song+0x1DC + 4k`, its bus pointer
+  `song+0x1FC + 4k`, count `song+0x1E8`; the block calls slot 14 for `k < count` (0x1001381F). The
+  ctor registers only the delay (its one caller), so buses 1 and 2 (`+0x170C`, `+0x180C`), which
+  the ctor and msg 33 fill with 1e-6, have no reader.
 - Smoothing (0x100136B7): `nL = oldL*0.93 + tgtL*0.07` and likewise for R, in f64
   (`dbl_10151F48` = 0.93, `dbl_10151F50` = 0.07); `f32(n)` is stored; the ramp step
   `(n - old) * (1/32)` (`dbl_10151F58`) is kept as a double. The mix loop runs in x87 registers
@@ -251,7 +256,7 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
   - Each event is applied in the first block whose `trunc(pos) >= eventPos`.
   - The loop-end wrap is handled inside this function. Wrapping chases every track to the loop start
     (§5.1) and relocates the devices.
-  - At `pos >= 767231` the song stops (999 bars).
+  - At `pos > 767231` the song stops (999 bars; strictly greater, task-022).
 - **Shuffle.** `sp = 96*(t/96) + max(0, t%96 - shuffle/6)`. Only the second 16th of each 8th is
   delayed, by up to 21 ticks. Each device step function receives `(tick, shuffledTick, tempo)` and
   uses the shuffled tick when the pattern's shuffle flag is set.
@@ -264,6 +269,90 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
 - **909 flam [C].** On a step change, `flamTick = tick + (tempo*flam)/700000 + 1` (int64). When
   `tick > flamTick`, every instrument with step value 3 or 4 retriggers at gain base×1.5.
 
+[C] task-022, from the disassembly of `sub_1001EF20` (Rust: `crates/rb-engine/src/seq.rs`). The
+sequencer object is at `song+8` (ctor `sub_1001EC50`): `+0` the position (double), `+8` the last
+tick, `+0x10` the tick pattern mode saved, `+0xC` the track count, `+0x14 + 4i` the tracks, `+0x94`
+the song. The transport state is the global struct `song+0x158` (`docs/song_load.md` §3).
+```
+if !play: return                                   // 0x1001EF34
+inc = (double)tempo * 4.6439909297052154e-06       // fild; fmul dbl_10153808 (0x3ED37A7281B22126)
+pos = pos + inc; t = trunc(pos)                    // fistp qword, low dword
+if t > lastTick:                                   // signed
+    if songMode:
+        if loopOn and loopEnd <= pos and loopEnd > pos - inc:   // fild loopEnd; fcomp; pos - inc in f64
+            every track: apply events with tick <= loopEnd - 1
+            [record on: merge the recording, sub_1001F520]
+            pos = pos + (double)(loopStart - loopEnd); t = trunc(pos)     // 0x1001F135
+            every track: chase to loopStart; every device: slot 2 (relocate) with loopStart
+        every track: apply events with tick <= t   // 0x1001F2AD
+        if pos > 767231.0: song end, return        // dbl_10153810 (0x412769FE00000000)
+    every device: slot 1 (tick, shuffled(tick), tempo)   // 0x1001F433
+lastTick = t
+```
+- The tempo of the step is `sub_1001BCC0(transport)`: the MIDI clock's when MIDI sync is active,
+  else the current song's (`transport+0x16C`), which is the song itself whenever it renders.
+- Pattern mode applies no event, never wraps and never ends; the devices still step. The loop wrap
+  and the song end are tested only in blocks whose tick moved.
+- An event at the loop end itself never fires in a loop: the wrap applies events up to
+  `loopEnd - 1`, and the chase starts the next pass at `loopStart`.
+- Every set-param call of a block (tracks 0..8, each in list order) comes before every step call
+  (devices in song order: mixer, 303, 303, 808, 909, delay, dist, PCF, comp, `song+0x18C`). Only
+  the 303s, the 808 and the 909 implement slots 1..3; the `CDevice` defaults are `retn 0Ch`
+  (0x10010380), `retn 4` (0x1001BF40) and `retn` (0x10012C00).
+- Track events go to the device's slot 11 (set-param, `+0x2C`) through `sub_10011E60`, which finds
+  the device by id; a controller whose byte in the track's hold mask (`track+4`) is set is skipped
+  (the mask is cleared by the recording path `sub_1001F520` and set by nothing the load or the
+  export sends).
+- **Song end** (0x1001F484): record off (`sub_10021194(0)`), the host is told (msg 35 `{2,0}`,
+  `{1,0}`), `sub_100218A0` (stop without the bar locate), then locate 0. No step in that block.
+- **Shuffle** (0x1001F3D0): `idiv` truncating, `96*(t/96) + max(0, t%96 - shuffle/6)`.
+
+**The track list** (track ctor `sub_1001EDA0`, 0x22C bytes; list ctor `sub_100144B0` at `+0x108`).
+A circular singly linked list whose head is the list itself with tick `0x7FFFFFFF`; nodes are
+`{next, tick, ctrl, value}`. `+0x228` points at the last applied node, `+0x84` is the chase state
+(128 bytes), `+4` the hold mask, `+0x104` the device id, list `+0xD + ctrl` a quantisation in 24-tick
+units (1 for every controller from the ctor).
+- **Insert** (`sub_10014750`, from msg 37's `sub_10021010`): the tick is rounded up to a multiple of
+  `24q` (`sub_100146E4`, no change for loaded ticks), an event above 767231 after that is dropped,
+  and the node is linked before the first node whose tick is not below it, unless a node of the same
+  tick has the same controller, whose value is replaced. So the events of one tick are applied in
+  **reverse arrival order**, and one controller has at most one event per tick.
+- **Stop prune** (`sub_100149F0`, on every track at every stop): an event whose value equals the
+  previous value of its controller (0xFF before the first) is unlinked and freed, unless its tick is
+  0.
+
+**Transport messages [C] (task-022).**
+
+- **Locate** `sub_1001F984(p)` (msg 35 id 8 via `sub_1001BF70`, msg 32 with the current tick, the
+  song ctor with 0): `p = max(p, 0)`; with record on, stopped and `p > trunc(pos)` the events up to
+  `p` are applied forward; otherwise in song mode every track is chased to `p` (ctrl 0..127
+  ascending, `sub_10012B40`); then `pos = (double)p`, slot 2 on every device, `lastTick = p`.
+- **Stop** msg 35 `{1,0}` → `sub_1001E100`: `sub_100218A0` (when playing: play = 0 and slot 4 on
+  every device; prune every track; in song mode chase to `trunc(pos)`), the host is told, and unless
+  MIDI sync is active (`transport+0x160`, set by the DLL export `SetMIDISyncActive`) a locate to
+  `768*(trunc(pos)/768)`, which chases again.
+- **Play** msg 35 `{1,1}` → `sub_1001BE74`: a different playing song is stopped and silenced first;
+  then (`0x1001F7E4`) when not playing, play = 1 and slot 3 on every device. The position is not
+  touched; the song becomes current (`transport+0x16C`).
+- **Song mode** msg 35 `{0,m}` → `sub_1001FBE0`: on a change the byte is stored and slot 9 runs on
+  every device (`sub_10013FB0`); song mode then locates to the saved tick (`seq+0x10`), pattern mode
+  relocates every device to 0 and saves `trunc(pos)`.
+- Ids 3, 4, 12, 16, 20 store loop on, tempo, loop start, loop end and shuffle (`sub_10021110`,
+  `sub_1001FCD0`, `sub_10021130`, `sub_10021150`, `sub_10021170`); with `transport+0x15C == 46`
+  (a ctor argument, [G] the ReWire mode) the transport keeps them instead. Id 2 is record
+  (`sub_10021194`: turning it off while on merges the recording with `sub_1001F520` and chases).
+- **Msg 36** (0x100126B2) applies the 23 bytes in this order: song mode, play or stop, record, loop
+  on, tempo, locate, loop start, loop end, shuffle, then stores bytes 21 and 22. The global struct's
+  ctor (`sub_10018AC0`): tempo 120000, loop end 768, shuffle 64, byte 22 = 1, the rest 0; the song
+  ctor then sets the tempo to 140000.
+- **The mixer device's two sets** (`CMixerDevice`): the live parameters at `+0x30` and the
+  pattern-mode copy at `+0x58`. Set-param 0x10015C00: ctrl 1 → comp id `+0x34`, 2 → PCF id `+0x38`,
+  else `c = (ctrl-5)/6`, `k = (ctrl-5)%6`, k 1..4 → level, pan, send, dist of channel c (`+0x41 +
+  6c` ..); k 0 (enabled) is never set. Slot 9 (0x10016280): entering song mode copies live to the
+  pattern copy; leaving it copies the live master and enables into the pattern copy, then the pattern
+  copy to live. Msg 143 (0x1001588F) unpacks into the pattern copy, then song mode copies only the
+  master and enables live, pattern mode everything.
+
 ### 5.1 Chase, locate, start and stop [C]
 
 - **Chase (`0x100151F0`).** Builds `state[ctrl]` from all events with `pos <= P`, then applies ctrl
@@ -274,7 +363,8 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
   - The first step at the loop start fires one block late relative to sample 0.
 - **Start / stop.**
   - Start: devices' `vfunc[3]` (303: patStart = bar of the tick, force retrigger).
-  - Stop: note-off on all devices, then a chase.
+  - Stop: note-off on all devices (only when playing), the track prune, a chase, then the locate
+    to the bar start (task-022, "Transport messages" above).
 
 ### 5.2 Host message protocol
 

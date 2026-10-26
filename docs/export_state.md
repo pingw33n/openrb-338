@@ -288,16 +288,24 @@ the active byte `+8` and the gain `+0x18`. Voice gains and the FILTER_VOICE stat
 
 ### 6.2 Stop (song msg 35 `{1,0}`, `sub_1001E100`)
 
-`sub_100218A0`: clears the play flag, calls slot 4 on the song's devices (`sub_10021840`), and in
-song mode chases all tracks at the current position; then (unless `transport+0x160` is set) locates
-to the start of the current bar. So stop silences the drum voices and releases the 303s, and leaves
-the delay, the effects and the mixer alone.
+`sub_100218A0`: only when playing, clears the play flag and calls slot 4 on the song's devices
+(`sub_10021840`); then prunes every track (`sub_100149F0`) and in song mode chases all tracks at the
+current position; then (unless MIDI sync is active, `transport+0x160`) locates to the start of the
+current bar, which chases again. So stop silences the drum voices and releases the 303s, and leaves
+the delay, the effects and the mixer alone. The export's first stop finds the song stopped, so no
+device gets slot 4 there (task-022). Details: investigation §5, "Transport messages".
 
 ### 6.3 Play, locate
 
 Play calls each device's slot 3 (investigation §5.1); locate (`sub_1001F984`) chases and relocates
-the devices. Neither resets DSP state. [G] Device slot 3 and the relocate were not read through for
-this task beyond investigation §5.1.
+the devices (slot 2). [C] task-022: neither resets DSP state in the sequencer; slots 1..3 are
+no-ops for every device but the 303s, the 808 and the 909, whose slot 2 and 3 code
+(0x100255E0/0x100255B0, 0x10028030/0x10028080, 0x1002B670/0x1002B6C0) belongs to their tasks.
+
+**Activation in the model** (task-022, `Engine::activate`): with a stopped song current, the only
+effect of top-level 53 on the new song is the old song's delay slot 6 (0x100100E0), which refills
+the process-global delay buffer `0x10054794` and sets `byte_10054790`; with no song current, slot 6
+runs on the new song's own devices (§3).
 
 ### 6.4 Msg 33 (`sub_10014140`, song msg 33 → 0x10012546)
 

@@ -2,8 +2,8 @@
 //! `sub_4280D5`, `docs/export_state.md` section 4) after `N` idle blocks, which is how
 //! `tools/rbhost` reproduces the app's exports (`docs/export_state.md` sections 12 and 13).
 
-use super::{BLOCK, Engine};
-use crate::song::Globals;
+use super::{Activation, BLOCK, Engine};
+use crate::song::{Globals, Song};
 
 /// The frames of one realtime MME call (`docs/export_state.md` section 2.1): the idle blocks are
 /// rendered 16 at a time, as the app's stream and rbhost do.
@@ -83,11 +83,12 @@ pub fn render_idle(engine: &mut Engine, idle_blocks: u32) {
     }
 }
 
-/// The export as rbhost runs it after the song is loaded and activated
-/// (`tools/rbhost/rbhost.c`, `docs/export_state.md` section 4): `idle_blocks` idle blocks, stop,
-/// locate to the loop start, play, the chunks of [`chunk_sizes`], then stop, msg 33 and a 0-frame
-/// call (which drops the last chunk's leftover). Each message is applied by a 0-frame call that
-/// renders nothing, so the messages are applied here directly. Returns interleaved int16 stereo.
+/// The export as rbhost runs it (`tools/rbhost/rbhost.c`, `docs/export_state.md` section 4) on
+/// a song the caller has loaded ([`Engine::load`]) and activated ([`Engine::activate`]):
+/// `idle_blocks` idle blocks, stop, locate to the loop start, play, the chunks of
+/// [`chunk_sizes`], then stop, msg 33 and a 0-frame call (which drops the last chunk's leftover).
+/// Each message is applied by a 0-frame call that renders nothing, so the messages are applied
+/// here directly. Returns interleaved int16 stereo.
 pub fn export(engine: &mut Engine, range: ExportRange, idle_blocks: u32) -> Vec<i16> {
     render_idle(engine, idle_blocks);
     engine.stop();
@@ -108,6 +109,15 @@ pub fn export(engine: &mut Engine, range: ExportRange, idle_blocks: u32) -> Vec<
     engine.reset();
     engine.render(&mut [], 0);
     out
+}
+
+/// rbhost's whole run on a new song (by default, `--idle-blocks N`): load `song`, activate it
+/// over the "Untitled song" ([`Activation::ReplacesCurrent`]), then [`export`] with the range
+/// the export queries (msg 20 ids 4, 12, 16, which read the loaded globals).
+pub fn export_song(engine: &mut Engine, song: &Song, idle_blocks: u32) -> Vec<i16> {
+    engine.load(song);
+    engine.activate(Activation::ReplacesCurrent);
+    export(engine, ExportRange::from(&song.globals), idle_blocks)
 }
 
 /// The 44-byte header rbhost and the app write before the samples (16-bit stereo 44100 Hz PCM).

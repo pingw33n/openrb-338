@@ -14,6 +14,7 @@ type Log = Rc<RefCell<Vec<String>>>;
 
 /// A source that writes a constant.
 struct Const(f32);
+impl SongDevice for Const {}
 impl ChannelDevice for Const {
     fn process(&mut self, bus: &mut Block, _ctx: &BlockContext) {
         bus.fill(self.0);
@@ -22,6 +23,7 @@ impl ChannelDevice for Const {
 
 /// A source whose samples differ in every block: `(64k + i) / 8192` in block k.
 struct Ramp(u32);
+impl SongDevice for Ramp {}
 impl ChannelDevice for Ramp {
     fn process(&mut self, bus: &mut Block, _ctx: &BlockContext) {
         for (i, x) in bus.iter_mut().enumerate() {
@@ -50,6 +52,8 @@ impl InsertEffect for Op {
     fn update(&mut self, _ctx: &BlockContext) {
         self.log.borrow_mut().push(format!("{}.update", self.name));
     }
+}
+impl SongDevice for Op {
     fn reset(&mut self) {
         self.log.borrow_mut().push(format!("{}.reset", self.name));
     }
@@ -60,6 +64,7 @@ struct Recorder {
     seen: Rc<RefCell<Vec<Block>>>,
     log: Log,
 }
+impl SongDevice for Recorder {}
 impl SendEffect for Recorder {
     fn process(&mut self, send: &mut Block, _l: &mut Block, _r: &mut Block, _ctx: &BlockContext) {
         self.seen.borrow_mut().push(*send);
@@ -69,7 +74,7 @@ impl SendEffect for Recorder {
 }
 
 fn engine_with(devices: Devices, state: EngineState) -> Engine {
-    Engine::with_state(tables(), devices, Box::new(Idle), state)
+    Engine::with_state(tables(), devices, state)
 }
 
 /// A state with every gain, target and send at zero and the master at a steady 1.0, outside the
@@ -135,7 +140,7 @@ fn int16_conversion() {
 
 #[test]
 fn constructor_state() {
-    let e = Engine::new(tables(), Devices::placeholders(), Box::new(Idle));
+    let e = Engine::new(tables(), Devices::placeholders());
     let t = &tables().level;
     let s = &e.frame.state;
     assert_eq!(s.counter, 10);
@@ -159,7 +164,7 @@ fn pan_law_and_sends() {
     let mut e = engine_with(Devices::placeholders(), EngineState::default());
     let t = tables().level;
     let g = 1e-6f32 as f64;
-    let p = &mut e.frame.params;
+    let p = &mut e.frame.devices.mixer.live;
     p.master = 127;
     p.channels[0] = ChannelParams {
         enabled: 1,
@@ -327,9 +332,9 @@ fn routing_order() {
         log: log.clone(),
     });
     let mut e = engine_with(d, quiet_state());
-    e.frame.params.channels[1].dist = 1;
-    e.frame.params.pcf_id = 2; // channel 1
-    e.frame.params.comp_id = 3; // channel 1
+    e.frame.devices.mixer.live.channels[1].dist = 1;
+    e.frame.devices.mixer.live.pcf_id = 2; // channel 1
+    e.frame.devices.mixer.live.comp_id = 3; // channel 1
     e.frame.mixer_update();
     assert_eq!(*log.borrow(), ["dist.update", "pcf.update", "comp.update"]);
     let r = e.frame.state.channels.map(|c| c.routing);
@@ -355,8 +360,8 @@ fn routing_order() {
     assert_eq!(seen.borrow()[0][0], (5.0 + 1e-6f32 as f64) as f32);
 
     // the compressor on the master runs after the send effect
-    e.frame.params.comp_id = 1;
-    e.frame.params.channels[1].dist = 0;
+    e.frame.devices.mixer.live.comp_id = 1;
+    e.frame.devices.mixer.live.channels[1].dist = 0;
     e.frame.mixer_update();
     assert!(e.frame.state.master_comp);
     assert!(!e.frame.state.channels[1].routing.comp);
@@ -367,9 +372,9 @@ fn routing_order() {
 
 #[test]
 fn update_phase() {
-    let mut e = Engine::new(tables(), Devices::placeholders(), Box::new(Idle));
+    let mut e = Engine::new(tables(), Devices::placeholders());
     let before = e.frame.state.channels[0].target_l;
-    e.frame.params.channels[0].level = 127;
+    e.frame.devices.mixer.live.channels[0].level = 127;
     let mut buf = vec![0i16; 2 * 1024];
     // counter 10..15: no update in the first six blocks
     e.render(&mut buf, 6 * BLOCK);
@@ -383,7 +388,7 @@ fn update_phase() {
         (1e-6f32 as f64 + 1.0) as f32
     );
     // then every 16 blocks
-    e.frame.params.channels[0].level = 0;
+    e.frame.devices.mixer.live.channels[0].level = 0;
     e.render(&mut buf, 15 * BLOCK);
     assert_eq!(
         e.frame.state.channels[0].target_l,
@@ -398,7 +403,7 @@ fn loud_engine() -> Engine {
     let mut d = Devices::placeholders();
     d.channels[0] = Box::new(Ramp(0));
     d.channels[3] = Box::new(Const(-0.3));
-    let mut e = Engine::new(tables(), d, Box::new(Idle));
+    let mut e = Engine::new(tables(), d);
     for ch in &mut e.frame.state.channels {
         ch.gain_l = ch.target_l;
         ch.gain_r = ch.target_r;
@@ -504,7 +509,7 @@ fn export_chunks() {
 
 #[test]
 fn export_of_silence_is_zero() {
-    let mut e = Engine::new(tables(), Devices::placeholders(), Box::new(Idle));
+    let mut e = Engine::new(tables(), Devices::placeholders());
     let r = ExportRange {
         tempo: 120_000,
         loop_start: 0,

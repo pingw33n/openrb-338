@@ -7,9 +7,11 @@
 //! update `sub_10012C14`. [`Engine`] is that song object: [`Engine::render`] is `sub_100139E0`,
 //! [`Frame::block`] is `sub_10013444`, [`Frame::mixer_update`] is `sub_10012C14`.
 //!
-//! The channel devices, the insert effects, the send effect and the sequencer plug in through the
-//! traits [`ChannelDevice`], [`InsertEffect`], [`SendEffect`] and [`Transport`]; [`Silent`],
-//! [`Bypass`], [`IdleSend`] and [`Idle`] are the placeholders until their tasks implement them.
+//! The channel devices, the insert effects and the send effect plug in through the traits
+//! [`ChannelDevice`], [`InsertEffect`] and [`SendEffect`], which share the slots the sequencer
+//! and the song messages call, [`SongDevice`]; [`Silent`], [`Bypass`] and [`IdleSend`] are the
+//! placeholders until their tasks implement them. The mixer device is [`MixerDevice`], and the
+//! sequencer ([`crate::seq::Sequencer`]) runs at the start of every block.
 //!
 //! Every computation follows the crate's numerics rules: f64 arithmetic in the original's operand
 //! order, an f32 rounding at every `fstp dword`/`fst dword`, no FMA.
@@ -21,6 +23,7 @@ mod tests;
 
 use std::sync::Arc;
 
+use crate::seq::Sequencer;
 use crate::song;
 use crate::tables::Tables;
 
@@ -76,49 +79,73 @@ pub struct BlockContext<'a> {
     pub meter_index: usize,
 }
 
-/// A mixer channel's sound source: TB-303 #1, #2, TR-808 or TR-909.
-pub trait ChannelDevice {
-    /// Vtable slot 14 (0x10013580): render one block into `bus`, overwriting all of it.
-    fn process(&mut self, bus: &mut Block, ctx: &BlockContext);
-    /// Slot 4: stop (song msg 35 `{1,0}`, `sub_10021840`).
+/// The device vtable slots that the sequencer ([`crate::seq`]) and the song messages call
+/// (`CDevice`, vtable 0x10032DB4; the 303 0x10033FD4, the 808 0x10034154, the 909 0x10034294).
+///
+/// **Timing.** Every call arrives between two blocks: the sequencer runs at the start of a block,
+/// after the mixer update and before any device renders (0x1001346A), and song messages are
+/// applied at the start of a `SafeSoundCallback` call. A step, a note and a parameter change
+/// therefore take effect at sample 0 of the next block the device renders; the original has no
+/// sub-block positions. Within one block the sequencer makes every set-param call (track order,
+/// then list order) before any step call (song order).
+///
+/// Slots 1..3 are no-ops (`retn` at 0x10010380, 0x1001BF40, 0x10012C00) for the mixer, the delay
+/// and the inserts; only the 303s, the 808 and the 909 override them.
+pub trait SongDevice {
+    /// Slot 1: the clock reached a new tick (0x1001F464): `tick` is `trunc(pos)`, `shuffled` its
+    /// shuffled tick ([`crate::seq::shuffled`]), `tempo` the song's BPM*1000. Called in every
+    /// block whose tick passed the last one, playing, in either mode; the 303's step function
+    /// uses `shuffled` when the pattern's shuffle flag is set (0x100253D0).
+    fn step(&mut self, _tick: i32, _shuffled: i32, _tempo: i32) {}
+    /// Slot 2: the position moved to `tick` (locate, the loop wrap, pattern mode).
+    fn relocate(&mut self, _tick: i32) {}
+    /// Slot 3: play started (0x1001F7E4).
+    fn start(&mut self) {}
+    /// Slot 4: stop (`sub_10021840`, only when the song was playing).
     fn stop(&mut self) {}
     /// Slot 5: msg 33's reset (0x100141D2).
     fn reset(&mut self) {}
-    /// Slot 6: note-off and silence (song switch, `sub_10013D40`).
+    /// Slot 6: note-off and silence (song switch, `sub_10013D40`). The delay's slot 6
+    /// (0x100100E0) clears the process-global delay buffer only.
     fn silence(&mut self) {}
+    /// Slot 9: the song mode changed (`sub_10013FB0`).
+    fn set_song_mode(&mut self, _on: bool) {}
+    /// Slot 10 with the device's data `sub` (song msg 41): the parameter and pattern block of
+    /// `song::Song::device_payload`. `song_mode` is the global byte 0 (`sub_1001FCB0`), which
+    /// decides whether the block also goes live (`docs/song_load.md` section 4).
+    fn data(&mut self, _payload: &[u8], _song_mode: bool) {}
+    /// Slot 11: set controller `ctrl` (a track event, the chase).
+    fn set_param(&mut self, _ctrl: u8, _value: u8) {}
+}
+
+/// A mixer channel's sound source: TB-303 #1, #2, TR-808 or TR-909.
+pub trait ChannelDevice: SongDevice {
+    /// Vtable slot 14 (0x10013580): render one block into `bus`, overwriting all of it.
+    fn process(&mut self, bus: &mut Block, ctx: &BlockContext);
 }
 
 /// An insert effect: the distortion, the PCF or the compressor.
-pub trait InsertEffect {
+pub trait InsertEffect: SongDevice {
     /// Slot 15 (0x100135C3): process a channel bus in place.
     fn process(&mut self, bus: &mut Block, ctx: &BlockContext);
     /// Slot 14 (0x100138AC): process the master in place (only the compressor sits there).
     fn process_stereo(&mut self, _l: &mut Block, _r: &mut Block, _ctx: &BlockContext) {}
     /// Slot 16 (0x100130B2): the parameter update, run by every mixer update.
     fn update(&mut self, _ctx: &BlockContext) {}
-    /// Slot 4.
-    fn stop(&mut self) {}
-    /// Slot 5.
-    fn reset(&mut self) {}
-    /// Slot 6.
-    fn silence(&mut self) {}
 }
 
 /// The send effect (the delay).
-pub trait SendEffect {
+pub trait SendEffect: SongDevice {
     /// Slot 14 (0x10013865): read the send bus, add into the master and refill the send bus with
     /// [`GUARD`] (the delay does that in both its enabled and disabled paths, 0x1000F940).
     fn process(&mut self, send: &mut Block, l: &mut Block, r: &mut Block, ctx: &BlockContext);
-    /// Slot 4.
-    fn stop(&mut self) {}
-    /// Slot 5.
-    fn reset(&mut self) {}
-    /// Slot 6.
-    fn silence(&mut self) {}
 }
 
 /// The song's devices, in the roles the mixer gives them.
 pub struct Devices {
+    /// Device 0, the mixer device (`CMixerDevice`, vtable 0x10033214), whose parameters the mixer
+    /// update reads.
+    pub mixer: MixerDevice,
     /// Channel c's source: 0 TB-303 #1, 1 TB-303 #2, 2 TR-808, 3 TR-909 (`song+0x1C8` list,
     /// filled by `sub_10014064` in the ctor's order).
     pub channels: [Box<dyn ChannelDevice>; 4],
@@ -132,6 +159,7 @@ impl Devices {
     /// Placeholders everywhere: silent sources, bypassing inserts, an idle send.
     pub fn placeholders() -> Self {
         Devices {
+            mixer: MixerDevice::default(),
             channels: std::array::from_fn(|_| Box::new(Silent) as Box<dyn ChannelDevice>),
             dist: Box::new(Bypass),
             pcf: Box::new(Bypass),
@@ -140,61 +168,55 @@ impl Devices {
         }
     }
 
-    /// Slot 4 on every device in the song's device order (`song+0x18C`: mixer, 303, 303, 808,
-    /// 909, delay, dist, PCF, comp; the mixer's own slot is a no-op).
+    /// The device with id `d` (`sub_10011E60`, `sub_10012B40`: the device list searched by id).
+    pub fn device_mut(&mut self, d: song::Device) -> &mut dyn SongDevice {
+        use song::Device as D;
+        match d {
+            D::Mixer => &mut self.mixer,
+            D::Tb303_1 => &mut *self.channels[0],
+            D::Tb303_2 => &mut *self.channels[1],
+            D::Tr808 => &mut *self.channels[2],
+            D::Tr909 => &mut *self.channels[3],
+            D::Delay => &mut *self.delay,
+            D::Distortion => &mut *self.dist,
+            D::Pcf => &mut *self.pcf,
+            D::Compressor => &mut *self.comp,
+        }
+    }
+
+    /// Calls `f` on every device in the song's device order (`song+0x18C`, `song+0x1C4`
+    /// entries, filled in the ctor's order: mixer, 303, 303, 808, 909, delay, dist, PCF, comp),
+    /// which every loop over the devices uses.
+    pub fn for_each(&mut self, mut f: impl FnMut(&mut dyn SongDevice)) {
+        f(&mut self.mixer);
+        for d in &mut self.channels {
+            f(&mut **d);
+        }
+        f(&mut *self.delay);
+        f(&mut *self.dist);
+        f(&mut *self.pcf);
+        f(&mut *self.comp);
+    }
+
+    /// Slot 4 on every device.
     pub fn stop_all(&mut self) {
-        for d in &mut self.channels {
-            d.stop();
-        }
-        self.delay.stop();
-        self.dist.stop();
-        self.pcf.stop();
-        self.comp.stop();
+        self.for_each(|d| d.stop());
     }
 
-    /// Slot 5 on every device, in the same order (msg 33, 0x100141BA..0x100141E5).
+    /// Slot 5 on every device (msg 33, 0x100141BA..0x100141E5).
     pub fn reset_all(&mut self) {
-        for d in &mut self.channels {
-            d.reset();
-        }
-        self.delay.reset();
-        self.dist.reset();
-        self.pcf.reset();
-        self.comp.reset();
+        self.for_each(|d| d.reset());
     }
 
-    /// Slot 6 on every device, in the same order.
+    /// Slot 6 on every device (`sub_10013D40`).
     pub fn silence_all(&mut self) {
-        for d in &mut self.channels {
-            d.silence();
-        }
-        self.delay.silence();
-        self.dist.silence();
-        self.pcf.silence();
-        self.comp.silence();
+        self.for_each(|d| d.silence());
     }
 }
-
-/// The sequencer and transport, the seam for task-022.
-pub trait Transport {
-    /// `sub_1001EF20`, run by every block after the mixer update and before any device renders.
-    fn tick(&mut self, _devices: &mut Devices, _mixer: &mut MixerParams) {}
-    /// Song msg 35 `{1,0}` (`sub_100218A0`): stop the devices, chase, locate to the bar start.
-    fn stop(&mut self, devices: &mut Devices, _mixer: &mut MixerParams) {
-        devices.stop_all();
-    }
-    /// Song msg 35 `{8,tick}`.
-    fn locate(&mut self, _tick: u32, _devices: &mut Devices, _mixer: &mut MixerParams) {}
-    /// Song msg 35 `{1,1}`.
-    fn play(&mut self, _devices: &mut Devices, _mixer: &mut MixerParams) {}
-}
-
-/// A placeholder transport that never plays: every block is an idle block.
-pub struct Idle;
-impl Transport for Idle {}
 
 /// A placeholder source that outputs the guard value only.
 pub struct Silent;
+impl SongDevice for Silent {}
 impl ChannelDevice for Silent {
     fn process(&mut self, bus: &mut Block, _ctx: &BlockContext) {
         bus.fill(GUARD);
@@ -203,6 +225,7 @@ impl ChannelDevice for Silent {
 
 /// A placeholder insert that leaves the signal alone.
 pub struct Bypass;
+impl SongDevice for Bypass {}
 impl InsertEffect for Bypass {
     fn process(&mut self, _bus: &mut Block, _ctx: &BlockContext) {}
 }
@@ -210,6 +233,7 @@ impl InsertEffect for Bypass {
 /// A placeholder send effect that only refills the send bus, as the delay does
 /// (0x1000F940; the disabled delay adds nothing to the master).
 pub struct IdleSend;
+impl SongDevice for IdleSend {}
 impl SendEffect for IdleSend {
     fn process(&mut self, send: &mut Block, _l: &mut Block, _r: &mut Block, _ctx: &BlockContext) {
         send.fill(GUARD);
@@ -278,6 +302,93 @@ impl From<&song::Mixer> for MixerParams {
                 send: c.delay_send,
                 dist: c.dist,
             }),
+        }
+    }
+}
+
+impl MixerParams {
+    /// The msg 41 `0/143` block (`sub_10019DE0`): master, comp id, PCF id, two unused bytes,
+    /// then per channel enabled, level, pan, send, dist and an unused byte.
+    fn from_payload(b: &[u8]) -> Self {
+        let mut p = MixerParams {
+            master: b[0],
+            comp_id: b[1],
+            pcf_id: b[2],
+            channels: [ChannelParams::default(); 4],
+        };
+        for (c, ch) in p.channels.iter_mut().enumerate() {
+            let o = 5 + 6 * c;
+            *ch = ChannelParams {
+                enabled: b[o],
+                level: b[o + 1],
+                pan: b[o + 2],
+                send: b[o + 3],
+                dist: b[o + 4],
+            };
+        }
+        p
+    }
+}
+
+/// The mixer device (`CMixerDevice`, vtable 0x10033214, ctor `sub_10015400`): the live
+/// parameters at `+0x30`, which the mixer update reads, and the pattern-mode copy at `+0x58`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MixerDevice {
+    pub live: MixerParams,
+    pub pattern: MixerParams,
+}
+
+impl SongDevice for MixerDevice {
+    /// Slot 9, 0x10016280: entering song mode saves the live set into the pattern copy; leaving
+    /// it carries the live master and channel enables into the pattern copy, then restores the
+    /// live set from it.
+    fn set_song_mode(&mut self, on: bool) {
+        if on {
+            self.pattern = self.live;
+        } else {
+            self.pattern.master = self.live.master;
+            for c in 0..4 {
+                self.pattern.channels[c].enabled = self.live.channels[c].enabled;
+            }
+            self.live = self.pattern;
+        }
+    }
+
+    /// Msg 143, 0x1001588F: the block goes into the pattern copy; then song mode copies only the
+    /// master and the channel enables live (no controller reaches them), pattern mode all of it.
+    fn data(&mut self, payload: &[u8], song_mode: bool) {
+        self.pattern = MixerParams::from_payload(payload);
+        if song_mode {
+            self.live.master = self.pattern.master;
+            for c in 0..4 {
+                self.live.channels[c].enabled = self.pattern.channels[c].enabled;
+            }
+        } else {
+            self.live = self.pattern;
+        }
+    }
+
+    /// Slot 11, 0x10015C00: controller 1 is the compressor id, 2 the PCF id, and `5 + 6c + k`
+    /// sets channel c's field k (1 level, 2 pan, 3 send, 4 dist); field 0 (enabled) and the
+    /// controllers below 5 are not set. Track 0 accepts only 1, 2 and 6..27 at load, so c is at
+    /// most 3 (a larger c would write past the channel blocks in the original).
+    fn set_param(&mut self, ctrl: u8, value: u8) {
+        match ctrl {
+            1 => self.live.comp_id = value,
+            2 => self.live.pcf_id = value,
+            _ => {
+                let x = ctrl as i32 - 5;
+                let (c, k) = ((x / 6) as u8 as usize, (x % 6) as u8);
+                if let Some(ch) = self.live.channels.get_mut(c) {
+                    match k {
+                        1 => ch.level = value,
+                        2 => ch.pan = value,
+                        3 => ch.send = value,
+                        4 => ch.dist = value,
+                        _ => {}
+                    }
+                }
+            }
         }
     }
 }
@@ -398,11 +509,11 @@ pub struct EngineState {
 /// The mixer and its devices: everything one block touches.
 pub struct Frame {
     pub state: MixerState,
-    pub params: MixerParams,
     /// `song+0x16D`, the sound-model byte non-zero: the pan-dependent send.
     pub vintage: bool,
     pub devices: Devices,
-    pub transport: Box<dyn Transport>,
+    /// `song+8`, run by every block.
+    pub seq: Sequencer,
     tables: Arc<Tables>,
     /// `unk_1010012C`: the channel bus every device renders into in turn (a process global).
     bus: Block,
@@ -428,13 +539,12 @@ fn meter_byte(x: f64, full: bool) -> u8 {
 }
 
 impl Frame {
-    pub fn new(tables: Arc<Tables>, devices: Devices, transport: Box<dyn Transport>) -> Self {
+    pub fn new(tables: Arc<Tables>, devices: Devices) -> Self {
         Frame {
             state: MixerState::default(),
-            params: MixerParams::default(),
             vintage: false,
             devices,
-            transport,
+            seq: Sequencer::default(),
             tables,
             bus: [0.0; BLOCK],
         }
@@ -448,7 +558,7 @@ impl Frame {
     pub fn mixer_update(&mut self) {
         let t = &self.tables.level;
         let pan = &self.tables.pan;
-        let p = self.params;
+        let p = self.devices.mixer.live;
         let ctx = BlockContext {
             tables: &self.tables,
             meter_index: self.state.meter_index as usize,
@@ -507,7 +617,7 @@ impl Frame {
             self.mixer_update();
         }
         self.state.counter = self.state.counter.wrapping_add(1);
-        self.transport.tick(&mut self.devices, &mut self.params);
+        self.seq.tick(&mut self.devices);
         let mi = (self.state.meter_index + METER_STEP) & 63;
         self.state.meter_index = mi;
         let mi = mi as usize;
@@ -598,6 +708,16 @@ pub fn to_i16(f: f32) -> i16 {
     x as i64 as i16
 }
 
+/// What top-level msg 53 finds when it makes a song current (`sub_1001BDA4`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Activation {
+    /// Another, stopped song was current: in the app always ("Untitled song" exists from the
+    /// start, and an opened song replaces it), and in rbhost by default.
+    ReplacesCurrent,
+    /// No song was current (rbhost `--no-untitled`).
+    NoneCurrent,
+}
+
 /// The song object as `SafeSoundCallback` drives it.
 pub struct Engine {
     pub frame: Frame,
@@ -619,22 +739,23 @@ fn block_mut(buf: &mut [f32], at: usize) -> &mut Block {
 }
 
 impl Engine {
-    /// A new song as the ctor `sub_10011350` leaves it: the constructor state, then one mixer
-    /// update with the mixer device's default parameters (0x100119D4).
-    pub fn new(tables: Arc<Tables>, devices: Devices, transport: Box<dyn Transport>) -> Self {
-        let mut e = Engine::with_state(tables, devices, transport, EngineState::default());
-        e.frame.mixer_update();
+    /// A new song as the ctor `sub_10011350` leaves it: the constructor state, the tempo 140000
+    /// (`sub_1001FCD0`, 0x100119BF), a locate to 0 (0x100119CC, which relocates every device),
+    /// then one mixer update with the mixer device's default parameters (0x100119D4). The
+    /// devices' ctor-time slots 7 and 8 (0x10011980..0x100119B5) are the devices' own business.
+    pub fn new(tables: Arc<Tables>, devices: Devices) -> Self {
+        let mut e = Engine::with_state(tables, devices, EngineState::default());
+        let f = &mut e.frame;
+        f.seq.set_tempo(140_000);
+        f.seq.locate(0, &mut f.devices);
+        f.mixer_update();
         e
     }
 
-    /// A song with an explicit state and no constructor update.
-    pub fn with_state(
-        tables: Arc<Tables>,
-        devices: Devices,
-        transport: Box<dyn Transport>,
-        state: EngineState,
-    ) -> Self {
-        let mut frame = Frame::new(tables, devices, transport);
+    /// A song with an explicit frame state, the sequencer's ctor state and no constructor
+    /// update.
+    pub fn with_state(tables: Arc<Tables>, devices: Devices, state: EngineState) -> Self {
+        let mut frame = Frame::new(tables, devices);
         frame.state = state.mixer;
         Engine {
             frame,
@@ -643,11 +764,80 @@ impl Engine {
         }
     }
 
-    /// Sets what the song load sets for the frame: the mixer device's block (song msg 41
-    /// `0/143`) and the sound model (msg 36 byte 21). Neither runs a mixer update.
+    /// The song load's messages (`docs/song_load.md` section 2, steps 5 and 6), in order: msg
+    /// 36, the nine msg-41 device blocks in the exe's order, the msg-37 events of tracks 0..8,
+    /// then msg 32. None of them runs a mixer update.
     pub fn load(&mut self, song: &song::Song) {
-        self.frame.params = MixerParams::from(&song.mixer);
-        self.frame.vintage = song.globals.is_vintage();
+        use song::Device as D;
+        self.set_globals(&song.globals);
+        for d in [
+            D::Mixer,
+            D::Delay,
+            D::Pcf,
+            D::Distortion,
+            D::Compressor,
+            D::Tb303_1,
+            D::Tb303_2,
+            D::Tr808,
+            D::Tr909,
+        ] {
+            self.device_data(d, &song.device_payload(d));
+        }
+        for (i, events) in song.tracks.iter().enumerate() {
+            self.frame.seq.add_events(i, events);
+        }
+        self.relocate();
+    }
+
+    /// Song msg 36, 0x100126B2: the global struct, applied field by field in this order: song
+    /// mode, play or stop, record, loop on, tempo, locate, loop start, loop end, shuffle, then
+    /// the stores of byte 21 (`+0x16D`, the sound model) and byte 22 (`+0x16E`).
+    pub fn set_globals(&mut self, g: &song::Globals) {
+        let f = &mut self.frame;
+        let (seq, d) = (&mut f.seq, &mut f.devices);
+        seq.set_song_mode(g.song_mode, d);
+        if g.play == 0 {
+            seq.stop(d);
+        } else {
+            seq.play(d);
+        }
+        seq.set_record(g.byte2);
+        seq.set_loop_on(g.loop_on);
+        seq.set_tempo(g.tempo);
+        seq.locate(g.locate as i32, d);
+        seq.set_loop_start(g.loop_start);
+        seq.set_loop_end(g.loop_end);
+        seq.set_shuffle(g.shuffle);
+        seq.globals.vintage = g.vintage;
+        seq.globals.byte22 = g.byte22;
+        f.vintage = g.is_vintage();
+    }
+
+    /// Song msg 41 (0x1001285E): device `d`'s data block, with the current song mode.
+    pub fn device_data(&mut self, d: song::Device, payload: &[u8]) {
+        let f = &mut self.frame;
+        let song_mode = f.seq.globals.song_mode != 0;
+        f.devices.device_mut(d).data(payload, song_mode);
+    }
+
+    /// Song msg 32 (0x10012526): locate to the current tick, which chases the tracks in song
+    /// mode and relocates the devices.
+    pub fn relocate(&mut self) {
+        let f = &mut self.frame;
+        let t = f.seq.tick_pos();
+        f.seq.locate(t, &mut f.devices);
+    }
+
+    /// Top-level msg 53, `sub_1001BDA4`, making this song the current one while the current
+    /// song is stopped.
+    pub fn activate(&mut self, a: Activation) {
+        match a {
+            // the old song's slot 6 (`sub_10013D40`); of it only the delay's 0x100100E0 reaches
+            // this song: it refills the process-global delay buffer
+            Activation::ReplacesCurrent => self.frame.devices.delay.silence(),
+            // 0x1001BDF3: slot 6 on this song's own devices
+            Activation::NoneCurrent => self.frame.devices.silence_all(),
+        }
     }
 
     pub fn state(&self) -> EngineState {
@@ -709,26 +899,30 @@ impl Engine {
         }
     }
 
-    /// Song msg 35 `{1,0}`.
+    /// Song msg 35 `{1,0}` (`sub_1001E100`).
     pub fn stop(&mut self) {
         let f = &mut self.frame;
-        f.transport.stop(&mut f.devices, &mut f.params);
+        f.seq.stop(&mut f.devices);
     }
 
-    /// Song msg 35 `{8,tick}`.
+    /// Song msg 35 `{8,tick}` (`sub_1001BF70`; the u32 is used as a signed tick).
     pub fn locate(&mut self, tick: u32) {
         let f = &mut self.frame;
-        f.transport.locate(tick, &mut f.devices, &mut f.params);
+        f.seq.locate(tick as i32, &mut f.devices);
     }
 
-    /// Song msg 35 `{1,1}`.
+    /// Song msg 35 `{1,1}` (`sub_1001BF50`).
     pub fn play(&mut self) {
         let f = &mut self.frame;
-        f.transport.play(&mut f.devices, &mut f.params);
+        f.seq.play(&mut f.devices);
     }
 
     /// Song msg 33, `sub_10014140`: the master's current gain and peaks to 0, the send buses to
     /// the guard, the leftover blocks to 0 (not its position), then slot 5 on every device.
+    /// The three send buses are `song+0x160C + 0x100k`, one per send-effect slot registered by
+    /// `sub_100140B4` (bus pointers `song+0x1FC + 4k`, count `song+0x1E8`); the ctor registers
+    /// only the delay, so buses 1 and 2 (`+0x170C`, `+0x180C`) are never read and are not
+    /// modelled.
     pub fn reset(&mut self) {
         let s = &mut self.frame.state;
         s.master = 0.0;

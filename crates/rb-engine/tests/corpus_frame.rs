@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rb_engine::frame::export::{self, ExportRange};
-use rb_engine::frame::{Devices, Engine, Idle};
+use rb_engine::frame::{Devices, Engine};
 use rb_engine::tables::Tables;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -49,14 +49,9 @@ fn silence_matches_its_reference() {
     let m = manifest();
     let e = &m["diag"]["silence"];
     let s = song(e);
-    let mut eng = Engine::new(
-        Arc::new(Tables::new()),
-        Devices::placeholders(),
-        Box::new(Idle),
-    );
-    eng.load(&s);
+    let mut eng = Engine::new(Arc::new(Tables::new()), Devices::placeholders());
     let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-    let samples = export::export(&mut eng, ExportRange::from(&s.globals), idle);
+    let samples = export::export_song(&mut eng, &s, idle);
     assert_eq!(samples.len() / 2, e["frames"].as_u64().unwrap() as usize);
     let hash: String = Sha256::digest(export::wav_bytes(&samples))
         .iter()

@@ -136,7 +136,7 @@ and applies each field (0x100126B2).
 |---|---|---|---|
 | 0 | GLOB[0] | 0 pattern / 1 song mode | `sub_1001FBE0` (id 0) |
 | 1 | — | 0 | play/stop: 0 → `sub_1001E100` stop (id 1) |
-| 2 | — | 0 | `sub_10021190`, a thunk to `0x10021194` (id 2) [G: meaning not traced] |
+| 2 | — | 0 | `sub_10021190`, a thunk to `0x10021194` (id 2): record (task-022) |
 | 3 | GLOB[1] | loop on | `sub_1001C0A0` (id 3) |
 | 4..7 | GLOB[2..5] | tempo, BPM×1000 | `sub_1001BFC0` (id 4) |
 | 8..11 | — | 0 | locate to this tick, `sub_1001BF70` (id 8) |
@@ -385,6 +385,20 @@ Load itself: msg 36 sets the mode (song mode chases the still empty tracks) and 
 the device data follows; msg 32 at the end re-locates to the current position (tick 0), which chases
 the tracks just loaded.
 
+[C] task-022: the DLL keeps each track as a sorted list (`sub_10014750`, investigation §5, "The
+track list"). Two consequences for the stream: the events of one tick are applied in the reverse of
+the order msg 37 delivered them, and a later event with the same tick and controller replaces the
+earlier one; an event whose tick exceeds 767231 (bar 999's last tick; `cmp 0BB4FFh` at 0x1001477B)
+is dropped there. The exe's own check (`sub_42FD60`, §5 "Validation") accepts multiples of 24 below
+768000, so it can send ticks up to 767976; the DLL drops those above 767231 (inferred from the two
+limits; no corpus song has such an event, the largest corpus tick is 417792). The batch boundaries
+do not change the result: each batch starts its insert hint at null (`mov edi, 0` at 0x10021061),
+and `sub_10014750` uses a hint only when its tick is below the new tick, so its walk ends at the
+same node as a walk from the head of the sorted list. Every export's first stop
+also prunes the tracks (`sub_100149F0`): an event repeating its controller's previous value is
+removed unless it is at tick 0. `crates/rb-engine/tests/corpus_seq.rs` checks the load's resulting
+sequencer and mixer state over the corpus.
+
 ## 7. Byte `+0x16D` (task-003 item "mixer flag")
 
 The song-object byte `+0x16D` is the global struct's byte 21. It is written only by msg 36 byte 21
@@ -471,4 +485,7 @@ Follow-up: task-034.
 - [G] The msg-41 song-mode rule for delay, PCF, distortion, compressor, 808 and 909.
 - [C] The 4.0 mixer-track converter `sub_437380` (§5.1, task-018). No 4.0 song is available to test
   it against the app.
-- [G] Global byte 2 (msg 35 id 2, `0x10021194`) and byte 22 (`+0x16E`).
+- [C] Global byte 2 (msg 35 id 2, `0x10021194`) is record: it makes the loop wrap merge the
+  recorded events (`sub_1001F520`) and locate apply events forward instead of chasing (task-022,
+  investigation §5). Nothing in the load or the export sets it.
+- [G] Byte 22 (`+0x16E`).
