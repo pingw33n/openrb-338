@@ -12,7 +12,7 @@ Commands below use `rcs` for `~/dev/dcre/common/tools/rcs_client.py`.
 |---|---|
 | rcs server root | `C:\re` |
 | rb's working folder (create once) | `C:\re\rb` (rcs path `rb/`) |
-| The installation | `C:\ReBirth RB-338` (outside the rcs root: `ls`, `get`, `put` and `exec --cwd` get HTTP 403) |
+| The installation | `C:\ReBirth RB-338` (outside the rcs root; since dcre bd32edb rcs takes absolute paths anywhere: `rcs ls 'C:/ReBirth RB-338'`, `rcs get 'C:/ReBirth RB-338/Demo Songs/Calm.rbs' .`, `exec --cwd 'C:/ReBirth RB-338'`) |
 | Preferences file | `C:\Users\pingw33n\AppData\Local\VirtualStore\Windows\ReBirth RB-338 2.prf` |
 
 The installation holds:
@@ -30,7 +30,7 @@ and ran as a normal user. The Windows file-virtualization of legacy programs sen
 `C:\Windows\ReBirth RB-338 2.prf` into the user's VirtualStore: that is where the preferences file
 is. It does not exist in `C:\Windows` itself.
 
-**Reading the installation.** Run read-only commands as separate arguments (no `>` redirection and no
+**Reading the installation.** `rcs ls`, `get` and `hash` take its absolute paths directly (rcs server from dcre bd32edb, running since 2026-10-26). The `exec` routes below also work; run read-only commands as separate arguments (no `>` redirection and no
 quoted strings inside one argument: rcs re-quotes the line and `cmd` rejects it):
 
 ```

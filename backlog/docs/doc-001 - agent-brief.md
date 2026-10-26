@@ -3,7 +3,7 @@ id: doc-001
 title: agent-brief
 type: guide
 created_date: '2026-10-26 09:03'
-updated_date: '2026-10-26 09:20'
+updated_date: '2026-10-26 09:51'
 ---
 The shared brief for agents working on rb, the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. Read in this order:
 1. The root `AGENTS.md` (the backlog and commit rules).
@@ -61,11 +61,9 @@ Use the idalib MCP tools only. Never drive IDA from the shell, and never use the
 
 ## The Windows test machine
 
-The original ReBirth runs on a Windows machine, reached with dcre's `~/dev/dcre/common/tools/rcs_client.py`. Its commands are `info`, `ls`, `get`, `put`, `rm`, `exec`, `ps`, `kill`, `input`, `screenshot`; see `--help`. Its config is `~/dev/dcre/common/tools/rcs_client.toml`, and remote paths are relative to the server's root.
+The original ReBirth runs on a Windows machine, reached with dcre's `~/dev/dcre/common/tools/rcs_client.py`. Its commands are `info`, `ls`, `get`, `put`, `rm`, `exec`, `ps`, `kill`, `input`, `screenshot`; see `--help`. Its config is `~/dev/dcre/common/tools/rcs_client.toml`. Remote paths use / separators: an absolute path (`C:/ReBirth RB-338/ReBirth.dll`) names any file on the machine, a relative one starts at the server's root (`C:\re`).
 
-**The installation.** ReBirth 2.01 is installed in `C:\ReBirth RB-338`, outside the rcs server's root (`C:\re`).
-- rcs file commands (`ls`, `get`, `put`) and `exec --cwd` refuse paths there (HTTP 403).
-- `exec` of a program with absolute paths works. Use `cmd.exe /c dir`, `certutil` and `tasklist` to read the installation.
+**The installation.** ReBirth 2.01 is installed in `C:\ReBirth RB-338`, outside the rcs server's root (`C:\re`). rcs reaches it with absolute paths (`rcs ls 'C:/ReBirth RB-338'`, `get`, `hash`, `exec --cwd`; dcre bd32edb). Never write into the installation: copies to change go into `C:\re\rb`.
 - Start the app with `exec cmd.exe /c start "" /D "C:\ReBirth RB-338" "C:\ReBirth RB-338\Rebirth.exe"`, then find its PID with `tasklist`, and stop it with `taskkill /PID <pid>`.
 - At start the app shows a modal "Failed opening MIDI input" box, window title "ReBirth RB-338". Dismiss it with `rcs_client.py input --window "ReBirth RB-338" key:enter`.
 
