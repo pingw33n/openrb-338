@@ -1,0 +1,903 @@
+{
+ "version": "4.2",
+ "glob": {
+  "song_mode": 1,
+  "loop": 1,
+  "tempo": 120000,
+  "loop_start": 0,
+  "loop_end": 1536,
+  "shuffle": 0,
+  "vintage": 0
+ },
+ "usri": {
+  "show_on_open": 0
+ },
+ "mixer": {
+  "master": 100,
+  "comp_id": 0,
+  "pcf_id": 0,
+  "channels": [
+   {
+    "enabled": 1,
+    "level": 100,
+    "pan": 64,
+    "delay_send": 0,
+    "dist": 0
+   },
+   {
+    "enabled": 1,
+    "level": 100,
+    "pan": 64,
+    "delay_send": 0,
+    "dist": 0
+   },
+   {
+    "enabled": 1,
+    "level": 100,
+    "pan": 64,
+    "delay_send": 0,
+    "dist": 0
+   },
+   {
+    "enabled": 1,
+    "level": 100,
+    "pan": 64,
+    "delay_send": 0,
+    "dist": 0
+   }
+  ]
+ },
+ "delay": {
+  "values": {
+   "enabled": 1,
+   "steps": 3,
+   "mode": 1,
+   "feedback": 0,
+   "pan": 64
+  }
+ },
+ "pcf": {
+  "values": {
+   "enabled": 1,
+   "frequency": 64,
+   "resonance": 64,
+   "amount": 64,
+   "wave": 64,
+   "decay": 64,
+   "mode": 1
+  }
+ },
+ "dist": {
+  "values": {
+   "enabled": 1,
+   "amount": 64,
+   "shape": 0
+  }
+ },
+ "comp": {
+  "values": {
+   "enabled": 1,
+   "amount": 64,
+   "threshold": 64
+  }
+ },
+ "tb303": {
+  "0": {
+   "params": {
+    "enabled": 1,
+    "pattern": 0,
+    "tune": 64,
+    "cutoff": 64,
+    "resonance": 0,
+    "env_mod": 64,
+    "decay": 64,
+    "accent": 64,
+    "waveform": 0
+   },
+   "patterns": {
+    "0": {
+     "shuffle": 1,
+     "length": 16,
+     "steps": [
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 12,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 1
+      },
+      {
+       "note": 3,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 7,
+       "slide": 0,
+       "accent": 0,
+       "up": 1,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 1
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 12,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 1
+      },
+      {
+       "note": 5,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 3,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 1,
+       "down": 0,
+       "rest": 0
+      },
+      {
+       "note": 0,
+       "slide": 0,
+       "accent": 0,
+       "up": 0,
+       "down": 0,
+       "rest": 1
+      }
+     ]
+    }
+   }
+  },
+  "1": {
+   "params": {
+    "enabled": 1,
+    "pattern": 0,
+    "tune": 64,
+    "cutoff": 64,
+    "resonance": 0,
+    "env_mod": 64,
+    "decay": 64,
+    "accent": 64,
+    "waveform": 0
+   },
+   "patterns": {}
+  }
+ },
+ "tr808": {
+  "params": {
+   "enabled": 1,
+   "pattern": 0,
+   "accent_level": 63,
+   "bass_level": 127,
+   "bass_tone": 64,
+   "bass_decay": 64,
+   "snare_level": 127,
+   "snare_tone": 64,
+   "snare_snappy": 64,
+   "low_tom_level": 127,
+   "low_tom_tuning": 64,
+   "low_tom_selector": 0,
+   "mid_tom_level": 127,
+   "mid_tom_tuning": 64,
+   "mid_tom_selector": 0,
+   "hi_tom_level": 127,
+   "hi_tom_tuning": 64,
+   "hi_tom_selector": 0,
+   "rim_shot_level": 127,
+   "rim_shot_selector": 0,
+   "clap_level": 127,
+   "clap_selector": 0,
+   "cow_bell_level": 127,
+   "cymbal_level": 127,
+   "cymbal_tone": 0,
+   "cymbal_decay": 127,
+   "open_hihat_level": 127,
+   "open_hihat_decay": 127,
+   "closed_hihat_level": 127
+  },
+  "patterns": {}
+ },
+ "tr909": {
+  "params": {
+   "enabled": 1,
+   "pattern": 0,
+   "accent_level": 32,
+   "bass_level": 100,
+   "bass_tune": 64,
+   "bass_attack": 64,
+   "bass_decay": 127,
+   "snare_level": 100,
+   "snare_tune": 64,
+   "snare_tone": 64,
+   "snare_snappy": 64,
+   "low_tom_level": 100,
+   "low_tom_tune": 64,
+   "low_tom_decay": 127,
+   "mid_tom_level": 100,
+   "mid_tom_tune": 64,
+   "mid_tom_decay": 100,
+   "hi_tom_level": 100,
+   "hi_tom_tune": 64,
+   "hi_tom_decay": 127,
+   "rim_shot_level": 100,
+   "clap_level": 100,
+   "hihat_level": 100,
+   "closed_hihat_decay": 32,
+   "open_hihat_decay": 127,
+   "crash_level": 100,
+   "crash_tune": 64,
+   "ride_level": 100,
+   "ride_tune": 64,
+   "flam_interval": 64
+  },
+  "patterns": {}
+ },
+ "tracks": {
+  "mixer": [
+   {
+    "pos": 0,
+    "ctrl": "comp_id",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "pcf_id",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_1_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_1_pan",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_1_delay_send",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_1_dist",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_2_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_2_pan",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_2_delay_send",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tb303_2_dist",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr808_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr808_pan",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr808_delay_send",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr808_dist",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr909_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr909_pan",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr909_delay_send",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tr909_dist",
+    "value": 0
+   }
+  ],
+  "tb303_1": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "pattern",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "cutoff",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "resonance",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "env_mod",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "decay",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "accent",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "waveform",
+    "value": 0
+   }
+  ],
+  "tb303_2": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "pattern",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "cutoff",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "resonance",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "env_mod",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "decay",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "accent",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "waveform",
+    "value": 0
+   }
+  ],
+  "tr808": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "pattern",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "accent_level",
+    "value": 63
+   },
+   {
+    "pos": 0,
+    "ctrl": "bass_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "bass_tone",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "bass_decay",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "snare_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "snare_tone",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "snare_snappy",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "low_tom_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "low_tom_tuning",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "low_tom_selector",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "mid_tom_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "mid_tom_tuning",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "mid_tom_selector",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "hi_tom_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "hi_tom_tuning",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "hi_tom_selector",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "rim_shot_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "rim_shot_selector",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "clap_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "clap_selector",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "cow_bell_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "cymbal_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "cymbal_tone",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "cymbal_decay",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "open_hihat_level",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "open_hihat_decay",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "closed_hihat_level",
+    "value": 127
+   }
+  ],
+  "tr909": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "pattern",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "accent_level",
+    "value": 32
+   },
+   {
+    "pos": 0,
+    "ctrl": "bass_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "bass_tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "bass_attack",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "bass_decay",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "snare_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "snare_tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "snare_tone",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "snare_snappy",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "low_tom_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "low_tom_tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "low_tom_decay",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "mid_tom_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "mid_tom_tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "mid_tom_decay",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "hi_tom_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "hi_tom_tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "hi_tom_decay",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "rim_shot_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "clap_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "hihat_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "closed_hihat_decay",
+    "value": 32
+   },
+   {
+    "pos": 0,
+    "ctrl": "open_hihat_decay",
+    "value": 127
+   },
+   {
+    "pos": 0,
+    "ctrl": "crash_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "crash_tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "ride_level",
+    "value": 100
+   },
+   {
+    "pos": 0,
+    "ctrl": "ride_tune",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "flam_interval",
+    "value": 64
+   }
+  ],
+  "delay": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "steps",
+    "value": 3
+   },
+   {
+    "pos": 0,
+    "ctrl": "mode",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "feedback",
+    "value": 0
+   },
+   {
+    "pos": 0,
+    "ctrl": "pan",
+    "value": 64
+   }
+  ],
+  "dist": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "amount",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "shape",
+    "value": 0
+   }
+  ],
+  "pcf": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "frequency",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "resonance",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "amount",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "wave",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "decay",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "mode",
+    "value": 1
+   }
+  ],
+  "comp": [
+   {
+    "pos": 0,
+    "ctrl": "enabled",
+    "value": 1
+   },
+   {
+    "pos": 0,
+    "ctrl": "amount",
+    "value": 64
+   },
+   {
+    "pos": 0,
+    "ctrl": "threshold",
+    "value": 64
+   }
+  ]
+ }
+}
