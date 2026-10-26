@@ -14,7 +14,7 @@ use encode::Format;
 use rb_engine::frame::export;
 use rb_engine::frame::{Devices, Engine};
 use rb_engine::samples::SampleSet;
-use rb_engine::song::{DrumPattern, MAX_TICK, Song, TICKS_PER_BAR};
+use rb_engine::song::{DrumPattern, MAX_TICK, Mixer, Song, TICKS_PER_BAR};
 use rb_engine::tables::Tables;
 
 #[derive(Parser)]
@@ -227,18 +227,21 @@ fn load_samples(explicit: Option<&Path>, drums: &[&str]) -> Result<SampleSet, Fa
     })
 }
 
-/// The devices the song uses that the engine does not implement yet (task-024..027, m-2).
+/// The devices the song may route that the engine does not implement yet (the PCF and the
+/// compressor, task-027): a non-zero PCF or compressor id in the mixer chunk or in any
+/// mixer-track event of that id. An insert that is never routed is never heard, whether its
+/// device is enabled or not.
 fn unimplemented_devices(song: &Song) -> Vec<&'static str> {
+    let mixer_track = &song.tracks[rb_engine::song::Device::Mixer.id() as usize];
+    let routed = |chunk: u8, ctrl: u8| {
+        chunk != 0 || mixer_track.iter().any(|e| e.ctrl == ctrl && e.value != 0)
+    };
     let mut v = Vec::new();
-    for (name, on) in [
-        ("distortion", song.dist.params[0]),
-        ("delay", song.delay.params[0]),
-        ("PCF", song.pcf.params[0]),
-        ("compressor", song.comp.params[0]),
-    ] {
-        if on != 0 {
-            v.push(name);
-        }
+    if routed(song.mixer.pcf_id, Mixer::CTRL_PCF_ID) {
+        v.push("PCF");
+    }
+    if routed(song.mixer.comp_id, Mixer::CTRL_COMP_ID) {
+        v.push("compressor");
     }
     v
 }

@@ -3,8 +3,9 @@
 //!
 //! Every song of the diagnostic corpus has the delay enabled, and an enabled delay adds its
 //! output (about 1e-6 at idle, plus 1e-6 x the channels D samples later) into the master, so the
-//! corpus references depend on the delay (task-026). Until the engine has it, [`TestDelay`]
-//! stands in for it.
+//! corpus references depend on the delay. [`TestDelay`] stood in for it until the engine got
+//! its own ([`rb_engine::delay::Delay`], task-026, which `corpus_effects.rs` checks on every
+//! song of these tests); task-049 switches the device tests over.
 
 #![allow(dead_code)]
 

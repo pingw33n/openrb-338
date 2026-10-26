@@ -115,6 +115,30 @@ fn pattern_mode_warns() {
     assert!(!String::from_utf8_lossy(&o.stderr).contains("pattern mode"));
 }
 
+/// The "not implemented" warning names the PCF and the compressor only when the song routes
+/// them (task-026): not for the enabled but unrouted devices of the diag template, and not for
+/// the distortion and the delay, which the engine has.
+#[test]
+fn only_routed_pcf_and_compressor_warn() {
+    let dir = tempfile::tempdir().unwrap();
+    let wav = dir.path().join("w.wav");
+    let dll = root().join("original/ReBirth.dll");
+    let stderr = |name: &str| {
+        let song = root().join(format!("tests/songs/diag/songs/{name}.rbs"));
+        let o = render(&song, &wav, &["--rebirth-dll", dll.to_str().unwrap()]);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stderr).into_owned()
+    };
+    for name in ["303_saw_lowcut", "dist_a100_s64", "delay_straight_fb64"] {
+        let e = stderr(name);
+        assert!(!e.contains("not implemented"), "{name}: {e}");
+    }
+    let e = stderr("pcf_on_909");
+    assert!(e.contains("not implemented yet") && e.contains("PCF") && !e.contains("compressor"));
+    let e = stderr("comp_master_a100_t10");
+    assert!(e.contains("not implemented yet") && e.contains("compressor") && !e.contains("PCF"));
+}
+
 #[test]
 fn errors_have_exit_codes_and_no_panic() {
     let dir = tempfile::tempdir().unwrap();

@@ -448,6 +448,31 @@ fn leftover_buffer() {
     assert_eq!(split.frame.state.counter, c0 + 256);
 }
 
+/// Marks the global delay line: a value that is not the guard and the gate cleared.
+fn dirty_delay_line(p: &ProcessState) {
+    let mut l = p.delay_line();
+    l.buf.fill(0.5);
+    l.gate = false;
+    p.set_delay_line(l);
+}
+
+fn assert_refilled(p: &ProcessState) {
+    let l = p.delay_line();
+    assert!(l.gate);
+    assert!(l.buf.iter().all(|&x| x.to_bits() == GUARD.to_bits()));
+}
+
+#[test]
+fn msg53_replacing_a_song_refills_the_delay_line() {
+    for a in [Activation::ReplacesCurrent, Activation::NoneCurrent] {
+        let mut e = Engine::new(tables(), Devices::implemented(None));
+        let p = e.process_state().clone();
+        dirty_delay_line(&p);
+        e.activate(a);
+        assert_refilled(&p);
+    }
+}
+
 #[test]
 fn msg33_reset() {
     let log: Log = Rc::default();
@@ -459,12 +484,17 @@ fn msg33_reset() {
     });
     let mut e = loud_engine();
     e.frame.devices.comp = d.comp;
+    let p = e.process_state().clone();
+    e.frame.devices.delay = Box::new(crate::delay::Delay::new(p.clone()));
     let mut buf = vec![0i16; 2 * 64];
     e.render(&mut buf, 40);
     e.frame.state.master_peak = [0.5, 0.5];
     e.frame.state.send = [0.25; BLOCK];
+    dirty_delay_line(&p);
     let before = e.state();
     e.reset();
+    // the delay's slot 5 (0x1000F4F0) runs slot 6: the global line refilled, the gate set
+    assert_refilled(&p);
     let s = e.state();
     assert_eq!(s.mixer.master, 0.0);
     assert_eq!(s.mixer.master_target, before.mixer.master_target);

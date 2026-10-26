@@ -915,6 +915,41 @@ th = 1/(16*T[min(amount,90)] + 1)
 out = f32(clamp(g*x, -th, th))
 ```
 
+[C] task-026, from the disassembly (`CDistInsert`, vtable 0x10033144: [4] stop 0x100106C0 and
+[5] reset 0x1000F4F0 both call slot 6, the no-op 0x10012C00; [8] 0x10010FE0; [9] 0x100111F0;
+[10] messages 0x10010D60; [11] set-param 0x10010FB0; [15] block 0x10010A50; [16] 0x10010D40).
+The engine's `crates/rb-engine/src/dist.rs` follows it and renders every distortion song of the
+corpus exact:
+- **Object.** ctor 0x10010700: live block `+0x39` (enabled, amount, shape, meter byte) and
+  pattern copy `+0x3D`, both `sub_10019B30` = 1, 70, 0, 0; call counter `+0x30` (word), the
+  counter at the last mixer update `+0x34`, clip flag `+0x38`, gains `+0x44` (in), `+0x48` (out),
+  peak `+0x50`, targets `+0x54`, `+0x58`, row `+0x5C` (word), all 0.
+- **One object, every routed channel.** The mixer calls slot 15 once per channel whose switch is
+  on, so the counter and the smoothing advance once per routed channel per block. Disabled
+  (`+0x39` = 0, 0x10010A61) the call returns at once: the bus passes unchanged and the counter
+  stands.
+- **Update** 0x10010894, when `counter & 15 == 0` before the increment: first the meter (the peak
+  as an integer above 0x3F800000 gives byte 0x7F, else `trunc(peak*127f)`, then `peak =
+  f32(peak*0.92f)`); clip flag = (shape == 0); `S = (shape * f32(1/127)) * 3.999`, `A` the same
+  for amount (`dbl_10151B20` = 0x400FFDF3B645A1CB); `i = trunc(S)`, `j = trunc(A)`, `fs = S - i`,
+  `fa = A - j`; with the grid `G[shape][amount]` at 0x10151AB8 (f32, rows: 1.2 0.4 0.28 0.2 0.15 /
+  0.35 0.2 0.15 0.14 0.12 / 0.2 0.15 0.13 0.12 0.12 / 0.15 0.12 0.11 0.1 0.1 / 0.12 0.1 0.08 0.08
+  0.08): `top = (G[i+1][j+1] - G[i+1][j])*fa + G[i+1][j]`, `bot = (G[i][j+1] - G[i][j])*fa +
+  G[i][j]`, `r = fs*(top - bot) + bot`; `+0x54 = f32((T[amount] + 0.0625)*2048)`, `+0x58 =
+  f32((r*5)*0.00390625)`, row = `(shape*32)/128` = `shape >> 2`.
+- **Block.** The peak meter takes `|bus[meterIndex]|`. The gains are smoothed every call,
+  `f32(g*0.9 + t*0.1)` (0x10010AC2), and the shaper loop reads the **stored f32** values (unlike
+  the delay). Shaper (0x10010BF9): `v = gIn*x + 128`; `v < 0` gives `W[0]`, `v > 254`
+  (`flt_10151B94` = 254.0) gives **`W[254]`** (`fld [ebp+3F8h]`), else `i = trunc(v)` and `y =
+  (v - i)*(W[i+1] - W[i]) + W[i]`; `out = f32(y*gOut)`. Clip (0x10010B01): `g = 16*T[a] + 1`,
+  `h = 16*T[90] + 1` when `a >= 90` else `g`, `th = 1/h`, `-th = th * -1.0`; `y = g*x`, `th` if
+  `y > th`, else `-th` if `y < -th`, else `y`; `out = f32(y)`; the gains are unused there.
+- **Slot 16** 0x10010D40 (every mixer update): the meter byte is cleared when the counter has not
+  moved since the last update. No audio effect.
+- Slot 8 inserts the pattern copy's controllers 0..2 into the track at the ctor's tick 0; slot 9
+  copies the 4-byte block (on: live to pattern; off: pattern to live); slot 11 sets controllers
+  0..2 live.
+
 **W[32][256]** (BSS `flt_100D47A4`, built once by `0x10011210` from the dist ctor, guard
 `byte_100D47A0`; [C] task-011: corrected from "0x10011210", the builder's address). Uses `fsin`, with phase increment `(t²/961)*(π/8) + π/1024`:
 - `W[t][128±k] = ±f32((sin(ph)*256*(1-y) + 256*y*y)*0.7)` with `y = k/128`.
@@ -1034,6 +1069,30 @@ w++
   buf[w] = f32(x*fb + send[i]); send[i] = 1e-6`; r and w advance (`w` is `+0x6C`, never reset). At
   the corpus export start (rbhost dump) `D = 16537`, `w = 57344` (9088 blocks × 64 mod 2^17), the
   counter 9088 and both gains f32 1.0000005.
+- [C] task-026, the rest of `CDelayEffect` (vtable 0x10032CB4: [5] reset 0x1000F4F0 calls [6]
+  0x100100E0; [7] no-op 0x1000F4E0; [8] 0x10010020; [9] 0x100100B0; [10] messages 0x1000FB40;
+  [11] set-param 0x1000FDC0; [14] block 0x1000F940), implemented in
+  `crates/rb-engine/src/delay.rs`, which renders every corpus song exact (the 123 diag songs with
+  no PCF or compressor routed, `crates/rb-engine/tests/corpus_effects.rs`):
+  - ctor 0x1000F5A0: live block `+0x34` and pattern copy `+0x3A` both `sub_10019AB0` = 1, 3, 1,
+    80, 64, 0 (byte 5 is the meter byte); `+0x54..+0x70` 0 (targets, gains, feedback, D, w,
+    peak).
+  - Slot 6 fills `flt_10054794` with 0x358637BD and sets `byte_10054790` = 1; slot 5 calls it,
+    so msg 33 refills the line. The enabled block clears the gate (0x1000F95F); the disabled one
+    (0x1000FAD1) refills the line only while the gate is clear, refills the send bus, and sets the
+    meter byte to 0 and the peak `+0x70` to 1e-6.
+  - The update's head (0x1000F75B..0x1000F7BA) averages the tempo over 25 updates into `+0x48`,
+    `+0x4C`, `+0x50`, but 0x1000F7E2 then overwrites `+0x4C` with the current tempo before the
+    length reads it: the average is dead, D follows the tempo at every update. Its tail is the
+    meter: the peak as an integer above 0x3F800000 gives byte 0x7F, else `trunc(peak*127f)`, into
+    live byte 5; then `peak = f32(peak*0.92f)`. The block's peak is `|send[meterIndex]|`.
+  - Slot 8 inserts the pattern copy's controllers 0..4 into the track at tick 0; slot 9 copies
+    the 6-byte block (on: live to pattern; off: pattern to live); slot 11 sets controllers 0..4.
+  - Constants: `flt_101517C0` 1e-6, `dbl_101517B8` 1/127 (0x3F80204081020408), `flt_101517C8`
+    0.92, `flt_101517CC` 127, `dbl_101517D0` 0.9, `dbl_101517D8` 0.1. The pan row
+    `flt_10054150` is `PAN[127]` (0x10034550 + 127·128·8).
+  - In the engine the line is `ProcessState`'s (`crates/rb-engine/src/process.rs`), shared by
+    the song's devices and presettable at export start (`set_delay_line`), like the drum counters.
 
 ---
 

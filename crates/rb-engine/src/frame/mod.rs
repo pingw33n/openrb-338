@@ -79,6 +79,8 @@ pub struct BlockContext<'a> {
     /// devices' and effects' peak meters read their bus at this index (e.g. the delay,
     /// `sub_10003AD0(this)+160` in 0x1000F940).
     pub meter_index: usize,
+    /// The song's tempo, BPM*1000 (`sub_1001FCF0`), which the delay's update reads.
+    pub tempo: u32,
 }
 
 /// The device vtable slots that the sequencer ([`crate::seq`]) and the song messages call
@@ -185,14 +187,17 @@ impl Devices {
     }
 
     /// The devices implemented so far, placeholders for the rest: the two TB-303s
-    /// ([`crate::tb303::Tb303`]) and, given the drum samples, the TR-808
+    /// ([`crate::tb303::Tb303`]), the distortion ([`crate::dist::Distortion`]), the delay
+    /// ([`crate::delay::Delay`]) and, given the drum samples, the TR-808
     /// ([`crate::tr808::Tr808`]) and the TR-909 ([`crate::tr909::Tr909`]); without samples
-    /// silent drum machines (exact for a song whose drum machines play no step), bypassing
-    /// inserts, an idle send.
+    /// silent drum machines (exact for a song whose drum machines play no step); bypassing
+    /// PCF and compressor.
     pub fn implemented(samples: Option<Arc<SampleSet>>) -> Self {
         let mut d = Self::placeholders();
         d.channels[0] = Box::new(crate::tb303::Tb303::new());
         d.channels[1] = Box::new(crate::tb303::Tb303::new());
+        d.dist = Box::new(crate::dist::Distortion::new());
+        d.delay = Box::new(crate::delay::Delay::new(d.process.clone()));
         if let Some(s) = samples {
             d.channels[2] = Box::new(crate::tr808::Tr808::new(s.clone(), d.process.clone()));
             d.channels[3] = Box::new(crate::tr909::Tr909::new(s, d.process.clone()));
@@ -596,6 +601,7 @@ impl Frame {
         let ctx = BlockContext {
             tables: &self.tables,
             meter_index: self.state.meter_index as usize,
+            tempo: self.seq.globals.tempo,
         };
         for (c, ch) in self.state.channels.iter_mut().enumerate() {
             let cp = p.channels[c];
@@ -660,6 +666,7 @@ impl Frame {
         let ctx = BlockContext {
             tables: &self.tables,
             meter_index: mi,
+            tempo: self.seq.globals.tempo,
         };
         let bus = &mut self.bus;
         for (c, ch) in self.state.channels.iter_mut().enumerate() {
@@ -875,7 +882,9 @@ impl Engine {
     pub fn activate(&mut self, a: Activation) {
         match a {
             // the old song's slot 6 (`sub_10013D40`); of it only the delay's 0x100100E0 reaches
-            // this song: it refills the process-global delay buffer
+            // this song: it refills the process-global delay line and sets its gate. Every
+            // delay's slot 6 does only that, so this song's delay stands in for the old one's
+            // ([`crate::delay::Delay`] refills [`ProcessState`]'s line).
             Activation::ReplacesCurrent => self.frame.devices.delay.silence(),
             // 0x1001BDF3: slot 6 on this song's own devices
             Activation::NoneCurrent => self.frame.devices.silence_all(),

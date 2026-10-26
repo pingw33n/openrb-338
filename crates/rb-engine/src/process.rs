@@ -1,20 +1,65 @@
 //! The DLL's process globals that reach an export: state that is not part of a song and that
 //! no song, stop, locate or msg 33 resets (`docs/export_state.md` section 7.3).
 //!
-//! So far these are the four drum counters. They live in BSS (0 when the DLL loads) and change
-//! only on drum hits, so an export depends on every snare and bass-drum hit since the process
-//! started. [`ProcessState`] is the engine's handle on them: the song's devices share one
-//! handle ([`crate::frame::Devices::process`]), and a caller that reproduces a capture made in a
-//! process that had played before sets the counters before the export, as
-//! `tools/rbhost --drum-counters A,B,C,D` presets them.
+//! These are the four drum counters and the delay line:
+//!
+//! - The drum counters live in BSS (0 when the DLL loads) and change only on drum hits, so an
+//!   export depends on every snare and bass-drum hit since the process started.
+//! - The delay line `flt_10054794` (131072 f32) and its gate `byte_10054790` are BSS too (0 when
+//!   the DLL loads). Every delay object reads and writes the one line; it is refilled with 1e-6
+//!   by the delay's slot 6 (0x100100E0: a song switch, msg 53, and msg 33 through slot 5
+//!   0x1000F4F0) and once when a disabled delay runs (0x1000FAD1), so an export depends on what
+//!   the delays wrote since the last refill.
+//!
+//! [`ProcessState`] is the engine's handle on them: the song's devices share one handle
+//! ([`crate::frame::Devices::process`]), and a caller that reproduces a capture made in a
+//! process that had played before sets them before the export, as
+//! `tools/rbhost --drum-counters A,B,C,D` presets the counters
+//! ([`ProcessState::set_drum_counters`], [`ProcessState::set_delay_line`]).
 //!
 //! The state is one handle per [`crate::frame::Engine`] (made by its `Devices`), not a true
 //! process global: a second engine in the same OS process starts at zero, unlike the original,
-//! where every song of the process shares the DLL's counters. To carry them from one engine to
-//! the next, copy [`ProcessState::drum_counters`] into the next engine's handle.
+//! where every song of the process shares the DLL's globals. To carry them from one engine to
+//! the next, copy [`ProcessState::drum_counters`] and [`ProcessState::delay_line`] into the next
+//! engine's handle.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use crate::frame::GUARD;
+
+/// The delay line's length, a power of two (`and 1FFFFh` at 0x1000FA05, 0x1000FA6D).
+pub const DELAY_LEN: usize = 1 << 17;
+/// The index mask.
+pub const DELAY_MASK: u32 = DELAY_LEN as u32 - 1;
+
+/// The global delay line and its gate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DelayLine {
+    /// `flt_10054794`.
+    pub buf: Box<[f32]>,
+    /// `byte_10054790`: set by every refill, cleared by every enabled delay block (0x1000F95F);
+    /// a disabled delay refills the line only while it is clear (0x1000FAD8).
+    pub gate: bool,
+}
+
+impl Default for DelayLine {
+    /// What the DLL has right after it is loaded: BSS, all zero.
+    fn default() -> Self {
+        DelayLine {
+            buf: vec![0.0; DELAY_LEN].into_boxed_slice(),
+            gate: false,
+        }
+    }
+}
+
+impl DelayLine {
+    /// The refill of 0x100100E0 and 0x1000FADA: every cell 1e-6 (`358637BDh`), the gate set.
+    pub fn refill(&mut self) {
+        self.buf.fill(GUARD);
+        self.gate = true;
+    }
+}
 
 /// The four process-global drum counters, in the order of `rbhost --drum-counters A,B,C,D`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -35,6 +80,7 @@ pub struct DrumCounters {
 #[derive(Debug, Clone, Default)]
 pub struct ProcessState {
     drums: Arc<[AtomicU16; 4]>,
+    delay: Arc<Mutex<DelayLine>>,
 }
 
 const SNARE_808: usize = 0;
@@ -65,6 +111,29 @@ impl ProcessState {
         s(SNARE_909, c.snare_909);
         s(BD_808, c.bd_808);
         s(BD_909, c.bd_909);
+    }
+
+    /// A copy of the delay line and its gate as they are now.
+    pub fn delay_line(&self) -> DelayLine {
+        self.lock_delay().clone()
+    }
+
+    /// Presets the delay line and its gate (a capture's export-start state, e.g. rbhost's
+    /// `delay_buffer` and `delay_gate` dumps). Panics unless `line.buf` has [`DELAY_LEN`] cells.
+    pub fn set_delay_line(&self, line: DelayLine) {
+        assert_eq!(line.buf.len(), DELAY_LEN);
+        *self.lock_delay() = line;
+    }
+
+    /// The delay's slot 6, 0x100100E0: the line refilled with 1e-6 and the gate set. The
+    /// effect of msg 53 when it replaces a current song (that song's delay runs it) and of
+    /// msg 33 (slot 5, 0x1000F4F0, calls slot 6).
+    pub fn refill_delay_line(&self) {
+        self.lock_delay().refill();
+    }
+
+    pub(crate) fn lock_delay(&self) -> MutexGuard<'_, DelayLine> {
+        self.delay.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// The 808 snare's hit: `c = (c + 1) & 31` is stored and returned (0x1002A23F..0x1002A27D:
@@ -124,6 +193,22 @@ mod tests {
         assert_eq!(b.next_snare_808(), 1);
         a.set_bd_808(0);
         assert_eq!(b.bd_808(), 0);
+    }
+
+    #[test]
+    fn clones_share_the_delay_line() {
+        let a = ProcessState::new();
+        let b = a.clone();
+        let fresh = a.delay_line();
+        assert_eq!(fresh.buf.len(), DELAY_LEN);
+        assert!(fresh.buf.iter().all(|&x| x == 0.0) && !fresh.gate);
+        b.refill_delay_line();
+        let l = a.delay_line();
+        assert!(l.buf.iter().all(|&x| x.to_bits() == 0x3586_37BD) && l.gate);
+        let mut p = DelayLine::default();
+        p.buf[5] = 0.5;
+        a.set_delay_line(p.clone());
+        assert_eq!(b.delay_line(), p);
     }
 
     #[test]
