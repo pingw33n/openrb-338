@@ -268,3 +268,13 @@ Facts found while writing it (2026-10-26):
   (637, 562) and the dialog's X at (785, 320) for a frame at (112, 105).
 - Exports in one process of the same song gave different SHA-256 (Fonda Workout, first and second
   export after a 3 s play); this is task-010's question, not analyzed here.
+
+## 9. rbhost, the offline host (task-011)
+
+`tools/rbhost/run.py` renders songs with the installed `C:\ReBirth RB-338\ReBirth.dll` (loaded in
+place; nothing is written to the installation) without the app, and refuses to run while a
+`Rebirth.exe` is running: it uploads `rbhost.exe` and a message file to `C:\re\rb\rbhost` and runs
+it with `rcs exec`. rbhost takes neither the keyboard nor the screen, so the runner holds **one**
+permit of `redc-win-run`, not all of them. A render takes about 50 ms on the machine plus about 1 s
+of rcs traffic. Usage and options: `tools/rbhost/README.md`; what the DLL needs:
+`docs/export_state.md` section 12.

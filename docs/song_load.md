@@ -51,7 +51,11 @@ File > Open reaches `sub_40B575`, which builds the song document with `sub_425C4
 song uses the same reader from `sub_4269CE`.
 
 1. `sub_4349C7` peeks HEAD and GLOB (version, mod name). No message.
-2. The mod named in GLOB is looked up (`sub_4155D1`, with a dialog if missing).
+2. The mod named in GLOB is looked up (`sub_4155D1`, with a dialog if missing). The engine already
+   knows it: `sub_41693C`, called from the mod constructors `sub_417AE9` (the built-in "Standard
+   ReBirth", id 411) and `sub_41813E` [G: when that one runs was not traced], registers a mod with
+   top-level 56 {u16 id} or 55 (a file mod), after the start-up handshake 50
+   (`docs/export_state.md` §12, task-011).
 3. Top-level **52** `{u16 mod}` (`sub_425A5D`, 0x425A94): the engine opens a new song and replies
    `'A'` with the song slot in the second byte. Every load asks for a new song slot. [C] The DLL
    queues msg 52 through `sub_1001D694`; `EngineIdle` then runs `sub_1001D840`, which allocates a new

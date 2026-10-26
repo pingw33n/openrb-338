@@ -15,5 +15,8 @@
 .vscode/
 .DS_Store
 
+# rbhost build output (tools/rbhost/build.sh)
+/tools/rbhost/build/
+
 # Python bytecode caches
 __pycache__/

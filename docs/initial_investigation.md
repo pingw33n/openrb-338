@@ -478,7 +478,8 @@ th = 1/(16*T[min(amount,90)] + 1)
 out = f32(clamp(g*x, -th, th))
 ```
 
-**W[32][256]** (BSS, 0x10011210). Uses `fsin`, with phase increment `(t²/961)*(π/8) + π/1024`:
+**W[32][256]** (BSS `flt_100D47A4`, built once by `0x10011210` from the dist ctor, guard
+`byte_100D47A0`; [C] task-011: corrected from "0x10011210", the builder's address). Uses `fsin`, with phase increment `(t²/961)*(π/8) + π/1024`:
 - `W[t][128±k] = ±f32((sin(ph)*256*(1-y) + 256*y*y)*0.7)` with `y = k/128`.
 - `W[t][0] = -W[t][255]`.
 
@@ -591,7 +592,10 @@ runs `N` idle blocks (a multiple of 16) between its activation and the export.
 song, wait a fixed time, export, quit), measured by task-010 (`docs/export_state.md` §11: byte-identical
 when the 303s are silent, on two songs; otherwise the differences fit whole idle buffers `N/16`
 [G: a fit, not a proof], and no settling residual was seen between waits of 3, 10 and 30 s). It leaves `N` unknown, so model
-"load, activate, `N` idle blocks, export" and fit `N`.
+"load, activate, `N` idle blocks, export" and fit `N`. [C] That model reproduces app exports byte for
+byte: `tools/rbhost` matched three songs of one session exactly (`303_accent0` and `808_snare`
+with the fitted `N`, and `silence`)
+(`docs/export_state.md` §12, task-011).
 
 **Diagnostic songs worth building:**
 - Silence: expect all zeros, since the 1e-6 offsets truncate to 0.
@@ -623,12 +627,25 @@ reached through `dword_1011D0B0`.
    (the "host msg 21" case at 0x10012696 is msg 35's id 21). During an export it holds the song's
    GLOB[482], 0 for every shipped song (`docs/song_load.md` §7) [C].
 3. **RBM key table** source file and the stride in the obfuscated EXE code (§7.4).
-4. **Table generation fidelity.** Dump the BSS tables from a live process and diff them against Rust:
-   - 303 FILT (0x1012B364), pitch table (0x10125364)
-   - PCF LP/BP tables
-   - Dist W
-   - T and PAN (0x10054550 / 0x10034550)
-   - T808 / T909 / DT
+4. **Table generation fidelity.** Dump the BSS tables from a live process and diff them against Rust.
+   `tools/rbhost` `--dump-tables` writes them with a manifest (task-011); all are built by the
+   constructors of the first new song (msg 52), so they exist from the first song on [C]:
+
+   | Table | Address | Type, shape | Builder (guard) |
+   |---|---|---|---|
+   | T | 0x10054550 | f32[128] | `sub_100046B0` from the song ctor (`byte_100E0128`) |
+   | PAN | 0x10034550 | f32[128][128][2] | `sub_100046B0` |
+   | 303 pitch | 0x10125364 | f32[6144] | 303 ctor `sub_10023920` (`byte_10124704`) |
+   | 303 FILT | 0x1012B364 | f32[8][1024][4] | `sub_100234A0`, every 303 ctor |
+   | PCF LP | 0x1010C270 | f32[8][512][3] | `sub_100172C4` from the PCF ctor `sub_10016490` (`byte_1010026C`) |
+   | PCF BP | 0x10100270 | f32[8][512][3] | `sub_10017574` (same guard) |
+   | Dist W | 0x100D47A4 | f32[32][256] | `sub_10011210` (`byte_100D47A0`) |
+   | T808 | 0x1014CBD8 | u16[128] | 808 ctor `sub_10026F70`, first instance (`word_1014CCD8`) |
+   | T909 | 0x1014E54C | u16[128] | 909 ctor `sub_1002A380`, first instance (`word_1014E68C`) |
+   | DT | 0x1014E64C | f32[16] | 909 ctor, the same block |
+
+   Dumped values agree with the formulas of §4, §6 and §7.3 at the points checked (T[127] = 1,
+   T808[64] = T909[64] = 256, T808[0] = 203, T909[0] = 188, DT[15] = 1.0, pitch[3072]·22050 = 65.406).
 5. **Export start state** (§9): traced in `docs/export_state.md` (task-004); the protocol is
    settled by experiment in task-010.
 6. **Loop-end wrap inside the final pre-rendered block.** The last block can wrap to the loop start

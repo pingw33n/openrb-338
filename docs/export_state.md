@@ -29,7 +29,9 @@ names (msg 33, 35, 52, ...) are those of `docs/song_load.md` §1 and `docs/initi
   as the one unknown, to be fitted.
 - Measured (§11): under that protocol an export is byte-identical across runs when the song's 303s
   are silent (two songs); otherwise its differences fit whole idle buffers of 303 phase,
-  `k = N/16` [G: a fit, not a proof], and are ±1 LSB for songs without 303 notes. Each export moves the global drum counters (9 snare hits for an
+  `k = N/16`, and are ±1 LSB for songs without 303 notes. rbhost (§12) reproduced the exports of three
+  songs of one session byte for byte with `N` = 9088 (`303_accent0` and `808_snare`, where `N` was
+  fitted, and `silence`) (task-011). Each export moves the global drum counters (9 snare hits for an
   8-hit loop, fitted; [G] the ninth is the step 0 that the dropped tail triggers).
 
 ## 2. The realtime path
@@ -155,13 +157,26 @@ next drain forwards to the port. Top-level 53 (activate a song) is handled inlin
 
 `sub_1001C7B0` creates `CReBirthDLLPort` (`sub_1001B980`, vtable 0x10033C44) at `engine+4`: a writer
 on `"ReBirth DLL->Panel"` and a reader on `"ReBirth Panel->DLL"`. Each side (`sub_100179E0`) is:
-- a semaphore or mutex object named `"<name>_SEMA"` (`sub_100091B0`) [G: which kind],
+- a semaphore `"<name>_SEMA"`, `CreateSemaphoreA(0, 1, 1, name)` (`sub_100091B0`), used as a lock:
+  taken with `WaitForSingleObject(h, 10000)` (`sub_100092F0`; a timeout throws `XBase`) and
+  released with `ReleaseSemaphore` (`sub_100092C0`),
 - an auto-reset, initially unsignaled event `"<name>_EVENT"` (`CreateEventA(0, FALSE, FALSE, ..)`),
 - a pagefile mapping `"<name>"` of 0x7D10 bytes (`CreateFileMappingA(-1, 0, PAGE_READWRITE, 0,
   0x7D10, name)`), mapped whole; if it did not exist yet it is zeroed and dword 1 is set to 32000.
 
-[G] The ring layout inside the mapping (read `sub_100095E0`/`sub_100096D0` family, port slots 1/2)
-is not traced; rbhost must read it from those functions.
+**The ring [C] (task-011).** Port vtable 0x10033C44: slot 1 read (0x1001BB10 → `sub_10017D40`,
+returns 12 with a message, 10 without), slot 2 write (0x1001BB50 → `sub_10017F50`). The mapping
+starts with four dwords: `+0` bytes used, `+4` bytes free (32000 at creation), `+8` read offset,
+`+0xC` write offset; the data follow at `+0x10`, a ring of 32000 (0x7D00) bytes. A message is a
+little-endian u16 length, then the bytes; every byte goes to `data[off]` with `off = (off+1) % 32000`.
+- Write: lock; while `len+2 > free`, unlock, `WaitForSingleObject(event, 4000)` (a timeout throws),
+  lock again; write the length and the bytes; `used += len+2`, `free -= len+2`; unlock.
+- Read: lock; if `used > 0`, read the length; if it exceeds the caller's buffer, return 0 without
+  consuming anything, else copy, `used -= len+2`, `free += len+2`, `SetEvent(event)`; unlock.
+
+The DLL reads into `byte_1011A9A0` with a 10000-byte limit, so a message is at most 10000 bytes (the
+exe's largest is a 9000-byte msg-37 batch). The exe's `CReBirthPanelPort` (`sub_4285E0`) opens the same
+objects after `EngineOpen` and writes "Panel->DLL", reads "DLL->Panel".
 
 ## 3. Songs: create, activate, delete [C]
 
@@ -182,7 +197,10 @@ base `sub_10010420`), 303 phase and filter state 0 (§7.2).
 `transport+0x170`; if the current song `transport+0x16C` is playing, nothing else happens [G: the
 pending switch is then made elsewhere]. Otherwise the old song's devices get slot 6 (`sub_10013D40`:
 303 note-off, drum voices silenced, **the global delay buffer cleared**, §6) and `sub_1001BD24` makes
-the new song current. Sent by `sub_40D163` (app `+0x2544` = current document) from the song window
+the new song current. [C] (task-011) When no song is current, slot 6 is called on the **new** song
+instead (0x1001BDF3), so its 303s get the note-off release constants (`+0xCC8`, `+0xCCC`) before
+they idle; in the app an opened song always replaces "Untitled song" and keeps its constructor
+values. This changes the export by ±1 LSB (§12). Sent by `sub_40D163` (app `+0x2544` = current document) from the song window
 constructor (`sub_42DA72`, 0x42E5AE: after the load), from MDI activation (`sub_42D7BE`), from the
 document destructor (`sub_426E4A`, deactivates before deleting) and from the benchmark (0x402024).
 With no active song, `SafeSoundCallback` outputs silence (plus the preview).
@@ -427,7 +445,7 @@ Exporting twice in one process is worse: the second export starts after the firs
 
 - [G] The MME worker object `sub_48D6EA` (thread or timer) and whether a refill can overlap the first
   export call.
-- [G] The port's ring layout (§2.7) and the `_SEMA` object type.
+- [C] The port's ring layout (§2.7) and the `_SEMA` object type: traced for task-011.
 - [G] The pending song switch while playing (`transport+0x170`).
 - [G] Field-level reset audit of the 808/909 devices, PCF, compressor and distortion constructors.
 - [G] The startup sample of the standard mod and its length (it did not reach any export, §11.4).
@@ -543,10 +561,62 @@ else is needed:
   probably enough, not tested).
 - Songs with no 303 notes but audible 303 channels vary by ±1 LSB on up to 1.6 % of the samples.
 - Songs with 303 notes vary with `k = N/16` (spread 3 buffers over the 6 fresh first exports of
-  `303_accent0`). [G] The export should then be reproducible by a model given `k` (not shown: no
-  model render exists yet), so rbhost (task-011/012) should take `k` as a parameter and fit it
-  (`phase.py` gives `k` modulo about 10.53 buffers from one note, so the search is short).
+  `303_accent0`). The export is then reproducible by a model given `k`: shown byte for byte with
+  rbhost for one session (§12), whose `--idle-blocks` takes `N = 16k` and `run.py --idle-sweep`
+  fits it (`phase.py` gives `k` modulo about 10.53 buffers from one note, so the search is short).
 
 Not recommended: two exports in one process (P2: msg 33 state and drum counters), playing before the
 export (P3: drum counters, pitch, delay contents), and loading another song first (P4) unless that
 song has no snare or bass-drum hits.
+
+## 12. Driving the DLL without the app: rbhost (task-011)
+
+`tools/rbhost` (README there) loads ReBirth.dll in its own process and reproduces the app's exports.
+What the DLL needs, all [C] from the disassembly and confirmed by running it:
+
+- **Nothing from the panel but the port.** `DllMain` (0x1000DAD0) builds the global object
+  `dword_1011D0B0` (`sub_1001E190`) and loads the samples from the DLL's own resources; `EngineOpen()`
+  (0x1001B0E0, cdecl, no arguments) builds the engine and creates both rings (§2.7). No window, no
+  registration, no `Rebirth.exe`, no MIDI. The exports are cdecl: `SafeSoundCallback(int16 *buf,
+  int frames, int x)`, `EngineIdle()`.
+- **Handshake.** The exe (`sub_40FAA9`) sends top-level **50** right after `EngineOpen` and pumps
+  until the reply '@' (6 bytes, `40 bc 02 00 00 00` on the test machine: `sub_1000E030`'s CVersion).
+  50 sets engine byte `+0x374`, without which top-level **56** is refused (0x1001CF5D → error reply
+  `sub_1001DE00(18)`). On quit it sends 51 (0x40D79A), which clears the byte.
+- **The mod.** Every song names a mod record (`sub_1001A860` by id, kept at `song+0x174`). The exe's
+  built-in mod "Standard ReBirth" is `COpenMod` id **411** (`sub_417AE9` stores it at `+1684`);
+  `sub_41693C` registers it with top-level **56 {u16 411}** (big-endian), which the DLL queues and
+  `EngineIdle` runs (`sub_1001DA70` → `sub_1001A030`: 24 808 samples from resources 1000..1023, 21
+  909 samples from 1025..1045, the startup sample from 1024; reply 'C'). A file mod uses 55 with a
+  0x2546-byte sample table instead. Msg 52 takes the same id.
+- **Dispatch tables.** Top level: `jmp [0x10153164 + 4*type]` in `sub_1001CDF0` (IDA's switch labels
+  there are off by the base); idle queue: `jmp [0x101531F8 + 4*type]` in `sub_1001D6D4` (52, 54, 55,
+  56, 57, 58, 63 and a queued 78).
+- **Pumping.** One thread is enough: a 0-frame `SafeSoundCallback` drains the port (at least one
+  message per call, §2.3) and forwards queued replies, `EngineIdle` runs one queued message per call.
+  The app pumps exactly this way when it has no audio channel (`sub_408DF5`).
+- **x87 precision.** The exe's CRT start-up sets 53-bit precision (`_fpmath` 0x4A7540 →
+  `_setdefaultprecision` 0x4AA860 → `_controlfp(0x10000, 0x30000)`, control word 0x027F); the DLL
+  never sets the control word. rbhost sets 0x027F. (A test: 64-bit precision during the idle blocks
+  gave the same export; 24-bit did not.)
+- **The untitled song.** The app always has a song active when a song is opened, so the activation
+  calls note-off on the old song (§3). Without one, the new song's own 303s get it, and the export
+  differs by ±1 LSB in its first ~5000 frames (68 samples for `303_accent0`). rbhost therefore creates
+  and activates an empty song first.
+
+**Results (2026-10-26).** rbhost renders are byte-identical across runs (three songs, two runs each)
+and take about 50 ms per song. Against fresh app exports per the protocol of §11.5
+(`rb_export.py --restore-prf --startup-sound off --wait-after-open 10`, one session, three songs):
+the whole WAV files of `303_accent0` and `808_snare` are **byte-identical** to rbhost's with
+`--idle-blocks 9088` (`k = 568` buffers of 1024 frames; for the first song a sweep over
+N = 4800..11184 in steps of 16 without the untitled song came closest at 9088, ±1 LSB, and with it
+9088 matched; the second was found by a sweep from 7600), and `silence` is identical too
+(all zeros, and identical for any `N`). [G] So in that session `N` was 9088 for both songs: an
+inference from the two matches (the sweeps stopped at the first match: with the untitled song,
+`303_accent0` tried N = 9056..9088 and `808_snare` 7600..9088, steps of 16), not a measurement of
+the app. The model "load, activate, `N` idle
+blocks, export" of §9 reproduces the app exactly, including the export's own stop, locate and play.
+The number of blocks rendered between the export's stop and its locate (`--post-stop-blocks`, 0..160)
+and whether locate and play are drained by the first chunk or before it made no difference for
+`303_accent0`. A fit is needed per export; `tools/rbhost/run.py --idle-sweep A:B:S --match APP.wav`
+does it. The full corpus comparison is task-012's.
