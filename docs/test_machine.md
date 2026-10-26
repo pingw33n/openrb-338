@@ -229,3 +229,42 @@ Mods (`C:\ReBirth RB-338\Mods`, not committed; the rcs copies are in `C:\re\rb\i
 | PBE2.rbm | 3,623,024 | `797ea0f74d6fd2ee7d8e70ff0baf375a6d89686c64dfda47bc435006990ad951` |
 
 The installation's `Rebirth.exe` and `ReBirth.dll` hashes are in task-001's notes.
+
+## 8. The export runner `tools/rb_export.py` (task-008)
+
+`tools/rb_export.py [options] SONG.rbs... -o OUTDIR` runs sections 2 to 4 unattended under all the
+permits (it reads the count from `locky list`, refreshes, releases also on failure) and writes
+`OUTDIR/<stem>.wav` and `OUTDIR/<stem>.json` (protocol, timings, the song's hash, the WAV's hash and
+RIFF check). It drives the app with the rcs server's `input` and `screenshot` (no UI automation
+library on the machine); a dialog is "up" when `screenshot --window <title>` succeeds. Options for
+the capture protocol (`docs/export_state.md` section 9): `--restore-prf [LOCAL]` (restores the
+preferences file before each start, default from `C:\re\rb\prf_before.prf`), `--startup-sound on|off`,
+`--wait-after-open S` (default 10), `--play-seconds S` (Space, wait, Space), `--exports K`,
+`--reuse-process`. The file is accepted when its size is stable and equals
+`44 + 4 * frames` from the export length formula (`docs/initial_investigation.md` section 3) and the
+downloaded RIFF is consistent; it stops only the `Rebirth.exe` it started (by PID: `taskkill`, then
+`/F` after 15 s) and refuses to start if a `Rebirth.exe` already runs. A failed step saves
+`OUTDIR/<stem>.fail.bmp`, stops the app, releases the permits and exits 1. Gap: only WAV (the AIFF
+type list is not driven, section 4).
+
+Facts found while writing it (2026-10-26):
+
+- **Export Loop as Audio File is greyed in pattern mode** (GLOB `song_mode` 0, the "Pattern" /
+  "Song mode" switch): a song built with `song_mode` 0 had it greyed, fresh, playing or stopped; with
+  `song_mode` 1 it was enabled in all three. A greyed item is skipped by Down, so the 6-Downs route
+  would land on `Run Benchmark Test...`. The runner refuses pattern-mode songs.
+  The shipped default songs (`Silent Default Song`, `ReBirth 1.0 Default Song`) are pattern mode.
+- **The song-info box** ("ReBirth RB-338", the song's USRI text, OK button) appears after loading iff
+  USRI `show_on_open` is set; Enter dismisses it. If it is up, the menu keys are swallowed.
+- **Space plays and stops** in the main window (the play button lights); after Alt+menu, `Esc` twice
+  first, else Space opens the window's system menu. Play does not disable Export. The Bar display
+  stayed `888` while "playing" on `Remote Audio`.
+- **The frame's screen position changes at every start** (it moves by about 25 px, from the
+  registry's `MainFramePlacement`), and the song child window is cascaded, so mouse coordinates
+  are not stable; use keys.
+- **Startup sound in the preferences file: byte 0x20A** (522) of `ReBirth RB-338 2.prf`, 1 =
+  "Play Mod Startup Sound: Enable" checked (the saved copy), 0 = cleared. Clearing the checkbox in
+  the dialog and quitting changed only this byte and the recent-file list. The checkbox is at screen
+  (637, 562) and the dialog's X at (785, 320) for a frame at (112, 105).
+- Exports in one process of the same song gave different SHA-256 (Fonda Workout, first and second
+  export after a 3 s play); this is task-010's question, not analyzed here.
