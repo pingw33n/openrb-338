@@ -5,13 +5,12 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 09:06'
-updated_date: '2026-10-26 16:14'
+updated_date: '2026-10-26 16:27'
 labels:
   - cli
 milestone: m-1
 dependencies:
   - TASK-021
-  - TASK-020
   - TASK-023
 priority: high
 type: feature
@@ -35,4 +34,6 @@ The `rb` command: `rb render IN.rbs -o OUT.flac|OUT.ogg|OUT.wav` renders the son
 
 <!-- SECTION:NOTES:BEGIN -->
 Supervisor 2026-10-26, per the user: run this task once there is something to listen to, right after the TB-303 devices (task-023) and before the drums and effects (task-024..027).
+
+Supervisor 2026-10-26, per the user: no longer waits for the sample loader (task-020); the CLI renders 303 songs first, and task-020 adds the --rebirth-dll sample source to it.
 <!-- SECTION:NOTES:END -->
