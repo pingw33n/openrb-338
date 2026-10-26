@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-complex'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 18:24'
 labels:
   - engine
 milestone: m-1
@@ -26,3 +27,9 @@ The distortion insert (docs/initial_investigation.md section 8.1: 16-block updat
 <!-- AC:BEGIN -->
 - [ ] #1 Every distortion and delay corpus song matches its reference per the pass criterion
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-26, from task-022's review: msg 53 activation's real effect is the process-global delay buffer 0x10054794 (refilled with 1e-6 by the delay's slot 6 at 0x100100E0, which also sets byte_10054790 = 1). Engine::activate (crates/rb-engine/src/frame/mod.rs, ReplacesCurrent path) calls silence() on a placeholder; this task must make the delay's buffer process-global state reachable from Engine and model slot 6 on it, settable at export start like rbhost.
+<!-- SECTION:NOTES:END -->
