@@ -28,9 +28,10 @@ A byte-exact port of the DSP is feasible:
 
 The hard part is not the DSP. It is the state of the original app when an export starts:
 - The export does not reset the engine.
-- Oscillator phases, filter states, the delay line, the mixer's 16-block update phase, the leftover
-  sub-block buffer and several global counters all carry over from whatever the app did before the
-  export.
+- Oscillator phases, filter states, the delay line and several global counters carry over from
+  whatever the app did before the export. [C] The leftover sub-block buffer is always empty at export
+  start, and with the MME driver the mixer's 16-block update phase is fixed (`docs/export_state.md`
+  §5, §7.1).
 
 So the reference-capture protocol (§9) matters as much as the code. Until that protocol is settled,
 expect byte-exactness after a short settling period rather than from sample 0.
@@ -69,7 +70,10 @@ Device vtables in the DLL (slot = index):
 **Export driver in the EXE: `sub_427988` → `sub_4280D5` (WAV) / `sub_427EA7` (AIFF) [C]:**
 1. Sends msg 35 `{1,0}` (stop).
 2. Queries tempo (id 4), loop start (id 12) and loop end (id 16).
-3. Sends msg 35 `{8,start}` (locate to loop start), then msg 35 `{1,1}` (play).
+   Then it stops the realtime audio channel (its vtable slot 2, 0x427BD9); no realtime callback runs
+   during the export (`docs/export_state.md` §4).
+3. Sends msg 35 `{8,start}` (locate to loop start), then msg 35 `{1,1}` (play). Both are applied by
+   the drain of the first `SafeSoundCallback` of the render loop.
 4. Render loop:
    ```
    pos = (double)loopStart
@@ -83,7 +87,9 @@ Device vtables in the DLL (slot = index):
    ```
    The file's length is therefore set by this double-precision accumulation, with the final partial
    chunk truncated. Replicate it exactly.
-5. Afterwards sends msg 35 `{1,0}`, then msg 33 (full engine reset), then `SafeSoundCallback(buf,0,0)`.
+5. Afterwards sends msg 35 `{1,0}`, then msg 33 (full engine reset), then
+   `SafeSoundCallback(NULL,0,0)` (0x427DD6), then restarts the realtime channel (slot 1, 0x427DE7).
+   What msg 33 resets: `docs/export_state.md` §6.4.
 
 **Output format [C]:**
 - WAV: RIFF/WAVE, PCM, 2 channels, 16-bit, 44100 Hz (`sub_4A1E69(2,16,44100)`).
@@ -91,9 +97,11 @@ Device vtables in the DLL (slot = index):
 - The exported range is exactly the song loop. There is no pre-roll and no tail.
 
 **SafeSoundCallback → `sub_100139E0` [C]:**
-1. Drains the message port first (`sub_1001CC40`, time-budgeted).
+1. Drains the message port first (`sub_1001CC40`, time-budgeted: at least one message, more while
+   `timeGetTime() <= start + (n*1000/44100)/3` ms; `docs/export_state.md` §2.3).
 2. Renders in **64-frame blocks**. A partial block is rendered whole and its remainder is kept in a
-   leftover buffer (`this[130]`) for the next call.
+   leftover buffer (`this[130]`) for the next call. [C] In the app this buffer is empty at every
+   export start (`docs/export_state.md` §5).
 3. Per sample, L then R:
    `i16 = trunc_toward_zero(clamp((double)f32 * 32768.0, -32768.0, 32767.0))`.
    There is **no dithering**. The clamp constants are f32 32767.0 and -32768.0.
@@ -548,35 +556,40 @@ buf[w] = f32(fb*d + send)
 w++
 ```
 - No interpolation, filtering or saturation.
-- The write pointer and buffer are **never reset**.
+- [C] Corrected by task-004: the write pointer (delay `+0x6C`) is per delay object, 0 when the song
+  is created, and never reset afterwards; the buffer is global and is refilled with 1e-6 by msg 33,
+  on a song switch, and once when a disabled delay runs (`docs/export_state.md` §6.1, §7.4).
 
 ---
 
 ## 9. State at export start: the main byte-exactness risk
 
-Nothing below is reset by stop, locate or play. Msg 33 (full reset) is sent only *after* an export
-(and after the benchmark) [C]. It is **not** sent on song load: opening a song makes a new song in the
-engine (top-level msg 52) and sends its data (`docs/song_load.md` §2) [C]. [G] Whether the new song
-gets new device objects, and so fresh 303 and effect state, is not traced.
+The full trace is `docs/export_state.md` (task-004); this section keeps the summary.
+
+Stop, locate and play reset no DSP state (stop silences the drum voices and releases the 303s). Msg
+33 (full reset) is sent only *after* an export (and after the benchmark) [C], and resets only part of
+the state (`docs/export_state.md` §6.4). It is **not** sent on song load: opening a song makes a new
+song in the engine (top-level msg 52) and sends its data (`docs/song_load.md` §2) [C]. [C] The new
+song gets **new device objects** (`0x1001D840` → song constructor `0x10011350`), so its 303, drum and
+effect state starts from the constructors; only process globals carry over from earlier songs.
+
+The realtime callback renders the active song every 1024 frames (MME), playing or stopped, so a song
+runs `N` idle blocks (a multiple of 16) between its activation and the export.
 
 | State | Effect on the export |
 |---|---|
-| 303 oscillator phase, filter (y1, y2, s), DC blocker, amp, E, accent env, cutoff smoother | They keep running while stopped. The amp decays to about 1e-6, but the phase alignment changes waveform rounding for the whole song |
-| Leftover sub-block buffer in `sub_100139E0` | Up to 63 samples rendered **before** the locate can be the first samples of the export |
-| Mixer 16-block counter (starts at 10), effect counters | The phase of gain and parameter updates relative to the export start is arbitrary |
-| Mixer and effect smoothed gains | They start from their current values, not from the targets |
-| Delay buffer and write pointer (global) | Repeats from earlier playback can leak into the export |
-| Compressor env and G, PCF filter and envelope | Carry over |
-| Snare noise counters and BD alternation flags (global) | Shift by every snare or bass drum hit since the DLL loaded |
+| 303 oscillator phase | [C] Free-running while idle (`+0xCA4`, not reset by note-on): depends on `N` and changes the waveform of every 303 note |
+| 303 filter (y1, y2, s), amp, E, accent env, cutoff smoother | Settle while idle towards fixed points driven by the 1e-6 offsets [G: convergence not proven] |
+| Leftover sub-block buffer in `sub_100139E0` | [C] Refuted: always empty at export start in the app (`docs/export_state.md` §5) |
+| Mixer 16-block counter (starts at 10), effect counters | [C] With MME, a fixed phase (`10 + 16k`; effects 0 mod 16); with DirectSound (512-frame calls) it can be off by 8 |
+| Mixer and effect smoothed gains | [G] Settle to their targets while idle (expected from the smoothing, not proven) |
+| Delay buffer (global) and write pointer (per song) | [C] Cleared to 1e-6 on a song switch and by msg 33; the pointer advances 64 per enabled block and depends on `N` |
+| Compressor env and G, PCF filter and envelope | Fresh per song, settle while idle [G] |
+| Snare noise counters and BD alternation flags (global) | [C] `word_1014CBD4`, `word_1014E548`, `word_1014CBD0`, `word_1014E544`: shift by every snare or bass drum hit since the DLL loaded |
 
-**Proposed reference-capture protocol** (to be confirmed experimentally on the test machine):
-1. Start ReBirth fresh with the startup sound and demo song disabled if possible.
-2. Open the song. This creates a new song in the engine (msg 52); it does not send msg 33.
-3. Export immediately without pressing Play.
-4. Repeat each export twice, and once after a restart, to measure how deterministic it is.
-
-Then model "reset, then N idle blocks, then export". N matters only for the 303 phase, which keeps
-running in the idle callback while stopped.
+**Reference-capture protocol:** `docs/export_state.md` §9 (fresh process, startup sound off, open the
+song, wait a fixed time, export, quit), to be confirmed by task-010. It leaves `N` unknown, so model
+"load, activate, `N` idle blocks, export" and fit `N`.
 
 **Diagnostic songs worth building:**
 - Silence: expect all zeros, since the 1e-6 offsets truncate to 0.
@@ -614,9 +627,11 @@ reached through `dword_1011D0B0`.
    - Dist W
    - T and PAN (0x10054550 / 0x10034550)
    - T808 / T909 / DT
-5. **Export start state** (§9): settle by experiment.
+5. **Export start state** (§9): traced in `docs/export_state.md` (task-004); the protocol is
+   settled by experiment in task-010.
 6. **Loop-end wrap inside the final pre-rendered block.** The last block can wrap to the loop start
-   and chase; this only affects the leftover buffer.
+   and chase; this only affects the leftover buffer, which the export's final
+   `SafeSoundCallback(NULL,0,0)` drops [C].
 
 ## 11. Suggested Rust architecture
 

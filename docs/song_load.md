@@ -53,11 +53,14 @@ song uses the same reader from `sub_4269CE`.
 1. `sub_4349C7` peeks HEAD and GLOB (version, mod name). No message.
 2. The mod named in GLOB is looked up (`sub_4155D1`, with a dialog if missing).
 3. Top-level **52** `{u16 mod}` (`sub_425A5D`, 0x425A94): the engine opens a new song and replies
-   `'A'` with the song slot in the second byte. Every load asks for a new song slot. [G] Whether
-   the engine builds new device objects for it, rather than reusing state, is not traced: the DLL
-   queues msg 52 through `sub_1001D694` (task-034 item 1).
+   `'A'` with the song slot in the second byte. Every load asks for a new song slot. [C] The DLL
+   queues msg 52 through `sub_1001D694`; `EngineIdle` then runs `sub_1001D840`, which allocates a new
+   song (0x1910 bytes, constructor `sub_10011350`) with **new device objects**
+   (`docs/export_state.md` §3, task-004).
 4. Optional top-level **58** `{u16 mod}` (`sub_426C67` → `sub_40ABB5`), only when the mod record's
-   word +1088 is 1 and `sub_4098C3` agrees. [G] It selects the mod's sample bank.
+   word +1088 is 1 and `sub_4098C3` (app byte `+0x533`, the "Play Mod Startup Sound" preference)
+   agrees. [C] It starts the engine's preview player on the mod's startup sample (`sub_1001DC14`,
+   `docs/export_state.md` §8); it does not select a sample bank.
 5. `sub_434D05` reads the file and sends, in this order:
    1. **36** globals, 23 bytes (`sub_438B4B`), right after GLOB is read (§3).
    2. **41** mixer `0/143` (`sub_438D43`).
@@ -402,9 +405,9 @@ and its packets have the intended layout. rbhost and the Rust engine use the int
 
 Follow-up: task-034.
 
-- [G] Top-level msg 52/58 handling inside the DLL (they are queued by `sub_1001D694` to the object
-  at `+0x414`): whether a new song creates new device objects, and the constructor values of the
-  controllers that a song-mode song never sets.
+- [C] Top-level msg 52/58 handling inside the DLL: a new song creates new device objects, and 58
+  starts the startup-sound preview (task-004, `docs/export_state.md` §3, §8).
+- [G] The constructor values of the controllers that a song-mode song never sets.
 - [G] The msg-41 song-mode rule for delay, PCF, distortion, compressor, 808 and 909.
 - [G] The 4.0 mixer-track converter `sub_437380`.
 - [G] Global byte 2 (msg 35 id 2, `0x10021194`) and byte 22 (`+0x16E`).
