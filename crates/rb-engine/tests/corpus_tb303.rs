@@ -2,24 +2,25 @@
 //!
 //! Every song of the diagnostic corpus has the delay enabled, and an enabled delay adds its
 //! output (about 1e-6 at idle, plus 1e-6 × the channels D samples later) into the master, so the
-//! corpus references of the TB-303 songs depend on the delay (task-026). Until it exists the 303s
-//! are checked two ways: on the songs with the delay disabled against rbhost renders of those
-//! variants (`tests/fixtures/tb303_nodelay.json`, made with `tools/nodelay.py`), and on the songs
-//! as they are against their corpus references with a test-only model of the delay
-//! ([`common::TestDelay`]). With the engine's own delay, the references are task-049.
+//! corpus references of the TB-303 songs depend on the delay. The 303s are checked two ways: on
+//! the songs as they are against their corpus references, with the engine's delay (task-026,
+//! task-049), and on the songs with the delay disabled against rbhost renders of those variants
+//! (`tests/fixtures/tb303_nodelay.json`, made with `tools/nodelay.py`, task-023). No corpus song
+//! disables the delay, so the second is the only reference check of the delay's disabled path
+//! (0x1000FAD1).
 
 mod common;
 
 use std::sync::Arc;
 
 use common::without_delay;
-use common::{json, manifest, render_with, render_with_test_delay, root, sha256, song};
-use rb_engine::frame::Devices;
+use common::{differing, json, manifest, render_with, root, sha256, song};
+use rb_engine::frame::{Devices, Silent};
 use rb_engine::song::Song;
 use rb_engine::tables::Tables;
 
 /// The WAV file of the export of `s` after `idle` idle blocks, with the devices implemented so
-/// far (no drum samples: these songs play no drum step).
+/// far, the engine's delay included (no drum samples: these songs play no drum step).
 fn render(tables: &Arc<Tables>, s: &Song, idle: u32) -> Vec<u8> {
     render_with(tables, Devices::implemented(None), s, idle)
 }
@@ -70,8 +71,9 @@ const TB303_SONGS: &[&str] = &[
     "silence",
 ];
 
-/// AC #1 and #2: every TB-303 song, with the delay disabled, renders byte-identical to rbhost's
-/// render of the same variant (the WAV's sha256, header included), in both sound models.
+/// Every TB-303 song, with the delay disabled, renders byte-identical to rbhost's render of the
+/// same variant (the WAV's sha256, header included), in both sound models: the 303s without the
+/// delay's output, and the only reference check of the disabled delay (0x1000FAD1).
 #[test]
 fn tb303_songs_without_the_delay_match_rbhost() {
     let m = manifest();
@@ -93,38 +95,24 @@ fn tb303_songs_without_the_delay_match_rbhost() {
     assert!(bad.is_empty(), "differ from rbhost: {bad:?}");
 }
 
-/// The difference to the corpus references is the delay's: with the test-only delay model in
-/// place of the placeholder, every TB-303 song equals its corpus reference.
+/// Every TB-303 song, as it is, equals its corpus reference with the engine's devices (its
+/// delay included; no drum samples: these songs play no drum step).
 #[test]
-fn tb303_songs_with_a_test_delay_match_their_references() {
-    let m = manifest();
-    let tables = Arc::new(Tables::new());
-    let mut bad = Vec::new();
-    for name in TB303_SONGS {
-        let e = &m["diag"][*name];
-        let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-        let wav = render_with_test_delay(&tables, Devices::implemented(None), &song(e), idle);
-        if sha256(&wav) != e["wav_sha256"].as_str().unwrap() {
-            bad.push(*name);
-        }
-    }
+fn tb303_songs_match_their_references() {
+    let bad = differing(TB303_SONGS, || Devices::implemented(None));
     assert!(bad.is_empty(), "differ from their references: {bad:?}");
 }
 
-/// The same songs against their corpus references with the engine's devices, which need the
-/// engine's delay (task-026); task-049 removes the `ignore`. `silence` already matches.
+/// The control: with both TB-303s silent, a 303 song differs from its reference, so the test
+/// above hears the 303s. (`silence` and `mixer_master_low`, whose master is low, may not.)
 #[test]
-#[ignore = "the references include the enabled delay's output (task-026, task-049)"]
-fn tb303_songs_match_their_references() {
-    let m = manifest();
-    let tables = Arc::new(Tables::new());
-    let mut bad = Vec::new();
-    for name in TB303_SONGS {
-        let e = &m["diag"][*name];
-        let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-        if sha256(&render(&tables, &song(e), idle)) != e["wav_sha256"].as_str().unwrap() {
-            bad.push(*name);
-        }
-    }
-    assert!(bad.is_empty(), "differ from their references: {bad:?}");
+fn tb303_songs_differ_without_the_303s() {
+    let silent = || {
+        let mut d = Devices::implemented(None);
+        d.channels[0] = Box::new(Silent);
+        d.channels[1] = Box::new(Silent);
+        d
+    };
+    let names = ["303_saw_lowcut", "303_vintage_saw", "303_two_voices"];
+    assert_eq!(differing(&names, silent), names);
 }

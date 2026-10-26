@@ -1,15 +1,15 @@
 //! The TR-808 against the original (task-024): every diagnostic song whose sound is the 808
 //! (with or without the 303s) and the mixer only renders byte-identical to its corpus reference
 //! (`tests/refs/manifest.json`, the WAV's sha256 at the entry's `idle_blocks`), with the built-in
-//! samples of `original/ReBirth.dll` and the test-only delay model in place of the engine's delay
-//! (task-026). The references were rendered by rbhost in a fresh process per song, so the
-//! process-global drum counters start at 0, as in a new [`rb_engine::process::ProcessState`].
+//! samples of `original/ReBirth.dll` and the engine's delay (task-026, task-049). The references
+//! were rendered by rbhost in a fresh process per song, so the process-global drum counters start
+//! at 0, as in a new [`rb_engine::process::ProcessState`].
 
 mod common;
 
 use std::sync::Arc;
 
-use common::{manifest, render_with_test_delay, samples, sha256, song};
+use common::{differing, manifest, samples, song};
 use rb_engine::frame::{Devices, Engine, export};
 use rb_engine::tables::Tables;
 
@@ -71,35 +71,19 @@ const TR808_SONGS: &[&str] = &[
 
 /// AC #1: every 808 song equals its corpus reference.
 #[test]
-fn tr808_songs_with_a_test_delay_match_their_references() {
-    let m = manifest();
-    let tables = Arc::new(Tables::new());
+fn tr808_songs_match_their_references() {
     let set = samples();
-    let mut bad = Vec::new();
-    for name in TR808_SONGS {
-        let e = &m["diag"][*name];
-        let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-        let d = Devices::implemented(Some(set.clone()));
-        let wav = render_with_test_delay(&tables, d, &song(e), idle);
-        assert_eq!(wav.len(), 44 + 4 * e["frames"].as_u64().unwrap() as usize);
-        if sha256(&wav) != e["wav_sha256"].as_str().unwrap() {
-            bad.push(*name);
-        }
-    }
+    let bad = differing(TR808_SONGS, || Devices::implemented(Some(set.clone())));
     assert_eq!(TR808_SONGS.len(), 45);
     assert!(bad.is_empty(), "differ from their references: {bad:?}");
 }
 
-/// The control: without the 808 (the silent placeholder) an 808 song differs from its
-/// reference, so the test above sees the 808's output.
+/// The control: without the 808 (no samples, the silent placeholder) an 808 song differs from
+/// its reference, so the test above hears the 808.
 #[test]
 fn tr808_songs_differ_without_the_808() {
-    let m = manifest();
-    let tables = Arc::new(Tables::new());
-    let e = &m["diag"]["808_snare"];
-    let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-    let wav = render_with_test_delay(&tables, Devices::implemented(None), &song(e), idle);
-    assert_ne!(sha256(&wav), e["wav_sha256"].as_str().unwrap());
+    let names = ["808_snare", "808_bass", "delay_straight_fb64"];
+    assert_eq!(differing(&names, || Devices::implemented(None)), names);
 }
 
 /// An export of `808_snare` (8 snare hits in its loop) moves the 808 snare counter by 9, the

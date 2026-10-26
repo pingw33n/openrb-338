@@ -1,17 +1,14 @@
 //! The TR-909 against the original (task-025): every diagnostic song whose sound is the 909
 //! (with or without the 808) and the mixer only renders byte-identical to its corpus reference
 //! (`tests/refs/manifest.json`, the WAV's sha256 at the entry's `idle_blocks`), with the built-in
-//! samples of `original/ReBirth.dll` and the test-only delay model in place of the engine's delay
-//! (task-026). The references were rendered by rbhost in a fresh process per song, so the
-//! process-global drum counters start at 0, as in a new [`rb_engine::process::ProcessState`].
+//! samples of `original/ReBirth.dll` and the engine's delay (task-026, task-049). The references
+//! were rendered by rbhost in a fresh process per song, so the process-global drum counters start
+//! at 0, as in a new [`rb_engine::process::ProcessState`].
 
 mod common;
 
-use std::sync::Arc;
-
-use common::{manifest, render_with_test_delay, samples, sha256, song};
+use common::{differing, samples};
 use rb_engine::frame::Devices;
-use rb_engine::tables::Tables;
 
 /// The diagnostic songs whose sound comes from the TR-909 (three with the 808) and the mixer
 /// only: a 909 pattern holds a step within its length and no insert is routed (mixer
@@ -58,33 +55,23 @@ const TR909_SONGS: &[&str] = &[
 
 /// AC #1: every 909 song equals its corpus reference.
 #[test]
-fn tr909_songs_with_a_test_delay_match_their_references() {
-    let m = manifest();
-    let tables = Arc::new(Tables::new());
+fn tr909_songs_match_their_references() {
     let set = samples();
-    let mut bad = Vec::new();
-    for name in TR909_SONGS {
-        let e = &m["diag"][*name];
-        let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-        let d = Devices::implemented(Some(set.clone()));
-        let wav = render_with_test_delay(&tables, d, &song(e), idle);
-        assert_eq!(wav.len(), 44 + 4 * e["frames"].as_u64().unwrap() as usize);
-        if sha256(&wav) != e["wav_sha256"].as_str().unwrap() {
-            bad.push(*name);
-        }
-    }
+    let bad = differing(TR909_SONGS, || Devices::implemented(Some(set.clone())));
     assert_eq!(TR909_SONGS.len(), 33);
     assert!(bad.is_empty(), "differ from their references: {bad:?}");
 }
 
-/// The control: without the 909 (the silent placeholder) a 909 song differs from its
-/// reference, so the test above sees the 909's output.
+/// The control: without the 909 (its channel the silent placeholder, the 808 kept) a 909 song
+/// differs from its reference, so the test above hears the 909.
 #[test]
 fn tr909_songs_differ_without_the_909() {
-    let m = manifest();
-    let tables = Arc::new(Tables::new());
-    let e = &m["diag"]["909_snare"];
-    let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-    let wav = render_with_test_delay(&tables, Devices::implemented(None), &song(e), idle);
-    assert_ne!(sha256(&wav), e["wav_sha256"].as_str().unwrap());
+    let set = samples();
+    let no_909 = || {
+        let mut d = Devices::implemented(Some(set.clone()));
+        d.channels[3] = Box::new(rb_engine::frame::Silent);
+        d
+    };
+    let names = ["909_snare", "909_bass", "drums_kit"];
+    assert_eq!(differing(&names, no_909), names);
 }

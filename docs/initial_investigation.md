@@ -1056,9 +1056,13 @@ w++
   the int16 truncation of 3516 frames (7032 samples) of `303_saw_lowcut` and 1656 frames of
   `303_vintage_saw`, all by -1 LSB; the part fed by the 303 starts after D = 16537 samples at 120
   BPM. Proof that this is the whole difference: with a test-only model of the delay (the code
-  below, in `crates/rb-engine/tests/corpus_tb303.rs`) the engine renders all 36 TB-303-only diag
-  songs equal to their corpus references. Only the disabled path (0x1000FAD1) leaves L/R
-  untouched. Every song of `tests/songs/diag` has the delay enabled (the template's).
+  below; task-023, removed in task-049 once the engine's delay of task-026 matched) the engine
+  rendered all 36 TB-303-only diag songs equal to their corpus references; with the engine's
+  delay they are (`crates/rb-engine/tests/corpus_tb303.rs`). Only the disabled path
+  (0x1000FAD1) leaves L/R untouched. Every song of `tests/songs/diag` has the delay enabled (the
+  template's), so the disabled path's only reference check is the rbhost renders of the 36
+  songs with the delay disabled (`crates/rb-engine/tests/fixtures/tb303_nodelay.json`,
+  `tools/nodelay.py`).
 - [C] task-023, the enabled block 0x1000F940..0x1000FACE and the update 0x1000F754 (every 16
   blocks, when the block counter `+0x30 & 15 == 0` before it is incremented, so in the first
   block): `q = mode == 0 ? 3*T/100 : 4*T/100` (signed `idiv`, T = the song's tempo from
@@ -1073,7 +1077,8 @@ w++
   0x100100E0; [7] no-op 0x1000F4E0; [8] 0x10010020; [9] 0x100100B0; [10] messages 0x1000FB40;
   [11] set-param 0x1000FDC0; [14] block 0x1000F940), implemented in
   `crates/rb-engine/src/delay.rs`, which renders every corpus song exact (the 123 diag songs with
-  no PCF or compressor routed, `crates/rb-engine/tests/corpus_effects.rs`):
+  no PCF or compressor routed, split among `crates/rb-engine/tests/corpus_tb303.rs`,
+  `corpus_tr808.rs`, `corpus_tr909.rs` and `corpus_effects.rs`, task-049):
   - ctor 0x1000F5A0: live block `+0x34` and pattern copy `+0x3A` both `sub_10019AB0` = 1, 3, 1,
     80, 64, 0 (byte 5 is the meter byte); `+0x54..+0x70` 0 (targets, gains, feedback, D, w,
     peak).
