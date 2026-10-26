@@ -1,0 +1,769 @@
+Description of RBS file format version 4.2 (ReBirth 2.0.1)
+==========================================================
+Prepared by Dan Engelbrecht, Propellerhead Software AB.
+
+IMPORTANT NOTE:
+This document is a work in progress! No technical support is provided 
+on the information contained herein!
+This file may be distributed freely as long as the contents is not modified 
+in any way!
+
+Copyright 1998 Propellerhead Software AB.
+All Rights Reserved. Propellerhead Software is the owner of all intellectual 
+property rights in this document.
+All specifications subject to change without notice. 
+ReBirth is a trademark of Propellerhead Software AB, Sweden.
+The information in this document is supplied "as is". Propellerhead Software AB 
+is not liable for any harm, whether direct or indirect, as a result of using 
+the information in this document.
+
+
+
+
+The original of this file can be found at
+"ftp.propellerheads.se/pub/devzone/RBSFormat42.txt"
+
+Any errors found in the document can be reported to "development@propellerheads.se".
+
+The RBS-files are IFF files and follows the structure described in the
+document '"EA IFF 85" Standard for Interchange Format Files'.
+This document can be found on Propellerheads ftp-server at
+"ftp.propellerheads.se/pub/devzone/iff.doc".
+
+
+
+Types:
+    UBYTE = 8 bit unsigned int
+    UWORD = 16 bit unsigned big endian int
+    ULONG = 32 bit unsigned big endian int
+    ZSTRING(x) = Zero terminated string, maximum length x including terminating zero.
+                 Always pad with zero to reach specified length
+    BITMASK8 = 8 bit unsigned int
+	UBYTE[x] = An array of 8 bit unsigned int x long.
+               (UBYTE[3] is an array of 3 UBYTE's)
+
+Syntax:
+    Numbers prefixed with 0x are hexadecimal (base 16) numbers, numbers without prefix
+    are decimal (base 10) numbers.
+
+File format hierarchy:
+                       ____________
+                      | CAT "RB40" |
+                      |____________|
+       _____________________|_____________________________________________
+      |                |             |                   |                |
+ _____|______    ______|_____    ____|________    _______|_______    _____|_____
+| CAT "DEVL" |  | CAT "TRKL" |  | "HEAD"      |  | "GLOB"        |  | "USRI"    |
+| Device list|  | Automation |  | Version info|  | Global params.|  | Song info |
+|____________|  |____________|  |_____________|  |_______________|  |___________|
+      |                |
+      |                |  Fixed order of TRAK-chunks
+      |         _______|_______________________________________________________________________________
+      |    ____|___   ____|___   ____|___   ____|___   ____|___   ____|___   ____|___   ____|___   ____|___ 
+      |   | "TRAK" | | "TRAK" | | "TRAK" | | "TRAK" | | "TRAK" | | "TRAK" | | "TRAK" | | "TRAK" | | "TRAK" |
+      |   | Mixer  | | 303 1  | | 303 2  | | 808    | | 909    | | Delay  | | Dist   | | PCF    | | Compr. |
+      |   |________| |________| |________| |________| |________| |________| |________| |________| |________|
+      |
+      |  Fixed order of DEVL-chunks
+      |_________________________________________________________________________________________
+  ____|___   ____|___   ____|___   ____|___   ____|___   ____|____   ____|____   ____|___   ____|___ 
+ | "MIXR" | | "DELY" | | "PCF " | | "DIST" | | "COMP" | | "303 "  | | "303 "  | | "808 " | | "909 " |
+ | Mixer  | | Delay  | | Pcf    | | Dist   | | Compr. | | TB303 1 | | TB303 2 | | TR808  | | TR909  |
+ |________| |________| |________| |________| |________| |_________| |_________| |________| |________|
+
+
+"CAT "
+<ULONG>=size of catalog "RB40" chunk (variable size)
+"RB40"
+	// Order of items in RB40 catalog level is not fixed, ReBirth 2.0.1 writes in specified order
+
+    "HEAD"
+    <ULONG>=size of "HEAD" chunk (256)
+    Head chunk data (256 bytes)
+
+    "GLOB"
+    <ULONG>=size of "GLOB" chunk (512)
+    Global chunk data (512 bytes)
+
+    "USRI"
+    <ULONG>=size of "USRI" chunk (512)
+    User information chunk data (512 bytes)
+
+    "CAT "
+    <ULONG>=size of device-list catalog "DEVL" chunk (14850 bytes)
+    "DEVL"
+    // Order of items in DEVL catalog is fixed, .rbs file must be in specified order
+
+        "MIXR"
+        <ULONG>=size "MIXR" chunk (64)
+        Mixer chunk data (64 bytes)
+
+        "DELY"
+        <ULONG>=size "DELY" chunk (8)
+        Delay chunk data (8 bytes)
+
+        "PCF "
+        <ULONG>=size "PCF " chunk (12)
+        PCF chunk data (12 bytes)
+
+        "DIST"
+        <ULONG>=size "DIST" chunk (8)
+        Dist chunk data (8 bytes)
+
+        "COMP"
+        <ULONG>=size "COMP" chunk (8)
+        Compressor chunk data (8 bytes)
+
+        "303 "
+        <ULONG>=size "303 " chunk (1097)
+        303 chunk data (1097 bytes)
+
+        "303 "
+        <ULONG>=size "303 " chunk (1097)
+        303 chunk data (1097 bytes)
+
+        "808 "
+        <ULONG>=size "808 " chunk (6238)
+        808 chunk data (6238 bytes)
+
+        "909 "
+        <ULONG>=size "909 " chunk (6239)
+        909 chunk data (6239 bytes)
+
+    "CAT "
+    <ULONG>=size of track-list catalog "TRKL" chunk (variable size)
+    "TRKL"
+    // Order of items in TRKL catalog is fixed, .rbs file must be in specified order
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // Mixer track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // TB303 1 track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // TB303 2 track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // TR808 track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // TR909 track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // Delay track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // Dist track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // PCF track chunk data
+
+        "TRAK"
+        <ULONG>=size of "TRAK" chunk (variable size,minimum 7 bytes)
+        <ULONG>=number of events in track
+        // Compressor track chunk data
+
+
+
+
+
+
+Chunk layouts:
+--------------
+    Parameters commented with "song mode" apply to song mode only,
+    parameters commented with "pattern mode" apply to pattern mode only.
+    If it's not commented with song/pattern-mode it is a global parameter
+    which affects both song and pattern mode.
+
+
+
+"HEAD" chunk layout 256 bytes
+-----------------------------
+    Version and copyright information.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Version                 UBYTE[9]        0       File version information, set to:
+                                                        0x5b,0x54,0x5b,0x54,0xbc,0x04,0x02,0x00,0x00
+    Copyright               ZSTRING(129)    9       "(c)1997 Propellerhead Software, all rights reserved"
+    Reserved                UBYTE[118]      138     set to zero
+
+
+"GLOB" chunk layout 512 bytes
+-----------------------------
+    Global parameters for song.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Pattern/song mode       UBYTE           0       0x00=pattern mode
+                                                    0x01=song mode
+    Loop on/off             UBYTE           1       0x00=loop off
+                                                    0x01=loop on (song mode)
+    Tempo                   ULONG           2       BPM*1000
+    Loop start              ULONG           6       Bar*768 (song mode)
+    Loop end                ULONG           10      Bar*768 (song mode)
+    Shuffle amount          UBYTE           14      0x00 to 0x7f
+    Name of mod             ZSTRING(65)     15      standard mod="Standard ReBirth"
+    Ftp address for mod     ZSTRING(201)    80      standard mod="ftp.propellerheads.se"
+    Www address for mod     ZSTRING(201)    281     standard mod="www.propellerheads.se"
+    Vintage mode            UBYTE           482     ReBirth sound model
+                                                    0x00 = ReBirth 2.0 sound
+                                                    0x01 = Vintage ReBirth sound
+    Reserved                UBYTE[29]       483     set to zero
+
+
+"USRI" chunk layout 512 bytes
+-----------------------------
+    User information for song.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Window title            ZSTRING(41)     0       text added to window title
+    More text               ZSTRING(201)    41      text in song information dialog, 0x0d is newline
+    Web page                ZSTRING(101)    242     url-address in song information dialog
+    Show song info on open  UBYTE           343     0x00 = don't show song info on open
+                                                    0x01 = show song info on song open
+    Reserved                UBYTE[168]      344     set to zero
+
+
+"MIXR" chunk layout 64 bytes
+----------------------------
+    Mixer settings.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Master fader level      UBYTE           0       0x00 to 0x7f
+    Compressor device id    UBYTE           1       Active compressor unit (pattern mode)
+                                                    0x00 = off
+                                                    0x01 = master
+                                                    0x02 = tb303 1
+                                                    0x03 = tb303 2
+                                                    0x04 = tr808
+                                                    0x05 = tr909
+    PCF device id           UBYTE           2       Active PCF unit (pattern mode)
+                                                    0x00 = off
+                                                    0x02 = tb303 1
+                                                    0x03 = tb303 2
+                                                    0x04 = tr808
+                                                    0x05 = tr909
+    Reserved                UBYTE[13]       3       set to zero
+
+    TB303 1 mix enabled     UBYTE           16      0x00 = off, 0x01 = on
+    TB303 1 mix level       UBYTE           17      0x00 to 0x7f (pattern mode)
+    TB303 1 pan             UBYTE           18      Pan of TB303 1 (pattern mode)
+                                                    0x00 to 0x7f
+                                                    0x00=full left
+                                                    0x40=middle
+                                                    0x7f=full right
+    TB303 1 delay send amt  UBYTE           19      0x00 to 0x7f (pattern mode)
+    TB303 1 dist enabled    UBYTE           20      Distortion enabled on TB303 1 (pattern mode)
+                                                    0x00 = off
+                                                    0x01 = on
+    Reserved                UBYTE[7]        21      set to zero
+
+    TB303 2 mix enabled     UBYTE           28      0x00 = off, 0x01 = on
+    TB303 2 mix level       UBYTE           29      0x00 to 0x7f (pattern mode)
+    TB303 2 pan             UBYTE           30      Pan of TB303 2 (pattern mode)
+                                                    0x00 to 0x7f
+                                                    0x00=full left
+                                                    0x40=middle
+                                                    0x7f=full right
+    TB303 2 delay send amt  UBYTE           31      0x00 to 0x7f (pattern mode)
+    TB303 2 dist enabled    UBYTE           32      Distortion enabled on TB303 2 (pattern mode)
+                                                    0x00 = off
+                                                    0x01 = on
+    Reserved                UBYTE[7]        33      set to zero
+
+    TR808 mix enabled       UBYTE           40      0x00 = off, 0x01 = on
+    TR808 mix level         UBYTE           41      0x00 to 0x7f (pattern mode)
+    TR808 pan               UBYTE           42      Pan of TR808 (pattern mode)
+                                                    0x00 to 0x7f
+                                                    0x00=full left 
+                                                    0x40=middle
+                                                    0x7f=full right
+    TR808 delay send amt    UBYTE           43      0x00 to 0x7f (pattern mode)
+    TR808 dist enabled      UBYTE           44      Distortion enabled on TR808 (pattern mode)
+                                                    0x00 = off
+                                                    0x01 = on
+    Reserved                UBYTE[7]        45      set to zero
+
+    TR909 mix enabled       UBYTE           52      0x00 = off, 0x01 = on
+    TR909 mix level         UBYTE           53      0x00 to 0x7f (pattern mode)
+    TR909 pan               UBYTE           54      Pan of TR909 (pattern mode)
+                                                    0x00 to 0x7f
+                                                    0x00=full left
+                                                    0x40=middle
+                                                    0x7f=full right
+    TR909 delay send amt    UBYTE           55      0x00 to 0x7f (pattern mode)
+    TR909 dist enabled      UBYTE           56      Distortion enabled on TR909 (pattern mode)
+                                                    0x00 = off
+                                                    0x01 = on
+    Reserved                UBYTE[7]        57      set to zero
+
+
+"DELY" chunk layout 8 bytes
+---------------------------
+    Delay settings.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Enabled                 UBYTE           0       0x00 = off, 0x01 = on (pattern mode)
+    Steps                   UBYTE           1       0x01 to 0x20 (pattern mode)
+    Step mode               UBYTE           2       Delay step mode (pattern mode)
+                                                    0x00 = quarter notes
+                                                    0x01 = triplets (pattern mode)
+    Feedback amount         UBYTE           3       0x00 to 0x7f (pattern mode)
+    Pan                     UBYTE           4       Pan of Delay (pattern mode)
+                                                    0x00 to 0x7f
+                                                    0x00=full left 
+                                                    0x40=middle
+                                                    0x7f=full right
+    Reserved                UBYTE[3]        5       set to zero
+
+
+"PCF " chunk layout 12 bytes
+----------------------------
+    PCF settings.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Enabled                 UBYTE           0       0x00 = off, 0x01 = on (pattern mode)
+    Frequency               UBYTE           1       0x00 to 0x7f (pattern mode)
+    Resonance               UBYTE           2       0x00 to 0x7f (pattern mode)
+    Amount                  UBYTE           3       0x00 to 0x7f (pattern mode)
+    Wave                    UBYTE           4       0x00 to 0x37 (pattern mode)
+    Decay                   UBYTE           5       0x00 to 0x7f (pattern mode)
+    Mode                    UBYTE           6       PCF mode (pattern mode)
+                                                    0x00 = bandpass Mode
+                                                    0x01 = lowpass
+    Reserved                UBYTE[5]        7       set to zero
+
+
+"DIST" chunk layout 8 bytes
+---------------------------
+    Distortion settings.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Enabled                 UBYTE           0       0x00 = off, 0x01 = on (pattern mode)
+    Amount                  UBYTE           1       0x00 to 0x7f (pattern mode)
+    Shape                   UBYTE           2       0x00 to 0x7f (0x00 = 1.5 mode) (pattern mode)
+    Reserved                UBYTE[5]        3       set to zero
+
+
+"COMP" chunk layout 8 bytes
+---------------------------
+    Compressor settings.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Enabled                 UBYTE           0       0x00 = off, 0x01 = on (pattern mode)
+    Amount                  UBYTE           1       0x00 to 0x7f (pattern mode)
+    Threshold               UBYTE           2       0x00 to 0x7f (pattern mode)
+    Reserved                UBYTE[5]        3       set to zero
+
+
+"303 " chunk layout 1097 bytes
+------------------------------
+    TB303 settings (identical for both TB303's).
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Enabled                 UBYTE           0       0x00 = off, 0x01 = on (pattern mode)
+    Selected pattern        UBYTE           1       0x00 to 0x20 (pattern mode)
+    Tune                    UBYTE           2       0x00 to 0x7f (pattern mode)
+    Cutoff                  UBYTE           3       0x00 to 0x7f (pattern mode)
+    Resonance               UBYTE           4       0x00 to 0x7f (pattern mode)
+    EnvMod                  UBYTE           5       0x00 to 0x7f (pattern mode)
+    Decay                   UBYTE           6       0x00 to 0x7f (pattern mode)
+    Accent                  UBYTE           7       0x00 to 0x7f (pattern mode)
+    Waveform                UBYTE           8       0x00 = triangle, 0x01 = square (pattern mode)
+
+        32*Pattern (1088 bytes)             9,9+(1*34),9+(2*34),9+(3*34)...
+        |   Shuffle         UBYTE                   0x00 = off, 0x01 = on
+        |   Pattern length  UBYTE                   0x01 to 0x10
+        |
+        |   16*Step (32 bytes)              11,11+(1*34),11+(2*34),11+(3*34)...
+        |   |   Tone/pitch  UBYTE                   0x00 to 0x0c
+        |   |   Flags       BITMASK8                bit 0 = No slide/Slide (0x01)
+        |   |                                       bit 1 = No accent/Accent (0x02)
+        |   |                                       bit 2 = Normal/Transpose up (0x04)
+        |   |                                       bit 3 = Normal/Transpose down (0x08)
+        \   \                                       bit 4 = Pause/Note (0x10)
+
+
+"808 " chunk layout 6238 bytes
+------------------------------
+    TR808 settings.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Enabled                 UBYTE           0       0x00 = off, 0x01 = on (pattern mode)
+    Selected pattern        UBYTE           1       0x00 to 0x20 (pattern mode)
+    AccentLevel             UBYTE           2       0x00 to 0x7f (pattern mode)
+    BassLevel               UBYTE           3       0x00 to 0x7f (pattern mode)
+    BassTone                UBYTE           4       0x00 to 0x7f (pattern mode)
+    BassDecay               UBYTE           5       0x00 to 0x7f (pattern mode)
+    SnareLevel              UBYTE           6       0x00 to 0x7f (pattern mode)
+    SnareTone               UBYTE           7       0x00 to 0x7f (pattern mode)
+    SnareSnappy             UBYTE           8       0x00 to 0x7f (pattern mode)
+    LowTomLevel             UBYTE           9       0x00 to 0x7f (pattern mode)
+    LowTomTuning            UBYTE           10      0x00 to 0x7f (pattern mode)
+    LowTomSelector          UBYTE           11      0x00 to 0x7f (pattern mode)
+    MidTomLevel             UBYTE           12      0x00 to 0x7f (pattern mode)
+    MidTomTuning            UBYTE           13      0x00 to 0x7f (pattern mode)
+    MidTomSelector          UBYTE           14      0x00 to 0x7f (pattern mode)
+    HiTomLevel              UBYTE           15      0x00 to 0x7f (pattern mode)
+    HiTomTuning             UBYTE           16      0x00 to 0x7f (pattern mode)
+    HiTomSelector           UBYTE           17      0x00 to 0x7f (pattern mode)
+    RimShotLevel            UBYTE           18      0x00 to 0x7f (pattern mode)
+    RimShotSelector         UBYTE           19      0x00 to 0x7f (pattern mode)
+    ClapLevel               UBYTE           20      0x00 to 0x7f (pattern mode)
+    ClapSelector            UBYTE           21      0x00 to 0x7f (pattern mode)
+    CowBellLevel            UBYTE           22      0x00 to 0x7f (pattern mode)
+    CymbalLevel             UBYTE           23      0x00 to 0x7f (pattern mode)
+    CymbalTone              UBYTE           24      0x00 to 0x7f (pattern mode)
+    CymbalDecay             UBYTE           25      0x00 to 0x7f (pattern mode)
+    OpenHiHatLevel          UBYTE           26      0x00 to 0x7f (pattern mode)
+    OpenHiHatDecay          UBYTE           27      0x00 to 0x7f (pattern mode)
+    ClosedHiHatLevel        UBYTE           28      0x00 to 0x7f (pattern mode)
+    Reserved                UBYTE           29      set to zero
+
+        32*Pattern (6208 bytes)             30,30+(1*194),30+(2*194),30+(3*194)...
+        |   Shuffle         UBYTE                   0x00 = off, 0x01 = on
+        |   Pattern length  UBYTE                   0x01 to 0x10
+        |
+        |   16*Step (192 bytes)             32,32+(1*194),32+(2*194),32+(3*194)...
+        |   |   ACTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   BDTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   SDTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   LTTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   MTTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   HTTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   RSTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   CPTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   CBTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   CYTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        |   |   OHTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+        \   \   CHTrigFlag  UBYTE                   0x00 = off, 0x01 = on
+
+
+"909 " chunk layout 6239 bytes
+------------------------------
+    TR808 settings.
+
+    Parameter               Type            Offset  Description
+    -----------------------------------------------------------------------------------------------------
+    Enabled                 UBYTE           0       0x00 = off, 0x01 = on (pattern mode)
+    Selected pattern        UBYTE           1       0x00 to 0x20 (pattern mode)
+    AccentLevel             UBYTE           2       0x00 to 0x7f (pattern mode)
+    BassLevel               UBYTE           3       0x00 to 0x7f (pattern mode)
+    BassTune                UBYTE           4       0x00 to 0x7f (pattern mode)
+    BassAttack              UBYTE           5       0x00 to 0x7f (pattern mode)
+    BassDecay               UBYTE           6       0x00 to 0x7f (pattern mode)
+    SnareLevel              UBYTE           7       0x00 to 0x7f (pattern mode)
+    SnareTune               UBYTE           8       0x00 to 0x7f (pattern mode)
+    SnareTone               UBYTE           9       0x00 to 0x7f (pattern mode)
+    SnareSnappy             UBYTE           10      0x00 to 0x7f (pattern mode)
+    LowTomLevel             UBYTE           11      0x00 to 0x7f (pattern mode)
+    LowTomTune              UBYTE           12      0x00 to 0x7f (pattern mode)
+    LowTomDecay             UBYTE           13      0x00 to 0x7f (pattern mode)
+    MidTomLevel             UBYTE           14      0x00 to 0x7f (pattern mode)
+    MidTomTune              UBYTE           15      0x00 to 0x7f (pattern mode)
+    MidTomDecay             UBYTE           16      0x00 to 0x7f (pattern mode)
+    HiTomLevel              UBYTE           17      0x00 to 0x7f (pattern mode)
+    HiTomTune               UBYTE           18      0x00 to 0x7f (pattern mode)
+    HiTomDecay              UBYTE           19      0x00 to 0x7f (pattern mode)
+    RimShotLevel            UBYTE           20      0x00 to 0x7f (pattern mode)
+    ClapLevel               UBYTE           21      0x00 to 0x7f (pattern mode)
+    HiHatLevel              UBYTE           22      0x00 to 0x7f (pattern mode)
+    ClosedHiHatDecay        UBYTE           23      0x00 to 0x7f (pattern mode)
+    OpenHiHatDecay          UBYTE           24      0x00 to 0x7f (pattern mode)
+    CrashCymbalLevel        UBYTE           25      0x00 to 0x7f (pattern mode)
+    CrashCymbalTune         UBYTE           26      0x00 to 0x7f (pattern mode)
+    RideCymbalLevel         UBYTE           27      0x00 to 0x7f (pattern mode)
+    RideCymbalTune          UBYTE           28      0x00 to 0x7f (pattern mode)
+    FlamInterval            UBYTE           29      0x00 to 0x7f (pattern mode)
+
+    1 byte reserved, set to zero
+
+        32*Pattern (6208 bytes)             30,30+(1*194),30+(2*194),30+(3*194)...
+        |   Shuffle         UBYTE                   0x00 = off, 0x01 = on
+        |   Pattern length  UBYTE                   0x01 to 0x10
+        |
+        |   16*Step (192 bytes)             32,32+(1*194),32+(2*194),32+(3*194)...
+        |   |   ACTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   BDTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   SDTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   LTTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   MTTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   HTTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   RSTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   CPTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   CHTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   OHTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        |   |   CCTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+        \   \   RCTrig      UBYTE                   0x00 = off, 0x01 = on, 0x02 = accent, 0x03 = flam
+
+
+"TRAK" chunk layout variable size,minimum 7 bytes
+-------------------------------------------------
+    Track (sequencer automation) settings.
+
+    No of events            ULONG           At least 1
+       No of events*Event
+       |  DeltaPosition     UBYTE[1-4]      The first event always starts a position zero (1 byte) and
+       |                                    subsequent events are delta compressed, i.e. the absolute
+       |                                    position for the second event is the deltaposition of the
+       |                                    first + deltaposition for the second event.
+       |                                    The position is given in 192 PPQ divided by 8 giving an
+       |                                    effective resolution of 24 PPQ (32th notes).
+       |                                    Pattern selection for devices (controller 0x01 for TB303,
+       |                                    TR808 and TR909) must be at an even multiple bar - evenly
+       |                                    divisible by 32.
+       |                                    The delta position is also encoded in MIDI-file style,
+       |                                    code snipped follows.*
+       |                                    The First event for each "TRAK" must have DeltaPosition
+       |                                    0x00 and MUST exist!!
+       |                                    The accumulated position must not exceed 31976!
+       |  ControllerID      UBYTE           See specific info for each track for valid controllerID's
+       \  ControllerValue   UBYTE           See specific info for each track for valid controllerID's
+
+
+* Code-snippets for encoding/decoding delta position, up to 4 bytes long
+
+    void WriteDeltaPos(ULONG position,CMedia* media){
+        ULONG buffer;
+
+        buffer=value & 0x7f;
+        while((value >>= 7) > 0){
+            buffer <<= 8;
+            buffer |= 0x80;
+            buffer +=(value & 0x7f);
+        }
+        while(TRUE){
+            media->WriteByte(buffer & 0xff);
+
+            if(buffer & 0x80){
+                buffer >>= 8;
+            }
+            else{
+                return;
+            }
+        }
+    }
+
+    ULONG ReadDeltaPos(CMedia* media){
+        UBYTE c;
+        ULONG value;
+
+        c=media->ReadByte();
+        value=c;
+        if(c & 0x80){
+            value &= 0x7f;
+            do {
+                c=media->ReadByte();
+                value=(value << 7) | (c & 0x7f);
+            } while(c & 0x80);
+        }
+        return value;
+    }
+
+
+
+
+
+Controller info for sequencer tracks
+
+Mixer track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+
+    0x01        0x00 = off      Compressor device id
+                0x01 = master
+                0x02 = tb303 1
+                0x03 = tb303 2
+                0x04 = tr808
+                0x05 = tr909
+
+    0x02        0x00 = off      PCF device id
+                0x02 = tb303 1
+                0x03 = tb303 2
+                0x04 = tr808
+                0x05 = tr909
+
+    0x06        0x00 to 0x7f    TB303 1 mix level
+    0x07        0x00 to 0x7f    TB303 1 pan
+    0x08        0x00 to 0x7f    TB303 1 delay send amt
+    0x09        0x00 = off      TB303 1 dist enabled
+                0x01 = on
+
+    0x0c        0x00 to 0x7f    TB303 2 mix level
+    0x0d        0x00 to 0x7f    TB303 2 pan
+    0x0e        0x00 to 0x7f    TB303 2 delay send amt
+    0x0f        0x00 = off      TB303 2 dist enabled
+                0x01 = on
+
+    0x12        0x00 to 0x7f    TR808 mix level
+    0x13        0x00 to 0x7f    TR808 pan
+    0x14        0x00 to 0x7f    TR808 delay send amt
+    0x15        0x00 = off      TR808 dist enabled
+                0x01 = on
+
+    0x18        0x00 to 0x7f    TR909 mix level
+    0x19        0x00 to 0x7f    TR909 pan
+    0x20        0x00 to 0x7f    TR909 delay send amt
+    0x21        0x00 = off      TR909 dist enabled
+                0x01 = on
+
+TB303 track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+    0x00        0x00 = off      Enabled
+                0x01 = on
+    0x01        0x00 to 0x20    Selected pattern
+    0x02        0x00 to 0x7f    Tune
+    0x03        0x00 to 0x7f    Cutoff
+    0x04        0x00 to 0x7f    Resonance
+    0x05        0x00 to 0x7f    EnvMod
+    0x06        0x00 to 0x7f    Decay
+    0x07        0x00 to 0x7f    Accent
+    0x08        0x00 = triangle Waveform
+                0x01 = square
+
+
+TB808 track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+    0x00        0x00 = off      Enabled
+                0x01 = on
+    0x01        0x00 to 0x20    Selected pattern
+    0x02        0x00 to 0x7f    AccentLevel
+    0x03        0x00 to 0x7f    BassLevel
+    0x04        0x00 to 0x7f    BassTone
+    0x05        0x00 to 0x7f    BassDecay
+    0x06        0x00 to 0x7f    SnareLevel
+    0x07        0x00 to 0x7f    SnareTone
+    0x08        0x00 to 0x7f    SnareSnappy
+    0x09        0x00 to 0x7f    LowTomLevel
+    0x0a        0x00 to 0x7f    LowTomTuning
+    0x0b        0x00 to 0x7f    LowTomSelector
+    0x0c        0x00 to 0x7f    MidTomLevel
+    0x0d        0x00 to 0x7f    MidTomTuning
+    0x0e        0x00 to 0x7f    MidTomSelector
+    0x0f        0x00 to 0x7f    HiTomLevel
+    0x10        0x00 to 0x7f    HiTomTuning
+    0x11        0x00 to 0x7f    HiTomSelector
+    0x12        0x00 to 0x7f    RimShotLevel
+    0x13        0x00 to 0x7f    RimShotSelector
+    0x14        0x00 to 0x7f    ClapLevel
+    0x15        0x00 to 0x7f    ClapSelector
+    0x16        0x00 to 0x7f    CowBellLevel
+    0x17        0x00 to 0x7f    CymbalLevel
+    0x18        0x00 to 0x7f    CymbalTone
+    0x19        0x00 to 0x7f    CymbalDecay
+    0x1a        0x00 to 0x7f    OpenHiHatLevel
+    0x1b        0x00 to 0x7f    OpenHiHatDecay
+    0x1c        0x00 to 0x7f    ClosedHiHatLevel
+
+
+TB909 track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+    0x00        0x00 = off      Enabled
+                0x01 = on
+    0x01        0x00 to 0x20    Selected pattern
+    0x02        0x00 to 0x7f    AccentLevel
+    0x03        0x00 to 0x7f    BassLevel
+    0x04        0x00 to 0x7f    BassTune
+    0x05        0x00 to 0x7f    BassAttack
+    0x06        0x00 to 0x7f    BassDecay
+    0x07        0x00 to 0x7f    SnareLevel
+    0x08        0x00 to 0x7f    SnareTune
+    0x09        0x00 to 0x7f    SnareTone
+    0x0a        0x00 to 0x7f    SnareSnappy
+    0x0b        0x00 to 0x7f    LowTomLevel
+    0x0c        0x00 to 0x7f    LowTomTune
+    0x0d        0x00 to 0x7f    LowTomDecay
+    0x0e        0x00 to 0x7f    MidTomLevel
+    0x0f        0x00 to 0x7f    MidTomTune
+    0x10        0x00 to 0x7f    MidTomDecay
+    0x11        0x00 to 0x7f    HiTomLevel
+    0x12        0x00 to 0x7f    HiTomTune
+    0x13        0x00 to 0x7f    HiTomDecay	
+    0x14        0x00 to 0x7f    RimShotLevel
+    0x15        0x00 to 0x7f    ClapLevel
+    0x16        0x00 to 0x7f    HiHatLevel
+    0x17        0x00 to 0x7f    ClosedHiHatDecay
+    0x18        0x00 to 0x7f    OpenHiHatDecay	
+    0x19        0x00 to 0x7f    CrashCymbalLevel
+    0x1a        0x00 to 0x7f    CrashCymbalTune
+    0x1b        0x00 to 0x7f    RideCymbalLevel
+    0x1c        0x00 to 0x7f    RideCymbalTune
+    0x1d        0x00 to 0x7f    FlamInterval
+
+
+Delay track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+    0x00        0x00 = off      Enabled
+                0x01 = on
+    0x01        0x01 to 0x20    Steps
+    0x02        0x00 = quarters Step mode
+                0x01 = triplets
+    0x03        0x00 to 0x7f    Feedback amount
+    0x04        0x00 to 0x7f    Pan
+
+Dist track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+    0x00        0x00 = off      Enabled
+                0x01 = on
+    0x01        0x00 to 0x7f    Amount
+    0x02        0x00 to 0x7f    Shape (0x00 = 1.5 mode)
+
+PCF track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+    0x00        0x00 = off      Enabled
+                0x01 = on
+    0x01        0x00 to 0x7f    Frequency
+    0x02        0x00 to 0x7f    Resonance
+    0x03        0x00 to 0x7f    Amount
+    0x04        0x00 to 0x7f    Wave
+    0x05        0x00 to 0x7f    Decay
+    0x06        0x00 = bandpass Mode
+                0x01 = lowpass
+
+Compressor track
+-----------
+    ControlID   Range           Description
+    --------------------------------------------------
+    0x00        0x00 = off      Enabled
+                0x01 = on
+    0x01        0x00 to 0x7f    Amount
+    0x02        0x00 to 0x7f    Threshold

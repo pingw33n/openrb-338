@@ -1,0 +1,8 @@
+# The original program and its databases are data: store them byte for byte.
+original/** -text
+*.i64 binary
+*.rbs binary
+*.rbm binary
+*.wav binary
+*.flac binary
+*.aif binary

@@ -1,0 +1,19 @@
+# IDA's working files of an open database (unpacked from the .i64)
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+*.$$$
+
+# Rust build output
+/target/
+
+# Agent worktrees, editor and OS files
+.claude/worktrees/
+.idea/
+.vscode/
+.DS_Store
+
+# Python bytecode caches
+__pycache__/
