@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-26 15:08'
 labels:
   - rbm
   - tests
@@ -13,6 +14,7 @@ milestone: m-2
 dependencies:
   - TASK-014
   - TASK-030
+  - TASK-038
 priority: medium
 type: task
 ordinal: 31000
@@ -29,3 +31,9 @@ Collect real RBM mods (from the test machine's installation or from the user; as
 - [ ] #1 At least three mods with songs using them are in the corpus with their references and manifest entries
 - [ ] #2 Re-capturing one mod reference equals the committed one
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-26: per the user, app-export validation is optimized first (task-038) before this task captures app exports again.
+<!-- SECTION:NOTES:END -->
