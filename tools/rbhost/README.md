@@ -29,7 +29,7 @@ tools/rbhost/run.py -o OUT tests/songs/diag/songs/303_accent0.rbs        # OUT/3
 tools/rbhost/run.py --runs 2 -o OUT SONG.rbs                             # OUT/SONG.1.wav, OUT/SONG.2.wav
 tools/rbhost/run.py --dump-tables --dump-state -o OUT SONG.rbs           # OUT/SONG.tables/, OUT/SONG.state/
 tools/rbhost/run.py --dump-float -o OUT SONG.rbs                         # OUT/SONG.float/float.bin
-tools/rbhost/run.py --idle-sweep 6400:9600:16 --match APP.wav -o OUT SONG.rbs   # fit N to an app export
+tools/rbhost/run.py --idle-sweep 6400:9600:16 --match APP.wav -o OUT SONG.rbs   # fit N to an app export (slow: fit.py)
 tools/rbhost/run.py --mod MOD.rbm --rb20ful RB20FUL.DAT --dump-samples -o OUT SONG.rbs  # with a mod
 ```
 
@@ -77,5 +77,18 @@ the app.
 
 An app export depends on the number of idle blocks the song rendered before it (`docs/export_state.md`
 sections 7, 9, 11). `--idle-sweep A:B:S --match APP.wav` renders one file per N in `range(A, B, S)`
-and stops at the first render whose samples equal the app's. Results so far are in
-`docs/export_state.md` section 12.
+and stops at the first render whose samples equal the app's (`--match-hash`: the hashes are compared on
+the machine and only a match is downloaded). Results so far are in `docs/export_state.md` section 12.
+
+**`fit.py`** (task-038) is the fast way, about 0.5 s per song instead of 10 to 40 s:
+
+```
+tools/rbhost/fit.py --app-dir APPOUT -o OUT SONG.rbs...      # APPOUT: rb_export.py's <stem>.wav + .json
+tools/rbhost/fit.py --app-dir APPOUT --all --max-candidates 31 -o OUT SONG.rbs   # every candidate: is the fit unique?
+```
+
+It tries `N` (multiples of 16) outward from `N_t + 48`, `N_t` being the blocks between "song opened"
+and "export started" in the app sidecar's timeline (`docs/export_state.md` sections 11.6 and 13), and
+learns the offset `N - N_t` from the songs it has fitted. It runs `--jobs` rbhost processes at the same
+time (`--private-port`, one permit each), uploads rbhost and all the messages once and compares
+the WAV hashes on the machine. `OUT/fit.json` has the fitted N, the number of renders and the times.

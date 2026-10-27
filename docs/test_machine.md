@@ -239,8 +239,16 @@ RIFF check). It drives the app with the rcs server's `input` and `screenshot` (n
 library on the machine); a dialog is "up" when `screenshot --window <title>` succeeds. Options for
 the capture protocol (`docs/export_state.md` section 9): `--restore-prf [LOCAL]` (restores the
 preferences file before each start, default from `C:\re\rb\prf_before.prf`), `--startup-sound on|off`,
-`--wait-after-open S` (default 10), `--play-seconds S` (Space, wait, Space), `--exports K`,
-`--reuse-process`. The file is accepted when its size is stable and equals
+`--wait-after-open S` (default 2; `docs/export_state.md` section 11.6 for the faster waits),
+`--play-seconds S` (Space, wait, Space), `--exports K`, `--reuse-process`. The runner tells the MIDI
+box and the song-info box from the main window by the size of the frame window's screenshot (the
+box and the main window have the title "ReBirth RB-338"; 45814 against 1739010 bytes, threshold
+200000, measured at the machine's one screen setup). Limit: another screen size or DPI scaling
+changes both sizes. A main window below the threshold is taken for a box: the runner presses
+Enter in the main window at the start, then waits 15 s for a main window and fails ("the main
+window did not appear", with the screenshot saved); a box above it is never seen and the run fails
+the same way after 15 s. Nothing else is sent to a wrong window. Re-measure the two sizes (`MAIN_WINDOW_MIN_BYTES` in `tools/rb_export.py`) after such a
+change. The file is accepted when its size is stable and equals
 `44 + 4 * frames` from the export length formula (`docs/initial_investigation.md` section 3) and the
 downloaded RIFF is consistent; it stops only the `Rebirth.exe` it started (by PID: `taskkill`, then
 `/F` after 15 s) and refuses to start if a `Rebirth.exe` already runs. A failed step saves

@@ -156,7 +156,7 @@ next drain forwards to the port. Top-level 53 (activate a song) is handled inlin
 ### 2.7 The shared-memory port (for rbhost) [C]
 
 `sub_1001C7B0` creates `CReBirthDLLPort` (`sub_1001B980`, vtable 0x10033C44) at `engine+4`: a writer
-on `"ReBirth DLL->Panel"` and a reader on `"ReBirth Panel->DLL"`. Each side (`sub_100179E0`) is:
+on `"ReBirth DLL->Panel"` (the literal at VA 0x10152D18, .data1, one occurrence) and a reader on `"ReBirth Panel->DLL"` (VA 0x10152EE8, .data1, one occurrence). Each side (`sub_100179E0`) is:
 - a semaphore `"<name>_SEMA"`, `CreateSemaphoreA(0, 1, 1, name)` (`sub_100091B0`), used as a lock:
   taken with `WaitForSingleObject(h, 10000)` (`sub_100092F0`; a timeout throws `XBase`) and
   released with `ReleaseSemaphore` (`sub_100092C0`),
@@ -630,9 +630,77 @@ else is needed:
   rbhost for one session (§12), whose `--idle-blocks` takes `N = 16k` and `run.py --idle-sweep`
   fits it (`phase.py` gives `k` modulo about 10.53 buffers from one note, so the search is short).
 
+Since task-038 the runner's default is T = 2 s and its other waits are polled (§11.6); the recipe above
+with `--wait-after-open 10` is the protocol of task-010 to task-012 and still works.
+
 Not recommended: two exports in one process (P2: msg 33 state and drum counters), playing before the
 export (P3: drum counters, pitch, delay contents), and loading another song first (P4) unless that
 song has no snare or bass-drum hits.
+
+### 11.6 A faster capture and fit (task-038)
+
+Measured on 2026-10-27 (8 diagnostic songs: `303_slide`, `303_vintage_square`, `808_bass_knobs_hi`,
+`909_clap`, `delay_straight_fb127`, `tempo_66_667`, `comp_ch_a127_t0`, `pcf_on_909`).
+
+**What changed in `tools/rb_export.py`.** The MIDI box (title "ReBirth RB-338", the same as the main
+window; its screenshot is 45814 bytes against 1739010 for the main window) is polled for instead of a
+4 s sleep plus 1 s; the 1.5 s after the open dialog and the 1.0 s for the progress box are gone (the
+next export waits for the main window instead); the export file is accepted after 0.4 s at its final
+size (was 1.5 s; the RIFF check and a comparison of the machine's hash with the download's catch a
+file still being written); the polls run every 0.05 to 0.15 s (was 0.2 to 0.5 s); the songs are
+uploaded in one batch. `--wait-after-open` defaults to 2 s (was 10).
+
+| Phase of one export (s) | before (T = 10) | after (T = 2) |
+|---|---|---|
+| prefs restore + app start | 0.9 | 0.5 |
+| MIDI box up and dismissed | 4.1 | 0.6 |
+| open dialog, typing, load | 2.5 | 2.7 |
+| wait after open | 11.5 (10 + 1.5 sleep) | 2.0 |
+| File menu to the export dialog | 0.8 | 1.0 |
+| path typed, export started | 0.8 | 0.8 |
+| export running until the file is complete | 2.1 | 1.1 |
+| download and hash check | 0.1 | 0.1 |
+| progress-box sleep and quit the app (the rest) | 2.6 | 0.8 |
+| **per song, from the invocation of 2 and 8 songs** | **25.4** | **9.6** (7.8 with T = 0) |
+
+**Does a shorter T keep the exports reproducible?** The export is reproduced byte for byte by rbhost
+at one fitted `N` in every case: 8 songs each at T = 10 (with the new polls), 2 and 0 (24 exports),
+and at the default again (8). Each fit is unique among the 31 candidates around the estimate
+(checked with `fit.py --all`), and the serial `run.py --idle-sweep --match` (the tool of task-012)
+finds the same `N` for the 16 exports at T = 10 and 2 and the 8 at the default (that sweep downloads
+every render); the T = 0 set was fitted by `fit.py` only. `N` is not reproducible between app
+sessions, so the check is "one exact `N` per export, the same `N` by the old tool", not equal `N`.
+`N` follows the timeline: with T = 10, 2, 0 `N` was 8160..8224, 2640..2704 and 1296..1376, and
+`N - N_t` (§13) was 38..65, 24..79 and 40..88, against 3..82 in task-012. The songs whose settling
+states (§9: delay, compressors, 303 envelopes) matter, `delay_straight_fb127` and
+`comp_ch_a127_t0`, were also fitted exactly at T = 0 [G: 8 songs, one export each].
+[G] Not measured: whether two T = 2 exports of one song in fresh processes with the same `N` are
+identical (the "identical x3" property of §11.1); the `N` differ between sessions, so it needs
+the exports compared at equal `N`, or the P2 comparison of §11.1 repeated at T = 2. What the
+measurements support is only that the T = 2 export is the model's output at some `N`. A shorter T
+than 2 s leaves the load less time to finish and widens the `N - N_t` spread, so 2 s is the default.
+The corpus references come from rbhost at a fixed `N` (tests/refs), not from these app exports,
+so this does not change them.
+
+**Fitting (`tools/rbhost/fit.py`).** Per song: candidates `N` (multiples of 16) outward from `N_t +
+offset` (48 at first, then the median `N - N_t` of the songs already fitted), stop at the first
+render whose whole-file sha256 equals the app's, compared on the machine (`rcs hash`: 18 ms; no WAV
+is downloaded). The reported `N` is the first match in that order: it is proven unique only by
+`--all` (every candidate of the window rendered), which the 8 songs above went through. An all-zero
+app export matches at every `N`: `fit.py` checks one render at the seed, reports "all N" and keeps it
+out of the learned offset. The renders of one song run in `--jobs` rbhost processes, each with its own DLL ports
+(`rbhost --private-port` renames the two shared-memory objects of §2.7 after the process id; two
+rbhosts without it write into each other's ring and the engine answers 'K', out of memory, code 23).
+Per song 0.4 s (first match, 2 to 6 renders; the renders take 0.2 s each), against 7 to 8 s for
+`run.py --idle-sweep` over a 40-value range to the match (0.42 s a render, a download each) and 36 s
+for the 49-render sweep of task-012. A bad seed
+(`--offset 400`) costs 43 renders for the first song (9.2 s serial, 6 s with 4 workers) and the
+learned offset fixes the rest. Several processes do not make a well seeded fit faster (2 to 3 renders
+a song): they pay off for a miss.
+
+Not done: several candidates in one rbhost process (a process per candidate is 0.2 s a render, and
+the DLL's global state would have to be reset between candidates), and fitting several songs of one
+app session together (a fresh process per song gives each its own `N`).
 
 ## 12. Driving the DLL without the app: rbhost (task-011)
 
@@ -684,7 +752,8 @@ blocks, export" of §9 reproduces the app exactly, including the export's own st
 The number of blocks rendered between the export's stop and its locate (`--post-stop-blocks`, 0..160)
 and whether locate and play are drained by the first chunk or before it made no difference for
 `303_accent0`. A fit is needed per export; `tools/rbhost/run.py --idle-sweep A:B:S --match APP.wav`
-does it. The comparison over all 145 diagnostic songs is §13.
+does it, and `tools/rbhost/fit.py` does it faster (§11.6). The comparison over all 145 diagnostic songs
+is §13.
 
 ## 13. rbhost against the app over the diagnostic songs (task-012)
 

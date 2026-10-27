@@ -103,6 +103,25 @@ def upload_mod(args, client, outdir):
     return REMOTE_WIN + "\\%s.rbmmsg" % args.tag
 
 
+def rbhost_options(args, idle):
+    """rbhost's command line options (without the dump options and the two file names) for one render."""
+    rargs = []
+    if args.dll:
+        rargs += ["--dll", args.dll]
+    if idle is not None:
+        rargs += ["--idle-blocks", str(idle)]
+    for opt in ("post_stop_blocks", "drum_counters", "idle_fpu_cw"):
+        v = getattr(args, opt)
+        if v is not None:
+            rargs += ["--" + opt.replace("_", "-"), str(v)]
+    for opt in ("startup_sound", "first_chunk_drain", "no_untitled"):
+        if getattr(args, opt):
+            rargs.append("--" + opt.replace("_", "-"))
+    if args.v:
+        rargs.append("-v")
+    return rargs
+
+
 def render(args, client, permits, outdir, exe_sha):
     results = []
     for song_path in args.songs:
@@ -124,23 +143,13 @@ def render(args, client, permits, outdir, exe_sha):
         if args.match:
             with open(args.match, "rb") as f:
                 ref = f.read()[rb_export.WAV_HEADER:]
+            ref_sha = rb_export.sha256_file(args.match)
+        mod_msg = upload_mod(args, client, outdir) if args.mod else None   # once per song, not per render
+        app_pids = None
         for name, idle in jobs:
-            rargs = []
-            if args.dll:
-                rargs += ["--dll", args.dll]
-            if idle is not None:
-                rargs += ["--idle-blocks", str(idle)]
-            for opt in ("post_stop_blocks", "drum_counters", "idle_fpu_cw"):
-                v = getattr(args, opt)
-                if v is not None:
-                    rargs += ["--" + opt.replace("_", "-"), str(v)]
-            for opt in ("startup_sound", "first_chunk_drain", "no_untitled"):
-                if getattr(args, opt):
-                    rargs.append("--" + opt.replace("_", "-"))
-            if args.v:
-                rargs.append("-v")
-            if args.mod:
-                rargs += ["--mod-msg", upload_mod(args, client, outdir)]
+            rargs = rbhost_options(args, idle)
+            if mod_msg:
+                rargs += ["--mod-msg", mod_msg]
             dumps = {}
             for opt in ("tables", "state", "float", "samples"):
                 if getattr(args, "dump_" + opt):
@@ -153,16 +162,23 @@ def render(args, client, permits, outdir, exe_sha):
                     dumps[opt] = d
             remote_wav = "%s/%s.wav" % (REMOTE_DIR, args.tag)
             rargs += [REMOTE_WIN + "\\%s.rbhm" % args.tag, REMOTE_WIN + "\\%s.wav" % args.tag]
-            app_pids = rb_export.Machine(client, permits).rebirth_pids()
-            if app_pids:
-                raise Failure("Rebirth.exe is running on the machine (PIDs %s); rbhost runs without it"
-                              % app_pids)
+            if app_pids is None:   # rbhost never starts the app: one check per song suffices
+                app_pids = rb_export.Machine(client, permits).rebirth_pids()
+                if app_pids:
+                    raise Failure("Rebirth.exe is running on the machine (PIDs %s); rbhost runs without it"
+                                  % app_pids)
             log("%s: no Rebirth.exe running; rbhost %s" % (name, " ".join(rargs)))
             code, out, secs = run_remote(client, permits, rargs, args.timeout)
             sys.stderr.write(out)
             if code != 0:
                 raise Failure("rbhost exited with %s" % code)
             wav = os.path.join(outdir, name + ".wav")
+            if ref is not None and args.match_hash:
+                # equality only: compare the hashes on the machine, download the WAV only on a match
+                if client.hash(remote_wav)["hash"] != ref_sha:
+                    log("%s: %d frames, sha256 differs from %s (not downloaded)" % (name, frames, args.match))
+                    results.append({"name": name, "match": {"identical": False}})
+                    continue
             client.download(remote_wav, wav)
             check = rb_export.check_wav(wav, frames)
             for opt, d in dumps.items():
@@ -201,6 +217,8 @@ def main(argv):
     ap.add_argument("--idle-sweep", metavar="START:STOP:STEP",
                     help="render once per --idle-blocks value in range(START, STOP, STEP); stops at a --match")
     ap.add_argument("--match", metavar="REF.wav", help="compare each render's samples with REF.wav")
+    ap.add_argument("--match-hash", action="store_true",
+                    help="with --match: compare the whole-file hashes on the machine; download only a match")
     ap.add_argument("--post-stop-blocks", type=int)
     ap.add_argument("--drum-counters", metavar="A,B,C,D")
     ap.add_argument("--idle-fpu-cw", metavar="HEX", help="experiment: x87 control word for the idle blocks")

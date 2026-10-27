@@ -21,7 +21,10 @@ Protocol options (docs/export_state.md section 9):
     --restore-prf [LOCAL]   restore the preferences file before every start, from LOCAL or from the
                             machine's C:\\re\\rb\\prf_before.prf (docs/test_machine.md section 5)
     --startup-sound on|off  set the "Play Mod Startup Sound" byte of the restored file
-    --wait-after-open S     seconds to wait after the song is open (default 10, the protocol's T)
+    --wait-after-open S     seconds to wait after the song is open (default 2, the protocol's T; the
+                            original protocol used 10: docs/export_state.md section 11.6)
+    --open-settle S, --stable-s S, --start-wait S
+                            small waits, polled for by default (docs/export_state.md section 11.6)
     --play-seconds S        press Space, play S seconds, press Space (stop) before the export
     --exports K             export K times in a row in the same session (default 1)
     --reuse-process         one app for all the songs given (default: a fresh process per song)
@@ -61,6 +64,10 @@ PRF_SAVED_SHA256 = "6309526e1574414dd3c093f97fedb5e7978428c789db94099c3af81ee8cb
 STARTUP_SOUND_OFFSET = 0x20A
 EXPORT_DOWNS = 6   # File menu: Song Information is the 5th item, Export the 6th (Save is greyed)
 WAV_HEADER = 44
+# The frame window's client-area screenshot (BMP) is 1739010 bytes for the main window and 45814 for
+# the "Failed opening MIDI input" box, which has the same title (task-038 measurement).
+# Limit and failure mode: docs/test_machine.md section 8.
+MAIN_WINDOW_MIN_BYTES = 200000
 
 
 class Failure(Exception):
@@ -189,7 +196,7 @@ class Machine:
             if now() - t0 > timeout:
                 self.c.kill(pid)
                 raise Failure("%s timed out" % program)
-            time.sleep(0.2)
+            time.sleep(0.05)
         out, _ = self.c.output(pid)
         return r["exit_code"], out.decode("cp437", "replace")
 
@@ -227,7 +234,7 @@ class Machine:
             pids = self.rebirth_pids()
             if pids:
                 return pids[0]
-            time.sleep(0.5)
+            time.sleep(0.1)
         raise Failure("%s did not start" % APP_EXE)
 
     def stop_app(self, pid):
@@ -238,7 +245,7 @@ class Machine:
         for _ in range(30):
             if pid not in self.rebirth_pids():
                 return "taskkill"
-            time.sleep(0.5)
+            time.sleep(0.1)
         self.run("taskkill", ["/F", "/PID", str(pid)])
         time.sleep(1)
         if pid in self.rebirth_pids():
@@ -265,8 +272,28 @@ class Machine:
             self.permits_tick()
             if self.window_up(title) == up:
                 return now() - t0
-            time.sleep(0.3)
+            time.sleep(0.05)
         raise Failure("window %r did not %s within %d s" % (title, "appear" if up else "go away", timeout))
+
+    def window_bytes(self, title=FRAME_TITLE):
+        """Size of the window's screenshot (a BMP of the client area), or None without the window."""
+        try:
+            return len(self.c.screenshot(title))
+        except rcs_client.RcsError:
+            return None
+
+    def wait_frame(self, box, timeout=15):
+        """Polls until the window titled "ReBirth RB-338" is the app's main window (box=False, its
+        screenshot is far larger than a message box's) or a modal box (box=True: the MIDI box, the
+        song info box, the export progress box all carry the frame's title)."""
+        t0 = now()
+        while now() - t0 < timeout:
+            self.permits_tick()
+            size = self.window_bytes()
+            if size is not None and (size < MAIN_WINDOW_MIN_BYTES) == box:
+                return now() - t0
+            time.sleep(0.05)
+        raise Failure("the %s did not appear within %d s" % ("message box" if box else "main window", timeout))
 
     def permits_tick(self):
         if now() - self.permits.last > 300:
@@ -345,10 +372,12 @@ class Session:
             self.mark("preferences restored (sha256 %s)" % prf_sha[:12])
         self.pid = m.start_app()
         self.mark("app started, pid %d" % self.pid)
+        m.wait_frame(box=True)
+        self.mark("MIDI box up")
         m.sleep(self.args.start_wait)
         m.keys(["key:enter"])  # "Failed opening MIDI input" box
+        m.wait_frame(box=False)
         self.mark("MIDI box dismissed")
-        m.sleep(1)
 
     def stop(self):
         if self.pid is None:
@@ -366,17 +395,19 @@ class Session:
         m.keys(["key:enter"], "Open Song:")
         m.wait_window("Open Song:", False)
         self.mark("song opened")
-        m.sleep(1.5)
+        m.sleep(self.args.open_settle)
         if info_box:  # USRI show_on_open: a modal box with the song's text
+            m.wait_frame(box=True)
             m.keys(["key:enter"])
+            m.wait_frame(box=False)
             self.mark("song info box dismissed")
-            m.sleep(0.5)
 
     def export(self, remote_wav_win, remote_wav, retries_out):
         m = self.m
         menu = ["keydown:alt", "key:f", "keyup:alt"] + ["key:down"] * EXPORT_DOWNS + ["key:enter"]
         if self.args.test_fail:  # a forced dialog timeout, for testing the failure path
             m.wait_window("rb_export forced timeout", True, timeout=3)
+        m.wait_frame(box=False)   # no export progress box of an earlier export in the way
         for attempt in range(2):
             m.keys(menu)
             try:
@@ -407,13 +438,13 @@ class Session:
             size = ent[0]["size"] if ent else -1
             if size != last_size:
                 last_size, stable_since = size, now()
-            if size == want and now() - stable_since >= 1.5:
+            if size == want and now() - stable_since >= self.args.stable_s:
                 return size
             if size >= 0 and now() - stable_since > 20:
                 raise Failure("export file stuck at %d bytes (want %d)" % (size, want))
             if now() - t0 > self.args.export_timeout:
                 raise Failure("export timed out, file is %d bytes (want %d)" % (size, want))
-            m.sleep(0.5)
+            m.sleep(0.15)
 
 
 def sidecar_write(path, d):
@@ -430,6 +461,8 @@ def export_songs(args, client, m, outdir, owner):
     session = None
     current_stem = None
     try:
+        for si, song_path in enumerate(args.songs):   # one batch of uploads, before any app time is spent
+            m.c.upload(song_path, "%s/song%d.rbs" % (remote_dir, si))
         for si, song_path in enumerate(args.songs):
             stem = os.path.splitext(os.path.basename(song_path))[0]
             current_stem = stem
@@ -442,7 +475,6 @@ def export_songs(args, client, m, outdir, owner):
             song_sha = sha256_file(song_path)
             safe = "song%d.rbs" % si
             remote_song = "%s/%s" % (remote_dir, safe)
-            m.c.upload(song_path, remote_song)
             if session is None or not args.reuse_process:
                 if session is not None:
                     session.stop()
@@ -475,9 +507,12 @@ def export_songs(args, client, m, outdir, owner):
                 session.export(win_dir + "\\" + name, remote_wav, retries)
                 size = session.wait_file(remote_wav, remote_dir, frames)
                 session.mark("export %d complete, %d bytes" % (k, size))
-                m.sleep(1.0)  # the progress box closes
                 local_wav = os.path.join(outdir, stem + suffix + ".wav")
                 m.c.download(remote_wav, local_wav)
+                if m.c.hash(remote_wav)["hash"] != sha256_file(local_wav):
+                    raise Failure("the downloaded %s differs from the machine's file (still being written?)"
+                                  % local_wav)
+                session.mark("downloaded")
                 info = check_wav(local_wav, frames)
                 side = {
                     "tool": "tools/rb_export.py", "wav": os.path.basename(local_wav),
@@ -490,7 +525,8 @@ def export_songs(args, client, m, outdir, owner):
                         "fresh_process": not args.reuse_process, "reuse_process": args.reuse_process,
                         "export_index": k, "exports_in_session": args.exports,
                         "play_seconds_before_export": play, "wait_after_open_s": args.wait_after_open,
-                        "start_wait_s": args.start_wait,
+                        "start_wait_s": args.start_wait, "open_settle_s": args.open_settle,
+                        "stable_s": args.stable_s,
                         "restore_prf": bool(prf_local), "prf_sha256": session.prf_sha,
                         "startup_sound": args.startup_sound, "info_box_dismissed": bool(song.usri.show_on_open), "song_index_in_session": si if args.reuse_process else 0,
                     },
@@ -542,11 +578,16 @@ def main(argv):
     ap.add_argument("--restore-prf", nargs="?", const=True, default=False, metavar="LOCAL",
                     help="restore the preferences file before each start (from LOCAL, or the machine's saved copy)")
     ap.add_argument("--startup-sound", choices=["on", "off"])
-    ap.add_argument("--wait-after-open", type=float, default=10.0, metavar="S")
+    ap.add_argument("--wait-after-open", type=float, default=2.0, metavar="S")
     ap.add_argument("--play-seconds", type=float, default=0.0, metavar="S")
     ap.add_argument("--exports", type=int, default=1, metavar="K")
     ap.add_argument("--reuse-process", action="store_true", help="one app process for all the songs")
-    ap.add_argument("--start-wait", type=float, default=4.0, help="seconds from start to the MIDI box key")
+    ap.add_argument("--start-wait", type=float, default=0.0,
+                    help="extra seconds between the MIDI box showing up and its key (default 0: the box is polled for)")
+    ap.add_argument("--open-settle", type=float, default=0.0, metavar="S",
+                    help="seconds after the open dialog closes before anything else (the original runner: 1.5)")
+    ap.add_argument("--stable-s", type=float, default=0.4, metavar="S",
+                    help="seconds the export file must keep its final size (the original runner: 1.5)")
     ap.add_argument("--test-fail", action="store_true", help="force a dialog timeout (tests the failure path)")
     ap.add_argument("--export-timeout", type=float, default=900.0)
     args = ap.parse_args(argv)

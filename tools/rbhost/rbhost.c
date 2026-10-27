@@ -25,6 +25,8 @@
  *                           (the app's way; default: dispatch them with 0-frame calls first)
  *   --no-untitled           do not create and activate an empty song before the song (the app
  *                           always has "Untitled song" active; docs/export_state.md section 12)
+ *   --private-port          name the DLL's two shared-memory ports after this process, so that
+ *                           rbhost processes can run at the same time (see private_port())
  *   --idle-fpu-cw HEX       experiment: the x87 control word during the idle blocks only
  *   --dump-tables DIR       write the run-time tables (investigation section 10 item 4) after the
  *                           song is created, with DIR/manifest.json
@@ -128,6 +130,44 @@ static void check_cw(const char *where) {
 }
 
 /* ------------------------------------------------------------------ the port */
+
+/* The two ring buffers are named kernel objects shared by the whole Windows session ("ReBirth
+ * Panel->DLL", "ReBirth DLL->Panel", with _SEMA and _EVENT), so two rbhost processes (or one next to
+ * Rebirth.exe) would write into each other's ring. --private-port overwrites the first 8 characters
+ * of the two name literals in the loaded image ("ReBirth ") with the process id in hex: the DLL then
+ * creates "<pid>DLL->Panel" and "<pid>Panel->DLL", and several rbhost processes run side by side
+ * (tools/rbhost/fit.py). Only the object names change, no engine code or data. The literals are
+ * ".data1" VA 0x10152D18 ("ReBirth DLL->Panel") and 0x10152EE8 ("ReBirth Panel->DLL"), one
+ * occurrence each (docs/export_state.md section 2.7); patch_name() dies unless it finds exactly one. */
+static char port_prefix[9] = "ReBirth ";
+static int private_port_opt;
+
+static void patch_name(const char *lit, const char *prefix) {
+    IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)dll;
+    IMAGE_NT_HEADERS32 *nt = (IMAGE_NT_HEADERS32 *)((char *)dll + dos->e_lfanew);
+    IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION(nt);
+    size_t n = strlen(lit);
+    int found = 0, i;
+    for (i = 0; i < nt->FileHeader.NumberOfSections; i++, sec++) {
+        char *base = (char *)dll + sec->VirtualAddress;
+        size_t len = sec->Misc.VirtualSize, k;
+        for (k = 0; k + n + 1 <= len; k++) {
+            DWORD old;
+            if (memcmp(base + k, lit, n + 1)) continue;
+            if (!VirtualProtect(base + k, n + 1, PAGE_READWRITE, &old)) die("VirtualProtect: %lu", GetLastError());
+            memcpy(base + k, prefix, 8);
+            VirtualProtect(base + k, n + 1, old, &old);
+            found++;
+        }
+    }
+    if (found != 1) die("--private-port: the name \"%s\" occurs %d times in the DLL image, not once", lit, found);
+}
+
+static void private_port(void) {
+    snprintf(port_prefix, sizeof port_prefix, "%08lx", (unsigned long)GetCurrentProcessId());
+    patch_name("ReBirth Panel->DLL", port_prefix);
+    patch_name("ReBirth DLL->Panel", port_prefix);
+}
 
 static void port_open(Port *p, const char *name) {
     char buf[128];
@@ -493,7 +533,7 @@ static void dump_samples(const char *dir, unsigned mod) {
 static void usage(void) {
     fprintf(stderr,
             "usage: rbhost [--dll PATH] [--idle-blocks N] [--post-stop-blocks M] [--drum-counters A,B,C,D]\n"
-            "              [--startup-sound] [--first-chunk-drain] [--no-untitled] [--idle-fpu-cw HEX]\n"
+            "              [--startup-sound] [--first-chunk-drain] [--no-untitled] [--private-port] [--idle-fpu-cw HEX]\n"
             "              [--dump-tables DIR] [--dump-state DIR] [--dump-float DIR]\n"
             "              [--mod-msg FILE] [--dump-samples DIR] [-v]\n"
             "              SONG.rbhm OUT.wav\n");
@@ -529,6 +569,7 @@ int main(int argc, char **argv) {
         } else if (!strcmp(a, "--startup-sound")) startup_sound = 1;
         else if (!strcmp(a, "--first-chunk-drain")) first_chunk_drain = 1;
         else if (!strcmp(a, "--no-untitled")) untitled = 0;
+        else if (!strcmp(a, "--private-port")) private_port_opt = 1;
         else if (!strcmp(a, "--idle-fpu-cw") && i + 1 < argc) idle_cw = (int)strtol(argv[++i], NULL, 0);
         else if (!strcmp(a, "--dump-tables") && i + 1 < argc) tables_dir = argv[++i];
         else if (!strcmp(a, "--dump-state") && i + 1 < argc) state_dir = argv[++i];
@@ -560,6 +601,7 @@ int main(int argc, char **argv) {
     dll = LoadLibraryA(dll_path);
     if (!dll) die("LoadLibrary(%s): %lu", dll_path, GetLastError());
     check_cw("LoadLibrary");
+    if (private_port_opt) private_port();
     engine_open = (EngineOpenFn)GetProcAddress(dll, "EngineOpen");
     engine_idle = (EngineIdleFn)GetProcAddress(dll, "EngineIdle");
     safe_cb = (SafeSoundCallbackFn)GetProcAddress(dll, "SafeSoundCallback");
@@ -574,8 +616,13 @@ int main(int argc, char **argv) {
 
     if (!engine_open()) die("EngineOpen failed");
     check_cw("EngineOpen");
-    port_open(&to_dll, "ReBirth Panel->DLL");
-    port_open(&from_dll, "ReBirth DLL->Panel");
+    {
+        static char n1[64], n2[64];   /* Port.name points here */
+        snprintf(n1, sizeof n1, "%sPanel->DLL", port_prefix);
+        snprintf(n2, sizeof n2, "%sDLL->Panel", port_prefix);
+        port_open(&to_dll, n1);
+        port_open(&from_dll, n2);
+    }
 
     /* Start-up handshake (exe sub_40FAA9): top-level 50, reply '@' with 6 bytes. */
     m[0] = 50;
