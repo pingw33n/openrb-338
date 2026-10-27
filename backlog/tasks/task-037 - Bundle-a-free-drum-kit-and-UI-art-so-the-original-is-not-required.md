@@ -4,7 +4,7 @@ title: Bundle a free drum kit and UI art so the original is not required
 status: To Do
 assignee: []
 created_date: '2026-10-26 14:40'
-updated_date: '2026-10-27 08:06'
+updated_date: '2026-10-27 09:00'
 labels:
   - engine
   - ui
@@ -45,4 +45,6 @@ Supervisor 2026-10-26: the UI art part is covered by milestone m-3 (bundled SVG 
 Supervisor 2026-10-27: AC #3 is settled by task-053 (the user chose run-time RB20FUL.DAT; nothing bundled).
 
 Supervisor 2026-10-27: task-036 no longer seeds from a CD; per the user it builds a standard RBM (the built-in kit and the standard UI skin) from the user's ReBirth.dll with `rb standard-rbm`. References to task-036 seeding from a CD in this description are out of date.
+
+Supervisor 2026-10-27: the command is named `rb standard-mod` (not standard-rbm), per the user.
 <!-- SECTION:NOTES:END -->
