@@ -40,7 +40,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import run  # noqa: E402
 rb_export = run.rb_export
-rbs, rbsmsg = run.rbs, run.rbsmsg
+rbs, rbsmsg, rb1x = run.rbs, run.rbsmsg, run.rb1x
 Failure = rb_export.Failure
 log = rb_export.log
 
@@ -265,7 +265,7 @@ def main(argv):
         client.upload_if_changed(exe, run.REMOTE_DIR + "/rbhost.exe")
         jobs = []
         for i, song_path in enumerate(args.songs):
-            song = rbs.read_song(song_path)
+            song = rb1x.read_any(song_path)   # an RBS or a 1.x song
             if args.mod:   # --mod applies to every song of the batch: each must name that mod
                 run.check_mod_name(args.mod, song.glob.mod_name)
             stem = os.path.splitext(os.path.basename(song_path))[0]
@@ -283,7 +283,7 @@ def main(argv):
         if args.mod:
             extra = ["--mod-msg", run.upload_mod(argparse.Namespace(
                 mod=args.mod, rb20ful=args.rb20ful, tag=args.tag, mod_id=args.mod_id), client, outdir,
-                rbs.read_song(args.songs[0]).glob.mod_name)]   # every song was checked above
+                rb1x.read_any(args.songs[0]).glob.mod_name)]   # every song was checked above
         app_pids = rb_export.Machine(client, permits).rebirth_pids()
         if app_pids:
             raise Failure("Rebirth.exe is running on the machine (PIDs %s); rbhost runs without it" % app_pids)

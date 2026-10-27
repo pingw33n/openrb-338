@@ -57,6 +57,7 @@ import rcs_client  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import rb1x  # noqa: E402
 import rbs  # noqa: E402
 
 SEMAPHORE = "redc-win-run"
@@ -526,7 +527,7 @@ def export_songs(args, client, m, outdir, owner):
         for si, song_path in enumerate(args.songs):
             stem = os.path.splitext(os.path.basename(song_path))[0]
             current_stem = stem
-            song = rbs.read_song(song_path)
+            song = rb1x.read_any(song_path)   # an RBS or a ReBirth 1.x song (a MIDI file)
             if not song.glob.song_mode:
                 # "Export Loop as Audio File..." is greyed in pattern mode (task-008, tested with a built song)
                 raise Failure("%s is in pattern mode (GLOB song_mode 0): the app's Export item is disabled"

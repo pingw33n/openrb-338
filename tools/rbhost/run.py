@@ -37,6 +37,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, HERE)
 import rb_export  # noqa: E402
+import rb1x  # noqa: E402
 import rbm  # noqa: E402
 import rbs  # noqa: E402
 import rbsmsg  # noqa: E402
@@ -144,7 +145,7 @@ def rbhost_options(args, idle):
 def render(args, client, permits, outdir, exe_sha):
     results = []
     for song_path in args.songs:
-        song = rbs.read_song(song_path)
+        song = rb1x.read_any(song_path)   # an RBS or a 1.x song
         stem = os.path.splitext(os.path.basename(song_path))[0]
         rbhm = os.path.join(outdir, stem + ".rbhm")
         with open(rbhm, "wb") as f:

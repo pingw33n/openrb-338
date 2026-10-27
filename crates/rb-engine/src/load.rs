@@ -18,6 +18,9 @@ pub enum LoadError {
     Version { major: u8, minor: u8, revision: u8 },
     /// An `rbs::Song` edited into a shape a file cannot have (wrong pattern or parameter count).
     Model(String),
+    /// A ReBirth 1.x song that the exe refuses, or one whose import has no defined result
+    /// (`docs/song_load.md` section 12; OB-15, OB-16).
+    Rb1x(String),
 }
 
 impl fmt::Display for LoadError {
@@ -29,6 +32,7 @@ impl fmt::Display for LoadError {
                 revision,
             } => write!(f, "unsupported file version {major}.{minor}.{revision}"),
             LoadError::Model(m) => write!(f, "malformed song model: {m}"),
+            LoadError::Rb1x(m) => write!(f, "ReBirth 1.x song: {m}"),
         }
     }
 }
@@ -390,6 +394,16 @@ fn tr909(d: &rbs::Drums) -> Result<Tr909, LoadError> {
 pub struct Loaded {
     pub song: Song,
     pub batches: [Vec<TrackBatch>; 9],
+    /// The order the exe sends the batches in: `(track, index into batches[track])`. Tracks
+    /// 0..8 one after the other for an RBS file; for a 1.x song, as its track buffers fill.
+    pub order: Vec<(usize, usize)>,
+}
+
+/// The batch order of an RBS load: every batch of track 0, then of track 1, and so on.
+fn track_order(batches: &[Vec<TrackBatch>; 9]) -> Vec<(usize, usize)> {
+    (0..9)
+        .flat_map(|t| (0..batches[t].len()).map(move |i| (t, i)))
+        .collect()
 }
 
 /// Converts an `.rbs` song as Rebirth.exe loads it.
@@ -417,6 +431,7 @@ pub fn load(song: &rbs::Song) -> Result<Loaded, LoadError> {
             .collect()
     });
     let out = Song {
+        form: LoadForm::Rbs,
         mod_name: song.glob.mod_name.clone(),
         globals: globals(song, v),
         mixer: mixer(&song.mixer, v),
@@ -437,7 +452,12 @@ pub fn load(song: &rbs::Song) -> Result<Loaded, LoadError> {
         tr909: tr909(&song.tr909)?,
         tracks,
     };
-    Ok(Loaded { song: out, batches })
+    let order = track_order(&batches);
+    Ok(Loaded {
+        song: out,
+        batches,
+        order,
+    })
 }
 
 /// The engine-side model of an `.rbs` song.
@@ -456,19 +476,6 @@ pub const MSG_DEVICE: u8 = 41;
 /// Song message: relocate to the current position.
 pub const MSG_RELOCATE: u8 = 32;
 
-/// The device blocks in the order the exe sends them (`sub_434D05`).
-pub const DEVICE_ORDER: [Device; 9] = [
-    Device::Mixer,
-    Device::Delay,
-    Device::Pcf,
-    Device::Distortion,
-    Device::Compressor,
-    Device::Tb303_1,
-    Device::Tb303_2,
-    Device::Tr808,
-    Device::Tr909,
-];
-
 fn song_msg(slot: u8, msg: u8, payload: &[u8]) -> Vec<u8> {
     let mut b = vec![MSG_SONG, slot, msg];
     b.extend_from_slice(payload);
@@ -477,16 +484,20 @@ fn song_msg(slot: u8, msg: u8, payload: &[u8]) -> Vec<u8> {
 
 impl Loaded {
     /// The messages the exe sends after the engine gave the song slot `slot` (msg 52):
-    /// `[78, slot, msg, payload...]` each, in the order of `docs/song_load.md` section 2.
+    /// `[78, slot, msg, payload...]` each, in the order of `docs/song_load.md` section 2 (an RBS
+    /// file) or section 12 (a 1.x song).
     pub fn messages(&self, slot: u8) -> Vec<Vec<u8>> {
         let mut out = vec![song_msg(slot, MSG_GLOBALS, &self.song.globals.payload())];
-        for dev in DEVICE_ORDER {
+        for &dev in self.song.form.device_blocks() {
             let mut p = vec![dev.id(), dev.data_sub()];
             p.extend(self.song.device_payload(dev));
             out.push(song_msg(slot, MSG_DEVICE, &p));
         }
-        for b in self.batches.iter().flatten() {
-            out.push(song_msg(slot, MSG_TRACK, &b.payload()));
+        if self.song.form == LoadForm::Rb1x {
+            out.push(song_msg(slot, MSG_DEVICE, &rb1x::TR909_OFF));
+        }
+        for &(t, i) in &self.order {
+            out.push(song_msg(slot, MSG_TRACK, &self.batches[t][i].payload()));
         }
         out.push(song_msg(slot, MSG_RELOCATE, &[]));
         out
@@ -497,6 +508,9 @@ impl Loaded {
 pub fn load_messages(song: &rbs::Song, slot: u8) -> Result<Vec<Vec<u8>>, LoadError> {
     Ok(load(song)?.messages(slot))
 }
+
+mod rb1x;
+pub use rb1x::{convert_1x, load_1x};
 
 #[cfg(test)]
 mod tests;

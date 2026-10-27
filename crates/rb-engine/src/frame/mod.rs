@@ -944,23 +944,18 @@ impl Engine {
     }
 
     /// The song load's messages (`docs/song_load.md` section 2, steps 5 and 6), in order: msg
-    /// 36, the nine msg-41 device blocks in the exe's order, the msg-37 events of tracks 0..8,
-    /// then msg 32. None of them runs a mixer update.
+    /// 36, the msg-41 device blocks of the song's [`song::LoadForm`] in the exe's order (for a
+    /// 1.x song then the 909's msg 74), the msg-37 events of tracks 0..8, then msg 32. None of
+    /// them runs a mixer update.
     pub fn load(&mut self, song: &song::Song) {
-        use song::Device as D;
         self.set_globals(&song.globals);
-        for d in [
-            D::Mixer,
-            D::Delay,
-            D::Pcf,
-            D::Distortion,
-            D::Compressor,
-            D::Tb303_1,
-            D::Tb303_2,
-            D::Tr808,
-            D::Tr909,
-        ] {
+        for &d in song.form.device_blocks() {
             self.device_data(d, &song.device_payload(d));
+        }
+        if song.form == song::LoadForm::Rb1x {
+            // 909 msg 74 {0, 0} (0x1002BF12): the live enabled byte, then the record hook,
+            // which does nothing with record off
+            self.set_param(song::Device::Tr909, 0, 0);
         }
         for (i, events) in song.tracks.iter().enumerate() {
             self.frame.seq.add_events(i, events);

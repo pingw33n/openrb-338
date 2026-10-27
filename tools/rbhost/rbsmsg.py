@@ -259,7 +259,8 @@ def mod_id(song, mod_override=None):
 
 
 def message_file(song, mod_override=None):
-    msgs = load_messages(song)
+    """SONG is a tools/rbs.py song or a tools/rb1x.py Song1x (its own message stream)."""
+    msgs = song.load_messages() if hasattr(song, "load_messages") else load_messages(song)
     g = song.glob
     out = [MAGIC, struct.pack("<IHIIII", VERSION, mod_id(song, mod_override), g.tempo, g.loop_start, g.loop_end, len(msgs))]
     for m in msgs:

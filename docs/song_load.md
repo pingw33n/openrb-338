@@ -53,7 +53,8 @@ The TRAK track numbers 0..8 (file order) are the same as these device ids.
 ## 2. The messages at song load, in order [C]
 
 File > Open reaches `sub_40B575`, which builds the song document with `sub_425C4D`. The benchmark
-song uses the same reader from `sub_4269CE`.
+song uses the same reader from `sub_4269CE`. `sub_425C4D` first tries the file as a ReBirth 1.x
+song, a MIDI file (0x425DE4); that import is section 12. The steps below are the RBS path.
 
 1. `sub_4349C7` peeks HEAD and GLOB (version, mod name). No message.
 2. The mod named in GLOB is looked up (`sub_4155D1`, with a dialog if missing). The engine already
@@ -628,3 +629,163 @@ Still open:
 - [G] No 4.0 song is available to test `sub_437380` against the app.
 - [G] What the exe uses byte 22 for (it always sends 1, and the load sends no msg 21 that would
   read it back, §2).
+
+## 12. ReBirth 1.x songs: the MIDI-file import (task-060) [C]
+
+ReBirth 1.x saved its songs as a Standard MIDI File with the `.rbs` extension (`MThd`). 2.01
+opens them through a separate reader, traced in `ida/Rebirth.exe.i64` (a read-only copy,
+2026-10-27). rb: `crates/rbs/src/rb1x.rs` (the file), `crates/rb-engine/src/load/rb1x.rs`
+(`load_1x`, the import), `tools/rb1x.py` (the Python twin, which `tools/rbhost/rbsmsg.py`,
+`run.py`, `fit.py` and `tools/rb_export.py` use for these songs).
+
+### 12.1 Detection and version
+
+- `sub_425C4D` calls `sub_43037D` (0x425DE4) before anything else: it opens the file as a MIDI
+  file (`sub_4A0B38`, the tags `MThd` / `MTrk` at 0x4D2AB0 / 0x4D2AB8) and reads the version with
+  `sub_431341`. That walks track 0 up to the first meta text event `FF 02` (or the end of track),
+  takes at most 200 bytes, `sscanf(text, "File version %s")` (0x431481) and parses the word with
+  `sub_4718F6`: the number before the first `.` is the major, the one after it the minor (both
+  must be below 100, else `XBadFormat`). With no text the version is `CVersion(2, 0)`.
+- 0x425E01: `sub_47DA1C(file, &unk_4DAD60)` is `key(file) >= key(3.1)` (`unk_4DAD60` is
+  `CVersion(3, 1)`, built by `sub_4257F3`); an older file throws `XUnsupportedFormat` (0x42613B).
+- The song gets the built-in mod `dword_4DA784` (0x425E17; no Mods lookup, no dialog), then the
+  same messages as an RBS load around the reader: top-level 52 (0x425F98), the optional 58
+  (`sub_426C67`, 0x425FAB), the import `sub_430BA0` (0x425FCE), and msg 32 (0x426610).
+- The collection (`~/rb_stuff/songs`, task-058): 129 distinct 1.x songs, 124 with "File version
+  3.1.0 (c)1997 Propellerhead Software, all rights reserved" and 5 with 3.2.0. All have MIDI
+  format 1, division 32 and six tracks: 0 the version text, tempo and time signature metas; 1 the
+  song sysex; 2..5 controller changes on channels 0..3.
+
+### 12.2 The track walk (`sub_430BA0`)
+
+- `sub_4A0C12` reads the header; the format must be 1 (0x430CBC, else `XBadFormat`).
+- Nine track buffers, one per engine track 0..8 (`sub_43005E`, `0x282C` bytes each: 1284 events of
+  `{u32 tick, ctrl, value}`). `sub_4300E0(tick, ctrl, value)` appends one and, when the buffer holds
+  1284, sends it as one msg 37 (`sub_430163`: `[track, u32 first, u32 last]`, then `[99, u32 tick,
+  ctrl, value]` per event, the reply read and `'K'` thrown as out of memory). **No tick, controller
+  or value check**: unlike section 5, every event goes to the DLL, whose insert drops ticks above
+  767231 (section 6). At the end the buffers are sent in order 0..8 (`sub_43035E`, 0x4310E9).
+- The first event, before any track is read, is `(0, 0, 0)` in the 909 buffer (0x430CFA, `ecx` =
+  `var_2C` = buffer 4): the 909 is switched off at tick 0. 1.x has no 909.
+- MIDI tracks 1 .. n-1 are walked in order (track 0 is not; its tempo meta is ignored). Times are
+  absolute (`sub_4A0E8A` accumulates the deltas; the running status is kept, also across a track
+  seek). The header's division is overwritten with 8 (0x430D72) and `tick = 192 / 8 * time`
+  (`idiv`, `imul`, u32), so **tick = 24 × time** whatever the division says.
+- An event whose `status & 0xF0` is 0xB0 (a control change on **any channel**; the channel is
+  ignored, the MIDI track number decides) is read as `(cc, value)` (`sub_4A0F24`):
+  - On track 5, cc 17 (0x430E47) is the distortion's channel: four mixer events at the tick,
+    controller 9 = (v == 0), 15 = (v == 1), 21 = (v == 2), 27 = 0.
+  - On track 5, cc 31 (0x430ED2, switch at 0x430EFF) is the PCF's channel: mixer controller 2 =
+    1, 2, 3, 0 for v = 0, 1, 2, 3, and 0 for any other v.
+  - Any other cc goes to device `sub_43067F(track, cc)` as controller `sub_430847(track, cc)`:
+
+    | MIDI track | cc | Engine track, controller |
+    |---|---|---|
+    | 2, 3, 4 (303 #1, 303 #2, 808; channel c = track - 2) | 7, 10, 12 | mixer `6 + 6c`, `7 + 6c`, `8 + 6c` (level, pan, delay send) |
+    | 2, 3, 4 | 14 | the device, 1 (pattern) |
+    | 2, 3, 4 | 15 | the device, 0 (enabled) |
+    | 2, 3 | 16..22 | the 303, 2..8 (tune, cutoff, resonance, envmod, decay, accent, waveform) |
+    | 4 | 16..42 | the 808, 2..28 |
+    | 5 | 16, 18 | distortion 1 (amount), 0 (on) |
+    | 5 | 19, 20, 21, 22, 23 | delay 1 (steps), 3 (feedback), 4 (pan), 0 (on), 2 (mode) |
+    | 5 | 24..29, 30 | PCF 1..6 (frequency, resonance, amount, wave, decay, mode), 0 (on) |
+
+    On the 808, controllers 10, 13 and 16 (the tom tunings) get `sub_43132C` = **`v/2 + 64`**
+    (0x430FCB; bytes `99 2b c2 d1 f8 83 c0 40`: a signed halving, then + 0x40), not the `v/2 + 32`
+    of the pre-4.2 RBS files (section 5).
+  - A cc that neither table maps gives device -1, and 0x430FEF loads the buffer pointer
+    `[ebp + 0xFF*4 + var_3C]`, far outside the nine-pointer array: [OB-15](original_bugs.md).
+    No song of the collection has one; rb refuses such a song (`LoadError::Rb1x`).
+- A sysex (`F0`) goes to `sub_4304C5` (below); `FF 2F` ends the track; every other event is
+  skipped by its length (`sub_4A0D77`). The collection has only control changes on tracks 2..5.
+
+### 12.3 The song sysex (`sub_4304C5`)
+
+The data (`F0` and the bytes after it, length from the VLQ) must start `F0 00 00 66`
+(`sub_4A14AD`) with byte 5 non-zero, byte 6 = 1 and byte 7 = 0 (0x430546..0x430571); the
+collection's files have `F0 00 00 66 00 15 01 00`. From byte 8, `sub_4665CD` decodes groups of 8
+bytes into 7 (`sub_4663F0`: byte k gets bit 7 from bit `6 - k` of the group's 8th byte) until the
+block is full. The block size is `0x4000 - (((dword_4DA3F0 & 0xFFFFF0) >> 5) - (X & 0x123))`
+(0x430577..0x4305A3, `X` from `sub_48CD4A`): copy-protection arithmetic like section 9, whose
+intended value is 0x4000; the decode reads `8 × ceil(0x4000 / 7)` = 18728 bytes whatever the
+sysex length ([OB-16](original_bugs.md)). The collection's sysex data is 18729 bytes (the groups and
+`F7`). A sysex that fails the header check is skipped by its length although `sub_4A0F79` has
+already read it ([OB-16](original_bugs.md)).
+
+### 12.4 The decoded block (`sub_431747`)
+
+`sub_47DB95` reads a version from bytes 0..3 (it returns 0 unless byte 0 is 0xBC; the result is
+not checked; `BC 03 01 00` in the collection); bytes 5..8 must be `TinY` (else `XBadFormat`).
+Multi-byte values are big-endian (`sub_465FCA`). The messages are sent in this order, each with
+the packers of section 4 (same layouts):
+
+1. **Msg 36** (from `sub_420A81`'s defaults): byte 0 song mode = `[0x12] != 0`, 3 loop on =
+   `[0x2E] != 0`, 4..7 tempo = u32 `[0x2A]`, 12..15 loop start = `768 × u32[10]`, 16..19 loop end
+   = `768 × (u32[10] + u32[14])` (a start bar and a length in bars; `imul ecx, 300h` at
+   0x431855 / 0x431861), 20 shuffle = 64 (the default; the 1.x song has none), **21 = 1**
+   (0x43186A, `mov [ebp+var_2B], 1`: the **Vintage** sound model, section 3), 22 = 1.
+2. **Mixer** `0/143`: master `[9]`, compressor id 0, PCF id from `[0x40]` (0..2 → 1..3, 3 → 0,
+   others leave 0; switch at 0x431920); channel j = 0..2 from the device record `r = 0x100 + 32j`:
+   enabled `r[0x17]`, level `r[2]`, pan `r[3]`, delay send `r[4]`, dist = (`[0x37]` == j);
+   channel 3 (the 909) keeps `sub_423560`'s defaults (1, 100, 64, 0, 0).
+3. **Delay** `5/86`: on `[0x35]`, steps `[0x2F] & 0x7F`, mode = bit 7 of `[0x2F]`, feedback
+   `[0x33]`, pan `[0x34]`.
+4. **Distortion** `6/94`: on `[0x38]`, amount `[0x36]`, shape 0.
+5. **PCF** `7/116`: on `[0x3F]`, frequency .. mode `[0x39..0x3E]`.
+6. **TB-303 #1, #2** `1/39`, `2/39` (j = 0, 1): enabled = (`r[5]` == 0), pattern `r[1]`, tune ..
+   waveform = `p[16..22]` with `p = 352 + 4096j`. Pattern lengths from `r[7..22]`: pattern 2k is
+   the high nibble of `r[7 + k]` plus 1 (`sub_466B80`), pattern 2k + 1 the low nibble plus 1
+   (`sub_466B93`). Shuffle flags 0 (`sub_420EB4`). Step s of pattern q is the 4 bytes at
+   `p + 30 + 68q + 4s`: note = byte 0, slide / accent / up / down = bits 0..3 of byte 2
+   (`sub_4671F2`), rest = byte 3; a note above 12 becomes `note - 12` with up set.
+7. **TR-808** `3/56` (record `0x140`, `p = 8544`): enabled = (`r[5]` == 0), pattern `r[1]`,
+   controllers 2..28 = `p[16..42]`, the tom tunings 10, 13, 16 (`p[24]`, `p[27]`, `p[30]`) through
+   `v/2 + 64`. Lengths as the 303's. Pattern q is 64 bytes at `p + 48 + 64q`, unpacked by
+   `sub_43285C` into 256 two-bit values (high bits first); step s of instrument column i is value
+   `s + 16i`, sent as it is (0..3; the collection has only 0 and 1).
+8. **TR-909** `4/74 {0, 0}` and no data block: DLL sub 74 (`sub_1002B8E0`'s table at 0x101542F0,
+   entry 0x1002BF12) stores the live byte `+0x1891 + ctrl` and calls the record hook
+   `sub_10012BC0`, so with record off it is slot 11 with controller 0: the live 909 enabled byte
+   is 0. Checked in `original/ReBirth.dll` with `llvm-objdump` and the file bytes: the guard
+   0x1002B932..0x1002B942 (`movl $0xffffffbf, %ecx; addl %edx, %ecx; cmpl $0xf, %ecx; ja
+   0x1002C69C`) lets only sub bytes 0x41..0x50 (65..80) reach the table; then 0x1002B948
+   `movl 0x101542f0(,%edx,4), %edx; jmpl *%edx` indexes it with the raw sub byte; the
+   `.data1` dwords at 0x10154414 and 0x10154418 (entries 73 and 74) are 0x1002BE90 (the data
+   block, section 1) and 0x1002BF12; there `movb 0x1(%eax), %dl` takes the controller (0..31,
+   table 0x101544AC, whose entry 0 is 0x1002BF46), `movb 0x2(%edx), %al` the value, and
+   0x1002BF49 `movb %al, 0x1891(%ebx)` stores it before `calll 0x10012bc0`. The 909's patterns and pattern-mode block stay the constructor's (16 empty steps, the
+   defaults of section 4.9).
+
+There is **no compressor block**: the compressor keeps its constructor state, which equals the
+exe's defaults (section 4.9). Bytes from 12640 (`0x3160`) hold the song information,
+`sub_42FFEC`: the title (40 characters at +0), the text (200 at +41), the web page (100 at +242)
+and the show-on-open byte (+343), which `sub_430BA0` copies into the document's USRI fields
+(0x431039..0x431078); no message.
+
+### 12.5 What rb does and how it was checked
+
+`rb_engine::song::LoadForm::Rb1x` marks such a song: `Engine::load` sends the seven blocks in the
+order above, then the 909's controller 0 = 0, then the tracks (in the buffers' order, which
+`Loaded::order` keeps for the message stream). A song the exe would refuse (format other than 1,
+version below 3.1, a bad sysex, no sysex) or one that reaches OB-15 is an error.
+
+- The env-gated `crates/rb-cli/tests/thirdparty.rs` renders every 1.x song of the collection and
+  compares `load_1x`'s message stream with `tools/rb1x.py`'s: 129 of 129 render, 129 equal
+  (`crates/rb-engine/tests/rb1x_messages.rs` does the same on synthetic songs).
+- rbhost (the original DLL fed `tools/rb1x.py`'s messages, idle 0) against `rb render
+  --idle-blocks 0`: **129 of 129 equal** byte for byte (`tools/rbhost/hashcmp.py`, the WAV
+  sha256 taken on the machine, 2026-10-27; the per-song hashes are in the task-060 notes), the
+  two pattern-mode songs included (rbhost exports them; the app cannot).
+- The app itself (a copy of the installation, `tools/rb_export.py --app-dir --restore-prf
+  --startup-sound off`) exported 11 song-mode 1.x songs (Razor Topz, Eternal Darkness, i feel
+  love, Virus 303, MagneticFields, Galaxy Defender, pre2, DISFUNKT (3.2.0), Venom Surf, speed,
+  Gizmo). The exports of Eternal Darkness and DISFUNKT are silent, so they equal a render at
+  any N and confirm little. Of the 9 audible ones, **8 match at a unique N** (`fit.py --all` over
+  200 candidates: 3536..3616, `N - N_t` = -42 .. -246), and `rb compare` at that N is EQUAL for
+  each. Venom Surf matches too, but not uniquely: at 80 of the 200 candidates (2000..5184), so
+  its fit pins no N and is weak evidence. The 8 unique fits, with the byte-exact 129 of 129
+  rbhost result above, show that the message stream of this section is what the app sends, end
+  to end, for those 8 songs.
+- [G] The app showed no song-information box on opening `cut this air.rbs`, whose show-on-open
+  byte is 1 but whose title, text and web page are empty (so `rb_export.py`, which waits for the
+  box when the byte is set, timed out on it); the rule the app uses was not traced.

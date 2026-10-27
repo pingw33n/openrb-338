@@ -32,6 +32,8 @@
 
 use std::fmt;
 
+pub mod rb1x;
+
 /// Names of the nine TRAK tracks, in file order.
 pub const TRACK_NAMES: [&str; 9] = [
     "mixer", "tb303_1", "tb303_2", "tr808", "tr909", "delay", "dist", "pcf", "comp",

@@ -416,7 +416,8 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
 - **129 are ReBirth 1.x songs**: a Standard MIDI File (`MThd`, a meta text "File version 3.1.0")
   named `.rbs`. The original imports them (`sub_425C4D` tries `sub_43037D` first: the MIDI file and
   its "File version %s" text, `sub_431341` at 0x431481; then `sub_430BA0` loads it with the built-in
-  mod, 0x425FCE); `rb` refuses them with an error. Follow-up: task-060.
+  mod, 0x425FCE); `rb` refused them with an error until task-060, which imports them as the exe
+  does (`docs/song_load.md` section 12).
 - **rbhost**: 49 songs from `~/rb_stuff` (mostly the archive, where the mod songs are) over 29
   third-party mods, each with the mod its GLOB names and where that mod is audible (the render
   differs from the built-in kit's). 47 rendered with `run.py --mod --rb20ful --idle-blocks 9088`

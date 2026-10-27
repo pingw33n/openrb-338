@@ -16,8 +16,9 @@
 //!   and the same channel-0 PCM for every slot.
 //! - `songs`: every distinct song (by SHA-256): an RBS 4.2 song is read and written back
 //!   (byte-identical) and rendered with `rb render --mod-dir DIR/Mods --standard-kit`, its mod
-//!   resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`) must be refused
-//!   with an error. No song may panic.
+//!   resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`, task-060) is
+//!   rendered too, and its import's message stream (`rb_engine::load::load_1x`) must equal
+//!   `tools/rb1x.py`'s. No song may panic.
 
 mod common;
 
@@ -319,7 +320,8 @@ fn songs() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
-/// (class, detail) of one song: `RBS42`, `RBS1X` (refused as the CLI should), or `FAIL...`.
+/// (class, detail) of one song: `RBS42`, `RBS1X` (rendered, and its import messages equal
+/// `tools/rb1x.py`'s), or `FAIL...`.
 fn check_song(
     e: &Env,
     mods: &[(String, Option<String>)],
@@ -372,19 +374,74 @@ fn check_song(
     if stderr.contains("panicked") || o.status.code().is_none_or(|c| c > 2) {
         return ("FAIL-panic".into(), stderr.into_owned());
     }
-    if rbs42 {
-        if !o.status.success() {
-            return ("FAIL-render".into(), stderr.trim().to_string());
-        }
-        detail.push_str("rendered");
-        for w in warnings {
-            detail.push_str("; ");
-            detail.push_str(w.chars().take(100).collect::<String>().as_str());
-        }
-        ("RBS42".into(), detail)
-    } else if o.status.success() {
-        ("FAIL-1x".into(), "a ReBirth 1.x song rendered?".into())
-    } else {
-        ("RBS1X".into(), "ReBirth 1.x MIDI-file song, refused".into())
+    if !o.status.success() {
+        return ("FAIL-render".into(), stderr.trim().to_string());
     }
+    detail.push_str("rendered");
+    for w in warnings {
+        detail.push_str("; ");
+        detail.push_str(w.chars().take(100).collect::<String>().as_str());
+    }
+    if rbs42 {
+        return ("RBS42".into(), detail);
+    }
+    // a ReBirth 1.x song: the import's messages equal tools/rb1x.py's
+    let ours = rbs::rb1x::Song1x::parse(&data)
+        .map_err(|e| e.to_string())
+        .and_then(|s| rb_engine::load::load_1x(&s).map_err(|e| e.to_string()))
+        .map(|l| l.messages(0));
+    match (ours, py_1x_messages(path)) {
+        (Ok(a), Ok(b)) if a == b => {
+            detail.push_str(&format!("; {} messages equal tools/rb1x.py's", a.len()));
+            ("RBS1X".into(), detail)
+        }
+        (Ok(a), Ok(b)) => (
+            "FAIL-msgs".into(),
+            format!(
+                "{} messages, tools/rb1x.py {}; first difference at {}",
+                a.len(),
+                b.len(),
+                a.iter()
+                    .zip(&b)
+                    .position(|(x, y)| x != y)
+                    .unwrap_or(a.len().min(b.len()))
+            ),
+        ),
+        (a, b) => (
+            "FAIL-msgs".into(),
+            format!("rb {:?}, rb1x.py {:?}", a.err(), b.err()),
+        ),
+    }
+}
+
+/// The load messages of `tools/rb1x.py` for a 1.x song: u32 count, then u32 length + bytes.
+fn py_1x_messages(path: &Path) -> Result<Vec<Vec<u8>>, String> {
+    const DUMP: &str = r#"
+import os, struct, sys
+sys.path.insert(0, os.path.join(sys.argv[1], "tools"))
+import rb1x
+msgs = rb1x.read_song(sys.argv[2]).load_messages()
+sys.stdout.buffer.write(struct.pack("<I", len(msgs)) + b"".join(struct.pack("<I", len(m)) + m for m in msgs))
+"#;
+    let o = Command::new("/usr/bin/python3")
+        .arg("-I")
+        .arg("-c")
+        .arg(DUMP)
+        .arg(root())
+        .arg(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !o.status.success() {
+        return Err(String::from_utf8_lossy(&o.stderr).into_owned());
+    }
+    let b = o.stdout;
+    let u32le = |p: usize| u32::from_le_bytes(b[p..p + 4].try_into().unwrap()) as usize;
+    let mut p = 4;
+    let mut out = Vec::new();
+    for _ in 0..u32le(0) {
+        let n = u32le(p);
+        out.push(b[p + 4..p + 4 + n].to_vec());
+        p += 4 + n;
+    }
+    Ok(out)
 }

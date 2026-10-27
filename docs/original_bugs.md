@@ -68,6 +68,40 @@ status is a judgment call.
 - **rb.** `crates/rb-engine/src/seq.rs`, the same wrap and chase.
 - **Home.** `docs/initial_investigation.md` section 5.
 
+### OB-15: a 1.x control change with no mapping indexes the track buffers with -1 [C: the index; G: the effect]
+
+- **What.** The 1.x import maps a control change to an engine track with `sub_43067F`, whose
+  switch returns -1 (0xFF) for an unknown (track, cc); the result is used as the index of the
+  nine-pointer buffer array without a check.
+- **Where.** `sub_430BA0`: `sub_43067F` at 0x430F5A, then 0x430FE3..0x430FEF `mov ecx,
+  [ebp+var_A0]; and ecx, 0FFh; mov ecx, [ebp+ecx*4+var_3C]` and `call sub_4300E0` at 0x430FF3.
+- **Trigger.** A 1.x song with a control change on MIDI track 2..5 outside the table of
+  `docs/song_load.md` 12.2 (for example cc 23 on a 303 track, any cc on a track 6 or later).
+- **Effect.** `sub_4300E0` runs on whatever dword lies 0x3FC bytes past the array (in the
+  caller's frame): a write through a stack value or a crash [G: not run].
+- **Corpus.** None: no song of the user's 129 1.x songs has such a controller.
+- **rb.** `crates/rb-engine/src/load/rb1x.rs` (`load_1x`) refuses the song with
+  `LoadError::Rb1x`; `tools/rb1x.py` raises.
+- **Home.** `docs/song_load.md` section 12.2.
+
+### OB-16: the 1.x song sysex is decoded past its end, and a foreign sysex is skipped twice [C: the code; G: the effect]
+
+- **What.** `sub_4304C5` reads the sysex data into a buffer of its own length + 1, then decodes
+  a fixed 0x4000-byte block from it, reading 18728 bytes whatever the length. A sysex that fails
+  the `F0 00 00 66 ..` check is skipped by its length (`sub_4A0D77`) although its bytes were
+  already read.
+- **Where.** `sub_4304C5`: the buffer `operator new([arg_4+10h] + 1)` at 0x430506, the read
+  `sub_4A0F79` at 0x430522, the decode `sub_4665CD` at 0x4305C4 (size computed at 0x43059C, 0x4000
+  when the copy protection is intact); the second skip in the else branch (0x4305FF on).
+- **Trigger.** A 1.x song whose song sysex is shorter than 18728 data bytes, or which holds
+  another sysex before or after it.
+- **Effect.** The decode reads heap bytes past the buffer into the block (garbage settings or a
+  crash) [G]; the double skip moves the reader into the middle of the following events [G].
+- **Corpus.** None: each of the 129 songs has one sysex of 18729 data bytes.
+- **rb.** `rbs::rb1x::Block::decode` reads missing bytes as zero (a deviation where the original
+  is undefined); a sysex that fails the check, or a second song sysex, is an error in `load_1x`.
+- **Home.** `docs/song_load.md` section 12.3.
+
 ## 2. Devices
 
 ### OB-5: the PCF's wave byte indexes the pattern data with no bounds check [C]

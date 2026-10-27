@@ -614,10 +614,21 @@ fn play(
     Ok(())
 }
 
-/// Reads and converts an `.rbs` song.
+/// Reads and converts an `.rbs` song: an RBS 4.x file or a ReBirth 1.x MIDI file.
 fn load_song(input: &Path) -> Result<Song, Fail> {
     let data = std::fs::read(input)
         .map_err(|e| fail(1, format!("{}: cannot read the song: {e}", input.display())))?;
+    if rbs::rb1x::is_1x(&data) {
+        // a ReBirth 1.x song: a MIDI file, imported as Rebirth.exe does (docs/song_load.md 12)
+        let parsed = rbs::rb1x::Song1x::parse(&data).map_err(|e| {
+            fail(
+                1,
+                format!("{}: not a valid ReBirth 1.x song: {e}", input.display()),
+            )
+        })?;
+        return rb_engine::load::convert_1x(&parsed)
+            .map_err(|e| fail(1, format!("{}: cannot load the song: {e}", input.display())));
+    }
     let parsed = rbs::Song::parse(&data).map_err(|e| {
         fail(
             1,

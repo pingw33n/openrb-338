@@ -13,6 +13,7 @@ The facts it relies on are in `docs/export_state.md` (sections 2.7, 4 and 12) an
 | `build.sh` | builds `build/rbhost.exe` on the Mac with llvm-mingw |
 | `rbsmsg.py` | `.rbs` to the engine's load messages, written as a `.rbhm` message file |
 | `run.py` | build, convert, upload to `C:\re\rb\rbhost`, run under one permit, download |
+| `hashcmp.py` | rbhost against `rb render` by the WAV sha256 taken on the machine (nothing downloaded) |
 | `rbsmsg_test.py` | unit tests of the conversion |
 
 ## Toolchain

@@ -368,9 +368,54 @@ pub struct TrackEvent {
     pub value: u8,
 }
 
+/// Which reader of the exe built the song, which decides the device messages of the load.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadForm {
+    /// An RBS file (`sub_434D05`): the nine msg-41 blocks in [`LoadForm::device_blocks`] order.
+    #[default]
+    Rbs,
+    /// A ReBirth 1.x MIDI file (`sub_430BA0`, `docs/song_load.md` section 12): no compressor
+    /// and no 909 block (both keep the constructor's state), and after the 808 block the 909's
+    /// `4/74 {0, 0}`, which sets its live enabled byte to 0 (DLL 0x1002BF12, like slot 11).
+    Rb1x,
+}
+
+impl LoadForm {
+    /// The devices whose msg-41 data block the load sends, in the exe's order.
+    pub fn device_blocks(self) -> &'static [Device] {
+        use Device as D;
+        match self {
+            LoadForm::Rbs => &[
+                D::Mixer,
+                D::Delay,
+                D::Pcf,
+                D::Distortion,
+                D::Compressor,
+                D::Tb303_1,
+                D::Tb303_2,
+                D::Tr808,
+                D::Tr909,
+            ],
+            // sub_431747
+            LoadForm::Rb1x => &[
+                D::Mixer,
+                D::Delay,
+                D::Distortion,
+                D::Pcf,
+                D::Tb303_1,
+                D::Tb303_2,
+                D::Tr808,
+            ],
+        }
+    }
+}
+
 /// Everything the engine holds for a song after the load.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Song {
+    /// The reader that built it; [`LoadForm::Rb1x`] songs carry the constructor's compressor and
+    /// 909 blocks, which the load does not send.
+    pub form: LoadForm,
     /// The mod named in GLOB ("Standard ReBirth" for the built-in sounds). The message stream does
     /// not carry it; it selects the sample set the song is opened with (msg 52, m-2).
     pub mod_name: String,
