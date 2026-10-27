@@ -4,7 +4,7 @@ title: Bundle a free drum kit and UI art so the original is not required
 status: To Do
 assignee: []
 created_date: '2026-10-26 14:40'
-updated_date: '2026-10-27 04:58'
+updated_date: '2026-10-27 08:06'
 labels:
   - engine
   - ui
@@ -43,4 +43,6 @@ RBM keys (to consider, needs a decision). Third-party mods (.rbm) have their sam
 Supervisor 2026-10-26: the UI art part is covered by milestone m-3 (bundled SVG UI, our own art); this task keeps the drum kit and the RBM-key decision.
 
 Supervisor 2026-10-27: AC #3 is settled by task-053 (the user chose run-time RB20FUL.DAT; nothing bundled).
+
+Supervisor 2026-10-27: task-036 no longer seeds from a CD; per the user it builds a standard RBM (the built-in kit and the standard UI skin) from the user's ReBirth.dll with `rb standard-rbm`. References to task-036 seeding from a CD in this description are out of date.
 <!-- SECTION:NOTES:END -->
