@@ -811,9 +811,14 @@ pub fn to_i16(f: f32) -> i16 {
 /// What top-level msg 53 finds when it makes a song current (`sub_1001BDA4`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Activation {
-    /// Another, stopped song was current: in the app always ("Untitled song" exists from the
-    /// start, and an opened song replaces it), and in rbhost by default.
-    ReplacesCurrent,
+    /// Another song was current: in the app always ("Untitled song" exists from the start, and
+    /// an opened song replaces it), and in rbhost by default.
+    ReplacesCurrent {
+        /// The current song's play flag (`sub_10013DA0()+1`, its globals byte 1 at
+        /// `song+0x159`, set by play 0x1001F80A and cleared by stop 0x100218CA), tested at
+        /// 0x1001BDC7. `false` in every corpus capture: the untitled song is never played.
+        current_playing: bool,
+    },
     /// No song was current (rbhost `--no-untitled`).
     NoneCurrent,
 }
@@ -945,15 +950,25 @@ impl Engine {
         f.seq.locate(t, &mut f.devices);
     }
 
-    /// Top-level msg 53, `sub_1001BDA4`, making this song the current one while the current
-    /// song is stopped.
+    /// Top-level msg 53, `sub_1001BDA4`, making this song the pending one (0x1001BDB6) and, unless
+    /// the current song is playing, the current one.
     pub fn activate(&mut self, a: Activation) {
         match a {
-            // the old song's slot 6 (`sub_10013D40`); of it only the delay's 0x100100E0 reaches
-            // this song: it refills the process-global delay line and sets its gate. Every
-            // delay's slot 6 does only that, so this song's delay stands in for the old one's
-            // ([`crate::delay::Delay`] refills [`ProcessState`]'s line).
-            Activation::ReplacesCurrent => self.frame.devices.delay.silence(),
+            // 0x1001BDC7..0x1001BDCC: the current song is playing, so the routine returns at
+            // 0x1001BE03 with no slot 6 and no switch; the switch is made later by
+            // `sub_1001BE74` (from `sub_1001C520`). rb does not model that pending-song switch:
+            // this arm leaves the new song not current, so a live player must model it
+            // (docs/export_state.md §3)
+            Activation::ReplacesCurrent {
+                current_playing: true,
+            } => {}
+            // 0x1001BDD0: the old song's slot 6 (`sub_10013D40`); of it only the delay's
+            // 0x100100E0 reaches this song: it refills the process-global delay line and sets
+            // its gate. Every delay's slot 6 does only that, so this song's delay stands in for
+            // the old one's ([`crate::delay::Delay`] refills [`ProcessState`]'s line).
+            Activation::ReplacesCurrent {
+                current_playing: false,
+            } => self.frame.devices.delay.silence(),
             // 0x1001BDF3: slot 6 on this song's own devices
             Activation::NoneCurrent => self.frame.devices.silence_all(),
         }

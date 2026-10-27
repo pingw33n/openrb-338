@@ -194,8 +194,35 @@ gain current and target = 1.0 (`+0x180`, `+0x17C`), channel gains 1e-6, effect c
 base `sub_10010420`), 303 phase and filter state 0 (§7.2).
 
 **Activate (top-level 53 `{slot}` or `{0xFF}` for none, `sub_1001BDA4`).** Sets the pending song
-`transport+0x170`; if the current song `transport+0x16C` is playing, nothing else happens [G: the
-pending switch is then made elsewhere]. Otherwise the old song's devices get slot 6 (`sub_10013D40`:
+`transport+0x170` (0x1001BDB6); if the current song `transport+0x16C` is playing, nothing else
+happens. [C] (task-050) The test at 0x1001BDC2..0x1001BDCC reads the byte at
+`sub_10013DA0(current)+1`: `sub_10013DA0` is `lea eax,[ecx+0x158]` (the song's globals struct,
+whose ctor `sub_10018AC0`, called at 0x100113F4, zeroes `+1` at 0x10018AD6), so the byte is
+`song+0x159`, globals byte 1, **the play flag**. Play (`sub_1001F7E4`, from `sub_1001F7C0(1)`) sets
+it at 0x1001F80A when it is 0 and then runs slot 3 on every device; stop (`sub_100218A0`, from
+`sub_1001F7C0(0)`) clears it at 0x100218CA when it is set and runs slot 4 (`sub_10021840`); the
+play query of msg 20 reads it at 0x1001202E. When it is set, the routine returns at 0x1001BE03 with
+neither slot 6 nor `sub_1001BD24`: the new song is only pending. The pending song is picked up by
+`sub_1001C520` (0x1001C534: when `transport+0x160` is set and a song is pending, it locates that
+song to 0 at 0x1001C549 and calls `sub_1001BE74(new)` at 0x1001C55A). [C] `sub_1001BE74`
+(esi = the old song `transport+0x16C`, edi = the new one, ebp = the transport) is gated: with no old
+song (0x1001BE87), the old song equal to the new one (0x1001BE8F) or the old song stopped (its play
+flag read again by `sub_1001FD50`, `movb 0x1(%eax)` at 0x1001FD63, tested at 0x1001BE9F..0x1001BEAA)
+it sets bh = 0 and jumps to 0x1001BED0, so neither the stop nor slot 6 runs; otherwise it sets bh = 1
+(0x1001BEAF), stops the old song (`sub_100218A0`, 0x1001BEB1), calls `sub_1001BE14(old, 0)` and runs
+slot 6 on it (0x1001BECB). Then at 0x1001BED0..0x1001BEE3, if `transport+0x15C` == 0x2E: with bh
+set it starts the new song (0x1001BEEC, `sub_1001F7E0`, an entry that loads its argument and falls
+into the play body `sub_1001F7E4`) and calls `sub_1001BE14(new, 1)`; with bh clear it only sets
+`transport+0x151` = 1 (0x1001BF17). If `transport+0x15C` != 0x2E it always starts the new song
+(0x1001BF23) and calls `sub_1001BE14(new, 1)`. Every path makes the new song current at 0x1001BF07.
+What `transport+0x15C` == 0x2E, `sub_1001BE14` and `transport+0x160` mean, and when `sub_1001C520`
+runs, are not traced [G]. This is the on-the-fly song switch while playing, not a defect. In the
+corpus the replaced song (rbhost's untitled song, the app's "Untitled song") is never played, so the
+refill is always taken; `Engine::activate` takes the flag as
+`Activation::ReplacesCurrent { current_playing }`, `false` for the corpus, and does nothing when it
+is `true`. **rb does not model the pending-song switch**: `current_playing = true` is a no-op that
+leaves the new song not current, so a future live player must model `sub_1001C520` and
+`sub_1001BE74` itself. Otherwise the old song's devices get slot 6 (`sub_10013D40`:
 303 note-off, drum voices silenced, **the global delay buffer cleared**, §6) and `sub_1001BD24` makes
 the new song current. [C] (task-011) When no song is current, slot 6 is called on the **new** song
 instead (0x1001BDF3), so its 303s get the note-off release constants (`+0xCC8`, `+0xCCC`) before
@@ -310,7 +337,8 @@ no-ops for every device but the 303s, the 808 and the 909, whose slot 2 and 3 co
 **Activation in the model** (task-022, `Engine::activate`): with a stopped song current, the only
 effect of top-level 53 on the new song is the old song's delay slot 6 (0x100100E0), which refills
 the process-global delay buffer `0x10054794` and sets `byte_10054790`; with no song current, slot 6
-runs on the new song's own devices (§3).
+runs on the new song's own devices (§3). With a playing song current (its play flag `song+0x159`,
+task-050), top-level 53 does nothing to the new song (§3).
 
 ### 6.4 Msg 33 (`sub_10014140`, song msg 33 → 0x10012546)
 

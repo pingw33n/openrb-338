@@ -123,11 +123,13 @@ pub fn export(engine: &mut Engine, range: ExportRange, idle_blocks: u32) -> Vec<
 }
 
 /// rbhost's whole run on a new song (by default, `--idle-blocks N`): load `song`, activate it
-/// over the "Untitled song" ([`Activation::ReplacesCurrent`]), then [`export`] with the range
-/// the export queries (msg 20 ids 4, 12, 16, which read the loaded globals).
+/// over the stopped "Untitled song" ([`Activation::ReplacesCurrent`]), then [`export`] with the
+/// range the export queries (msg 20 ids 4, 12, 16, which read the loaded globals).
 pub fn export_song(engine: &mut Engine, song: &Song, idle_blocks: u32) -> Vec<i16> {
     engine.load(song);
-    engine.activate(Activation::ReplacesCurrent);
+    engine.activate(Activation::ReplacesCurrent {
+        current_playing: false,
+    });
     export(engine, ExportRange::from(&song.globals), idle_blocks)
 }
 

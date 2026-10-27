@@ -565,13 +565,31 @@ fn assert_refilled(p: &ProcessState) {
 
 #[test]
 fn msg53_replacing_a_song_refills_the_delay_line() {
-    for a in [Activation::ReplacesCurrent, Activation::NoneCurrent] {
+    let stopped = Activation::ReplacesCurrent {
+        current_playing: false,
+    };
+    for a in [stopped, Activation::NoneCurrent] {
         let mut e = Engine::new(tables(), Devices::implemented(None));
         let p = e.process_state().clone();
         dirty_delay_line(&p);
         e.activate(a);
         assert_refilled(&p);
     }
+}
+
+#[test]
+fn msg53_over_a_playing_song_leaves_the_delay_line() {
+    // 0x1001BDCC: the current song's play flag set, the routine returns before slot 6
+    let mut e = Engine::new(tables(), Devices::implemented(None));
+    let p = e.process_state().clone();
+    dirty_delay_line(&p);
+    let before = p.delay_line();
+    e.activate(Activation::ReplacesCurrent {
+        current_playing: true,
+    });
+    let l = p.delay_line();
+    assert!(!l.gate);
+    assert!(l.buf.iter().eq(before.buf.iter()));
 }
 
 #[test]
