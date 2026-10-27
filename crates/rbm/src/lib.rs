@@ -32,6 +32,7 @@ use rb_engine::samples::{self, Sample, SampleSet};
 
 pub mod embedded;
 mod recrypt;
+pub mod standard;
 
 pub use recrypt::{MAX_EMBF, PAD_NAME, recrypt};
 
@@ -138,6 +139,8 @@ pub enum RbmError {
     KeyNotCovered(String),
     /// The mod cannot be recrypted (the text says why).
     Recrypt(String),
+    /// The standard mod cannot be built from these files (the text says why).
+    Standard(String),
 }
 
 impl fmt::Display for RbmError {
@@ -155,6 +158,7 @@ impl fmt::Display for RbmError {
                  recrypted: it needs RB20FUL.DAT)"
             ),
             RbmError::Recrypt(m) => write!(f, "cannot recrypt the mod: {m}"),
+            RbmError::Standard(m) => write!(f, "cannot build the standard mod: {m}"),
         }
     }
 }

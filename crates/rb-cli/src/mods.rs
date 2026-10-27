@@ -9,6 +9,9 @@
 //! (`rb recrypt`, task-059; task-063): a mod that is not recrypted is found like any other (its
 //! INFO is in the clear and it keeps its place in the folder order) and fails when its samples
 //! are loaded, with an error that names `rb recrypt`. Only `rb recrypt` reads `RB20FUL.DAT`.
+//!
+//! The built-in kit itself comes from the standard mod (`rb standard-mod`, task-036; docs/rbm.md
+//! section 13), found by [`locate_standard_mod`].
 
 use std::path::{Path, PathBuf};
 
@@ -110,6 +113,54 @@ pub fn find_rb20ful(explicit: Option<&Path>, input: &Path) -> Result<PathBuf, Fa
         1,
         "no RB20FUL.DAT found. Pass --rb20ful PATH, set RB_RB20FUL, or put it next to the mod \
          or the rb binary",
+    ))
+}
+
+/// The file name of the standard mod next to the rb binary.
+pub const STANDARD_MOD_FILE: &str = "Standard.rbm";
+
+/// Where `rb standard-mod` writes the standard mod by default and where it is found: next to
+/// the rb binary.
+pub fn default_standard_mod() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join(STANDARD_MOD_FILE)))
+}
+
+/// The standard mod (`rb standard-mod`, task-036), the source of the built-in drum samples:
+/// `explicit` (`--standard-mod`, which must exist), the `RB_STANDARD_MOD` environment variable
+/// (likewise), `Standard.rbm` next to the rb binary, then the first mod whose INFO name is the
+/// standard mod's ("ReBirth Standard Kit") in the mod folder of `opts`.
+pub fn locate_standard_mod(explicit: Option<&Path>, opts: &ModOpts) -> Result<PathBuf, Fail> {
+    let explicit = explicit
+        .map(|p| ("--standard-mod", p.to_path_buf()))
+        .or_else(|| env_path("RB_STANDARD_MOD").map(|p| ("RB_STANDARD_MOD", p)));
+    if let Some((what, p)) = explicit {
+        return if p.is_file() {
+            Ok(p)
+        } else {
+            Err(fail(1, format!("{what} {}: no such file", p.display())))
+        };
+    }
+    if let Some(p) = default_standard_mod().filter(|p| p.is_file()) {
+        return Ok(p);
+    }
+    if let Some(d) = opts.mod_dir()?
+        && let Some((p, _)) = scan(&d)?
+            .into_iter()
+            .find(|(_, n)| n.as_deref() == Some(rbm::standard::NAME))
+    {
+        return Ok(p);
+    }
+    Err(fail(
+        1,
+        format!(
+            "no standard mod found. Make it once with `rb standard-mod --rebirth-dll \
+             ReBirth.dll` (it is written next to the rb binary, or to -o FILE), then pass \
+             --standard-mod FILE or set RB_STANDARD_MOD, or put it in the mod folder (its name \
+             is \"{}\")",
+            rbm::standard::NAME
+        ),
     ))
 }
 

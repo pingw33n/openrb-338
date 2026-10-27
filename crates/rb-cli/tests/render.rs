@@ -1,14 +1,13 @@
 //! `rb render` end to end (task-028): all three formats, FLAC against WAV, the WAV against the
 //! reference manifest, and the error exits.
 
-use std::path::{Path, PathBuf};
+mod common;
+
+use std::path::Path;
 use std::process::{Command, Output};
 
+use common::{root, standard_mod};
 use sha2::{Digest, Sha256};
-
-fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn rb(args: &[&std::ffi::OsStr]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rb"))
@@ -121,10 +120,10 @@ fn pattern_mode_warns() {
 fn no_device_warns() {
     let dir = tempfile::tempdir().unwrap();
     let wav = dir.path().join("w.wav");
-    let dll = root().join("original/ReBirth.dll");
+    let kit = standard_mod();
     let stderr = |name: &str| {
         let song = root().join(format!("tests/songs/diag/songs/{name}.rbs"));
-        let o = render(&song, &wav, &["--rebirth-dll", dll.to_str().unwrap()]);
+        let o = render(&song, &wav, &["--standard-mod", kit.to_str().unwrap()]);
         assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
         String::from_utf8_lossy(&o.stderr).into_owned()
     };
@@ -148,10 +147,10 @@ fn no_device_warns() {
 fn a_faulting_pcf_warns() {
     let dir = tempfile::tempdir().unwrap();
     let wav = dir.path().join("w.wav");
-    let dll = root().join("original/ReBirth.dll");
+    let kit = standard_mod();
     for name in ["pcf_lp_wave127", "pcf_bp_wave127"] {
         let song = root().join(format!("tests/songs/diag/songs/{name}.rbs"));
-        let o = render(&song, &wav, &["--rebirth-dll", dll.to_str().unwrap()]);
+        let o = render(&song, &wav, &["--standard-mod", kit.to_str().unwrap()]);
         let e = String::from_utf8_lossy(&o.stderr);
         assert!(o.status.success(), "{name}: {e}");
         assert!(

@@ -14,6 +14,7 @@ Commands below use `rcs` for `~/dev/dcre/common/tools/rcs_client.py`.
 | rb's working folder (create once) | `C:\re\rb` (rcs path `rb/`) |
 | The installation | `C:\ReBirth RB-338` (outside the rcs root; since dcre bd32edb rcs takes absolute paths anywhere: `rcs ls 'C:/ReBirth RB-338'`, `rcs get 'C:/ReBirth RB-338/Demo Songs/Calm.rbs' .`, `exec --cwd 'C:/ReBirth RB-338'`) |
 | Preferences file | `C:\Users\pingw33n\AppData\Local\VirtualStore\Windows\ReBirth RB-338 2.prf` |
+| The ReBirth CD (2026-10-27) | drive `E:` (label `RB338V20`): `Install ReBirth RB-338.exe`, `RB20FUL.DAT`, ... (`rcs ls E:/`, read-only). Its installer's Rebirth.exe is not the installed one (docs/rbm.md 13.1) |
 
 The installation holds:
 

@@ -10,7 +10,7 @@
 //! The engine takes a loaded [`SampleSet`]; finding the file is the caller's job.
 
 mod aiff;
-mod pe;
+pub mod pe;
 
 use std::fmt;
 use std::sync::Arc;

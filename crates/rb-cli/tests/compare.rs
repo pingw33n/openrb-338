@@ -1,20 +1,20 @@
 //! `rb compare` end to end (task-029): one song against a FLAC or a WAV, manifest entries, the
 //! first difference, and the exit codes.
 
+mod common;
+
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
 
-fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+use common::{root, standard_mod};
 
 fn rb(args: &[&OsStr]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rb"))
         .arg("compare")
         .args(args)
-        .arg("--rebirth-dll")
-        .arg(root().join("original/ReBirth.dll"))
+        .arg("--standard-mod")
+        .arg(standard_mod())
         .output()
         .unwrap()
 }
@@ -47,8 +47,8 @@ fn a_song_equals_its_flac_and_its_wav() {
         .arg(&song)
         .arg("-o")
         .arg(&wav)
-        .arg("--rebirth-dll")
-        .arg(root().join("original/ReBirth.dll"))
+        .arg("--standard-mod")
+        .arg(standard_mod())
         .output()
         .unwrap();
     assert!(r.status.success(), "{}", out(&r));

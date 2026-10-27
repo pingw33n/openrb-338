@@ -1,6 +1,8 @@
 //! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), compares renders
 //! with their references (`rb compare`), plays a song through the audio output with the
-//! real-time player (`rb play`), and rewrites a mod to need no RB20FUL.DAT (`rb recrypt`).
+//! real-time player (`rb play`), rewrites a mod to need no RB20FUL.DAT (`rb recrypt`), and
+//! builds the standard mod, the built-in kit and panel as a mod (`rb standard-mod`), from which
+//! the other commands take the built-in drum samples.
 //!
 //! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable)
 //! or, for `compare`, a song differs from its reference, 2 a usage error (bad arguments,
@@ -54,12 +56,12 @@ enum Cmd {
         /// original's own export starts from whatever the running app was doing.
         #[arg(long, default_value_t = 9088, value_name = "N")]
         idle_blocks: u32,
-        /// The ReBirth 2.01 ReBirth.dll, which holds the built-in drum samples. Needed only
-        /// when a drum machine plays. Without it the search is: the RB_REBIRTH_DLL environment
-        /// variable, then a ReBirth.dll next to the rb binary, then the usual install
-        /// locations on Windows.
+        /// The standard mod (made once by `rb standard-mod --rebirth-dll ReBirth.dll`), which
+        /// holds the built-in drum samples. Needed only when a drum machine plays. Without it
+        /// the search is: the RB_STANDARD_MOD environment variable, then Standard.rbm next to
+        /// the rb binary, then a mod named "ReBirth Standard Kit" in the mod folder.
         #[arg(long, value_name = "PATH")]
-        rebirth_dll: Option<PathBuf>,
+        standard_mod: Option<PathBuf>,
         /// The song's mod is looked up in this folder of .rbm files, by the name in the song
         /// (the mod's INFO name, as the original's Mods menu; a file name also matches).
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
@@ -89,9 +91,9 @@ enum Cmd {
         /// Stop after this many seconds.
         #[arg(long, value_name = "S")]
         seconds: Option<f64>,
-        /// The ReBirth.dll with the built-in drum samples, as in render.
+        /// The standard mod with the built-in drum samples, as in render.
         #[arg(long, value_name = "PATH")]
-        rebirth_dll: Option<PathBuf>,
+        standard_mod: Option<PathBuf>,
         /// The folder of .rbm mods, as in render.
         #[arg(long, value_name = "DIR")]
         mod_dir: Option<PathBuf>,
@@ -123,9 +125,9 @@ enum Cmd {
         /// entry's own idle_blocks, or 9088 for a single song.
         #[arg(long, value_name = "N")]
         idle_blocks: Option<u32>,
-        /// The ReBirth.dll with the built-in drum samples, as in render.
+        /// The standard mod with the built-in drum samples, as in render.
         #[arg(long, value_name = "PATH")]
-        rebirth_dll: Option<PathBuf>,
+        standard_mod: Option<PathBuf>,
         /// As in render: the song's mod is looked up in this folder of .rbm files, by the name
         /// in the song (the mod's INFO name, as the original's Mods menu; a file name also matches).
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
@@ -160,6 +162,25 @@ enum Cmd {
         #[arg(long, value_name = "PATH")]
         rb20ful: Option<PathBuf>,
     },
+    /// Build the standard mod: the original's built-in kit (the 46 samples of ReBirth.dll) and
+    /// panel (the bitmaps of Rebirth.exe) as a recrypted .rbm named "ReBirth Standard Kit".
+    /// render, compare and play take the built-in kit from it; the original ReBirth loads it
+    /// from its Mods folder like any mod. Run it once; it is the only rb command that reads
+    /// ReBirth.dll.
+    StandardMod {
+        /// The ReBirth 2.01 ReBirth.dll. Search order: this option, then a ReBirth.dll next to
+        /// the rb binary, then the usual install locations on Windows.
+        #[arg(long, value_name = "PATH")]
+        rebirth_dll: Option<PathBuf>,
+        /// The ReBirth 2.01 Rebirth.exe, which holds the panel bitmaps. Default: the
+        /// Rebirth.exe next to the ReBirth.dll.
+        #[arg(long, value_name = "PATH")]
+        rebirth_exe: Option<PathBuf>,
+        /// The mod to write. Default: Standard.rbm next to the rb binary, where render,
+        /// compare and play look for it.
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
 }
 
 /// A failure with its exit code.
@@ -178,7 +199,7 @@ fn main() -> ExitCode {
             quality,
             range,
             idle_blocks,
-            rebirth_dll,
+            standard_mod,
             mod_dir,
             mod_file,
             standard_kit,
@@ -188,7 +209,7 @@ fn main() -> ExitCode {
             quality,
             range.as_deref(),
             idle_blocks,
-            rebirth_dll.as_deref(),
+            standard_mod.as_deref(),
             ModOpts {
                 mod_file,
                 mod_dir,
@@ -199,7 +220,7 @@ fn main() -> ExitCode {
             input,
             bar,
             seconds,
-            rebirth_dll,
+            standard_mod,
             mod_dir,
             mod_file,
             standard_kit,
@@ -207,7 +228,7 @@ fn main() -> ExitCode {
             &input,
             bar,
             seconds,
-            rebirth_dll.as_deref(),
+            standard_mod.as_deref(),
             ModOpts {
                 mod_file,
                 mod_dir,
@@ -220,7 +241,7 @@ fn main() -> ExitCode {
             manifest,
             sets,
             idle_blocks,
-            rebirth_dll,
+            standard_mod,
             mod_dir,
             mod_file,
             standard_kit,
@@ -230,7 +251,7 @@ fn main() -> ExitCode {
             manifest,
             sets,
             idle_blocks,
-            rebirth_dll,
+            standard_mod,
             mods: ModOpts {
                 mod_file,
                 mod_dir,
@@ -249,6 +270,15 @@ fn main() -> ExitCode {
             output,
             rb20ful,
         } => recrypt(&input, &output, rb20ful),
+        Cmd::StandardMod {
+            rebirth_dll,
+            rebirth_exe,
+            output,
+        } => standard_mod(
+            rebirth_dll.as_deref(),
+            rebirth_exe.as_deref(),
+            output.as_deref(),
+        ),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -316,10 +346,9 @@ fn drums_playing(song: &Song) -> Vec<&'static str> {
     v
 }
 
-/// The ReBirth.dll to read the drum samples from, in the order: the `--rebirth-dll` path (which
-/// must exist), the `RB_REBIRTH_DLL` environment variable (likewise), a ReBirth.dll next to the
-/// rb binary, then the Windows install locations. An explicit choice is never second-guessed
-/// by a search; the implicit locations are tried only when nothing was asked for.
+/// The ReBirth.dll `rb standard-mod` reads, in the order: the `--rebirth-dll` path (which must
+/// exist), a ReBirth.dll next to the rb binary, then the Windows install locations. An explicit
+/// choice is never second-guessed by a search.
 fn locate_rebirth_dll(explicit: Option<&Path>) -> Result<PathBuf, Fail> {
     if let Some(p) = explicit {
         return if p.is_file() {
@@ -328,17 +357,6 @@ fn locate_rebirth_dll(explicit: Option<&Path>) -> Result<PathBuf, Fail> {
             Err(fail(
                 1,
                 format!("--rebirth-dll {}: no such file", p.display()),
-            ))
-        };
-    }
-    if let Some(p) = std::env::var_os("RB_REBIRTH_DLL").filter(|p| !p.is_empty()) {
-        let p = PathBuf::from(p);
-        return if p.is_file() {
-            Ok(p)
-        } else {
-            Err(fail(
-                1,
-                format!("RB_REBIRTH_DLL={}: no such file", p.display()),
             ))
         };
     }
@@ -372,29 +390,114 @@ fn locate_rebirth_dll(explicit: Option<&Path>) -> Result<PathBuf, Fail> {
     }
     Err(fail(
         1,
-        "no ReBirth.dll found. Pass --rebirth-dll PATH, set RB_REBIRTH_DLL, or put it next to the rb binary",
+        "no ReBirth.dll found. Pass --rebirth-dll PATH, or put it next to the rb binary",
     ))
 }
 
-/// Loads the built-in drum samples from the ReBirth.dll that `locate_rebirth_dll` finds.
-fn load_samples(explicit: Option<&Path>, drums: &[&str]) -> Result<SampleSet, Fail> {
+/// The Rebirth.exe `rb standard-mod` reads: `--rebirth-exe` (which must exist), else the
+/// Rebirth.exe in the folder of the ReBirth.dll.
+fn locate_rebirth_exe(explicit: Option<&Path>, dll: &Path) -> Result<PathBuf, Fail> {
+    if let Some(p) = explicit {
+        return if p.is_file() {
+            Ok(p.to_path_buf())
+        } else {
+            Err(fail(
+                1,
+                format!("--rebirth-exe {}: no such file", p.display()),
+            ))
+        };
+    }
+    let dir = dll.parent().unwrap_or(Path::new("."));
+    ["Rebirth.exe", "ReBirth.exe", "rebirth.exe", "REBIRTH.EXE"]
+        .iter()
+        .map(|n| dir.join(n))
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            fail(
+                1,
+                format!(
+                    "no Rebirth.exe next to {} (it holds the panel bitmaps). Pass --rebirth-exe PATH",
+                    dll.display()
+                ),
+            )
+        })
+}
+
+/// `rb standard-mod`: the built-in kit and panel as a recrypted mod (task-036).
+fn standard_mod(dll: Option<&Path>, exe: Option<&Path>, output: Option<&Path>) -> Result<(), Fail> {
+    let dll = locate_rebirth_dll(dll)?;
+    let exe = locate_rebirth_exe(exe, &dll)?;
+    let output = match output {
+        Some(o) => o.to_path_buf(),
+        None => mods::default_standard_mod().ok_or_else(|| {
+            fail(
+                1,
+                "cannot tell where the rb binary is; pass -o FILE for the standard mod",
+            )
+        })?,
+    };
+    let read = |p: &Path| {
+        std::fs::read(p).map_err(|e| fail(1, format!("{}: cannot read: {e}", p.display())))
+    };
+    let built = rbm::standard::build(&read(&dll)?, &read(&exe)?).map_err(|e| {
+        fail(
+            1,
+            format!("{e} (from {} and {})", dll.display(), exe.display()),
+        )
+    })?;
+    std::fs::write(&output, &built.bytes)
+        .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
+    eprintln!(
+        "rb: {}: the standard mod \"{}\": {} samples from {}, {} panel bitmaps from {}, {} bytes",
+        output.display(),
+        rbm::standard::NAME,
+        rb_engine::samples::COUNT,
+        dll.display(),
+        built.jpegs,
+        exe.display(),
+        built.bytes.len()
+    );
+    Ok(())
+}
+
+/// Loads the built-in drum samples from the standard mod that `mods::locate_standard_mod`
+/// finds.
+fn load_standard(
+    explicit: Option<&Path>,
+    mods: &ModOpts,
+    drums: &[&str],
+) -> Result<SampleSet, Fail> {
     let need = format!(
         "the song plays the {}, which needs the built-in drum samples",
         drums.join(" and ")
     );
-    let path =
-        locate_rebirth_dll(explicit).map_err(|Fail(c, m)| fail(c, format!("{need}; {m}")))?;
-    let bytes = std::fs::read(&path)
-        .map_err(|e| fail(1, format!("{}: cannot read: {e}", path.display())))?;
-    SampleSet::from_dll(&bytes).map_err(|e| {
-        fail(
+    let path = mods::locate_standard_mod(explicit, mods)
+        .map_err(|Fail(c, m)| fail(c, format!("{need}; {m}")))?;
+    let rbm = read_mod(&path)?;
+    let remake = "make it with `rb standard-mod --rebirth-dll ReBirth.dll -o FILE`";
+    if !rbm.is_standard() {
+        return Err(fail(
             1,
             format!(
-                "{}: not a ReBirth 2.01 ReBirth.dll with the built-in samples: {e}",
-                path.display()
+                "{}: not a standard mod (its menu name is not \"{}\"); {remake}",
+                path.display(),
+                rbm::standard::NAME
             ),
-        )
-    })
+        ));
+    }
+    let table = rbm::KeyTable::embedded(&rbm)
+        .filter(|t| rbm.slots_covered(t))
+        .ok_or_else(|| {
+            fail(
+                1,
+                format!(
+                    "{}: the standard mod is not recrypted for rb; {remake}",
+                    path.display()
+                ),
+            )
+        })?;
+    rbm.load_all_samples(&table)
+        .map_err(|e| fail(1, format!("{}: {e}; {remake}", path.display())))
 }
 
 fn render(
@@ -403,7 +506,7 @@ fn render(
     quality: f32,
     range: Option<&str>,
     idle_blocks: u32,
-    rebirth_dll: Option<&Path>,
+    standard_mod: Option<&Path>,
     mods: ModOpts,
 ) -> Result<(), Fail> {
     let format =
@@ -431,7 +534,7 @@ fn render(
     }
     warn_unsupported(&song);
     let label = input.display().to_string();
-    let samples = Renderer::new(rebirth_dll, mods).render(&label, &song, idle_blocks)?;
+    let samples = Renderer::new(standard_mod, mods).render(&label, &song, idle_blocks)?;
     let bytes = encode::encode(format, &samples, quality)
         .map_err(|e| fail(1, format!("encoding failed: {e}")))?;
     std::fs::write(output, bytes)
@@ -444,7 +547,7 @@ fn play(
     input: &Path,
     bar: Option<u32>,
     seconds: Option<f64>,
-    rebirth_dll: Option<&Path>,
+    standard_mod: Option<&Path>,
     mods: ModOpts,
 ) -> Result<(), Fail> {
     use rb_player::{Command, Player};
@@ -463,7 +566,7 @@ fn play(
     }
     let song = load_song(input)?;
     let label = input.display().to_string();
-    let mut r = Renderer::new(rebirth_dll, mods);
+    let mut r = Renderer::new(standard_mod, mods);
     let samples = r.samples(&label, &song)?;
     let (mut player, audio) = Player::new(r.tables.clone(), samples.clone());
     let queue = |_| fail(1, "the player's command queue is full");
@@ -540,11 +643,11 @@ fn warn_unsupported(song: &Song) {
 }
 
 /// Renders songs, each in a new engine with every device, sharing the tables and the sample
-/// sets: the built-in drum samples (loaded from the ReBirth.dll the first time a song plays a
+/// sets: the built-in drum samples (loaded from the standard mod the first time a song plays a
 /// drum machine) and one set per mod file used.
 struct Renderer {
     tables: Arc<Tables>,
-    rebirth_dll: Option<PathBuf>,
+    standard_mod: Option<PathBuf>,
     mods: ModOpts,
     builtin: Option<Arc<SampleSet>>,
     mod_sets: HashMap<PathBuf, Arc<SampleSet>>,
@@ -633,10 +736,10 @@ fn load_mod(path: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
 }
 
 impl Renderer {
-    fn new(rebirth_dll: Option<&Path>, mods: ModOpts) -> Self {
+    fn new(standard_mod: Option<&Path>, mods: ModOpts) -> Self {
         Renderer {
             tables: Arc::new(Tables::new()),
-            rebirth_dll: rebirth_dll.map(Path::to_path_buf),
+            standard_mod: standard_mod.map(Path::to_path_buf),
             mods,
             builtin: None,
             mod_sets: HashMap::new(),
@@ -668,14 +771,14 @@ impl Renderer {
         // drum machine plays (and then needs no key file: nothing of it is read).
         let kit = mods::resolve(&self.mods, label, &song.mod_name)?;
         // The drum samples are loaded only for a song that plays a drum machine; a 303-only
-        // song renders without a ReBirth.dll (its drum machines play no step, so the silent
+        // song renders without the standard mod (its drum machines play no step, so the silent
         // placeholders the engine uses without samples are exact).
         let drums = drums_playing(song);
         let samples = if drums.is_empty() {
             None
         } else {
             if self.builtin.is_none() {
-                let set = load_samples(self.rebirth_dll.as_deref(), &drums)?;
+                let set = load_standard(self.standard_mod.as_deref(), &self.mods, &drums)?;
                 self.builtin = Some(Arc::new(set));
             }
             let builtin = self.builtin.clone().unwrap();

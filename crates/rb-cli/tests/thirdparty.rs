@@ -19,18 +19,17 @@
 //!   resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`) must be refused
 //!   with an error. No song may panic.
 
+mod common;
+
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
+use common::root;
 use rb_engine::samples::{self, Sample, SampleSet};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-
-fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 struct Env {
     /// The recrypted mods (`Mods/`): what rb loads.
@@ -358,8 +357,8 @@ fn check_song(
         .arg(out)
         .arg("--mod-dir")
         .arg(&e.mods)
-        .arg("--rebirth-dll")
-        .arg(root().join("original/ReBirth.dll"))
+        .arg("--standard-mod")
+        .arg(common::standard_mod())
         .arg("--standard-kit")
         .output()
         .unwrap();

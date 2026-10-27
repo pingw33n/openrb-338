@@ -7,13 +7,13 @@
 //! key table is zeros and the scrambling is the identity: the mod is built in the clear. The
 //! setup recrypts it with `rb recrypt --rb20ful` into `mods/`; `raw/` keeps the original.
 
+mod common;
+
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+use common::root;
 
 fn aiff(frames: usize) -> Vec<u8> {
     let mut d = b"FORM".to_vec();
@@ -70,7 +70,8 @@ struct Setup {
     mods: PathBuf,
     /// The same mod, not recrypted.
     raw: PathBuf,
-    dll: PathBuf,
+    /// The standard mod (the built-in kit, for the slots a mod lacks).
+    kit: PathBuf,
 }
 
 fn rb() -> Command {
@@ -115,7 +116,7 @@ fn setup() -> Setup {
         dat,
         mods,
         raw,
-        dll: root().join("original/ReBirth.dll"),
+        kit: common::standard_mod().to_path_buf(),
     }
 }
 
@@ -129,7 +130,7 @@ fn song(s: &Setup, file: &str, mod_name: &str) -> PathBuf {
     p
 }
 
-/// `rb render song -o out extra...` with the mod environment cleared and the DLL set.
+/// `rb render song -o out extra...` with the mod environment cleared and the standard mod set.
 fn render(s: &Setup, song: &Path, name: &str, extra: &[&OsStr]) -> (Output, PathBuf) {
     let out = s.dir.path().join(name);
     let o = rb()
@@ -138,7 +139,7 @@ fn render(s: &Setup, song: &Path, name: &str, extra: &[&OsStr]) -> (Output, Path
         .arg("-o")
         .arg(&out)
         .args(extra)
-        .env("RB_REBIRTH_DLL", &s.dll)
+        .env("RB_STANDARD_MOD", &s.kit)
         .output()
         .unwrap();
     (o, out)
@@ -170,6 +171,35 @@ fn the_songs_mod_is_found_by_name_in_the_mod_dir() {
     let mod_wav = std::fs::read(mod_out).unwrap();
     assert_ne!(std_wav, mod_wav, "the mod's drums are audible");
     assert_eq!(mod_wav, std::fs::read(file_out).unwrap());
+}
+
+/// The synthetic mod has no TR-909 sample: a 909 song with it plays the standard mod's 909
+/// samples slot by slot, as the original plays its built-in ones (task-036).
+#[test]
+fn a_mods_missing_slots_come_from_the_standard_mod() {
+    let s = setup();
+    let src = root().join("tests/songs/diag/songs/909_bass.rbs");
+    let mut song = rbs::Song::parse(&std::fs::read(src).unwrap()).unwrap();
+    let mut write = |file: &str, name: &str| {
+        song.glob.mod_name = name.to_string();
+        let p = s.dir.path().join(file);
+        std::fs::write(&p, song.write().unwrap()).unwrap();
+        p
+    };
+    let (standard, named) = (
+        write("s909.rbs", "Standard ReBirth"),
+        write("m909.rbs", "Test Mod"),
+    );
+    let (o, a) = render(&s, &standard, "s909.wav", &[]);
+    ok(&o);
+    let (o, b) = render(
+        &s,
+        &named,
+        "m909.wav",
+        &[os("--mod-dir"), s.mods.as_os_str()],
+    );
+    ok(&o);
+    assert_eq!(std::fs::read(a).unwrap(), std::fs::read(b).unwrap());
 }
 
 #[test]
@@ -221,7 +251,7 @@ fn mod_overrides_the_song_and_the_environment_gives_the_folders() {
         .arg(&named)
         .arg("-o")
         .arg(&out)
-        .env("RB_REBIRTH_DLL", &s.dll)
+        .env("RB_STANDARD_MOD", &s.kit)
         .env("RB_MOD_DIR", &s.mods)
         .output()
         .unwrap();
@@ -299,7 +329,7 @@ fn a_mod_that_is_not_recrypted_is_an_error_naming_rb_recrypt() {
         .arg("-o")
         .arg(s.dir.path().join("m.wav"))
         .args(dirs)
-        .env("RB_REBIRTH_DLL", &s.dll)
+        .env("RB_STANDARD_MOD", &s.kit)
         .env("RB_RB20FUL", &s.dat)
         .output()
         .unwrap();

@@ -30,6 +30,9 @@ The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte w
   4096 bytes of key material**. [C]
 - `rb recrypt` rewrites a mod so that it needs only the 2047 bytes of `RB20FUL.DAT` that rb
   embeds; the original loads the result unchanged (section 12).
+- `rb standard-mod` builds the built-in kit (ReBirth.dll's 46 AIFF resources) and panel
+  (Rebirth.exe's JPEG resources) into such a mod, "ReBirth Standard Kit", from which rb takes the
+  built-in samples (section 13).
 - Shown correct on the four shipped mods: every embedded file decodes (JPEGs, the demo songs, the
   AIFFs), and the samples the original DLL loads from them equal `rbm.py`'s (section 8). [C]
 
@@ -309,6 +312,8 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   `rb compare --manifest` includes the sets `mod` and `modapp` by default only when a mod folder
   is given. Since task-063 these commands take no `--rb20ful` and read no `RB20FUL.DAT`: they
   load recrypted mods only (section 12.4). Task-033 had `--rb20ful PATH` / `RB_RB20FUL` here.
+  Since task-036 the built-in kit comes from the standard mod (`--standard-mod`, section 13.4),
+  not from `--rebirth-dll`.
 - **AIFF rate** [C]: `sub_10001674` (0x100016B2..0x100016DE) converts the 80-bit rate with `fistp`
   under a control word with rounding set to truncate (`| 0xC00`) into a 64-bit slot and keeps the low
   dword; `sub_100016F4` rejects 0. The engine's reader now does the same (a rate below 1 Hz, or
@@ -567,3 +572,103 @@ originals. The four shipped mods on the test machine: the originals are backed u
 `C:\re\rb\mods_orig`, `C:\ReBirth RB-338\Mods` holds the recrypted ones (hashes in
 docs/test_machine.md section 7), and an app export of Fonda Workout from the installation equals
 `rb compare` with the recrypted MSM2 at one N of 3400..3707 (3600).
+
+## 13. The standard mod: the built-in kit and panel as a mod (task-036, 2026-10-27)
+
+`rb standard-mod --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] [-o FILE]`
+(`crates/rbm/src/standard.rs`) builds, from the user's own files, a mod that holds what the
+original has built in. rb's other commands take the built-in drum samples from it (13.4); the
+original loads it like any mod. Nothing of it is committed: the tests build it from `original/`.
+
+### 13.1 Where the original keeps its standard skin [C]
+
+The panel graphics are **Rebirth.exe** resources of the named type `"JPEG"` (the type string at
+0x4D0990, read by `sub_46E900` through `sub_484EE1`); ReBirth.dll has none (only `"AIFF"` 1000..1045
+and a version resource). Rebirth.exe 2.01 has 64 JPEG resources, all language 1053, all baseline
+JFIF already, i.e. the format the mods embed:
+
+| IDs | Count | What |
+|---|---|---|
+| 12015 .. 12571 (not contiguous) | 58 | the panel bitmaps a mod replaces: exactly the 58 numbered JPEGs of every shipped mod |
+| 903 | 1 | the built-in kit's splash (256 x 256) |
+| 905 | 1 | the splash of a mod that has no `Splash.jpg` (256 x 256) |
+| 900, 901 | 2 | 480 x 344, the about / start-up screens [G: not traced] |
+| 904, 906 | 2 | 171 x 900 and 94 x 17 [G: not traced] |
+
+The mapping is `sub_41703A` (the panel's bitmap loader, called with a bitmap id):
+- when the open mod is not the built-in kit (`sub_4166E5` false, the branch at 0x4170C5), it asks the
+  mod for `Splash.jpg` when the id is 12999 (`cmp [ebp+var_24], 32C7h` at 0x4170CB, the name at
+  0x4BB368) and otherwise for `sprintf("%d.jpg", id)` (0x4170FA), through `sub_41678A` (the
+  case-insensitive first-match lookup of section 3, then the exe's descrambler); a file found is
+  decoded from the mod (`sub_46E818`, 0x41712C);
+- otherwise (the built-in kit, or the mod lacks the file) it loads the exe's JPEG resource: id 12999
+  is first changed to 905 for a mod without a splash (`mov [ebp+var_24], 389h` at 0x417188), and the
+  built-in kit's 12999 loads 903 (`push 387h` at 0x417198); every other id loads the resource of
+  that id.
+
+So the mods' `<id>.jpg` is the exe's JPEG resource `<id>`, `splash.jpg` is resource 903, and a file
+a mod lacks falls back to the built-in bitmap one by one.
+
+**The CD's Rebirth.exe** (the ReBirth CD's installer, SHA-256 `e69fef41...7004`, 1,606,656 bytes;
+extracted from the CAB in `Install ReBirth RB-338.exe` with `bsdtar`) and the installed one in
+`original/` (`6a651e81...f876`, 1,594,880 bytes) have the same 58 panel bitmaps byte for byte; the
+four splash and about screens 900, 901, 903 and 905 differ: `original/`'s carry a Steinberg logo
+next to Propellerhead's, the CD's do not. So the standard mod's panel is the same from either exe,
+and its `splash.jpg` is the one of the exe it was built from (the CD's gives a 2,572,792-byte mod).
+Nothing of it reaches the audio.
+
+**Demo.rbs.** Every shipped mod carries one; the standard mod does not. The demo song is optional:
+`sub_417000` (`sub_416710("Demo.rbs") != 0`) only enables a button of the mod info dialog
+(`sub_41A0C5`, 0x41A3E0) that saves it (`sub_419E92` -> `sub_417022`), and the built-in kit has
+none. The exe's two `"SONG"` resources are not demo songs: 128 (15,027 bytes, read by
+`sub_4098EB`) and 129 (141,008 bytes, an RB40 CAT, read by `sub_401EE0`, the new-song template); the
+ReBirth 1.0 Default Song is a file of the installation, not a resource.
+
+### 13.2 The mod's layout
+
+```
+"CAT " PRBM
+  HEAD  256    5B 35 B3 5B BC 01 00 00 00, "(c)1998 Propellerhead Software, all rights reserved.",
+               zeros (as every shipped mod)
+  EMBF         rb-recrypt.pad (1024 bytes, section 12.2)
+  EMBF x 58    12015.jpg .. 12571.jpg: Rebirth.exe's JPEG resources in ID order, unchanged
+  EMBF         splash.jpg: JPEG resource 903
+  EMBF x 46    TR808BD.aif .. TR808RS.aif, TR909bd1.aif .. TR909rcy.aif, Startup.aif: ReBirth.dll's
+               AIFF resources 1000..1023, 1025..1045, 1024 (the slot order), unchanged
+  INFO  1280   name "ReBirth Standard Kit", version BC 01 00 00 (1.0.0, as PBE2, MSM2, Orbit2),
+               a description, no ftp URL, web http://www.propellerheads.se/
+```
+
+108 chunks, 106 EMBF (under the 200 of OB-14, every ordinal under 256). It is laid out in the clear
+and passed through `rbm::recrypt` with an all-zero table (the identity), so it is scrambled against
+the embedded window exactly as `rb recrypt` output: both key pages are `W`, rb loads it without
+`RB20FUL.DAT`, the original with its own. From `original/`: 2,574,060 bytes, SHA-256
+`2d732978...f3e5` (the build is deterministic).
+
+The menu name is **"ReBirth Standard Kit"**: "Standard ReBirth" is the name the original and rb give
+the built-in kit itself (`sub_4166E5`; GLOB name of a song without a mod), and a mod of that name
+would be confused with it (a song naming "Standard ReBirth" never opens a mod).
+
+### 13.3 What the original does with it (test machine, 2026-10-27)
+
+A copy of the installation in `C:\re\rb\t036` with only the standard mod in its `Mods`: the app
+started with no extra box, the Mods menu listed `Standard ReBirth` and `ReBirth Standard Kit`, and a
+song whose GLOB names "ReBirth Standard Kit" opened with no Download / Standard dialog, the mod
+checked in the menu and the panel drawn clean. `rb_export.py --app-dir` exported `808_snare` and
+`909_snare` (diag) with GLOB "ReBirth Standard Kit" and, the same session, unchanged ("Standard
+ReBirth"): `rb compare` (the built-in kit from the standard mod) is EQUAL for each of the four WAVs
+at one N of 2000..12000 (2704 and 2704 with the mod, 2768 and 2784 with the built-in kit; the N is
+the app's start state, docs/export_state.md section 13). So each export with the standard mod
+equals rb's render with the built-in kit at its own fitted N; the two app WAVs of one song (mod and
+built-in) differ from each other, as two exports of one song do at different start states. What
+was shown is that the samples the app plays from the standard mod give the built-in kit's output.
+
+### 13.4 rb takes the built-in kit from it
+
+`rb render`, `rb compare` and `rb play` read the 46 built-in samples from the standard mod
+(`--standard-mod PATH`, then `RB_STANDARD_MOD`, then `Standard.rbm` next to the rb binary, then the
+first mod named "ReBirth Standard Kit" in the mod folder), never from ReBirth.dll: `--rebirth-dll`
+and `RB_REBIRTH_DLL` are gone from them, and `rb standard-mod` is the one command that reads the DLL
+(and the exe). The mod must be named "ReBirth Standard Kit", be recrypted and have all 46 slots
+(`Rbm::load_all_samples`). A third-party mod's missing slots and `--standard-kit` take the standard
+mod's samples. The corpus is unchanged: 164 of 164 EQUAL, 175 of 175 with `RB_MOD_DIR`.

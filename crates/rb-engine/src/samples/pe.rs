@@ -89,9 +89,10 @@ impl Pe<'_> {
     }
 }
 
-/// The resources of the named type `type_name` ("AIFF"), by ID, in directory order. For an ID
-/// with several languages the first is taken (`FindResourceA` with a type and an ID only, as the
-/// DLL calls it at 0x1000B620, does not choose a language either).
+/// The resources of the named type `type_name` ("AIFF"; `rb standard-mod` also reads the exe's
+/// "JPEG"), by ID, in directory order. For an ID with several languages the first is taken
+/// (`FindResourceA` with a type and an ID only, as the DLL calls it at 0x1000B620, does not
+/// choose a language either).
 pub fn named_type_resources<'a>(
     d: &'a [u8],
     type_name: &str,
