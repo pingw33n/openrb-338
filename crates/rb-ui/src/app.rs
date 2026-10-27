@@ -7,7 +7,10 @@
 //! 624 x 510 aspect ratio and is letterboxed.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
+
+use rb_engine::samples::SampleSet;
 
 use eframe::egui::{
     self, Color32, Image, Key, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2,
@@ -16,9 +19,12 @@ use eframe::egui::{
 
 use crate::art::{self, KnobDesign};
 use crate::behavior::{self, Mods};
+use crate::browser::{Browser, Mode, Poll};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
 use crate::model::Panel;
+use crate::session;
+use crate::settings::Settings;
 
 /// The panel's background and the letterbox color.
 const BG: Color32 = Color32::from_rgb(0x1d, 0x21, 0x27);
@@ -89,6 +95,17 @@ pub struct App {
     /// The player the panel drives (task-045); without one the model's events pile up in
     /// `Panel::events`.
     pub link: Option<Link>,
+    /// The drum samples a song is opened with (the standard mod's).
+    pub samples: Option<Arc<SampleSet>>,
+    /// The folders of the file browser (task-046).
+    pub settings: Settings,
+    /// The open file browser, if any (`open_browser`).
+    browser: Option<Browser>,
+    /// The last path a browser chose for a mode the app does not act on yet (save, export,
+    /// choose mod: task-047's menu takes it from here).
+    pub choice: Option<(Mode, PathBuf)>,
+    /// A message shown at the bottom of the window (a song that could not be opened).
+    pub notice: Option<String>,
     ctls: Vec<Ctl>,
     shot: Option<Shot>,
 }
@@ -98,8 +115,81 @@ impl App {
         Self {
             panel,
             link: None,
+            samples: None,
+            settings: Settings::default(),
+            browser: None,
+            choice: None,
+            notice: None,
             ctls: layout::controls(),
             shot,
+        }
+    }
+
+    /// Opens the file browser for `mode` over the panel (task-047's menu calls this). Ctrl+O
+    /// opens it for a song.
+    pub fn open_browser(&mut self, mode: Mode) {
+        self.notice = None;
+        self.browser = Some(Browser::new(mode, &self.settings));
+    }
+
+    /// Whether a browser is open (the panel takes no input meanwhile).
+    pub fn browsing(&self) -> bool {
+        self.browser.is_some()
+    }
+
+    /// Runs the browser for a frame and acts on its answer.
+    fn browse(&mut self, ctx: &egui::Context) {
+        let Some(b) = &mut self.browser else {
+            return;
+        };
+        let mode = b.mode();
+        match b.show(ctx, &mut self.settings) {
+            Poll::Open => {}
+            Poll::Cancelled => self.browser = None,
+            Poll::Chosen(path) => {
+                self.browser = None;
+                if mode == Mode::OpenSong {
+                    self.open_song(&path);
+                } else {
+                    self.choice = Some((mode, path));
+                }
+            }
+        }
+    }
+
+    /// Opens the song at `path` in the player; a failure goes to the notice line.
+    pub fn open_song(&mut self, path: &std::path::Path) {
+        let Some(link) = &mut self.link else {
+            self.notice = Some("There is no player to open the song in.".into());
+            return;
+        };
+        match session::load_song(path) {
+            Ok(song) => {
+                link.load(&song, self.samples.clone(), &mut self.panel);
+                self.notice = None;
+            }
+            Err(e) => self.notice = Some(e),
+        }
+    }
+
+    fn notice_bar(&mut self, ui: &Ui) {
+        let Some(text) = &self.notice else {
+            return;
+        };
+        let avail = ui.ctx().content_rect();
+        let bar = Rect::from_min_max(Pos2::new(avail.min.x, avail.max.y - 22.0), avail.max);
+        ui.painter()
+            .rect_filled(bar, 0.0, Color32::from_rgb(0x3a, 0x1a, 0x18));
+        ui.painter().text(
+            bar.left_center() + Vec2::new(8.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            text,
+            egui::FontId::proportional(12.0),
+            Color32::from_rgb(0xff, 0xb0, 0x00),
+        );
+        // Clicks in the browser over it do not dismiss it.
+        if self.browser.is_none() && ui.input(|i| i.pointer.any_click()) {
+            self.notice = None;
         }
     }
 
@@ -142,8 +232,15 @@ impl App {
         let now = ui.input(|i| i.time);
         self.panel.held = None;
 
-        self.keyboard(ui);
-        self.focus_click(ui, &view);
+        // While the file browser is open the panel takes no keys and no clicks of its own.
+        if self.browser.is_none() {
+            if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::O)) {
+                self.open_browser(Mode::OpenSong);
+            } else {
+                self.keyboard(ui);
+                self.focus_click(ui, &view);
+            }
+        }
 
         for (name, x, y) in layout::backgrounds() {
             let (w, h) = part_size(name);
@@ -172,6 +269,8 @@ impl App {
             link.sync(&mut self.panel);
             ui.ctx().request_repaint_after(Duration::from_millis(16));
         }
+        self.notice_bar(ui);
+        self.browse(&ui.ctx().clone());
     }
 
     fn keyboard(&mut self, ui: &Ui) {

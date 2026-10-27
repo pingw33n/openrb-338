@@ -3379,6 +3379,7 @@ dependencies = [
  "rb-ui-art",
  "rbm",
  "rbs",
+ "tempfile",
 ]
 
 [[package]]

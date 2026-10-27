@@ -813,3 +813,41 @@ read, and what it leaves out.
   was read in the original (`sub_424220`, `sub_424A7E`; section 15).
 - **Not done.** The logo click (msg 58), the song's own mod (the built-in kit plays every song;
   task-047), and the computer keyboard beyond Space and the Up/Down focus keys (task-070).
+
+## 17. The in-app file browser (task-046)
+
+rb uses no native file dialog. `crates/rb-ui/src/browser.rs` is a modal overlay (egui `Modal`,
+the art's slate palette) for four modes: open a song (`*.rbs`), save a song (`*.rbs`), export audio
+(`*.wav`, `*.flac`, `*.ogg`: the containers `rb render` writes, chosen by the extension, with a
+format button row that rewrites the name's extension) and choose a mod (`*.rbm`). It is a component
+for the menu (task-047): `Browser::new(mode, &settings)`, then `show(ctx, &mut settings)` each frame
+returns `Poll::Open`, `Chosen(path)` or `Cancelled`. `App::open_browser(mode)` opens one over the
+panel; Ctrl+O opens a song through it (`App::open_song`), `rb-ui --browse open|save|export|mod`
+starts with it open. The panel takes no key or click while a browser is open. The paths chosen for
+save, export and mod land in `App::choice` until the menu acts on them.
+
+- **Keys.** Up/Down/PageUp/PageDown/Home/End select; Enter enters a folder or accepts the file
+  (in the name field: accepts the typed name); Backspace and Alt+Up go to the parent (the folder
+  left is selected); Ctrl+L edits the path (Enter goes there; `~` is the home folder); a typed
+  letter jumps to the next name that starts with it; Esc cancels (in the overwrite question it
+  answers no). Mouse: click selects, double click opens, the Up button, the Places and Recent
+  folders on the left.
+- **Lists** folders first, then files, by name ignoring case; hidden names (a leading dot) are not
+  shown; "All files" lifts the extension filter. Large folders are drawn by visible rows only.
+- **Writing modes** take a name: a song name without `.rbs` gets it; an export name without an
+  extension gets the selected format's, one with another extension than wav/flac/ogg is refused.
+  An existing file asks "Replace it?" inside the dialog (only Y or the Replace button replaces; Enter, Esc and N go back, and the letter typed does not reach the name field). A click outside the dialog cancels it; the panel behind gets no click. The browser returns paths only: it never writes a file, and the errors of the actual write belong to the caller (task-047).
+  Errors (empty name, a character of `/\:*?"<>|`, a folder of that name, a read-only or missing
+  folder, an unreadable folder) show in red in the dialog.
+- **Mods.** A `.rbm` is checked when its row is drawn (parse, embedded key window, as
+  `session::load_standard`): one that is not recrypted is listed in amber marked "needs rb
+  recrypt" and cannot be chosen (the error tells the `rb recrypt` command, docs/rbm.md 12.4); a
+  file that is not an RBM is marked "not a mod".
+- **Defaults and settings** (`crates/rb-ui/src/settings.rs`): the start folder is the songs folder
+  (songs, export) or the mods folder (mods) of the settings, else the documents folder
+  (`~/Documents`, else the home folder). "Use as songs/mods folder" in the dialog sets them to the
+  folder shown. The last 8 folders a file was chosen in are the recent folders. All of it is a
+  text file of `songs=`, `mods=`, `recent=` lines at `$RB_UI_CONFIG`, else `rb/ui.conf` in
+  `$XDG_CONFIG_HOME` (Linux `~/.config`, macOS `~/Library/Application Support`, Windows
+  `%APPDATA%`); it is rewritten when a path is chosen or a folder set, and a missing or damaged
+  file means the defaults. egui's own persistence is not used.

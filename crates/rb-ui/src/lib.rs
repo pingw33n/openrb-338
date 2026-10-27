@@ -8,7 +8,9 @@
 pub mod app;
 pub mod art;
 pub mod behavior;
+pub mod browser;
 pub mod layout;
 pub mod link;
 pub mod model;
 pub mod session;
+pub mod settings;

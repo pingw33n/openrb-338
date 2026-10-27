@@ -9,7 +9,10 @@
 //! `rb standard-mod`); without it they are silent. `--demo` starts the panel in a lively state
 //! with no player (a picture). `--size` is the inner window size in points (default 624x510),
 //! `--ppp` overrides the pixel density. `--screenshot` saves the window to a PNG after a few
-//! frames and quits.
+//! frames and quits. Ctrl+O opens the in-app file browser (task-046) to open a song;
+//! `--browse MODE` starts with it open for a mode (the menu of task-047 will call it). The
+//! browser's folders are kept in the settings file (`rb/ui.conf` in the configuration folder,
+//! or `$RB_UI_CONFIG`).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,15 +20,17 @@ use std::sync::Arc;
 use eframe::egui;
 use rb_engine::tables::Tables;
 use rb_ui::app::{App, Shot};
+use rb_ui::browser::Mode;
 use rb_ui::layout::{PANEL_H, PANEL_W};
 use rb_ui::link::Link;
 use rb_ui::model::Panel;
 use rb_ui::session;
+use rb_ui::settings::Settings;
 
 fn usage() -> ! {
     eprintln!(
         "usage: rb-ui [SONG.rbs] [--standard-mod FILE] [--demo] [--size WxH] [--ppp S] \
-         [--screenshot OUT.png]"
+         [--browse open|save|export|mod] [--screenshot OUT.png]"
     );
     std::process::exit(2);
 }
@@ -37,6 +42,7 @@ fn main() -> eframe::Result {
     let mut shot: Option<PathBuf> = None;
     let mut song: Option<PathBuf> = None;
     let mut standard: Option<PathBuf> = None;
+    let mut browse: Option<Mode> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -58,6 +64,15 @@ fn main() -> eframe::Result {
                 )
             }
             "--screenshot" => shot = Some(args.next().unwrap_or_else(|| usage()).into()),
+            "--browse" => {
+                browse = Some(match args.next().as_deref() {
+                    Some("open") => Mode::OpenSong,
+                    Some("save") => Mode::SaveSong,
+                    Some("export") => Mode::Export,
+                    Some("mod") => Mode::ChooseMod,
+                    _ => usage(),
+                })
+            }
             s if !s.starts_with("--") && song.is_none() => song = Some(s.into()),
             _ => usage(),
         }
@@ -65,6 +80,7 @@ fn main() -> eframe::Result {
 
     let mut panel = if demo { Panel::demo() } else { Panel::new() };
     let mut link = None;
+    let mut app_samples = None;
     // keeps the audio stream alive for the whole run
     let mut _stream = None;
     if !demo {
@@ -75,6 +91,7 @@ fn main() -> eframe::Result {
                 None
             }
         };
+        app_samples = samples.clone();
         let (mut l, audio) = Link::new(Arc::new(Tables::new()), samples.clone());
         if let Some(path) = &song {
             match session::load_song(path) {
@@ -108,10 +125,16 @@ fn main() -> eframe::Result {
                 cc.egui_ctx.set_pixels_per_point(ppp);
             }
             let shot = shot.map(Shot::new);
-            Ok(Box::new(match link {
+            let mut app = match link {
                 Some(l) => App::with_link(panel, l, shot),
                 None => App::new(panel, shot),
-            }))
+            };
+            app.samples = app_samples;
+            app.settings = Settings::load();
+            if let Some(mode) = browse {
+                app.open_browser(mode);
+            }
+            Ok(Box::new(app))
         }),
     )
 }
