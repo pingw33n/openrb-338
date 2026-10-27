@@ -443,12 +443,18 @@ impl Player {
 
     /// A song as the original makes it when a file is opened: the song constructor (msg 52),
     /// then the load's messages (msgs 36, 41, 37, 32), on this player's process globals.
+    ///
+    /// A load whose msg-37 batch the node pool refuses still gives the engine, holding the
+    /// batches before it as the DLL's song does; [`Engine::load_refused`] tells. The exe shows
+    /// "There is not enough memory for opening the Song." then and opens no window; the player
+    /// and the UI do not act on it yet (task-088).
     pub fn build(&self, song: &Song, samples: Option<Arc<SampleSet>>) -> Box<Engine> {
         let mut e = Box::new(Engine::new(
             self.tables.clone(),
             Devices::implemented_with(samples, self.process.clone()),
         ));
-        e.load(song);
+        // kept on the engine (Engine::load_refused)
+        let _ = e.load(song);
         e
     }
 

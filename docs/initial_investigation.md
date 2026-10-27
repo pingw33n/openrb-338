@@ -345,7 +345,11 @@ recording (§5.3); its quantisation stays 1 (`sub_10021560` sets only `+0x108`'s
   - [C] (task-082) Msg 37 (`sub_10021010`) refuses a whole batch whose count (`last - first` of
     its header, 0x10021042) is above the free count (`cmp ebx, eax; ja` at 0x1002105B): nothing is
     inserted and the reply is `sub_1001DE00(22)` (0x100210ED) instead of `sub_1001DF80(73)`
-    (0x100210CA). rb does not model it yet (task-083).
+    (0x100210CA). [C] (task-083) The replies are the packets `['K', 22]` and `['I']`; on `'K'`
+    the exe abandons the load with the alert "There is not enough memory for opening the Song."
+    and never closes the engine's song, whose earlier batches keep their nodes
+    (`docs/song_load.md` section 5.2, [OB-20](original_bugs.md)). rb models the check
+    (`Sequencer::add_events`) and the exe's batches (`Song::batches`, `Engine::load`).
   - rb: one pool of 100000 nodes per song (`seq::Pool`), the song's 18 lists back to back in one
     reserved buffer; the DLL's pool equals it while one song holds nodes and the 32 lists of
     `dword_101245F0` are empty. While rb-player holds a pending song beside the current one

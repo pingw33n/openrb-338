@@ -51,7 +51,7 @@ fn silence_matches_its_reference() {
     let s = song(e);
     let mut eng = Engine::new(Arc::new(Tables::new()), Devices::placeholders());
     let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-    let samples = export::export_song(&mut eng, &s, idle);
+    let samples = export::export_song(&mut eng, &s, idle).unwrap();
     assert_eq!(samples.len() / 2, e["frames"].as_u64().unwrap() as usize);
     let hash: String = Sha256::digest(export::wav_bytes(&samples))
         .iter()

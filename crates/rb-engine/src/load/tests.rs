@@ -510,6 +510,29 @@ fn batches_of_1284_file_events() {
     assert!(track_batches(7, &[], TrackReader::Plain).is_empty());
 }
 
+/// The song's batch plan is the batches' accepted counts (`last - first`) in send order.
+#[test]
+fn the_song_keeps_the_batch_plan() {
+    let mut s = song(2, 0);
+    s.tracks = Default::default();
+    let mut evs: Vec<_> = (0..1300).map(|i| ev(i, 1, (i % 128) as u8)).collect();
+    evs[3].ctrl = 99;
+    s.tracks[7].events = evs;
+    s.tracks[2].events = vec![ev(0, 2, 5)];
+    let x = load(&s).unwrap();
+    assert_eq!(
+        x.song.batches,
+        [
+            Batch { track: 2, len: 1 },
+            Batch {
+                track: 7,
+                len: 1283
+            },
+            Batch { track: 7, len: 16 },
+        ]
+    );
+}
+
 #[test]
 fn batch_payload() {
     let b = TrackBatch {
@@ -556,10 +579,20 @@ fn message_stream() {
     assert_eq!(tracks, (0..9).map(|t| (37, t)).collect::<Vec<_>>());
     assert_eq!(m.last().unwrap(), &vec![78, 5, 32]);
     assert_eq!(load_messages(&s, 5).unwrap(), m);
-    // The model's tracks are the batches' events.
+    // The model's tracks are the batches' events, and its batch plan their send order.
     for t in 0..9 {
         assert_eq!(x.song.tracks[t], x.batches[t][0].events);
         assert_eq!(x.song.tracks[t].len(), s.tracks[t].events.len());
     }
+    let plan: Vec<_> = x
+        .song
+        .batches
+        .iter()
+        .map(|b| (b.track, b.len as usize))
+        .collect();
+    let want: Vec<_> = (0..9u8)
+        .map(|t| (t, s.tracks[t as usize].events.len()))
+        .collect();
+    assert_eq!(plan, want);
     assert_eq!(x.song.mod_name, "Standard ReBirth");
 }

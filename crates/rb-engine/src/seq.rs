@@ -869,17 +869,23 @@ impl Sequencer {
     }
 
     /// Song msg 37 (`sub_10021010`): each event of a batch is inserted into its track, from the
-    /// node pool.
-    ///
-    /// Not modelled: the DLL refuses a whole batch whose event count is above the pool's free
-    /// count (`cmp ebx, eax; ja` at 0x1002105B, replying with `sub_1001DE00(22)` instead of
-    /// `sub_1001DF80(73)`); rb inserts such a batch until the pool refuses a node (task-083).
-    pub fn add_events(&mut self, track: usize, events: &[song::TrackEvent]) {
+    /// node pool. A batch of more events than the pool has free nodes (`last - first` at
+    /// 0x10021042 against `sub_1000DEE0`, `cmp ebx, eax; ja` at 0x1002105B, unsigned) is
+    /// refused whole: nothing is inserted and the reply is `['K', 22]` (`sub_1001DE00`,
+    /// 0x100210ED) instead of `['I']` (`sub_1001DF80`, 0x100210CA). Returns whether the batch
+    /// was taken. A taken batch can still lose its last event: with as many events as free
+    /// nodes, the last insert finds one node free and stores nothing (`sub_10014434`).
+    #[must_use]
+    pub fn add_events(&mut self, track: usize, events: &[song::TrackEvent]) -> bool {
+        if events.len() > self.pool.free() {
+            return false;
+        }
         let tr = &mut self.tracks[track];
         for e in events {
             tr.insert_pooled(&mut self.pool, e.tick as i32, e.ctrl, e.value);
         }
         self.revision += 1;
+        true
     }
 }
 

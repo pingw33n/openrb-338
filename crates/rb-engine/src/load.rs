@@ -406,6 +406,20 @@ fn track_order(batches: &[Vec<TrackBatch>; 9]) -> Vec<(usize, usize)> {
         .collect()
 }
 
+/// [`Song::batches`]: each batch of `order` as its track and event count.
+fn send_plan(batches: &[Vec<TrackBatch>; 9], order: &[(usize, usize)]) -> Vec<Batch> {
+    order
+        .iter()
+        .map(|&(t, i)| {
+            let b = &batches[t][i];
+            Batch {
+                track: b.track,
+                len: b.last - b.first,
+            }
+        })
+        .collect()
+}
+
 /// Converts an `.rbs` song as Rebirth.exe loads it.
 pub fn load(song: &rbs::Song) -> Result<Loaded, LoadError> {
     let v = Version::of(song);
@@ -430,6 +444,7 @@ pub fn load(song: &rbs::Song) -> Result<Loaded, LoadError> {
             .flat_map(|b| b.events.iter().copied())
             .collect()
     });
+    let order = track_order(&batches);
     let out = Song {
         form: LoadForm::Rbs,
         mod_name: song.glob.mod_name.clone(),
@@ -451,8 +466,8 @@ pub fn load(song: &rbs::Song) -> Result<Loaded, LoadError> {
         tr808: tr808(&song.tr808, v)?,
         tr909: tr909(&song.tr909)?,
         tracks,
+        batches: send_plan(&batches, &order),
     };
-    let order = track_order(&batches);
     Ok(Loaded {
         song: out,
         batches,

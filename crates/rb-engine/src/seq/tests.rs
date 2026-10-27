@@ -121,8 +121,10 @@ impl Rig {
     }
 
     fn add(&mut self, track: usize, tick: u32, ctrl: u8, value: u8) {
-        self.seq
-            .add_events(track, &[song::TrackEvent { tick, ctrl, value }]);
+        assert!(
+            self.seq
+                .add_events(track, &[song::TrackEvent { tick, ctrl, value }])
+        );
     }
 
     fn locate(&mut self, p: i32) {
@@ -826,17 +828,18 @@ fn the_pool_refuses_the_last_node() {
             value: 1,
         })
         .collect();
-    s.add_events(1, &events);
+    // as many events as free nodes: the batch is taken, its last insert refused
+    assert!(s.add_events(1, &events));
     assert_eq!(s.events(1).len(), POOL_NODES - 1);
     assert_eq!(s.free_nodes(), 1);
-    s.add_events(
+    assert!(s.add_events(
         1,
         &[song::TrackEvent {
             tick: 0,
             ctrl: 0,
             value: 7,
         }],
-    );
+    ));
     assert_eq!(
         s.events(1)[127],
         Event {
@@ -866,10 +869,10 @@ fn the_lists_share_one_pool() {
         value: 1,
     };
     let mut s = Sequencer::default();
-    s.add_events(4, &[ev(48, 1), ev(0, 1)]);
-    s.add_events(0, &[ev(24, 2)]);
-    s.add_events(8, &[ev(96, 3)]);
-    s.add_events(4, &[ev(24, 1)]);
+    assert!(s.add_events(4, &[ev(48, 1), ev(0, 1)]));
+    assert!(s.add_events(0, &[ev(24, 2)]));
+    assert!(s.add_events(8, &[ev(96, 3)]));
+    assert!(s.add_events(4, &[ev(24, 1)]));
     assert_eq!(triples(s.events(0)), [(24, 2, 1)]);
     assert_eq!(triples(s.events(4)), [(0, 1, 1), (24, 1, 1), (48, 1, 1)]);
     assert_eq!(triples(s.events(8)), [(96, 3, 1)]);
@@ -883,9 +886,10 @@ fn the_lists_share_one_pool() {
     let fill: Vec<_> = (0..(POOL_NODES - 6) as u32)
         .map(|i| ev(i / 128 * 24, (i % 128) as u8))
         .collect();
-    s.add_events(1, &fill);
+    assert!(s.add_events(1, &fill));
     assert_eq!(s.free_nodes(), 1);
-    s.add_events(2, &[ev(0, 0)]);
+    // one event, one node free: the batch passes the check, the insert is refused
+    assert!(s.add_events(2, &[ev(0, 0)]));
     assert!(s.events(2).is_empty());
     let mut d = probes(&Log::default());
     s.set_song_mode(1, &mut d);
@@ -900,7 +904,7 @@ fn the_lists_share_one_pool() {
     assert_eq!(s.free_nodes(), POOL_NODES - 3 - 128);
     s.record_hook(Device::Tr808, 5, 9);
     assert_eq!(triples(s.recorded(3)), [(0, 5, 9)]);
-    s.add_events(2, &[ev(0, 0)]);
+    assert!(s.add_events(2, &[ev(0, 0)]));
     assert_eq!(triples(s.events(2)), [(0, 0, 1)]);
     assert_eq!(s.free_nodes(), POOL_NODES - 5 - 128);
     assert_eq!(triples(s.events(0)), [(24, 2, 1)]);
@@ -915,19 +919,45 @@ fn the_lists_share_one_pool() {
     }));
 }
 
+/// Msg 37 refuses a whole batch of more events than free nodes (`sub_10021010`, `ja` at
+/// 0x1002105B): nothing of it is inserted, even the events that would replace a value and
+/// take no node; a batch of exactly the free count is taken.
+#[test]
+fn msg37_refuses_a_batch_above_the_free_count() {
+    let ev = |tick, ctrl, value| song::TrackEvent { tick, ctrl, value };
+    let mut s = Sequencer::default();
+    let fill: Vec<_> = (0..(POOL_NODES - 10) as u32)
+        .map(|i| ev(i / 128 * 24, (i % 128) as u8, 1))
+        .collect();
+    assert!(s.add_events(1, &fill));
+    assert_eq!(s.free_nodes(), 10);
+    let revision = s.revision;
+    // 11 events, all of them replacements of track 1's tick-0 values
+    let over: Vec<_> = (0..11).map(|c| ev(0, c, 9)).collect();
+    assert!(!s.add_events(1, &over));
+    assert_eq!(s.free_nodes(), 10);
+    assert!(s.events(1)[..11].iter().all(|e| e.value == 1));
+    assert_eq!(s.revision, revision);
+    // 10 new events on track 3: taken, the last insert finds one node free and stores nothing
+    let exact: Vec<_> = (0..10).map(|c| ev(24, c, 5)).collect();
+    assert!(s.add_events(3, &exact));
+    assert_eq!(s.events(3).len(), 9);
+    assert_eq!(s.free_nodes(), 1);
+}
+
 /// A pool's clone and the callback's copy of the track lists keep the whole pool's capacity,
 /// so neither grows in the callback.
 #[test]
 fn a_pool_copy_keeps_the_capacity() {
     let mut s = Sequencer::default();
-    s.add_events(
+    assert!(s.add_events(
         2,
         &[song::TrackEvent {
             tick: 0,
             ctrl: 1,
             value: 2,
         }],
-    );
+    ));
     let c = s.clone();
     assert_eq!(c.pool.nodes.capacity(), POOL_NODES);
     assert_eq!(c, s);

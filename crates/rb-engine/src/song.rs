@@ -369,6 +369,15 @@ pub struct TrackEvent {
     pub value: u8,
 }
 
+/// One msg-37 batch as the exe sends it: `len` events of track `track`, the next ones after the
+/// track's earlier batches. `len` is the header's `last - first`, the count the DLL checks
+/// against the node pool (`sub_10021010`, `docs/song_load.md` section 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Batch {
+    pub track: u8,
+    pub len: u32,
+}
+
 /// Which reader of the exe built the song, which decides the device messages of the load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LoadForm {
@@ -432,6 +441,12 @@ pub struct Song {
     /// By track number (= [`Device`] id), sorted by tick as in the file; each track holds only
     /// the events the load accepted.
     pub tracks: [Vec<TrackEvent>; 9],
+    /// The msg-37 batches in the exe's send order (`load::Loaded::order`): batches of 1284
+    /// file events, track by track for an RBS file (`sub_436B6F`), as the track buffers fill
+    /// for a 1.x song (`sub_4300E0`). [`crate::frame::Engine::load`] sends the events of
+    /// [`Song::tracks`] in these batches; events a batch does not cover (a song edited after
+    /// the load, or a model built by hand with no batches) go as one more batch per track.
+    pub batches: Vec<Batch>,
 }
 
 impl Song {

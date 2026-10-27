@@ -52,7 +52,7 @@ fn check(name: &str, entry: &serde_json::Value) -> Outcome {
     );
     // the offline export
     let mut eng = Engine::new(tables(), Devices::implemented(Some(samples())));
-    let want = export::export_song(&mut eng, &s, idle);
+    let want = export::export_song(&mut eng, &s, idle).unwrap();
     let faulted = eng.fault().is_some();
     // the player
     let (mut p, mut a) = Player::new(tables(), Some(samples()));

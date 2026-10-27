@@ -189,7 +189,8 @@ impl Renderer {
     pub fn render(&mut self, label: &str, song: &Song, idle_blocks: u32) -> Result<Vec<i16>, Fail> {
         let samples = self.samples(label, song)?;
         let mut engine = Engine::new(self.tables.clone(), Devices::implemented(samples));
-        let samples = export::export_song(&mut engine, song, idle_blocks);
+        let samples = export::export_song(&mut engine, song, idle_blocks)
+            .map_err(|r| fail(1, format!("{label}: {r}")))?;
         // A render call that faults in the original (the PCF's divide by zero) writes nothing;
         // the output is what the original writes, but say why it is silent or repeats itself.
         if let Some(f) = engine.fault() {

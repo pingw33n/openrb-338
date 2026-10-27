@@ -93,7 +93,7 @@ fn an_808_snare_export_moves_the_snare_counter_by_9() {
     let e = &m["diag"]["808_snare"];
     let s = song(e);
     let mut eng = Engine::new(tables, Devices::implemented(Some(samples())));
-    export::export_song(&mut eng, &s, e["idle_blocks"].as_u64().unwrap() as u32);
+    export::export_song(&mut eng, &s, e["idle_blocks"].as_u64().unwrap() as u32).unwrap();
     let c = eng.process_state().drum_counters();
     assert_eq!((c.snare_808, c.bd_808), (9, 0));
 }

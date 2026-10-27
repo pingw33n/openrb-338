@@ -102,6 +102,32 @@ status is a judgment call.
   is undefined); a sysex that fails the check, or a second song sysex, is an error in `load_1x`.
 - **Home.** `docs/song_load.md` section 12.3.
 
+### OB-20: a song load the node pool refuses leaves its half-loaded song in the engine [C: the code; G: the effect]
+
+- **What.** When ReBirth.dll refuses a msg-37 batch (more events than free nodes in the pool,
+  reply `['K', 22]`), Rebirth.exe abandons the load with an exception and an alert, but sends the
+  engine nothing to close the song it opened for the load: the engine's song keeps the batches it
+  took.
+- **Where.** The DLL refusal `sub_10021010` (0x1002105B, reply 0x100210ED); the exe throw
+  0x436E95 after the `'K'` test 0x436E65 (1.x: the test 0x430305), the rethrows and conversion to `XSongOutOfMemory` (0x436EEA, 0x436AD7,
+  0x426430, 0x425FDB), the alert at 0x40B778 (`sub_475D5C(0x1DCF592A)`), File > Open's
+  `catch(...)` 0x40A3D4. No unwind of `sub_436B6F`, `sub_434D05`, `sub_425C4D`, `sub_40B575` or
+  `sub_40A2A3` sends a message; the slot came from msg 52 (`sub_425A5D`).
+- **Trigger.** Opening a song of about 100000 events or more (fewer when other songs are open).
+- **Effect.** The alert "There is not enough memory for opening the Song." and no song window;
+  the nodes of the batches before the refused one stay taken until the engine closes, so each
+  such attempt lowers the free count for every later load and recording [G: the effect on a later
+  load is inferred from the shared pool, not run].
+- **Corpus.** None: the largest RBS file of `tests/songs` has 13003 track events
+  (`shipped/Mutilated Species II.rbs`).
+- **rb.** `Engine::load` stops at the refused batch with `Err(LoadRefused)` and the engine keeps
+  the earlier batches, as the DLL does; rb has one pool per song (task-082), so the leak cannot
+  reach another song, and rb's free count at a load is that of an engine holding no other song:
+  rb accepts some songs the exe refuses (those the app refuses only because the Untitled song or
+  other open songs, or an earlier refused load, hold nodes). `rb render` fails with the alert's
+  text; the player and the UI do not yet refuse to open such a song (task-088).
+- **Home.** `docs/song_load.md` section 5.2.
+
 ## 2. Devices
 
 ### OB-5: the PCF's wave byte indexes the pattern data with no bounds check [C]

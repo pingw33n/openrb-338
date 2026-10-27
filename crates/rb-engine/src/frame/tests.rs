@@ -214,11 +214,119 @@ fn song_mode_chase_restores_the_mixer_ctor_values() {
         ctrl: 6,
         value: 50,
     }];
-    f.seq.add_events(0, &events);
+    assert!(f.seq.add_events(0, &events));
     f.seq.locate(768, &mut f.devices);
     assert_eq!(f.devices.mixer.live.channels[0].level, 50);
     f.seq.locate(0, &mut f.devices);
     assert_eq!(f.devices.mixer.live.channels[0].level, 100);
+}
+
+/// The load sends each track in the song's batches, and a batch the pool refuses ends it
+/// (`sub_10021010`; the exe throws `XOutOfMemory` and sends nothing more): the batches before
+/// it stay, the later ones and msg 32 are not sent. The split decides: one batch of the whole
+/// track would be refused at once.
+#[test]
+fn load_stops_at_a_refused_batch() {
+    // after tick 0 (the ctor's events) on tracks of quantisation 1: every event takes a node
+    let ev = |i: u32| song::TrackEvent {
+        tick: 24 * (i / 128 + 1),
+        ctrl: (i % 128) as u8,
+        value: 1,
+    };
+    let mut s = crate::load::convert(&rbs::Song::empty()).unwrap();
+    // playing, so that msg 36's stop does not prune the fill's repeated values
+    s.globals.play = 1;
+    s.tracks = Default::default();
+    s.tracks[0] = vec![song::TrackEvent {
+        tick: 24,
+        ctrl: 6,
+        value: 3,
+    }];
+    s.tracks[5] = (0..2000).map(ev).collect();
+    s.tracks[6] = (0..5).map(ev).collect();
+    let fresh = || {
+        let mut e = Engine::new(tables(), Devices::placeholders());
+        // another list holds all but 1500 nodes (in the DLL: the other songs of the process)
+        let free = e.frame.seq.free_nodes();
+        let fill: Vec<_> = (0..(free - 1500) as u32).map(ev).collect();
+        assert!(e.frame.seq.add_events(8, &fill));
+        assert_eq!(e.frame.seq.free_nodes(), 1500);
+        e
+    };
+    let batch = |track, len| song::Batch { track, len };
+    let events = |e: &Engine, t| e.frame.seq.events(t).len();
+    // the exe's plan: track 0, then 1284 + 716 events of track 5, then track 6
+    s.batches = vec![batch(0, 1), batch(5, 1284), batch(5, 716), batch(6, 5)];
+    let mut e = fresh();
+    let before = [0, 5, 6].map(|t| events(&e, t));
+    let want = LoadRefused {
+        track: 5,
+        first: 1284,
+        count: 716,
+        free: 1500 - 1 - 1284,
+    };
+    assert_eq!(e.load(&s), Err(want));
+    assert_eq!(e.load_refused(), Some(&want));
+    assert_eq!(events(&e, 0), before[0] + 1);
+    assert_eq!(events(&e, 5), before[1] + 1284);
+    assert_eq!(events(&e, 6), before[2]);
+    assert_eq!(e.frame.seq.free_nodes(), 215);
+    // no plan: one batch per track, and track 5's 2000 are refused whole
+    s.batches.clear();
+    let mut e = fresh();
+    let err = e.load(&s).unwrap_err();
+    assert_eq!(
+        (err.track, err.first, err.count, err.free),
+        (5, 0, 2000, 1499)
+    );
+    assert_eq!(events(&e, 5), before[1]);
+    // a plan that leaves events over sends them as one more batch per track
+    s.tracks[5].truncate(1000);
+    s.batches = vec![batch(5, 600)];
+    let mut e = fresh();
+    assert_eq!(e.load(&s), Ok(()));
+    assert_eq!(e.load_refused(), None);
+    assert_eq!(events(&e, 5), before[1] + 1000);
+    assert_eq!(events(&e, 6), before[2] + 5);
+    assert_eq!(e.frame.seq.free_nodes(), 1500 - 1 - 1000 - 5);
+}
+
+/// A file of more than 100000 events, read by the loader into batches of 1284 file events:
+/// the load stops at the first batch longer than the free count, on a batch boundary.
+#[test]
+fn a_file_above_the_pool_is_refused() {
+    // values alternate per position, so that no stop prune frees nodes
+    let events = |n: u32, ctrls: [u8; 2]| -> Vec<rbs::Event> {
+        (0..n)
+            .map(|i| rbs::Event {
+                pos: i / 2,
+                ctrl: ctrls[(i % 2) as usize],
+                value: (i / 2 % 2) as u8 + 1,
+            })
+            .collect()
+    };
+    let mut f = rbs::Song::empty();
+    // delay feedback and pan, distortion amount and shape
+    f.tracks[5].events = events(60_000, [3, 4]);
+    f.tracks[6].events = events(41_000, [1, 2]);
+    let s = crate::load::convert(&f).unwrap();
+    assert_eq!(s.tracks[5].len() + s.tracks[6].len(), 101_000);
+    let mut e = Engine::new(tables(), Devices::placeholders());
+    let ctor = e.frame.seq.events(6).len();
+    let err = e.load(&s).unwrap_err();
+    // track 5's 47 batches and track 6's 31 full ones pass; its last, of 1196, is refused
+    assert_eq!(
+        (err.track, err.first, err.count),
+        (6, 31 * 1284, 41_000 % 1284)
+    );
+    assert!(err.free < err.count);
+    assert_eq!(e.frame.seq.events(6).len(), ctor + 31 * 1284);
+    assert_eq!(e.frame.seq.free_nodes(), err.free as usize);
+    // half of it loads
+    f.tracks[6].events.clear();
+    let s = crate::load::convert(&f).unwrap();
+    let mut e = Engine::new(tables(), Devices::placeholders());
+    assert_eq!(e.load(&s), Ok(()));
 }
 
 #[test]

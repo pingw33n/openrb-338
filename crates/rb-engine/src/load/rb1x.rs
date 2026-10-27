@@ -363,6 +363,7 @@ pub fn load_1x(song: &Song1x) -> Result<Loaded, LoadError> {
         tr808: tr808(b),
         tr909: tr909_ctor(),
         tracks,
+        batches: super::send_plan(&buf.batches, &buf.order),
     };
     Ok(Loaded {
         song: out,
@@ -568,7 +569,7 @@ mod tests {
             std::sync::Arc::new(crate::tables::Tables::new()),
             Devices::implemented(Some(std::sync::Arc::new(kit))),
         );
-        e.load(&s);
+        e.load(&s).unwrap();
         let d = &mut e.frame.devices;
         assert_eq!(d.device_mut(Device::Tr909).live()[0], 0);
         // (bytes 3 and 4 are the meters, which the ctor's mixer update already wrote)

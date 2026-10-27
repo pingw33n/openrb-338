@@ -2,7 +2,7 @@
 //! `sub_4280D5`, `docs/export_state.md` section 4) after `N` idle blocks, which is how
 //! `tools/rbhost` reproduces the app's exports (`docs/export_state.md` sections 12 and 13).
 
-use super::{Activation, BLOCK, Engine};
+use super::{Activation, BLOCK, Engine, LoadRefused};
 use crate::song::{Globals, Song};
 
 /// The frames of one realtime MME call (`docs/export_state.md` section 2.1): the idle blocks are
@@ -124,13 +124,22 @@ pub fn export(engine: &mut Engine, range: ExportRange, idle_blocks: u32) -> Vec<
 
 /// rbhost's whole run on a new song (by default, `--idle-blocks N`): load `song`, activate it
 /// over the stopped "Untitled song" ([`Activation::ReplacesCurrent`]), then [`export`] with the
-/// range the export queries (msg 20 ids 4, 12, 16, which read the loaded globals).
-pub fn export_song(engine: &mut Engine, song: &Song, idle_blocks: u32) -> Vec<i16> {
-    engine.load(song);
+/// range the export queries (msg 20 ids 4, 12, 16, which read the loaded globals). A load the
+/// pool refuses gives no export: the app opens no window for the song.
+pub fn export_song(
+    engine: &mut Engine,
+    song: &Song,
+    idle_blocks: u32,
+) -> Result<Vec<i16>, LoadRefused> {
+    engine.load(song)?;
     engine.activate(Activation::ReplacesCurrent {
         current_playing: false,
     });
-    export(engine, ExportRange::from(&song.globals), idle_blocks)
+    Ok(export(
+        engine,
+        ExportRange::from(&song.globals),
+        idle_blocks,
+    ))
 }
 
 /// The 44-byte header rbhost and the app write before the samples (16-bit stereo 44100 Hz PCM).

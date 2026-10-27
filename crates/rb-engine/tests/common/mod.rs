@@ -64,7 +64,7 @@ pub fn sha256(b: &[u8]) -> String {
 /// The WAV file of the export of `s` after `idle` idle blocks, with `devices`.
 pub fn render_with(tables: &Arc<Tables>, devices: Devices, s: &Song, idle: u32) -> Vec<u8> {
     let mut eng = Engine::new(tables.clone(), devices);
-    export::wav_bytes(&export::export_song(&mut eng, s, idle))
+    export::wav_bytes(&export::export_song(&mut eng, s, idle).unwrap())
 }
 
 /// The diag songs of `names` whose render with `devices()` differs from their corpus reference

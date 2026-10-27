@@ -64,7 +64,7 @@ fn check(name: &str, e: &Value, tables: &Arc<Tables>, set: &Arc<SampleSet>) -> O
     let s = song(e);
     let idle = e["idle_blocks"].as_u64().unwrap() as u32;
     let mut eng = Engine::new(tables.clone(), Devices::implemented(Some(set.clone())));
-    let got = export::export_song(&mut eng, &s, idle);
+    let got = export::export_song(&mut eng, &s, idle).unwrap();
     let wav = export::wav_bytes(&got);
     if sha256(&wav) == e["wav_sha256"].as_str().unwrap() {
         return None;

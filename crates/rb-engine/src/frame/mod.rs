@@ -129,6 +129,39 @@ pub struct FaultRecord {
     pub calls: u64,
 }
 
+/// A msg-37 batch the DLL refused (`sub_10021010`: more events than free nodes in the pool,
+/// reply `['K', 22]`). The exe then throws `XOutOfMemory` (0x436E95, 1.x 0x430305), sends no
+/// further batch and no msg 32, shows the alert "There is not enough memory for opening the
+/// Song." and opens no song window (`docs/song_load.md` section 5.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoadRefused {
+    /// The batch's track.
+    pub track: u8,
+    /// The header's `first`: the track's events before the batch.
+    pub first: u32,
+    /// The batch's event count (`last - first`).
+    pub count: u32,
+    /// The pool's free nodes it was checked against.
+    pub free: u32,
+}
+
+impl std::fmt::Display for LoadRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "There is not enough memory for opening the Song (the engine refused {} events of \
+             track {} after its first {}: {} nodes free of {})",
+            self.count,
+            self.track,
+            self.first,
+            self.free,
+            crate::seq::POOL_NODES
+        )
+    }
+}
+
+impl std::error::Error for LoadRefused {}
+
 /// The device vtable slots that the sequencer ([`crate::seq`]) and the song messages call
 /// (`CDevice`, vtable 0x10032DB4; the 303 0x10033FD4, the 808 0x10034154, the 909 0x10034294).
 ///
@@ -980,6 +1013,8 @@ pub struct Engine {
     out: [Box<[f32; MAX_FRAMES]>; 2],
     /// Not in the original: the render calls that ended in a [`Fault`].
     fault: Option<FaultRecord>,
+    /// Not in the original: the batch [`Engine::load`] stopped at.
+    refused: Option<LoadRefused>,
 }
 
 fn zero_buf() -> Box<[f32; MAX_FRAMES]> {
@@ -1024,6 +1059,7 @@ impl Engine {
             output: state.output,
             out: [zero_buf(), zero_buf()],
             fault: None,
+            refused: None,
         }
     }
 
@@ -1033,11 +1069,23 @@ impl Engine {
         self.fault.as_ref()
     }
 
+    /// The batch the last [`Engine::load`] stopped at, if the pool refused one.
+    pub fn load_refused(&self) -> Option<&LoadRefused> {
+        self.refused.as_ref()
+    }
+
     /// The song load's messages (`docs/song_load.md` section 2, steps 5 and 6), in order: msg
     /// 36, the msg-41 device blocks of the song's [`song::LoadForm`] in the exe's order (for a
-    /// 1.x song then the 909's msg 74), the msg-37 events of tracks 0..8, then msg 32. None of
-    /// them runs a mixer update.
-    pub fn load(&mut self, song: &song::Song) {
+    /// 1.x song then the 909's msg 74), the msg-37 batches of [`song::Song::batches`], then
+    /// msg 32. None of them runs a mixer update.
+    ///
+    /// A batch the pool refuses ([`crate::seq::Sequencer::add_events`]) ends the load there, as
+    /// the exe's `XOutOfMemory` does: no later batch and no msg 32. The engine keeps the events
+    /// of the batches before it, as the DLL's song does (the exe never closes that song,
+    /// `docs/original_bugs.md` OB-20); the exe opens no window for it, so the caller should not
+    /// play it. The refusal is returned and kept ([`Engine::load_refused`]).
+    pub fn load(&mut self, song: &song::Song) -> Result<(), LoadRefused> {
+        self.refused = None;
         self.set_globals(&song.globals);
         for &d in song.form.device_blocks() {
             self.device_data(d, &song.device_payload(d));
@@ -1047,10 +1095,35 @@ impl Engine {
             // which does nothing with record off
             self.set_param(song::Device::Tr909, 0, 0);
         }
-        for (i, events) in song.tracks.iter().enumerate() {
-            self.frame.seq.add_events(i, events);
+        // the batches, then what they leave of each track as one more batch
+        let rest = (0..song.tracks.len()).map(|t| (t, usize::MAX));
+        let plan = song
+            .batches
+            .iter()
+            .map(|b| (b.track as usize, b.len as usize));
+        let mut sent = [0usize; 9];
+        for (t, len) in plan.chain(rest) {
+            let left = &song.tracks[t][sent[t]..];
+            let batch = &left[..len.min(left.len())];
+            // sub_436B6F and sub_430163 send no batch without events
+            if batch.is_empty() {
+                continue;
+            }
+            let free = self.frame.seq.free_nodes();
+            if !self.frame.seq.add_events(t, batch) {
+                let r = LoadRefused {
+                    track: t as u8,
+                    first: sent[t] as u32,
+                    count: batch.len() as u32,
+                    free: free as u32,
+                };
+                self.refused = Some(r);
+                return Err(r);
+            }
+            sent[t] += batch.len();
         }
         self.relocate();
+        Ok(())
     }
 
     /// Song msg 36, 0x100126B2: the global struct, applied field by field in this order: song

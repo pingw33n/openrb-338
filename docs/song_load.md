@@ -545,7 +545,8 @@ offsets.
 `[track, u32 first, u32 last]` (`sub_423928`), then for each accepted event `[99, u32 tick, ctrl, value]`
 (`sub_423A37`), where `first` and `last` count accepted events before and after the batch. A batch
 with no accepted event is not sent. Each batch waits for the reply; `'K'` throws out of memory. The
-DLL appends them with `sub_10021010` (song msg 37, 0x100127EB).
+DLL appends them with `sub_10021010` (song msg 37, 0x100127EB), which refuses a batch longer than
+the node pool's free count (section 5.2).
 
 **The 808 track before 4.2 (`sub_436F5A`) [C] (task-018).** The tom tuning `v/2 + 32` (`sub_432E1B`,
 called at 0x437139 for controllers 10, 13 and 16) is applied **before** the range check:
@@ -579,6 +580,60 @@ tick check `sub_42FD60` (0x437A32), so an event whose tick is later found invali
 them. So an off event at tick 0 is always dropped. After the switch the checks of `sub_436B6F`
 follow (0x437A28..0x437A8D): the running position advances on every valid tick, even when the event
 is then dropped.
+
+### 5.2 A batch the node pool refuses [C] (task-083)
+
+**DLL.** `sub_10021010` reads the header (`sub_10019EB0`), takes `count = last - first` (`sub ebx,
+edx` at 0x10021042) and the free count of the node pool `dword_10100230` (`call sub_1000DEE0` at
+0x10021054, whose body is `mov eax, [ecx+4]; ret`; `docs/initial_investigation.md` section 5, the
+pool of 100000 nodes shared by the whole engine instance). When `count > free` (`cmp ebx, eax; ja` at 0x1002105B, unsigned) it
+inserts nothing and replies `sub_1001DE00(22)` (0x100210ED): the packet `['K', 22]` (`sub_10018110`
+with type 0x4B and the one byte 22). Otherwise it inserts every event (`sub_10014750`, the loop
+0x1002106F..0x100210C8) and replies `sub_1001DF80(0x49)` (0x100210CA): the one-byte packet `['I']`
+(`sub_10018100`). The check counts the header, not the nodes the batch will take: a replaced value
+takes no node and still counts, and a batch of exactly `free` events passes and then loses its last
+insert to `sub_10014434`, which takes a node only while more than one is free.
+
+**Exe.** `sub_436B6F` compares the reply's first byte with 0x49 (`'I'`, 0x436E52: go on) and 0x4B
+(`'K'`, 0x436E65) and on `'K'` throws `XOutOfMemory` (0x436E95; the 1.x path `sub_430163`:
+`cmp eax, 0x4B` at 0x430305, the throw info pushed at 0x430315). Its `catch(...)` (0x436EEA) deletes the TRAK
+stream and rethrows, and so does `sub_434D05`'s (0x436AD7, the rethrow at 0x436B20). `sub_425C4D`
+catches it (0x426430 for the RBS branch, try at 0x4263B2; 0x425FDB for the 1.x branch) and throws
+`XSongOutOfMemory` (vftable 0x4BBD9C). No further batch is sent, and neither is msg 32 (0x426610).
+`sub_40B575` catches that (0x40B778): `sub_475D5C(0x1DCF592A)` shows a `CAlertBox` (`sub_4754B9`)
+with the text of id 500128042 (`sub_47B074`: group 128, item 42 of the exe's `SALR` text, file
+offset 0x159897):
+
+> There is not enough memory for opening the Song. [OK]
+
+then it rethrows. The unwinds delete the half-built document (`operator new(0x338)` of
+`sub_40B575`) and the streams; the song window (`sub_42DA72`) is never built. File > Open
+(`sub_40A2A3`, its `catch(...)` at 0x40A3D4) swallows the exception and returns no document. So the
+user gets that alert and no song.
+
+**The DLL's song stays.** None of these unwinds (`sub_436B6F`, `sub_434D05`, `sub_425C4D`: its
+member destructor 0x425900 is empty, `sub_40B575`, `sub_40A2A3`) sends a message to the engine, so
+the song slot the engine gave at msg 52 (`sub_425A5D`) is never closed: it keeps the nodes of the
+batches before the refused one, and every later load has that many fewer free nodes
+([OB-20](original_bugs.md)).
+
+**When it happens.** Only for a song of about 100000 events or more. The free count at a load is
+100000 less the nodes of every song the engine already holds and of the new song's constructor:
+in the app at least the "Untitled song", which an opened song replaces (`docs/export_state.md`
+section 3, msg 53), with its constructor's tick-0 events, which take pool nodes
+(`docs/initial_investigation.md` section 5, the node pool, task-082). [G] How many nodes that is,
+and whether other lists hold nodes then, is not counted here. An RBS track is sent
+in batches of 1284 file events, track after track; a 1.x song's track buffers are sent as they fill
+(section 12.2), then what is left of them in track order.
+
+**rb.** `load::load` and `load::load_1x` keep the send order and each batch's count in
+`song::Song::batches`; `Engine::load` sends the tracks in those batches and
+`Sequencer::add_events` refuses a batch as `sub_10021010` does. A refused batch ends the load with
+`Err(LoadRefused)` (also `Engine::load_refused`): the engine keeps the earlier batches, as the DLL
+does, and sends no msg 32; `rb render` fails with the alert's text. rb's pool is one per song
+(task-082), so rb's free count at a load is that of an engine with no other song: an RBS song the
+app refuses because the Untitled song holds nodes can still load in rb. The player and the UI do
+not act on a refused load yet (task-088).
 
 ## 6. What decides the state at an export [C]
 

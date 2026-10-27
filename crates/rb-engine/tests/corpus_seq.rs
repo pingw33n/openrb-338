@@ -68,7 +68,7 @@ fn load_state_over_the_corpus() {
     let mut song_mode = 0;
     for (name, s) in songs() {
         let mut e = Engine::new(tables.clone(), Devices::placeholders());
-        e.load(&s);
+        e.load(&s).unwrap();
         let q = &e.frame.seq;
         let g = &q.globals;
         assert_eq!(
@@ -111,7 +111,7 @@ fn export_transport_over_the_corpus() {
     for (name, s) in songs().into_iter().take(40) {
         let mut e = Engine::new(tables.clone(), Devices::placeholders());
         let r = ExportRange::from(&s.globals);
-        let out = export::export_song(&mut e, &s, 16);
+        let out = export::export_song(&mut e, &s, 16).unwrap();
         assert_eq!(out.len(), 2 * export::frame_count(r), "{name}");
         // the export ends stopped, at the start of a bar, after the loop wrapped (song mode with
         // the loop on) or ran past the loop end

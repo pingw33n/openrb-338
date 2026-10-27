@@ -101,7 +101,7 @@ fn check(label: &str, e: &Value, dir: &Path, orig: Option<&(PathBuf, PathBuf)>) 
         Arc::new(Tables::new()),
         Devices::implemented(Some(Arc::new(set))),
     );
-    let got = export::export_song(&mut eng, &s, idle);
+    let got = export::export_song(&mut eng, &s, idle).unwrap();
     let wav = export::wav_bytes(&got);
     (sha256(&wav) != e["wav_sha256"].as_str().unwrap()).then(|| {
         format!(
