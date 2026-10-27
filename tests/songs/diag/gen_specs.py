@@ -319,7 +319,10 @@ for mode, mn in ((1, "lp"), (0, "bp")):
     for wave in (0, 64, 127):
         s = add(Song("pcf_%s_wave%d" % (mn, wave), "PCF (pattern controlled filter) on the 808 channel, %s mode, "
                      "wave 'pattern' %d, frequency 64, resonance 64, amount 100, decay 64." %
-                     ("low-pass" if mode else "band-pass", wave)))
+                     ("low-pass" if mode else "band-pass", wave) +
+                     (" The original exports silence: wave 127 has pattern length 0, so the PCF divides by zero "
+                      "(0x10016811) and the sound callback leaves the output unwritten; see docs/original_bugs.md OB-6."
+                      if wave == 127 else "")))
         src808(s)
         s.mixer["pcf_id"] = 3
         s.dev["pcf"].update(mode=mode, wave=wave, amount=100)

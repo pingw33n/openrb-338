@@ -1,11 +1,11 @@
 ---
 id: TASK-039
 title: 'RE: why the PCF with wave 127 silences the 808'
-status: To Do
+status: Done
 assignee:
   - '@agent-chore'
 created_date: '2026-10-26 15:48'
-updated_date: '2026-10-27 04:27'
+updated_date: '2026-10-27 04:28'
 labels:
   - re
   - engine
@@ -27,9 +27,15 @@ The diagnostic songs pcf_lp_wave127 and pcf_bp_wave127 (PCF on the 808 channel, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The cause of the silence is stated in docs with addresses (engine behavior or song construction)
-- [ ] #2 If the songs are wrong, the spec is fixed and the songs rebuilt; otherwise the README row says the export is silent and why
+- [x] #1 The cause of the silence is stated in docs with addresses (engine behavior or song construction)
+- [x] #2 If the songs are wrong, the spec is fixed and the songs rebuilt; otherwise the README row says the export is silent and why
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. AC #1 is settled by task-027 (docs/initial_investigation.md 8.2, docs/export_state.md section 13, docs/original_bugs.md OB-6): check it, no new research. 2. Add the OB-6 sentence to the description of pcf_lp_wave127 and pcf_bp_wave127 in tests/songs/diag/gen_specs.py only (wave 127 branch of the PCF loop). 3. Regenerate with /usr/bin/python3 tests/songs/diag/gen_specs.py. 4. Check git status and git diff: only the two README rows and gen_specs.py change; specs/ and songs are untouched. 5. Check both ACs, final summary, Done, one commit.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
@@ -41,4 +47,14 @@ Correction (task-027 review round 1): wave 127 is not the only faulting wave. Th
 Supervisor 2026-10-27: the bug itself is recorded in docs/original_bugs.md by task-051; this task's remaining AC #2 (the diag README row) can cite it.
 
 Supervisor 2026-10-27: reassigned to @agent-chore for AC #2 (the README rows); AC #1 is settled by task-027 (docs/initial_investigation.md 8.2, docs/export_state.md section 13, docs/original_bugs.md OB-6).
+
+Branch: worktree-agent-a5ed3885ff0800196
+
+Edited tests/songs/diag/gen_specs.py (PCF loop, wave 127 gets the OB-6 sentence appended to its description). Ran /usr/bin/python3 tests/songs/diag/gen_specs.py: 145 songs. git status: M tests/songs/diag/README.md and M tests/songs/diag/gen_specs.py only; no specs/ or songs/ file changed. git diff README.md: exactly the two pcf_lp_wave127 and pcf_bp_wave127 rows changed, each with the sentence appended. Plan was recorded after the edit started (one step out of order); the edit itself is the one planned.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+AC #1: settled by task-027 and checked here: the wave-127 silence is engine behavior, PCF block 0x100166D0 (ctor sub_10016490) indexes the pattern data with the raw wave byte; wave 127 reads pattern length 0 (word_10033310[127]), so the idiv at 0x10016811 divides by zero; SafeSoundCallback 0x1001AE40 catches it in its try/catch(...) (FuncInfo 0x10152AD8, handler 0x1001B055) and the whole export is zeros. Recorded in docs/initial_investigation.md 8.2, docs/export_state.md section 13 and docs/original_bugs.md OB-6. AC #2: the songs are correct (not rebuilt, not changed). The two README rows of pcf_lp_wave127 and pcf_bp_wave127 now say the original exports silence and why, with a pointer to OB-6. Done via the description in tests/songs/diag/gen_specs.py and regeneration; git status shows only tests/songs/diag/README.md and tests/songs/diag/gen_specs.py changed, the specs and song bytes and tests/refs are untouched. Testing: regeneration check only (no cargo test; docs and generated README only). Branch worktree-agent-a5ed3885ff0800196, one commit.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -110,12 +110,12 @@ Short songs (2 to 4 bars) that each isolate one engine feature, for the referenc
 | `dist_disabled` | Distortion device enabled=0 while the channel's dist switch is on (does a disabled device pass the signal?); amount 100, shape 64. | 2 bars at 120 BPM |
 | `pcf_lp_wave0` | PCF (pattern controlled filter) on the 808 channel, low-pass mode, wave 'pattern' 0, frequency 64, resonance 64, amount 100, decay 64. | 2 bars at 120 BPM |
 | `pcf_lp_wave64` | PCF (pattern controlled filter) on the 808 channel, low-pass mode, wave 'pattern' 64, frequency 64, resonance 64, amount 100, decay 64. | 2 bars at 120 BPM |
-| `pcf_lp_wave127` | PCF (pattern controlled filter) on the 808 channel, low-pass mode, wave 'pattern' 127, frequency 64, resonance 64, amount 100, decay 64. | 2 bars at 120 BPM |
+| `pcf_lp_wave127` | PCF (pattern controlled filter) on the 808 channel, low-pass mode, wave 'pattern' 127, frequency 64, resonance 64, amount 100, decay 64. The original exports silence: wave 127 has pattern length 0, so the PCF divides by zero (0x10016811) and the sound callback leaves the output unwritten; see docs/original_bugs.md OB-6. | 2 bars at 120 BPM |
 | `pcf_lp_freq10_res100` | PCF on the 303 #1 channel, low-pass mode, frequency 10, resonance 100, wave 64, amount 127. | 2 bars at 120 BPM |
 | `pcf_lp_freq120_res20` | PCF on the 303 #1 channel, low-pass mode, frequency 120, resonance 20, wave 64, amount 127. | 2 bars at 120 BPM |
 | `pcf_bp_wave0` | PCF (pattern controlled filter) on the 808 channel, band-pass mode, wave 'pattern' 0, frequency 64, resonance 64, amount 100, decay 64. | 2 bars at 120 BPM |
 | `pcf_bp_wave64` | PCF (pattern controlled filter) on the 808 channel, band-pass mode, wave 'pattern' 64, frequency 64, resonance 64, amount 100, decay 64. | 2 bars at 120 BPM |
-| `pcf_bp_wave127` | PCF (pattern controlled filter) on the 808 channel, band-pass mode, wave 'pattern' 127, frequency 64, resonance 64, amount 100, decay 64. | 2 bars at 120 BPM |
+| `pcf_bp_wave127` | PCF (pattern controlled filter) on the 808 channel, band-pass mode, wave 'pattern' 127, frequency 64, resonance 64, amount 100, decay 64. The original exports silence: wave 127 has pattern length 0, so the PCF divides by zero (0x10016811) and the sound callback leaves the output unwritten; see docs/original_bugs.md OB-6. | 2 bars at 120 BPM |
 | `pcf_bp_freq10_res100` | PCF on the 303 #1 channel, band-pass mode, frequency 10, resonance 100, wave 64, amount 127. | 2 bars at 120 BPM |
 | `pcf_bp_freq120_res20` | PCF on the 303 #1 channel, band-pass mode, frequency 120, resonance 20, wave 64, amount 127. | 2 bars at 120 BPM |
 | `pcf_lp_amount0_decay64` | PCF low-pass on the 808 channel, amount 0, decay 64. | 2 bars at 120 BPM |
