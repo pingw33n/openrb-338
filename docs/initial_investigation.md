@@ -94,7 +94,7 @@ Device vtables in the DLL (slot = index):
    and written before `pos += step`. A final `n` of 0 still makes a 0-frame call. Rust:
    `crates/rb-engine/src/frame/export.rs`, which matches the frame count of all 153 diagnostic and
    shipped references of `tests/refs`; for "Fast Forward" (140 BPM, 250 bars) it is 18899999,
-   one less than the exact 18900000. 152 of the 153 end on a chunk that is not a multiple of 64.
+   one less than the exact 18900000 ([Q-1](original_bugs.md)). 152 of the 153 end on a chunk that is not a multiple of 64.
 5. Afterwards sends msg 35 `{1,0}`, then msg 33 (full engine reset), then
    `SafeSoundCallback(NULL,0,0)` (0x427DD6), then restarts the realtime channel (slot 1, 0x427DE7).
    What msg 33 resets: `docs/export_state.md` §6.4.
@@ -256,7 +256,8 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
   - Each event is applied in the first block whose `trunc(pos) >= eventPos`.
   - The loop-end wrap is handled inside this function. Wrapping chases every track to the loop start
     (§5.1) and relocates the devices.
-  - At `pos > 767231` the song stops (999 bars; strictly greater, task-022).
+  - At `pos > 767231` the song stops (999 bars; strictly greater, task-022). The DLL also drops
+    track events above 767231 while the exe accepts up to 767976 ([OB-3](original_bugs.md)).
 - **Shuffle.** `sp = 96*(t/96) + max(0, t%96 - shuffle/6)`. Only the second 16th of each 8th is
   delayed, by up to 21 ticks. Each device step function receives `(tick, shuffledTick, tempo)` and
   uses the shuffled tick when the pattern's shuffle flag is set.
@@ -303,7 +304,7 @@ lastTick = t
   else the current song's (`transport+0x16C`), which is the song itself whenever it renders.
 - Pattern mode applies no event, never wraps and never ends; the devices still step. The loop wrap
   and the song end are tested only in blocks whose tick moved.
-- An event at the loop end itself never fires in a loop: the wrap applies events up to
+- An event at the loop end itself never fires in a loop ([OB-4](original_bugs.md)): the wrap applies events up to
   `loopEnd - 1`, and the chase starts the next pass at `loopStart`.
 - Every set-param call of a block (tracks 0..8, each in list order) comes before every step call
   (devices in song order: mixer, 303, 303, 808, 909, delay, dist, PCF, comp, `song+0x18C`). Only
@@ -893,6 +894,8 @@ All effects run their parameter update when `(cnt & 15) == 0`, then increment th
 
 ### 8.1 Distortion
 
+Amount and shape above 127 index past their tables unchecked: [OB-9](original_bugs.md).
+
 **Update (every 16 blocks):**
 - `S = shape*f32(1/127)*3.999` and `A = amount*f32(1/127)*3.999`.
 - Bilinear interpolation in a 5×5 grid (0x10151AB8) gives `r`.
@@ -1034,7 +1037,8 @@ every PCF song of the corpus exact:
   c0*y1) - c1*y2`; LP outputs `f32(y)`, BP `f32(y - y1_old)`. y1, y2, env and E stay in x87
   registers (BP keeps env in a stack double) for the whole block; at the end the filter's state,
   `+0x68 = f32(E)` and `+0x70 = f32(env)` are stored, and the other filter's state is zeroed.
-- **Past the patterns.** RBS42.txt gives wave 0..0x37 and the exe's track load accepts 0..127; the
+- **Past the patterns** (defects of the original: [OB-5 to OB-8](original_bugs.md), clamps
+  OB-9 to OB-11). RBS42.txt gives wave 0..0x37 and the exe's track load accepts 0..127; the
   DLL checks nothing, so a wave of 55..127 reads the bytes after the 55 patterns (the steps end at
   0x10033AD0, the `CPCFInsert` vtable follows), all in the file up to 0x10034400. 73 of the
   waves 55..127 read a `res` other than 8, 16 or 32, so their quotient is the stale `var_1C`
@@ -1130,6 +1134,8 @@ compressor song of the corpus exact:
 
 ### 8.4 Delay (send; global buffer of 131072 f32, mask 0x1FFFF, prefilled with 1e-6)
 
+A pan above 127 indexes past `PAN[127]` unchecked: [OB-10](original_bugs.md).
+
 **Update.**
 ```
 q = mode==0 ? 3*T/100 : 4*T/100     // T = milli-BPM, integer arithmetic
@@ -1192,8 +1198,9 @@ w++
     (0x1000FAD1) refills the line only while the gate is clear, refills the send bus, and sets the
     meter byte to 0 and the peak `+0x70` to 1e-6.
   - The update's head (0x1000F75B..0x1000F7BA) averages the tempo over 25 updates into `+0x48`,
-    `+0x4C`, `+0x50`, but 0x1000F7E2 then overwrites `+0x4C` with the current tempo before the
-    length reads it: the average is dead, D follows the tempo at every update. Its tail is the
+    `+0x4C`, `+0x50`, but 0x1000F7E2 then overwrites `+0x4C` with the current tempo on every
+    update, before both length reads (0x1000F7EC and 0x1000F83F; the `jne` at 0x1000F7EA only picks
+    the formula): the average is dead on every path ([OB-12](original_bugs.md)), D follows the tempo at every update. Its tail is the
     meter: the peak as an integer above 0x3F800000 gives byte 0x7F, else `trunc(peak*127f)`, into
     live byte 5; then `peak = f32(peak*0.92f)`. The block's peak is `|send[meterIndex]|`.
   - Slot 8 inserts the pattern copy's controllers 0..4 into the track at tick 0; slot 9 copies

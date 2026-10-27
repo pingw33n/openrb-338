@@ -3,7 +3,7 @@ id: doc-001
 title: agent-brief
 type: guide
 created_date: '2026-10-26 09:03'
-updated_date: '2026-10-26 16:09'
+updated_date: '2026-10-27 03:08'
 ---
 The shared brief for agents working on rb, the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. Read in this order:
 1. The root `AGENTS.md` (the backlog and commit rules).
@@ -38,7 +38,7 @@ You work in your own git worktree on your own branch, and everything is relative
 |---|---|
 | `original/` | The original program byte for byte (`Rebirth.exe`, `ReBirth.dll`). Never edit it. Its IDA working files (`*.id0` …) belong to the user's open IDA and are not in git. |
 | `ida/` | The IDA databases: `Rebirth.exe.i64` (the UI, song loading, the export driver, the RBM container) and `ReBirth.dll.i64` (the engine). They are references and are not edited by agents. |
-| `docs/` | Knowledge documents, edited like source. `RBS42.txt` is the official RBS file format; `initial_investigation.md` holds the engine's facts. New facts about the original go into a document here, in the same commit as the task. |
+| `docs/` | Knowledge documents, edited like source. `RBS42.txt` is the official RBS file format; `initial_investigation.md` holds the engine's facts. New facts about the original go into a document here, in the same commit as the task. `original_bugs.md` lists the defects of the original: a newly found defect goes into `docs/original_bugs.md` as well as its home document. |
 | `tools/` | Python tools: the test-machine runners, the `.rbs` writer, the comparator and the like. |
 | `tests/` | Test songs and reference renders (their storage is decided in a `Decide:` task). |
 | Rust workspace | At the repository root once m-1 creates it: `cargo build --release`, `cargo test`. |

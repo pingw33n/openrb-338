@@ -714,7 +714,7 @@ empirical fit.
     55, 111 and 113..126: 17 waves in all), and the PCF block divides by it (`idiv` at 0x10016811); `SafeSoundCallback`'s `catch (...)` (handler
     0x1001B055) ends every call there, before the int16 conversion and the zero fill, so the
     host's buffer is never written (`docs/initial_investigation.md` §8.2). The engine renders
-    both songs exact.
+    both songs exact. ([OB-5 to OB-8](original_bugs.md).)
   - [C] This refutes the expectation that songs without 303 notes match at any `N`: every non-silent
     export depends on its `N`, drum-only songs included. [G] The mechanism is the idle 303 output
     (§11.2), present because the template's 303 channels are at level 100. Every song carries that

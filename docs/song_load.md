@@ -305,7 +305,8 @@ Parse `sub_43348D` + `sub_43363E` + `sub_43375D` (via `sub_43392A`), pack `sub_4
   (`docs/initial_investigation.md` §7.2).
 - **Quirk:** the parse copies RBS byte 13 (LowTomDecay) into slot 16 (MidTomDecay) and drops RBS byte
   16 (0x433558: `mov dl,[ecx+0Dh]; mov [eax+10h],dl`). The pattern-mode MidTomDecay is therefore the
-  LowTomDecay. The TRAK controller 0x10 is not affected.
+  LowTomDecay. The TRAK controller 0x10 is not affected. (A defect of the original:
+  [OB-1](original_bugs.md).)
 - **Step values.** The DLL step function `0x1002AAC0` reads them raw: 1 or 3 → base×0.8, 2 or 4 →
   base×2.0, values > 2 also flam. With RBS values: 0 off, 1 on, 2 accented, 3 flam (at the 1 level);
   4 never occurs. There is no shift to 1..4.
@@ -354,7 +355,7 @@ DLL appends them with `sub_10021010` (song msg 37, 0x100127EB).
 **The 808 track before 4.2 (`sub_436F5A`) [C] (task-018).** The tom tuning `v/2 + 32` (`sub_432E1B`,
 called at 0x437139 for controllers 10, 13 and 16) is applied **before** the range check:
 `sub_42FD00` at 0x4371A3 gets the tuned byte. A file value of 190 thus becomes 127 and is accepted,
-and 192 becomes 128 and is dropped. The rest equals `sub_436B6F`.
+and 192 becomes 128 and is dropped. The rest equals `sub_436B6F`. ([OB-2](original_bugs.md).)
 
 ### 5.1 The mixer track of a 4.0 file (`sub_437380`) [C] (task-018)
 
@@ -410,7 +411,7 @@ the order msg 37 delivered them, and a later event with the same tick and contro
 earlier one; an event whose tick exceeds 767231 (bar 999's last tick; `cmp 0BB4FFh` at 0x1001477B)
 is dropped there. The exe's own check (`sub_42FD60`, §5 "Validation") accepts multiples of 24 below
 768000, so it can send ticks up to 767976; the DLL drops those above 767231 (inferred from the two
-limits; no corpus song has such an event, the largest corpus tick is 417792). The batch boundaries
+limits; no corpus song has such an event, the largest corpus tick is 417792; [OB-3](original_bugs.md)). The batch boundaries
 do not change the result: each batch starts its insert hint at null (`mov edi, 0` at 0x10021061),
 and `sub_10014750` uses a hint only when its tick is below the new tick, so its walk ends at the
 same node as a walk from the head of the sorted list. Every export's first stop
