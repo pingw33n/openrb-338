@@ -3,11 +3,11 @@ id: TASK-054
 title: >-
   Decide: computer-keyboard mapping of rb's UI (original virtual keys or
   physical positions)
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-27 07:04'
-updated_date: '2026-10-27 07:10'
+updated_date: '2026-10-27 07:30'
 labels:
   - decision
   - ui
@@ -38,5 +38,11 @@ task-045 should depend on this decision.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The user's choice is recorded in the final summary with the date
+- [x] #1 The user's choice is recorded in the final summary with the date
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by @pingw33n on 2026-10-27: option C. rb's UI maps keys by physical position (scancode) of a US keyboard as pictured in the manual, whatever the layout: the TB-303 Note/Pause key and the drum AC key are on the key right of '0' ('-' on US). '=' is an alias for both, so the original's habit (VK_OEM_PLUS, OB-13) also works. The transport numpad keys follow the program (numpad 4 rewind, 5 fast forward).
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 16:23'
-updated_date: '2026-10-27 07:12'
+updated_date: '2026-10-27 07:30'
 labels:
   - ui
 milestone: m-3
@@ -30,3 +30,9 @@ Wire the panel to the real-time player: every knob, slider and switch drives its
 - [ ] #2 Pattern editing of the 303s and drums works as the spec says, and edits are heard on the next pass
 - [ ] #3 Pattern and song mode play shipped songs; positions and step LEDs follow playback
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-27, per task-054 (decided): keys by physical US position (scancode) per the manual's pictures, Note/Pause and drum AC on the key right of '0', '=' as an alias; numpad 4/5 rewind/fast forward as the program does (docs/ui_spec.md section 10).
+<!-- SECTION:NOTES:END -->
