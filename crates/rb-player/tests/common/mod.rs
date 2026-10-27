@@ -15,6 +15,14 @@ pub fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+/// A path from the environment (`None` when unset or empty); a relative one is relative to the
+/// workspace root, as cargo runs the tests in the crate's directory.
+pub fn env_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name)
+        .filter(|v| !v.is_empty())
+        .map(|v| root().join(v))
+}
+
 pub fn manifest() -> Value {
     let p = root().join("tests/refs/manifest.json");
     serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap()

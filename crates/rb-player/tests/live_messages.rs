@@ -728,8 +728,7 @@ fn render_with_tracks(
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    if let Ok(dir) = std::env::var("RB_LIVE_OUT") {
-        let dir = std::path::Path::new(&dir);
+    if let Some(dir) = common::env_path("RB_LIVE_OUT") {
         std::fs::write(dir.join(format!("{name}.rblv")), &rblv).unwrap();
         std::fs::write(dir.join(format!("{name}.wav")), &wav).unwrap();
         eprintln!("{name}: wav sha256 {sha}");
@@ -784,8 +783,7 @@ const MOD_CALLS: u32 = 400;
 /// A recrypted mod of `RB_MOD_DIR` loaded over the built-in kit, as `rb render` loads it; `None`
 /// (the test is skipped) when `RB_MOD_DIR` is not set.
 fn file_mod(file: &str) -> Option<Arc<SampleSet>> {
-    let dir = std::env::var_os("RB_MOD_DIR").filter(|v| !v.is_empty())?;
-    let p = std::path::Path::new(&dir).join(file);
+    let p = common::env_path("RB_MOD_DIR")?.join(file);
     let data = std::fs::read(&p).unwrap_or_else(|err| panic!("{}: {err}", p.display()));
     let rbm = rbm::Rbm::parse(data).unwrap();
     let table = rbm::KeyTable::embedded(&rbm)

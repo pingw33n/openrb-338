@@ -42,18 +42,15 @@ struct Env {
 }
 
 fn env() -> Option<Env> {
-    let Some(dir) = std::env::var_os("RB_THIRDPARTY_DIR").filter(|v| !v.is_empty()) else {
+    let Some(dir) = common::env_path("RB_THIRDPARTY_DIR") else {
         eprintln!("skipped: RB_THIRDPARTY_DIR is not set");
         return None;
     };
-    let dir = PathBuf::from(dir);
     Some(Env {
         mods: dir.join("Mods"),
         orig: dir.join("Mods.orig"),
         songs: dir.join("songs"),
-        dat: std::env::var_os("RB_RB20FUL")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from),
+        dat: common::env_path("RB_RB20FUL"),
     })
 }
 

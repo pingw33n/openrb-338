@@ -37,23 +37,23 @@ use serde_json::Value;
 const PAD_CHUNK: u64 = 1032;
 
 fn mod_dir() -> Option<PathBuf> {
-    let Some(dir) = std::env::var_os("RB_MOD_DIR").filter(|v| !v.is_empty()) else {
+    let dir = common::env_path("RB_MOD_DIR");
+    if dir.is_none() {
         eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
-        return None;
-    };
-    Some(PathBuf::from(dir))
+    }
+    dir
 }
 
 /// The originals and the key file of the recrypt test.
 fn orig_env() -> Option<(PathBuf, PathBuf)> {
     let (Some(dir), Some(dat)) = (
-        std::env::var_os("RB_MOD_ORIG_DIR").filter(|v| !v.is_empty()),
-        std::env::var_os("RB_RB20FUL").filter(|v| !v.is_empty()),
+        common::env_path("RB_MOD_ORIG_DIR"),
+        common::env_path("RB_RB20FUL"),
     ) else {
         eprintln!("skipped: RB_MOD_ORIG_DIR and RB_RB20FUL are not both set");
         return None;
     };
-    Some((PathBuf::from(dir), PathBuf::from(dat)))
+    Some((dir, dat))
 }
 
 /// Renders the entry with its recrypted mod's samples (loaded with the embedded key bytes

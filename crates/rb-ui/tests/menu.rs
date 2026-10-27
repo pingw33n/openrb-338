@@ -42,10 +42,12 @@ fn samples() -> Arc<SampleSet> {
     .clone()
 }
 
+/// A path from the environment; a relative one is relative to the workspace root (cargo runs
+/// the tests in the crate's directory).
 fn env_path(name: &str) -> Option<PathBuf> {
     std::env::var_os(name)
         .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
+        .map(|v| root().join(v))
 }
 
 /// The standard mod, or a skip.
@@ -869,7 +871,9 @@ fn the_mods_menu_lists_the_mods_folder() {
     assert!(list.len() >= 3);
 
     // a mod that is not found gives the built-in kit, a notice, and keeps the name
-    h.app.settings.mods_dir = Some(tempfile::tempdir().unwrap().path().to_path_buf());
+    // (an empty folder that exists: a missing one falls back to the binary's RB_MOD_DIR)
+    let empty = tempfile::tempdir().unwrap();
+    h.app.settings.mods_dir = Some(empty.path().to_path_buf());
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("x.rbs");
     let mut s = rbs::Song::empty();

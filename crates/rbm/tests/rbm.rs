@@ -9,6 +9,14 @@ use std::process::Command;
 use rb_engine::samples::{self, Sample, SampleSet};
 use rbm::*;
 
+/// A path from the environment (`None` when unset or empty); a relative one is relative to the
+/// workspace root, as cargo runs the tests in the crate's directory.
+fn env_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name)
+        .filter(|v| !v.is_empty())
+        .map(|v| Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(v))
+}
+
 // ---------------------------------------------------------------- synthetic material
 
 /// A stand-in RB20FUL.DAT of the right size whose bytes are a function of the offset.
@@ -320,10 +328,7 @@ fn malformed_input_does_not_panic() {
 // ---------------------------------------------------------------- real files
 
 fn real_env() -> Option<(PathBuf, Vec<PathBuf>)> {
-    let (Some(dat), Some(dir)) = (
-        std::env::var_os("RB_RB20FUL"),
-        std::env::var_os("RB_RBM_DIR"),
-    ) else {
+    let (Some(dat), Some(dir)) = (env_path("RB_RB20FUL"), env_path("RB_RBM_DIR")) else {
         eprintln!("skipped: RB_RB20FUL and RB_RBM_DIR are not both set");
         return None;
     };
@@ -334,7 +339,7 @@ fn real_env() -> Option<(PathBuf, Vec<PathBuf>)> {
         .collect();
     mods.sort();
     assert!(!mods.is_empty(), "no .rbm in RB_RBM_DIR");
-    Some((PathBuf::from(dat), mods))
+    Some((dat, mods))
 }
 
 /// `tools/rbm.py extract` of the mod into a fresh directory, or None when python is missing.
@@ -612,7 +617,7 @@ fn recrypt_limits_and_coverage() {
 #[test]
 fn embedded_window_is_the_dats() {
     use sha2::{Digest, Sha256};
-    let Some(dat) = std::env::var_os("RB_RB20FUL") else {
+    let Some(dat) = env_path("RB_RB20FUL") else {
         eprintln!("skipped: RB_RB20FUL is not set");
         return;
     };
@@ -668,10 +673,7 @@ fn real_mods_recrypt() {
 /// recrypts and keeps every file and sample.
 #[test]
 fn thirdparty_mods_recrypt() {
-    let (Some(dat), Some(dir)) = (
-        std::env::var_os("RB_RB20FUL"),
-        std::env::var_os("RB_THIRDPARTY_DIR"),
-    ) else {
+    let (Some(dat), Some(dir)) = (env_path("RB_RB20FUL"), env_path("RB_THIRDPARTY_DIR")) else {
         eprintln!("skipped: RB_RB20FUL and RB_THIRDPARTY_DIR are not both set");
         return;
     };
