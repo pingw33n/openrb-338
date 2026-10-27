@@ -355,9 +355,11 @@ impl Link {
             let payload = &payloads[d as usize];
             let (base, plen, _) = layout(r);
             self.patterns[r] = payload[base..base + 32 * plen].to_vec();
-            self.row_pattern[r] = payload[1];
-            panel.rows[r].pattern = payload[1];
-            panel.rows[r].bank = payload[1] / 8;
+            // a song file may hold a selection past 31; the arrays have 32 patterns
+            let sel = payload[1].min(31);
+            self.row_pattern[r] = sel;
+            panel.rows[r].pattern = sel;
+            panel.rows[r].bank = sel / 8;
         }
         self.shown = [None; 4];
         for (id, &(d, c)) in &self.controls {
@@ -410,13 +412,17 @@ impl Link {
                 self.shown[r] = Some(sel);
                 self.row_pattern[r] = sel;
                 let h = &pat[sel as usize * plen..];
-                for s in 0..16 {
-                    for i in 0..12 {
-                        let b = h[2 + slen * s + i];
-                        match r {
-                            2 => panel.steps808[i][s] = b != 0,
-                            3 => panel.steps909[i][s] = b,
-                            _ => {}
+                // only the drum rows have 12-byte steps; a 303 pattern is 98 bytes and the last
+                // pattern (31) would run past the array
+                if r >= 2 {
+                    for s in 0..16 {
+                        for i in 0..12 {
+                            let b = h[2 + slen * s + i];
+                            if r == 2 {
+                                panel.steps808[i][s] = b != 0;
+                            } else {
+                                panel.steps909[i][s] = b;
+                            }
                         }
                     }
                 }

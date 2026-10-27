@@ -657,6 +657,77 @@ fn the_pattern_sections_send_the_selection_the_header_and_the_switch() {
 }
 
 #[test]
+fn pattern_32_on_every_row_stopped_and_playing_does_not_panic() {
+    // task-077: fill_views read 12-byte drum steps on the 303 rows and ran past pattern 31
+    let mut h = Harness::new();
+    for playing in [false, true] {
+        if playing {
+            h.click("transport.play");
+        }
+        for n in 1..=4 {
+            // bank D, button 8: pattern 32 (index 31)
+            h.click(&format!("pattern{n}.bankD"));
+            h.click(&format!("pattern{n}.pattern8"));
+            h.calls(2);
+        }
+        // edit a step of pattern 32 on each row
+        h.click("tb303_1.key7");
+        h.click("tb303_2.key7");
+        let o = layout::TR808_ORIGIN;
+        h.click_at(Pos2::new(o.0 + 16.0 + 8.0, o.1 + 91.0 + 8.0));
+        let o = layout::TR909_ORIGIN;
+        h.click_at(Pos2::new(o.0 + 29.0 + 10.0, o.1 + 86.0 + 8.0));
+        h.calls(4);
+        // the 808 step toggles (1, then 0); the 909 BD step cycles off, low (1), high (2)
+        let want = [[7, 7, 1, 1], [7, 7, 0, 2]][playing as usize];
+        for (r, &want) in want.iter().enumerate() {
+            let len = if r < 2 { 98 } else { 194 };
+            assert_eq!(h.app.panel.rows[r].pattern, 31, "row {r}");
+            let pat = h.engine_patterns(r);
+            assert_eq!(pat.len(), 32 * len);
+            // 303: the note of step 1 at 2; drums: the BD column (1) of step 1 at 2 + 1
+            let at = 31 * len + if r < 2 { 2 } else { 3 };
+            assert_eq!(pat[at], want, "row {r} playing {playing}");
+            assert_eq!(
+                h.app.link.as_ref().unwrap().patterns()[r][at],
+                want,
+                "row {r} link"
+            );
+        }
+    }
+    h.click("transport.stop");
+    h.calls(2);
+}
+
+#[test]
+fn a_song_whose_pattern_select_is_past_31_opens_on_pattern_32() {
+    // task-077: the select byte of a song file was stored unclamped
+    for byte in [32u8, 255] {
+        let mut h = Harness::new();
+        let mut song =
+            rb_ui::session::load_song(&root().join("tests/songs/shipped/Calm.rbs")).unwrap();
+        song.tb303[0].params[1] = byte;
+        song.tb303[1].params[1] = byte;
+        song.tr808.params[1] = byte;
+        song.tr909.params[1] = byte;
+        let link = h.app.link.as_mut().unwrap();
+        link.load(&song, Some(samples()), &mut h.app.panel);
+        for r in 0..4 {
+            assert_eq!(h.app.panel.rows[r].pattern, 31, "row {r} byte {byte}");
+        }
+        h.calls(2);
+        h.click("tb303_1.key7");
+        h.click("tb303_2.key7");
+        let o = layout::TR808_ORIGIN;
+        h.click_at(Pos2::new(o.0 + 16.0 + 8.0, o.1 + 91.0 + 8.0));
+        let o = layout::TR909_ORIGIN;
+        h.click_at(Pos2::new(o.0 + 29.0 + 10.0, o.1 + 86.0 + 8.0));
+        h.click("transport.play");
+        h.calls(4);
+    }
+}
+
+#[test]
 fn the_303_step_editor_edits_the_pattern_as_the_original() {
     let mut h = Harness::new();
     // key 7 (G) on the edit step 1 of pattern 0: sub 45 {pattern, step, field 0 note, 7}
