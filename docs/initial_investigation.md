@@ -870,24 +870,23 @@ every product in f64 in this order, one f32 store, then the voice's `f32(gain * 
     - `CWaveSample` ctor `sub_1000A9C0` (0x1000A9C0): `this[1]` = the rate, `this[19]` = frames,
       buffer = `2 * frames + 1024` bytes, zeroed, so the audio starts at index 0 and 512 zero
       samples follow it (not before it).
-- **RBM container (EXE 0x41813E / 0x414D18).** IFF-like: `RBM `, `INFO` (1280 bytes, includes the mod
-  name), `HEAD`, then `EMBF` chunks. Each EMBF chunk holds a NUL-terminated file name followed by the AIFF.
-  - Samples are matched by file name, e.g. `TR808BD.aif`; the list is at EXE 0x4BB388.
-  - A missing sample falls back to the built-in one, per sample.
-- **RBM sample scrambling.** For chunks larger than 1024 bytes, bytes from offset 1024 onward are
-  descrambled before AIFF parsing (DLL 0x1001A500 → 0x100163D0):
-  ```
-  P = (17*key % 1925) + 123
-  base = (key&1)*2048
-  buf[n] = buf[n] + table[base + (n % P)]   // u8 wrapping add
-  ```
-  `key` = low byte of the chunk's ordinal.
-- **Open: where the 4096-byte key `table` comes from.** The EXE derives it in obfuscated code
-  (0x4158A9 / 0x4149EC). It sums the first 1024 bytes of each EMBF chunk, using a stride that depends
-  on anti-tamper globals, and reads 2048-byte halves from some file (app field `this[325]`) at offset
-  `256 + sum % (0x8000000-2048)`. This is the main blocker for RBM support.
-  - Alternative: capture the descrambled samples from a running ReBirth on the test machine and
-    work the derivation out from them.
+- **RBM mods: the full format is in `docs/rbm.md`** (task-030). In short:
+  - [C] Container (EXE 0x41813E / 0x414D18): an IFF `CAT ` of type `PRBM` (there is no `RBM `
+    chunk) holding `HEAD` (256 bytes, not read), the `EMBF` chunks (a NUL-terminated file name, then
+    the file) and `INFO` (1280 bytes: text, URLs, the menu name at 1003, the version at 1073).
+  - [C] Samples are matched by file name, case-insensitively, first match (`sub_416710`); the
+    names are at EXE 0x4BB388 (808), 0x4BB520 (909), 0x4BB378 (`Startup.aif`). A missing sample
+    falls back to the built-in one, per slot.
+  - [C] Scrambling: an EMBF payload (name included) larger than 1024 bytes is descrambled from byte
+    1024 on before AIFF parsing (DLL 0x1001A500 → 0x100163D0): `P = (17*key % 1925) + 123`,
+    `base = (key&1)*2048`, `buf[1024+n] += table[base + n % P]` (u8); `key` = the low byte of the
+    chunk's ordinal in the CAT, HEAD = 0.
+  - [C] The 4096-byte key `table` is two 2048-byte pages of `RB20FUL.DAT` (the CD; app field
+    `this[325]`) at `256 + sum[j] % (0x8000000-2048)`, `sum = {0x2000, 0x3000}` plus, per EMBF, the
+    big-endian u32 words 0..127 and 128..255 of its first 1024 bytes (0x65-padded). The
+    anti-tamper stride of `sub_4149EC` is 4: checked against every page of the real `RB20FUL.DAT`
+    (`tools/rbm.py check-dat`).
+    Shown on the four shipped mods with the original DLL (rbhost): all 46 slots equal.
 
 ---
 
@@ -1282,7 +1281,8 @@ reached through `dword_1011D0B0`.
 2. **Mixer flag `+0x16D`**: it is the sound-model byte, written by msg 36 byte 21 and msg 35 id 21
    (the "host msg 21" case at 0x10012696 is msg 35's id 21). During an export it holds the song's
    GLOB[482], 0 for every shipped song (`docs/song_load.md` §7) [C].
-3. **RBM key table** source file and the stride in the obfuscated EXE code (§7.4).
+3. **RBM key table**: done in task-030 (`docs/rbm.md`) [C]. The source file is `RB20FUL.DAT` on
+   the CD, the stride is 4, and each mod needs two 2048-byte pages of it.
 4. **Table generation fidelity.** Dump the BSS tables from a live process and diff them against Rust.
    `tools/rbhost` `--dump-tables` writes them with a manifest (task-011); all are built by the
    constructors of the first new song (msg 52), so they exist from the first song on [C]:
@@ -1326,7 +1326,7 @@ reached through `dword_1011D0B0`.
 
 ```
 rbs        – IFF parser for RBS 4.2 (docs/RBS42.txt) → Song model
-rbm        – RBM container parser and descrambler (needs the key table, §7.4)
+rbm        – RBM container parser and descrambler (key table from RB20FUL.DAT, docs/rbm.md)
 engine     – block engine (64 frames), f64 math with explicit f32 store points
   tables   – generated or embedded tables (§4, §6, §7, §8)
   seq      – clock, chase, shuffle, per-device step logic

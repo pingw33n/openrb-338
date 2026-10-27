@@ -32,6 +32,12 @@
  *   --dump-float DIR        write DIR/float.bin: the float output of every export chunk before
  *                           the int16 conversion (unk_100E012C left, unk_100F012C right), as f32
  *                           L,R pairs per frame (task-023)
+ *   --mod-msg FILE          load a mod: send FILE (the exe's top-level message 55, made by
+ *                           tools/rbm.py msg; docs/rbm.md) instead of message 56 {411}, and create
+ *                           the songs with its mod id
+ *   --dump-samples DIR      write the mod's 46 loaded samples from the DLL's sample table
+ *                           (sub_1001A030, list dword_10118280) as DIR/slotNN.bin (i16 LE), with
+ *                           DIR/manifest.json
  *   -v                      log every reply
  */
 #define WIN32_LEAN_AND_MEAN
@@ -451,13 +457,45 @@ static void dump_state(const char *dir) {
     fprintf(stderr, "rbhost: state written to %s\n", dir);
 }
 
+/* The sample tables (sub_1001A030): a list of nodes {table, next} from dword_10118280; a table is a
+ * u16 mod id, then 46 CWaveSample pointers at dword index 1..46 (808 1..24, 909 25..45, startup 46).
+ * CWaveSample (ctor sub_1000A9C0): frames at +0x4C, the CMemoryMedia at +0x50, its data at +0x0C
+ * (sub_10007210), the frames as native i16 followed by 512 zero samples. */
+static void dump_samples(const char *dir, unsigned mod) {
+    Manifest m;
+    uint32_t *node = *(uint32_t **)va(0x10118280), *table = NULL;
+    int s;
+    char name[64], note[64];
+    for (; node; node = (uint32_t *)(uintptr_t)node[1]) {
+        uint32_t *t = (uint32_t *)(uintptr_t)node[0];
+        if (t && *(uint16_t *)t == mod) table = t;
+    }
+    if (!table) die("no sample table for mod %u", mod);
+    manifest_open(&m, dir, "mod samples");
+    for (s = 1; s <= 46; s++) {
+        char *ws = (char *)(uintptr_t)table[s];
+        uint32_t frames;
+        char *media, *data;
+        if (!ws) continue;
+        frames = *(uint32_t *)(ws + 0x4C);
+        media = *(char **)(ws + 0x50);
+        data = *(char **)(media + 0x0C);
+        snprintf(name, sizeof name, "slot%02d", s);
+        snprintf(note, sizeof note, "CWaveSample %s", ws + 8);
+        manifest_item(&m, dir, name, (uint32_t)(uintptr_t)ws, data, 2 * frames, "i16", "null", note);
+    }
+    manifest_close(&m);
+    fprintf(stderr, "rbhost: samples of mod %u written to %s\n", mod, dir);
+}
+
 /* ------------------------------------------------------------------ main */
 
 static void usage(void) {
     fprintf(stderr,
             "usage: rbhost [--dll PATH] [--idle-blocks N] [--post-stop-blocks M] [--drum-counters A,B,C,D]\n"
             "              [--startup-sound] [--first-chunk-drain] [--no-untitled] [--idle-fpu-cw HEX]\n"
-            "              [--dump-tables DIR] [--dump-state DIR] [--dump-float DIR] [-v]\n"
+            "              [--dump-tables DIR] [--dump-state DIR] [--dump-float DIR]\n"
+            "              [--mod-msg FILE] [--dump-samples DIR] [-v]\n"
             "              SONG.rbhm OUT.wav\n");
     exit(2);
 }
@@ -465,6 +503,7 @@ static void usage(void) {
 int main(int argc, char **argv) {
     const char *dll_path = "C:\\ReBirth RB-338\\ReBirth.dll";
     const char *msg_path = NULL, *wav_path = NULL, *tables_dir = NULL, *state_dir = NULL, *float_dir = NULL;
+    const char *mod_msg_path = NULL, *samples_dir = NULL;
     FILE *float_out = NULL;
     long idle_blocks = 0, post_stop_blocks = 0;
     int drum[4], drum_set = 0, startup_sound = 0, first_chunk_drain = 0, untitled = 1, i;
@@ -494,6 +533,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--dump-tables") && i + 1 < argc) tables_dir = argv[++i];
         else if (!strcmp(a, "--dump-state") && i + 1 < argc) state_dir = argv[++i];
         else if (!strcmp(a, "--dump-float") && i + 1 < argc) float_dir = argv[++i];
+        else if (!strcmp(a, "--mod-msg") && i + 1 < argc) mod_msg_path = argv[++i];
+        else if (!strcmp(a, "--dump-samples") && i + 1 < argc) samples_dir = argv[++i];
         else if (!strcmp(a, "-v")) verbose = 1;
         else if (a[0] == '-') usage();
         else if (!msg_path) msg_path = a;
@@ -540,12 +581,32 @@ int main(int argc, char **argv) {
     m[0] = 50;
     send_msg(m, 1);
     expect(64, "msg 50");
-    /* The built-in mod (exe sub_41693C): top-level 56 {u16 id}, reply 'C'. */
-    m[0] = 56;
-    m[1] = mod >> 8;
-    m[2] = mod & 0xFF;
-    send_msg(m, 3);
-    expect(67, "msg 56");
+    if (mod_msg_path) {
+        /* A mod (exe sub_41693C -> sub_420568): top-level 55 {u16 id, file spec, key table, records},
+         * reply 'C'. The DLL checks the file spec's tag against its dword_10150388 (sub_1000C604). */
+        long msize;
+        unsigned char *mm = read_file(mod_msg_path, &msize);
+        uint32_t tag = *(uint32_t *)va(0x10150388);
+        if (msize != 1 + 0x2546 || mm[0] != 55) die("%s is not a message 55", mod_msg_path);
+        if (((uint32_t)mm[3] << 24 | (uint32_t)mm[4] << 16 | (uint32_t)mm[5] << 8 | mm[6]) != tag)
+            fprintf(stderr, "rbhost: warning: file spec tag differs from the DLL's 0x%08lx\n", (unsigned long)tag);
+        mod = mm[1] << 8 | mm[2];
+        m[1] = mm[1]; /* the mod id for msg 52 below, as the 56 branch leaves it */
+        m[2] = mm[2];
+        send_msg(mm, (int)msize);
+        expect(67, "msg 55");
+        fprintf(stderr, "rbhost: mod %u loaded from %s (DLL file spec tag 0x%08lx)\n", mod, mod_msg_path,
+                (unsigned long)tag);
+        if (samples_dir) dump_samples(samples_dir, mod);
+    } else {
+        /* The built-in mod (exe sub_41693C): top-level 56 {u16 id}, reply 'C'. */
+        m[0] = 56;
+        m[1] = mod >> 8;
+        m[2] = mod & 0xFF;
+        send_msg(m, 3);
+        expect(67, "msg 56");
+        if (samples_dir) dump_samples(samples_dir, mod);
+    }
     /* The app's "Untitled song", active before the song is opened. Activating the opened song then
      * calls slot 6 (note-off, silence, delay clear) on the untitled song's devices; with no song
      * active, sub_1001BDA4 would call it on the new song's own devices instead, which changes the

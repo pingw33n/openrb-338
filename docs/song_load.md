@@ -538,7 +538,14 @@ read from the system:
   parent window (`GetWindowLongA(hwnd, -8)`), by the module handle (`GetWindowLongA(hwnd, -6)`) and
   one fixed offset;
 - the code mixes in the same runtime values (`GetWindowThreadProcessId` on a handle, `GetParent`, the
-  PID), so each page holds constants that cancel them;
+  PID), so each page holds constants that cancel them. [C] task-030 checked one family on the real
+  `RB20FUL.DAT`: the parent-window page `unk_4DAD78` is read at
+  `256 + ((((GetWindowLongA(hwnd,-8)+1) & 0x3FFF) + 0x4000) << 11)`; for each of its 16384
+  candidates `k`, the word at +0xE0 (`dword_4DAE58`) gives `((g & 0xFFFFF000) >> 14) - k = 18` and
+  the word at +0x3AC (`dword_4DB124`) gives `((g & 0xFFFFF000) >> 12) - k = 8`. So the expression
+  `X = ((dword_4DAE58 & 0xFFFFF000) >> 14) - ((api + 1) & 0x3FFF)` is 18 in every untampered run
+  (the RBM key stride `X - 14 = 4`, the dist index `X / 18 = 1`, docs/rbm.md section 5.2;
+  reproduce with `tools/rbm.py check-dat RB20FUL.DAT`);
 - `sub_406A79` / `sub_4063DF` look for the CD (volume "ReBirth Win", `Rb20upd.dat` / `Rb20ful.dat`)
   and validate the file (magic 0x03E1F11E, the string `RB338V20`, major version 4). The strings are
   stored encoded: decode with `s[j] -= s[j+1]` from the end.

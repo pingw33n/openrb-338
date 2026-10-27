@@ -18,6 +18,12 @@ rbhost options passed through: --idle-blocks N, --post-stop-blocks M, --drum-cou
 --startup-sound, --first-chunk-drain, --dll PATH (remote), --dump-tables, --dump-state,
 --dump-float (download into OUTDIR/<stem>.tables/, OUTDIR/<stem>.state/ and
 OUTDIR/<stem>.float/), -v.
+
+Mods: --mod MOD.rbm --rb20ful RB20FUL.DAT [--mod-id N] uploads the mod to C:\\re\\rb\\rbhost\\<tag>.rbm
+with its message 55 (tools/rbm.py, key table from the local RB20FUL.DAT) and has rbhost load it
+instead of the built-in mod; --dump-samples downloads the DLL's loaded samples of the mod into
+OUTDIR/<stem>.samples/ (docs/rbm.md). The mod, the DAT and the dumps are Propellerhead material:
+keep OUTDIR out of the repository.
 """
 import argparse
 import json
@@ -31,6 +37,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, HERE)
 import rb_export  # noqa: E402
+import rbm  # noqa: E402
 import rbs  # noqa: E402
 import rbsmsg  # noqa: E402
 
@@ -81,6 +88,21 @@ def download_dir(client, remote, local):
         client.download(remote + "/" + name, os.path.join(local, name))
 
 
+def upload_mod(args, client, outdir):
+    """Upload the mod to C:\\re\\rb\\rbhost\\<tag>.rbm and its message 55 (tools/rbm.py, with the key
+    table from --rb20ful) next to it; return the message's remote path for rbhost --mod-msg."""
+    if not args.rb20ful:
+        raise Failure("--mod needs --rb20ful RB20FUL.DAT")
+    mod = rbm.read(args.mod)
+    msg = os.path.join(outdir, args.tag + ".rbmmsg")
+    with open(msg, "wb") as f:
+        f.write(rbm.mod_message(mod, rbm.key_table(mod, args.rb20ful), REMOTE_WIN + "\\%s.rbm" % args.tag,
+                                args.mod_id))
+    client.upload_if_changed(args.mod, "%s/%s.rbm" % (REMOTE_DIR, args.tag))
+    client.upload(msg, "%s/%s.rbmmsg" % (REMOTE_DIR, args.tag))
+    return REMOTE_WIN + "\\%s.rbmmsg" % args.tag
+
+
 def render(args, client, permits, outdir, exe_sha):
     results = []
     for song_path in args.songs:
@@ -117,8 +139,10 @@ def render(args, client, permits, outdir, exe_sha):
                     rargs.append("--" + opt.replace("_", "-"))
             if args.v:
                 rargs.append("-v")
+            if args.mod:
+                rargs += ["--mod-msg", upload_mod(args, client, outdir)]
             dumps = {}
-            for opt in ("tables", "state", "float"):
+            for opt in ("tables", "state", "float", "samples"):
                 if getattr(args, "dump_" + opt):
                     d = "%s_%s" % (args.tag, opt)
                     try:
@@ -186,6 +210,10 @@ def main(argv):
     ap.add_argument("--dump-tables", action="store_true")
     ap.add_argument("--dump-state", action="store_true")
     ap.add_argument("--dump-float", action="store_true", help="the export's float output, before int16")
+    ap.add_argument("--mod", metavar="MOD.rbm", help="load this mod (message 55) instead of the built-in one")
+    ap.add_argument("--rb20ful", metavar="RB20FUL.DAT", help="the CD's key file, for --mod (local path)")
+    ap.add_argument("--mod-id", type=int, default=412, help="the mod id of --mod (default 412)")
+    ap.add_argument("--dump-samples", action="store_true", help="the mod's loaded samples (the DLL's table)")
     ap.add_argument("-v", action="store_true")
     args = ap.parse_args(argv)
     outdir = os.path.abspath(args.outdir)

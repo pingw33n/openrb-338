@@ -30,7 +30,15 @@ tools/rbhost/run.py --runs 2 -o OUT SONG.rbs                             # OUT/S
 tools/rbhost/run.py --dump-tables --dump-state -o OUT SONG.rbs           # OUT/SONG.tables/, OUT/SONG.state/
 tools/rbhost/run.py --dump-float -o OUT SONG.rbs                         # OUT/SONG.float/float.bin
 tools/rbhost/run.py --idle-sweep 6400:9600:16 --match APP.wav -o OUT SONG.rbs   # fit N to an app export
+tools/rbhost/run.py --mod MOD.rbm --rb20ful RB20FUL.DAT --dump-samples -o OUT SONG.rbs  # with a mod
 ```
+
+`--mod` (task-030, `docs/rbm.md`) uploads the mod to `C:\re\rb\rbhost\<tag>.rbm` with its message
+55, built by `tools/rbm.py` with the key table from the local `RB20FUL.DAT`; rbhost sends it instead
+of message 56 {411} and creates the songs with the mod's id (`--mod-id`, default 412).
+`--dump-samples` writes the mod's 46 loaded samples from the DLL's sample table to
+`OUT/SONG.samples/slotNN.bin` (i16, the CWaveSample buffers). Mods, `RB20FUL.DAT` and the dumps are
+Propellerhead material: keep OUT outside the repository.
 
 `run.py` holds one permit of `redc-win-run` (rbhost takes neither the keyboard nor the screen) and
 stops only the processes it started. The sidecar JSON has the arguments, rbhost's log, the hashes and
