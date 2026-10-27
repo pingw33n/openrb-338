@@ -333,20 +333,26 @@ fn instrument_legends_select_and_drag_keeps_selecting() {
 #[test]
 fn space_toggles_play_and_arrows_move_the_focus() {
     let mut h = Harness::new();
-    let key = |k| Event::Key {
+    // (a key goes down and up: egui marks a second press of a key still down as a repeat,
+    // which the original ignores)
+    let key = |k, pressed| Event::Key {
         key: k,
         physical_key: None,
-        pressed: true,
+        pressed,
         repeat: false,
         modifiers: Modifiers::NONE,
     };
-    h.frame(vec![key(egui::Key::Space)]);
+    let tap = |h: &mut Harness, k| {
+        h.frame(vec![key(k, true)]);
+        h.frame(vec![key(k, false)]);
+    };
+    tap(&mut h, egui::Key::Space);
     assert!(h.app.panel.transport.playing);
-    h.frame(vec![key(egui::Key::Space)]);
+    tap(&mut h, egui::Key::Space);
     assert!(!h.app.panel.transport.playing);
-    h.frame(vec![key(egui::Key::ArrowUp)]);
+    tap(&mut h, egui::Key::ArrowUp);
     assert_eq!(h.app.panel.focus, 3);
-    h.frame(vec![key(egui::Key::ArrowDown)]);
+    tap(&mut h, egui::Key::ArrowDown);
     assert_eq!(h.app.panel.focus, 0);
 }
 

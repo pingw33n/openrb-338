@@ -697,6 +697,43 @@ the row-to-section assignment is the manual's (page 224), the handler hides whic
   (`+1645`, `sub_4430DC` -> `sub_44305C(i, step, 1)`): tap recording. Shift+Tab deletion for the
   drums is in the manual (page 33) [G: not found in the drum handler].
 
+**How rb maps the keys (task-070, decision task-054).** `crates/rb-ui/src/keys.rs` maps a key by
+its physical US position (egui `Event::Key::physical_key`, the scancode winit reports), whatever
+the layout: the Note/Pause and AC key is the key right of `0` (`-` on a US keyboard) and `=` is
+an alias, as the manual pictures. A key event without a `physical_key` (a platform that does not
+report it, or a scancode egui does not know) falls back to its logical key, which then follows
+the layout. Auto-repeat events and keys with Ctrl/Cmd are ignored; a key press acts like a mouse
+down on its button (`App::keyboard`), the button shows pressed while the key is down, and a held
+tempo, bar, rewind or fast forward key repeats on the mouse's schedule. The panel takes no key
+while a browser is open. Ctrl+F / Ctrl+G set `App::key_mode` (default Program Synth).
+
+egui 0.37 cannot tell numpad keys from the keys they share a name with (egui-winit's
+`key_from_key_code`: `Numpad0..9` = `Num0..9`, `NumpadEnter` = `Enter`, `NumpadSubtract` =
+`Minus`, `NumpadDivide` = `Slash`; `NumpadAdd` = `Plus` is distinct; `NumpadMultiply` gives no key
+at all, so Insert is the only record key). What works everywhere: Space, Insert, numpad `+`. The
+original keeps the others on separate codes; rb resolves them by mode and focus (`keys::map`):
+- digits `1`..`8` are pattern keys in Select Patterns mode (so numpad 1 2 4 5 7 8 are not
+  transport keys there; numpad 0 still stops); in Program Synth mode digits are the numpad's;
+- Enter is the 303's Step when a 303 has the focus in Program Synth mode, else Play;
+- `/` is the 303's high C there, else the loop switch;
+- `-` is Note/Pause (303) or AC (drums) in Program Synth mode, else tempo down. So in Program
+  Synth mode tempo down has no key.
+- `=` with Shift (`+` on a US keyboard) is tempo up, not the Note/Pause/AC alias.
+
+**Where rb differs from the original here.** In Program Synth mode (the default) the main-row
+digits `0 1 2 4 5 7 8` act as transport keys, Enter as Play outside a 303 and `/` as loop,
+whereas the original's main-row digits do nothing in that mode; the pattern keys work only in
+Select Patterns mode. This is a trade-off forced by egui 0.37 (no numpad identity).
+
+**PgUp / PgDn are not wired.** rb's panel is a fixed, letterboxed 624 x 510 image with no
+scrolling rack, so there is nothing to scroll (the open [G] in section 15 stays open).
+
+Numpad 1 / 2 locate to the loop start / end [G: the handler was not read; position clamped to
+the last bar start, record untouched]. Tab / Shift+Tab set the focused 303's playing step (live
+byte 9) to note / rest; a drum tap key sets that instrument on the playing step (909 value 1, AC
+row 2) without selecting it [G]; the drums' Shift+Tab deletion is not done (which instrument it
+clears is unknown, section 15).
+
 ## 11. Pattern mode, song mode, song position and loop
 
 - **Pattern mode** (global byte 0 = 0): the selected patterns loop, every control stays where it
@@ -811,8 +848,9 @@ read, and what it leaves out.
   signal shows. The compressor's gain reduction (live byte 3, `min(G*18, 127)`) lights the centre
   LED ("0") and up to four LEDs to its left, the first two amber and the others red. Neither scale
   was read in the original (`sub_424220`, `sub_424A7E`; section 15).
-- **Not done.** The logo click (msg 58), the song's own mod (the built-in kit plays every song;
-  task-047), and the computer keyboard beyond Space and the Up/Down focus keys (task-070).
+- **Not done.** The logo click (msg 58), and the song's own mod (the built-in kit plays every song;
+  task-047). The computer keyboard is done (task-070, section 10) except PgUp/PgDn (no scrolling rack)
+  and the drums' Shift+Tab.
 
 ## 17. The in-app file browser (task-046)
 

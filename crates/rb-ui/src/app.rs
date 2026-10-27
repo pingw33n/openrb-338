@@ -20,6 +20,7 @@ use eframe::egui::{
 use crate::art::{self, KnobDesign};
 use crate::behavior::{self, Mods};
 use crate::browser::{Browser, Mode, Poll};
+use crate::keys::{self, Action, KeyMode};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
 use crate::model::Panel;
@@ -73,6 +74,16 @@ struct Gesture {
     last_step: i32,
 }
 
+/// A computer key that is down: it acts as a mouse press on its button.
+struct Hold {
+    /// The physical key (`keys::position`).
+    key: Key,
+    /// The layout id of the button shown pressed.
+    id: Option<String>,
+    /// A repeat or wind button: its id, when the key went down, the steps taken.
+    arrow: Option<(&'static str, f64, u32)>,
+}
+
 /// Where to save a screenshot and quit (`--screenshot`).
 pub struct Shot {
     pub path: PathBuf,
@@ -106,6 +117,9 @@ pub struct App {
     pub choice: Option<(Mode, PathBuf)>,
     /// A message shown at the bottom of the window (a song that could not be opened).
     pub notice: Option<String>,
+    /// The Options menu's keyboard mode (Ctrl+F / Ctrl+G; the menu of task-047 shows it).
+    pub key_mode: KeyMode,
+    holds: Vec<Hold>,
     ctls: Vec<Ctl>,
     shot: Option<Shot>,
 }
@@ -120,6 +134,8 @@ impl App {
             browser: None,
             choice: None,
             notice: None,
+            key_mode: KeyMode::default(),
+            holds: Vec::new(),
             ctls: layout::controls(),
             shot,
         }
@@ -237,9 +253,20 @@ impl App {
             if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::O)) {
                 self.open_browser(Mode::OpenSong);
             } else {
+                // Ctrl+F / Ctrl+G: the Options menu's two keyboard modes.
+                ui.input_mut(|i| {
+                    if i.consume_key(egui::Modifiers::COMMAND, Key::F) {
+                        self.key_mode = KeyMode::Synth;
+                    }
+                    if i.consume_key(egui::Modifiers::COMMAND, Key::G) {
+                        self.key_mode = KeyMode::Patterns;
+                    }
+                });
                 self.keyboard(ui);
                 self.focus_click(ui, &view);
             }
+        } else {
+            self.holds.clear();
         }
 
         for (name, x, y) in layout::backgrounds() {
@@ -273,29 +300,94 @@ impl App {
         self.browse(&ui.ctx().clone());
     }
 
+    /// The computer keyboard (`keys`): a key press acts like a mouse press on its button, a
+    /// held repeat button keeps repeating, and the button shows pressed while the key is down.
+    /// Auto-repeat events and keys with Ctrl (the menu's shortcuts) are ignored, as the
+    /// original's handlers do.
     fn keyboard(&mut self, ui: &Ui) {
-        let (space, up, down) = ui.input(|i| {
-            (
-                i.key_pressed(Key::Space),
-                i.key_pressed(Key::ArrowUp),
-                i.key_pressed(Key::ArrowDown),
-            )
-        });
-        if space {
-            let id = if self.panel.transport.playing {
-                "transport.stop"
-            } else {
-                "transport.play"
+        let (events, now, focused) = ui.input(|i| (i.events.clone(), i.time, i.focused));
+        if !focused {
+            self.holds.clear();
+        }
+        for ev in events {
+            let egui::Event::Key {
+                key,
+                physical_key,
+                pressed,
+                repeat,
+                modifiers,
+            } = ev
+            else {
+                continue;
             };
-            self.panel.press(id, 0.0);
+            let k = keys::position(key, physical_key);
+            if !pressed {
+                self.holds.retain(|h| h.key != k);
+                continue;
+            }
+            if repeat || modifiers.command || modifiers.ctrl {
+                continue;
+            }
+            if let Some(a) = keys::map(k, modifiers.shift, self.key_mode, self.panel.focus) {
+                self.act(k, a, now);
+            }
         }
-        // Up from row 1 goes to row 4 and Down from row 4 to row 1 (`sub_42D1D3`).
-        if up {
-            self.panel.focus = (self.panel.focus + 3) % 4;
+        // The held repeat buttons: the held-button schedule of the mouse.
+        let mut holds = std::mem::take(&mut self.holds);
+        for h in &mut holds {
+            if let Some((id, t0, taken)) = &mut h.arrow {
+                let total = 1 + behavior::repeat_extra_steps(((now - *t0) * 1000.0) as u32);
+                while *taken < total {
+                    self.panel.arrow(id);
+                    *taken += 1;
+                }
+                ui.ctx().request_repaint_after(Duration::from_millis(16));
+            }
         }
-        if down {
-            self.panel.focus = (self.panel.focus + 1) % 4;
+        self.holds = holds;
+    }
+
+    fn act(&mut self, k: Key, action: Action, now: f64) {
+        // (a press without the release before it, e.g. after the window lost the focus)
+        self.holds.retain(|h| h.key != k);
+        let mut hold = Hold {
+            key: k,
+            id: None,
+            arrow: None,
+        };
+        match action {
+            Action::PlayStop => {
+                let id = if self.panel.transport.playing {
+                    "transport.stop"
+                } else {
+                    "transport.play"
+                };
+                self.panel.press(id, now);
+                hold.id = Some(id.into());
+            }
+            Action::Press(id) => {
+                self.panel.press(&id, now);
+                hold.id = Some(id);
+            }
+            Action::Arrow(id) => {
+                self.panel.arrow(id);
+                hold.id = Some(id.into());
+                hold.arrow = Some((id, now, 1));
+            }
+            Action::Locate(end) => self.panel.locate_loop(end),
+            // Up from row 1 goes to row 4 and Down from row 4 to row 1 (`sub_42D1D3`).
+            Action::Focus(d) => {
+                self.panel.focus = (self.panel.focus as i32 + d).rem_euclid(4) as usize
+            }
+            Action::Tap303(rest) => self.panel.tap_303(self.panel.focus, rest),
+            Action::TapDrum(i) => self.panel.tap_drum(self.panel.focus == 2, i),
         }
+        self.holds.push(hold);
+    }
+
+    /// Whether a computer key that is down holds the button `id` pressed.
+    pub fn key_held(&self, id: &str) -> bool {
+        self.holds.iter().any(|h| h.id.as_deref() == Some(id))
     }
 
     /// A click anywhere inside a row gives the row the focus (`sub_42ADBB`).
@@ -334,7 +426,7 @@ impl App {
             }
             kind => {
                 let r = self.hit(ui, c, rect);
-                let down = r.is_pointer_button_down_on();
+                let down = r.is_pointer_button_down_on() || self.key_held(&c.id);
                 match kind {
                     "repeat" | "wind" => self.repeat(ui, c, &r),
                     "switch" | "toggle" | "radio" | "trigger" | "grid" => {

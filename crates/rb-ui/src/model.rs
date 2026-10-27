@@ -272,6 +272,9 @@ pub struct Panel {
     /// The playing step (the running light), from the engine; `None` when stopped.
     pub playing_step808: Option<usize>,
     pub playing_step909: Option<usize>,
+    /// The playing step of each 303 (live byte 9); `None` when stopped. Tab and Shift+Tab
+    /// edit it (docs/ui_spec.md section 10).
+    pub playing_step303: [Option<usize>; 2],
     /// The global PCF and Comp routing ids: 0 none, PCF `c + 1`, Comp `c + 2` (master 1).
     pub pcf_id: u8,
     pub comp_id: u8,
@@ -319,6 +322,7 @@ impl Panel {
             steps909: [[0; 16]; 12],
             playing_step808: None,
             playing_step909: None,
+            playing_step303: [None; 2],
             pcf_id: 0,
             comp_id: 0,
             meters: HashMap::new(),
@@ -844,7 +848,10 @@ impl Panel {
 
     /// Sets a TR-808 step of the selected instrument.
     pub fn set_step808(&mut self, step: usize, on: bool) {
-        let i = self.inst808;
+        self.put_step808(self.inst808, step, on);
+    }
+
+    fn put_step808(&mut self, i: usize, step: usize, on: bool) {
         if self.steps808[i][step] != on {
             self.steps808[i][step] = on;
             self.emit(Event::Step808 {
@@ -857,7 +864,10 @@ impl Panel {
 
     /// Sets a TR-909 step of the selected instrument; a hi-hat step clears the other hi-hat.
     pub fn set_step909(&mut self, step: usize, value: u8) {
-        let i = self.inst909;
+        self.put_step909(self.inst909, step, value);
+    }
+
+    fn put_step909(&mut self, i: usize, step: usize, value: u8) {
         if self.steps909[i][step] == value {
             return;
         }
@@ -888,6 +898,51 @@ impl Panel {
             self.flam_button,
             m,
         )
+    }
+
+    // ---- the computer keyboard's own actions (docs/ui_spec.md section 10) ---------------------
+
+    /// Numpad 1 / 2: locates to the loop start / the loop end (clamped to the last bar start)
+    /// [G: the details; the program's handler was not read].
+    pub fn locate_loop(&mut self, end: bool) {
+        let t = &mut self.transport;
+        t.position = (if end { t.loop_end } else { t.loop_start }).clamp(0, MAX_POS);
+        let position = t.position;
+        self.set_event("transport.position", position);
+    }
+
+    /// Tab / Shift+Tab on the focused 303: the step that is playing becomes a note
+    /// (`rest` false) or a rest (`rest` true), in the pattern it plays. Nothing when the 303
+    /// does not play.
+    pub fn tap_303(&mut self, k: usize, rest: bool) {
+        let Some(step) = self.playing_step303[k] else {
+            return;
+        };
+        let pattern = self.rows[k].pattern;
+        let st = &mut self.synth[k].patterns[pattern as usize][step];
+        if st.rest != rest {
+            st.rest = rest;
+            self.emit(Event::Step303 {
+                synth: k,
+                pattern,
+                step,
+                field: 5,
+                value: rest as u8,
+            });
+        }
+    }
+
+    /// A drum tap key: instrument `i` (0 = AC) of the 808 (`is808`) or the 909 is set on the
+    /// step that is playing (the 909 with value 1, the AC row with 2), whatever the selected
+    /// instrument is. Nothing when the machine does not play.
+    pub fn tap_drum(&mut self, is808: bool, i: usize) {
+        if is808 {
+            if let Some(step) = self.playing_step808 {
+                self.put_step808(i, step, true);
+            }
+        } else if let Some(step) = self.playing_step909 {
+            self.put_step909(i, step, if i == 0 { 2 } else { 1 });
+        }
     }
 
     // ---- what the displays show ---------------------------------------------------------

@@ -714,6 +714,7 @@ impl Link {
                 .filter(|&b| s.playing && b < 16)
                 .map(|b| b as usize)
         };
+        panel.playing_step303 = [step(Device::Tb303_1, 9), step(Device::Tb303_2, 9)];
         panel.playing_step808 = step(Device::Tr808, 29);
         panel.playing_step909 = step(Device::Tr909, 30);
 
