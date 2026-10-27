@@ -32,6 +32,19 @@ ITEMS = [
      "PCF pattern resolutions: 8, 16 or 32 steps per bar."),
     ("PCF_STEPS", 0x100333F0, "u8", "B", [55, 32],
      "PCF pattern steps: 0 = no trigger, otherwise the velocity (odd = slow attack)."),
+    ("PCF_DATA", 0x10033310, "u8", "B", [0x10034400 - 0x10033310],
+     "The PCF pattern data as the block 0x100166D0 addresses it: the lengths (u16 at `+0`), the\n"
+     "/// resolutions (u16 at `+0x70`) and the steps (`+0xE0`, 32 per pattern), then what follows them\n"
+     "/// up to the end of `.data`'s file part (the `CPCFInsert` vtable 0x10033AD4 and later data).\n"
+     "/// The block indexes all three with the raw wave byte and the DLL does not check it, so a wave\n"
+     "/// above 54 reads past the 55 patterns into these bytes; every read of a wave 0..127 stays\n"
+     "/// inside them (the 17 waves of length 0, 55, 111 and 113..127, fault before they read a step).\n"
+     "///\n"
+     "/// The bytes are the file's, so they hold what the DLL has when it loads at its preferred base\n"
+     "/// 0x10000000, as it does in the app and in rbhost (decided by the user, 2026-10-27, task-027):\n"
+     "/// 0x10033AD0..0x10034400 holds 171 base-relocated pointer words (the `CPCFInsert` vtable at\n"
+     "/// 0x10033AD4 and later), and 57 waves of 55..127 have one among their 32 step bytes (35 of\n"
+     "/// them within their pattern length), so their velocities assume that base."),
     ("TR808_SD_SAMPLE", 0x10034090, "i16", "h", [5],
      "TR-808 snare: the device's sample slot of tone sample A, indexed by `(tune*5) >> 7`\n"
      "/// (trigger at 0x1002A268)."),

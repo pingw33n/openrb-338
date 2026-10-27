@@ -73,13 +73,17 @@ pub fn frame_count(r: ExportRange) -> usize {
 /// Renders `idle_blocks` 64-frame blocks with the transport stopped: `idle_blocks / 16` calls of
 /// 1024 frames, then one call for the remainder (rbhost's `render_idle`).
 pub fn render_idle(engine: &mut Engine, idle_blocks: u32) {
-    let mut buf = vec![0i16; 2 * REALTIME_FRAMES];
+    render_idle_into(engine, idle_blocks, &mut vec![0i16; 2 * REALTIME_FRAMES]);
+}
+
+/// [`render_idle`] into the caller's buffer (at least 1024 frames).
+fn render_idle_into(engine: &mut Engine, idle_blocks: u32, buf: &mut [i16]) {
     for _ in 0..idle_blocks / 16 {
-        engine.render(&mut buf, REALTIME_FRAMES);
+        engine.render(buf, REALTIME_FRAMES);
     }
     let rest = (idle_blocks % 16) as usize * BLOCK;
     if rest > 0 {
-        engine.render(&mut buf, rest);
+        engine.render(buf, rest);
     }
 }
 
@@ -89,15 +93,22 @@ pub fn render_idle(engine: &mut Engine, idle_blocks: u32) {
 /// [`chunk_sizes`], then stop, msg 33 and a 0-frame call (which drops the last chunk's leftover).
 /// Each message is applied by a 0-frame call that renders nothing, so the messages are applied
 /// here directly. Returns interleaved int16 stereo.
+///
+/// One int16 buffer, zeroed once, serves the idle calls and every chunk, as rbhost's static
+/// `chunk_buf` does; the app's export loop `sub_4280D5` likewise renders every chunk into the
+/// one buffer `sub_427988` allocates (`operator new(0x2000)` at 0x427C2F, not cleared; the
+/// callback at 0x4281C3, the write at 0x4281F2). A render call that ends in a
+/// [`super::Fault`] writes nothing ([`Engine::fault`]), so its chunk repeats what the buffer
+/// held: the previous chunk's samples, or the idle calls', or zeros.
 pub fn export(engine: &mut Engine, range: ExportRange, idle_blocks: u32) -> Vec<i16> {
-    render_idle(engine, idle_blocks);
+    let mut buf = vec![0i16; 2 * CHUNK_FRAMES as usize];
+    render_idle_into(engine, idle_blocks, &mut buf);
     engine.stop();
     engine.render(&mut [], 0);
     engine.locate(range.loop_start);
     engine.play();
     engine.render(&mut [], 0);
     let mut out = Vec::with_capacity(2 * frame_count(range));
-    let mut buf = vec![0i16; 2 * CHUNK_FRAMES as usize];
     for n in chunk_sizes(range) {
         // rbhost writes only positive counts; the app would pass a negative byte count to its
         // writer, which never happens for a loop of positive length

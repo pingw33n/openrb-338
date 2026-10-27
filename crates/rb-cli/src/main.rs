@@ -14,7 +14,7 @@ use encode::Format;
 use rb_engine::frame::export;
 use rb_engine::frame::{Devices, Engine};
 use rb_engine::samples::SampleSet;
-use rb_engine::song::{DrumPattern, MAX_TICK, Mixer, Song, TICKS_PER_BAR};
+use rb_engine::song::{DrumPattern, MAX_TICK, Song, TICKS_PER_BAR};
 use rb_engine::tables::Tables;
 
 #[derive(Parser)]
@@ -227,25 +227,6 @@ fn load_samples(explicit: Option<&Path>, drums: &[&str]) -> Result<SampleSet, Fa
     })
 }
 
-/// The devices the song may route that the engine does not implement yet (the PCF and the
-/// compressor, task-027): a non-zero PCF or compressor id in the mixer chunk or in any
-/// mixer-track event of that id. An insert that is never routed is never heard, whether its
-/// device is enabled or not.
-fn unimplemented_devices(song: &Song) -> Vec<&'static str> {
-    let mixer_track = &song.tracks[rb_engine::song::Device::Mixer.id() as usize];
-    let routed = |chunk: u8, ctrl: u8| {
-        chunk != 0 || mixer_track.iter().any(|e| e.ctrl == ctrl && e.value != 0)
-    };
-    let mut v = Vec::new();
-    if routed(song.mixer.pcf_id, Mixer::CTRL_PCF_ID) {
-        v.push("PCF");
-    }
-    if routed(song.mixer.comp_id, Mixer::CTRL_COMP_ID) {
-        v.push("compressor");
-    }
-    v
-}
-
 fn render(
     input: &Path,
     output: &Path,
@@ -313,16 +294,17 @@ fn render(
     } else {
         Some(Arc::new(load_samples(rebirth_dll, &drums)?))
     };
-    let missing = unimplemented_devices(&song);
-    if !missing.is_empty() {
-        eprintln!(
-            "rb: warning: not implemented yet, you will not hear them: {}",
-            missing.join(", ")
-        );
-    }
-
     let mut engine = Engine::new(Arc::new(Tables::new()), Devices::implemented(samples));
     let samples = export::export_song(&mut engine, &song, idle_blocks);
+    // A render call that faults in the original (the PCF's divide by zero) writes nothing; the
+    // output is what the original writes, but say why it is silent or repeats itself.
+    if let Some(f) = engine.fault() {
+        eprintln!(
+            "rb: warning: the original produces silence here: {}; {} render calls faulted, \
+             the first in block {}, and each left its output unwritten",
+            f.first, f.calls, f.block
+        );
+    }
     let bytes = encode::encode(format, &samples, quality)
         .map_err(|e| fail(1, format!("encoding failed: {e}")))?;
     std::fs::write(output, bytes)

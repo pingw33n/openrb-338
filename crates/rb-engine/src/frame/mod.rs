@@ -81,6 +81,45 @@ pub struct BlockContext<'a> {
     pub meter_index: usize,
     /// The song's tempo, BPM*1000 (`sub_1001FCF0`), which the delay's update reads.
     pub tempo: u32,
+    /// The tick of the song's position (`sub_1001F870`), already advanced by this block's
+    /// sequencer step; the PCF's pattern step follows it (0x10016756).
+    pub tick: i32,
+}
+
+/// A block aborted by a CPU exception in the original: the PCF's division by a zero pattern
+/// length (0x10016811). `SafeSoundCallback` (0x1001AE40) runs the render inside a C++
+/// `try` with a `catch (...)` (FuncInfo 0x10152AD8, handler 0x1001B055), which catches the
+/// divide error (the all-zero references of `pcf_*_wave127` show it); it resumes at 0x1001B03D,
+/// past both the render and the zero fill of the buffer, so the call returns with the int16
+/// buffer as the caller left it and with the song's state as far as the block got.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fault {
+    /// The PCF's step `q % len` (`idiv` at 0x10016811) with a pattern length of 0: the 17
+    /// waves 55, 111 and 113..127 read one past the 55 patterns ([`crate::pcf::pattern`]).
+    PcfZeroLength { wave: u8 },
+}
+
+impl std::fmt::Display for Fault {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Fault::PcfZeroLength { wave } => write!(
+                f,
+                "the PCF's wave {wave} has pattern length 0 and divides by zero (0x10016811)"
+            ),
+        }
+    }
+}
+
+/// The faults of an [`Engine`]'s render calls: the first one and how many calls faulted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FaultRecord {
+    /// The first fault.
+    pub first: Fault,
+    /// The block it ended, counted from 0 over every block the engine started
+    /// ([`Frame::blocks`]).
+    pub block: u64,
+    /// The render calls that faulted (each left its int16 buffer unwritten).
+    pub calls: u64,
 }
 
 /// The device vtable slots that the sequencer ([`crate::seq`]) and the song messages call
@@ -146,6 +185,11 @@ pub trait InsertEffect: SongDevice {
     fn process_stereo(&mut self, _l: &mut Block, _r: &mut Block, _ctx: &BlockContext) {}
     /// Slot 16 (0x100130B2): the parameter update, run by every mixer update.
     fn update(&mut self, _ctx: &BlockContext) {}
+    /// Not a slot: the fault of the last [`InsertEffect::process`], if it faulted; reading it
+    /// clears it. Only the PCF faults.
+    fn faulted(&mut self) -> Option<Fault> {
+        None
+    }
 }
 
 /// The send effect (the delay).
@@ -186,17 +230,19 @@ impl Devices {
         }
     }
 
-    /// The devices implemented so far, placeholders for the rest: the two TB-303s
-    /// ([`crate::tb303::Tb303`]), the distortion ([`crate::dist::Distortion`]), the delay
-    /// ([`crate::delay::Delay`]) and, given the drum samples, the TR-808
-    /// ([`crate::tr808::Tr808`]) and the TR-909 ([`crate::tr909::Tr909`]); without samples
-    /// silent drum machines (exact for a song whose drum machines play no step); bypassing
-    /// PCF and compressor.
+    /// The engine's devices: the two TB-303s ([`crate::tb303::Tb303`]), the distortion
+    /// ([`crate::dist::Distortion`]), the PCF ([`crate::pcf::Pcf`]), the compressor
+    /// ([`crate::comp::Compressor`]), the delay ([`crate::delay::Delay`]) and, given the drum
+    /// samples, the TR-808 ([`crate::tr808::Tr808`]) and the TR-909 ([`crate::tr909::Tr909`]);
+    /// without samples silent drum machines (exact for a song whose drum machines play no
+    /// step).
     pub fn implemented(samples: Option<Arc<SampleSet>>) -> Self {
         let mut d = Self::placeholders();
         d.channels[0] = Box::new(crate::tb303::Tb303::new());
         d.channels[1] = Box::new(crate::tb303::Tb303::new());
         d.dist = Box::new(crate::dist::Distortion::new());
+        d.pcf = Box::new(crate::pcf::Pcf::new());
+        d.comp = Box::new(crate::comp::Compressor::new());
         d.delay = Box::new(crate::delay::Delay::new(d.process.clone()));
         if let Some(s) = samples {
             d.channels[2] = Box::new(crate::tr808::Tr808::new(s.clone(), d.process.clone()));
@@ -556,6 +602,8 @@ pub struct Frame {
     tables: Arc<Tables>,
     /// `unk_1010012C`: the channel bus every device renders into in turn (a process global).
     bus: Block,
+    /// Not in the original: the blocks started so far, for [`FaultRecord::block`].
+    pub blocks: u64,
 }
 
 fn st(x: f64) -> f32 {
@@ -586,6 +634,7 @@ impl Frame {
             seq: Sequencer::default(),
             tables,
             bus: [0.0; BLOCK],
+            blocks: 0,
         }
     }
 
@@ -602,6 +651,7 @@ impl Frame {
             tables: &self.tables,
             meter_index: self.state.meter_index as usize,
             tempo: self.seq.globals.tempo,
+            tick: self.seq.tick_pos(),
         };
         for (c, ch) in self.state.channels.iter_mut().enumerate() {
             let cp = p.channels[c];
@@ -651,8 +701,11 @@ impl Frame {
         }
     }
 
-    /// The mixer block `sub_10013444`: one block into the master buses `l` and `r`.
-    pub fn block(&mut self, l: &mut Block, r: &mut Block) {
+    /// The mixer block `sub_10013444`: one block into the master buses `l` and `r`. A
+    /// [`Fault`] ends it where the original's exception does, right after the faulting insert:
+    /// the rest of the block (later channels, the send, the master) does not run.
+    pub fn block(&mut self, l: &mut Block, r: &mut Block) -> Result<(), Fault> {
+        self.blocks += 1;
         if self.state.counter & (UPDATE_PERIOD - 1) == 0 {
             self.mixer_update();
         }
@@ -667,18 +720,23 @@ impl Frame {
             tables: &self.tables,
             meter_index: mi,
             tempo: self.seq.globals.tempo,
+            tick: self.seq.tick_pos(),
         };
         let bus = &mut self.bus;
         for (c, ch) in self.state.channels.iter_mut().enumerate() {
             self.devices.channels[c].process(bus, &ctx);
-            if ch.routing.dist {
-                self.devices.dist.process(bus, &ctx);
-            }
-            if ch.routing.pcf {
-                self.devices.pcf.process(bus, &ctx);
-            }
-            if ch.routing.comp {
-                self.devices.comp.process(bus, &ctx);
+            let inserts = [
+                (ch.routing.dist, &mut self.devices.dist),
+                (ch.routing.pcf, &mut self.devices.pcf),
+                (ch.routing.comp, &mut self.devices.comp),
+            ];
+            for (routed, ins) in inserts {
+                if routed {
+                    ins.process(bus, &ctx);
+                    if let Some(f) = ins.faulted() {
+                        return Err(f);
+                    }
+                }
             }
             // 0x100135FA: the channel's peak meter
             let v = abs_bits(bus[mi]);
@@ -731,6 +789,7 @@ impl Frame {
                 self.state.master_peak[k] = v;
             }
         }
+        Ok(())
     }
 }
 
@@ -765,6 +824,8 @@ pub struct Engine {
     pub output: OutputState,
     /// `unk_100E012C`, `unk_100F012C`: the float output of the current call.
     out: [Box<[f32; MAX_FRAMES]>; 2],
+    /// Not in the original: the render calls that ended in a [`Fault`].
+    fault: Option<FaultRecord>,
 }
 
 fn zero_buf() -> Box<[f32; MAX_FRAMES]> {
@@ -808,7 +869,14 @@ impl Engine {
             frame,
             output: state.output,
             out: [zero_buf(), zero_buf()],
+            fault: None,
         }
+    }
+
+    /// The faults of the render calls so far: the first, and how many calls faulted. A faulting
+    /// call leaves its int16 buffer as the caller had it, as the original does.
+    pub fn fault(&self) -> Option<&FaultRecord> {
+        self.fault.as_ref()
     }
 
     /// The song load's messages (`docs/song_load.md` section 2, steps 5 and 6), in order: msg
@@ -926,17 +994,33 @@ impl Engine {
             rem -= pos as i32;
         }
         while rem > 0 {
-            if rem > 63 {
+            let whole = rem > 63;
+            let done = if whole {
                 self.frame
-                    .block(block_mut(&mut ol[..], pos), block_mut(&mut or[..], pos));
-                pos += BLOCK;
-                rem -= BLOCK as i32;
+                    .block(block_mut(&mut ol[..], pos), block_mut(&mut or[..], pos))
             } else {
                 // 0x10013BAA: the partial block is rendered whole into the leftover block
                 let [ll, lr] = &mut self.output.leftover;
-                self.frame.block(ll, lr);
+                self.frame.block(ll, lr)
+            };
+            if let Err(f) = done {
+                // a fault ([`Fault`]): the call ends here, before the leftover position is
+                // stored (0x10013BBA) and before the int16 conversion, so `buf` keeps what the
+                // caller had in it
+                let block = self.frame.blocks - 1;
+                let r = self.fault.get_or_insert(FaultRecord {
+                    first: f,
+                    block,
+                    calls: 0,
+                });
+                r.calls += 1;
+                return;
+            }
+            if !whole {
                 break;
             }
+            pos += BLOCK;
+            rem -= BLOCK as i32;
         }
         self.output.leftover_pos = rem;
         if rem > 0 {

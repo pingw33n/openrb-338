@@ -6,6 +6,7 @@ fn ctx(t: &Tables) -> BlockContext<'_> {
         tables: t,
         meter_index: 0,
         tempo: 120_000,
+        tick: 0,
     }
 }
 

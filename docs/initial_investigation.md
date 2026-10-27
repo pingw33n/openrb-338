@@ -1004,6 +1004,71 @@ w = 0.0628 (static init 0x10017840). It starts at 0.
   LP: `c2 = ((c1 + (1-c0))*2f) / ((D'+1f)*0.8)`. BP: `c2 = ((cos(W*π)*sqrt((1f-c0) + c1))*3f) /
   ((D'+1f)*0.8)`, π = 3.141592654; D' = 3 when D > 4 (BP reuses its f32 3.0 at 0x10152484).
 
+[C] task-027, from the disassembly (`CPCFInsert`, vtable 0x10033AD4: [4] 0x100106C0 and [5]
+0x1000F4F0 call slot 6, the no-op 0x10012C00; [8] 0x10017200; [9] 0x10017290; [10] messages
+0x10016C50, msgs 111..116, 116 the data; [11] 0x10016EF0; [13] 0x10016F40, the panel report;
+[15] block 0x100166D0; [16] 0x10016C30). `crates/rb-engine/src/pcf.rs` follows it and renders
+every PCF song of the corpus exact:
+- **Object.** ctor 0x10016490: live block `+0x38` and pattern copy `+0x40`, both `sub_10019C10`
+  = 1, 70, 64, 40, 24, 90, 1, 0 (enabled, frequency, resonance, amount, wave, decay, mode, meter
+  byte); `+0x50..+0x88` 0, then the last step `+0x74` = -1 (`sub_100178D0`) and the change flags
+  `+0x48..+0x4F` 0. Fields: LP state `+0x50` (y1), `+0x54` (y2); BP state `+0x58`, `+0x5C`; E
+  `+0x68`; base `+0x6C`; envelope `+0x70`; attack `r` `+0x78`; decay `+0x7C`; smoother `+0x80`
+  (y1), `+0x84` (y2); peak `+0x88`; counter `+0x30`, its value at the last mixer update `+0x34`.
+- **Block, control.** Disabled (`+0x38` = 0): returns at once. Else the meter update 0x10016664
+  when `counter & 15 == 0` (byte `+0x3F` = 0x7F when the peak's bits are above 0x3F800000, else
+  `trunc(peak*127f)`; `peak = f32(peak*0.92f)`), counter++, the peak takes `|bus[meterIndex]|`.
+  `tick = sub_1001F870()` (the song position after this block's sequencer step); the wave byte
+  `w` indexes `len = word_10033310[w]` and `res = word_10033380[w]` **unchecked**; `q = tick/24`,
+  `/48`, `/96` (signed `idiv`) for `res` = 32, 16, 8, and for any other `res` the stack slot
+  `var_1C` keeps whatever was there [G: not modelled, the engine keeps its last quotient];
+  smoother `s = (A*y1 + ((freq*512f)*(1/128f))*g) - b2*y2`, `+0x84 = +0x80` stored **before**
+  `step = q % len` (`idiv` at 0x10016811), then `+0x80 = +0x6C = f32(s)`. A new step (`!= +0x74`)
+  stores it, sets `dec = dword_100332D0[decay >> 3]` and reads `v = byte_100333F0[w*32 + step]`; a
+  non-zero `v` triggers `E = (v*amount) >> 5`, or `511 - base` when `E + base > 511`; odd `v`:
+  `r = 0.995f` (0x3F7EB852), keep 0.995f, take f32 0x3BA3D700 (= 1 - 0.995f); even `v`: `r = 0`,
+  keep 0, take 1. Without a trigger: keep `r`, take `1 - r` (f64), E = `+0x68`.
+- **Block, audio.** Row `(res*8) >> 7`; mode 1 the LP table 0x1010C270, else BP 0x10100270. Per
+  group of 4: `E *= dec`; `env = env*keep + (E + base)*take`; `i = trunc(clamp(env, 0, 511))` (C0
+  test for the 0, so a NaN also gives 0); `(c0, c1, c2) = Tab[row][i]`; per sample `y = (x*c2 +
+  c0*y1) - c1*y2`; LP outputs `f32(y)`, BP `f32(y - y1_old)`. y1, y2, env and E stay in x87
+  registers (BP keeps env in a stack double) for the whole block; at the end the filter's state,
+  `+0x68 = f32(E)` and `+0x70 = f32(env)` are stored, and the other filter's state is zeroed.
+- **Past the patterns.** RBS42.txt gives wave 0..0x37 and the exe's track load accepts 0..127; the
+  DLL checks nothing, so a wave of 55..127 reads the bytes after the 55 patterns (the steps end at
+  0x10033AD0, the `CPCFInsert` vtable follows), all in the file up to 0x10034400. 73 of the
+  waves 55..127 read a `res` other than 8, 16 or 32, so their quotient is the stale `var_1C`
+  [G]. 17 of them, waves 55, 111 and 113..127, read `len` 0, and the `idiv` raises a divide
+  error in every block (wave 112 reads `len` 120, so its steps reach 88 bytes past its own 32).
+  Wave 64 reads `res` 0 (stale quotient) and `len` 16, whose 16 steps are all 0: no trigger
+  ever, the filter follows the base alone. Wave 127 is the corpus' faulting wave. `SafeSoundCallback` (0x1001AE40) wraps the render in a C++ `try` with `catch (...)`
+  (FuncInfo 0x10152AD8, handler 0x1001B055, continuation 0x1001B03D), which catches it; the
+  continuation is past both `sub_100139E0`'s int16 conversion and the zero fill of the not-locked
+  path, so the call returns with the caller's buffer unwritten (`pcf_*_wave127` export all zeros,
+  task-039) and with the song as far as the block got (sequencer step, the channels before the
+  PCF; `song+0x208` is stored only after the block loop, 0x10013BBA). The skipped `ReleaseMutex`
+  calls leave the Win32 mutexes owned, which a single-threaded host such as rbhost re-acquires
+  (`WaitForSingleObject(h, 0)` in `sub_10009454`). The engine models the fault
+  (`frame::Fault`): the block and the render call end there; `Engine::fault` records the first
+  one and the count, and the `rb` CLI warns. An export repeats what its int16 buffer held: rbhost
+  renders the idle calls and every chunk into one static `chunk_buf`, and the app's export loop
+  `sub_4280D5` renders every chunk into the one buffer `sub_427988` allocates (`operator
+  new(0x2000)` at 0x427C2F, never cleared; the callback at 0x4281C3, the file write at
+  0x4281F2), so a faulting chunk repeats the previous chunk, and an export that faults from the
+  start is all zeros [G for the app: its buffer is uninitialized heap memory, which its
+  `pcf_*_wave127` exports show as zeros]. The engine's export shares one zeroed buffer as rbhost
+  does.
+- **The file's bytes are the preferred base's.** Decided by the user on 2026-10-27 (task-027):
+  `PCF_DATA` stays a generated static table of the file's bytes. The range
+  0x10033AD0..0x10034400 holds 171 base-relocated pointer words (the `.reloc` HIGHLOW entries:
+  the `CPCFInsert` vtable at 0x10033AD4 and later), and 57 waves of 55..127 have such a word
+  among their 32 step bytes (35 of them within their pattern length, so a step can read it).
+  Their velocities are the ones of a DLL loaded at its preferred base 0x10000000, as it is in the
+  app and in rbhost.
+- **Slots.** 8 inserts the pattern copy's controllers 0..6 at tick 0; 9 copies the 8-byte block
+  (on: live to pattern; off: pattern to live); 11 sets controllers 0..6 live; 16 clears the meter
+  byte when the counter has not moved since the last update.
+
 ### 8.3 Compressor (mono 0x1000EC70, stereo 0x1000EDE0)
 
 **Update.**
@@ -1022,6 +1087,46 @@ floor = Th*f32(1/127)*80000/32768 + 0.01220703125
 - `env = max(env, floor)`.
 - Gain G ramps linearly over the 4 samples towards `X/env + off`.
 - G starts at 0, so the compressor fades in at creation.
+
+[C] task-027, from the disassembly (`CCompInsert`, vtable 0x10032B24: [4] 0x100106C0 and [5]
+0x1000F4F0 call slot 6, the no-op 0x10012C00; [8] 0x1000F420; [9] 0x1000F4B0; [10] messages
+0x1000EFD0, msgs 99..104, 104 the data; [11] 0x1000F220; [14] stereo 0x1000EDE0; [15] mono
+0x1000EC70; [16] 0x1000EFB0). `crates/rb-engine/src/comp.rs` follows it and renders every
+compressor song of the corpus exact:
+- **Object.** ctor 0x1000E990: live block `+0x38` and pattern copy `+0x3D`, both `sub_10019B90` =
+  1, 70, 64, 127, 0 (enabled, amount, threshold, then two meter bytes); counter `+0x30` 0, X
+  `+0x48` = 1.0, offset `+0x4C` = 1.0, env `+0x50` = 1.0, attack `+0x54` = 0x3C23D70A (0.01),
+  release `+0x58` = 0x3F7F9724 (0.9984), G `+0x5C` = 0, floor `+0x60` = 1000.0, hold `+0x64` 0,
+  reload `+0x66` = 300, peak `+0x68` 0, change flags `+0x42..+0x46` 0. Nothing but the ctor writes
+  the attack, the release and the reload.
+- **Update** 0x1000EB44, when `counter & 15 == 0` before the increment: byte 3 = `trunc(min(G*18,
+  127))` (the gain meter); `af = amount*f32(1/127)`; `off = 1 - af*0.99`; `X = (af*(th*(1/32) +
+  1))*0.3662109375`; `floor = ((th*f32(1/127))*80000f)*(1/32768) + 0.01220703125` (each stored as
+  f32; `dbl_10151628`..`dbl_10151658`, `flt_10151660`..`flt_10151670`); byte 4 = the peak meter
+  (0x7F when the peak's bits are above 0x3F800000, else `trunc(127f*peak)`), `peak =
+  f32(peak*0.92f)`.
+- **Blocks.** Disabled: return. Else the update, counter++, the peak takes `|first bus[meterIndex]|`.
+  Per group of 4: `s = |x1 + x3|` (stereo `|((L1 + L3) + R1) + R3|`, the sign test `fcom 0.0`);
+  if `s > env`: `env = env + (s - env)*atk`, `hold = 300`; else if `hold == 0`: `env = env*rel +
+  1e-6f`; else `hold--`; `env = floor` when below it (C0); `d = ((X/env + off) - G)*0.25`; sample k
+  of the group becomes `f32(x_k * G_{k+1})` with `G_{j+1} = G_j + d`. env and G stay in x87
+  registers (stereo keeps env in a stack double) and are stored as f32 at the block end. Mono
+  takes the channel bus; stereo (the master, `compId == 1`) takes L and R, both scaled by the one
+  gain.
+- **Slots.** 8 inserts the pattern copy's controllers 0..2 at tick 0; 9 copies the 5-byte block
+  (on: live to pattern; off: pattern to live); 11 sets controllers 0..2 live; 16 clears both meter
+  bytes when the counter has not moved since the last update.
+- **The mixer's change flags** (task-022's review note): the mixer device's set-param 0x10015C00
+  stores the compressor and PCF ids as dwords (`+0x34`, `+0x38`; msg 143's `sub_10019D14` widens
+  the payload bytes the same way, and the mixer update 0x10012C14 reads them as dwords) and sets
+  the change bytes `+0x81` (0x10015CFB), `+0x82` (0x10015CE4) and `+0x85 + 6c + k` (0x10015CCC).
+  The panel's own set message, msg 145 (the handler `sub_10015520` dispatches through the table
+  0x10151ECC indexed by the raw byte, `[145]` = 0x10015900; its switch at 0x10015926), stores the
+  value and clears the byte (0x1001593F, 0x10015981), then records the change (`sub_10012BC0`).
+  The only reader is mixer slot 13, `sub_10015D40`: it reads the channel bytes `+0x86..+0x89 + 6c`
+  from 0x10015DEE on and the id bytes `+0x81`, `+0x82` at 0x10015F9B..0x1001609E, clears each one
+  it finds set and posts msg 147 (channel fields) or 145 (ids) to the host's port (`sub_1001D5F0`
+  into `byte_1011D0B8`): the panel only, no audio effect, not modelled.
 
 ### 8.4 Delay (send; global buffer of 131072 f32, mask 0x1FFFF, prefilled with 1e-6)
 

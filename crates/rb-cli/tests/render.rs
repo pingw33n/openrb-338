@@ -115,11 +115,10 @@ fn pattern_mode_warns() {
     assert!(!String::from_utf8_lossy(&o.stderr).contains("pattern mode"));
 }
 
-/// The "not implemented" warning names the PCF and the compressor only when the song routes
-/// them (task-026): not for the enabled but unrouted devices of the diag template, and not for
-/// the distortion and the delay, which the engine has.
+/// Every device is implemented (task-027): no song warns of a missing device, the songs that
+/// route the PCF or the compressor included.
 #[test]
-fn only_routed_pcf_and_compressor_warn() {
+fn no_device_warns() {
     let dir = tempfile::tempdir().unwrap();
     let wav = dir.path().join("w.wav");
     let dll = root().join("original/ReBirth.dll");
@@ -129,14 +128,41 @@ fn only_routed_pcf_and_compressor_warn() {
         assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
         String::from_utf8_lossy(&o.stderr).into_owned()
     };
-    for name in ["303_saw_lowcut", "dist_a100_s64", "delay_straight_fb64"] {
+    for name in [
+        "303_saw_lowcut",
+        "dist_a100_s64",
+        "delay_straight_fb64",
+        "pcf_on_909",
+        "comp_master_a100_t10",
+        "full_mix",
+    ] {
         let e = stderr(name);
         assert!(!e.contains("not implemented"), "{name}: {e}");
+        assert!(!e.contains("produces silence"), "{name}: {e}");
     }
-    let e = stderr("pcf_on_909");
-    assert!(e.contains("not implemented yet") && e.contains("PCF") && !e.contains("compressor"));
-    let e = stderr("comp_master_a100_t10");
-    assert!(e.contains("not implemented yet") && e.contains("compressor") && !e.contains("PCF"));
+}
+
+/// The PCF with wave 127 faults in every block, as in the original (task-027): the CLI exits
+/// 0, writes the original's all-zero export and says why on stderr.
+#[test]
+fn a_faulting_pcf_warns() {
+    let dir = tempfile::tempdir().unwrap();
+    let wav = dir.path().join("w.wav");
+    let dll = root().join("original/ReBirth.dll");
+    for name in ["pcf_lp_wave127", "pcf_bp_wave127"] {
+        let song = root().join(format!("tests/songs/diag/songs/{name}.rbs"));
+        let o = render(&song, &wav, &["--rebirth-dll", dll.to_str().unwrap()]);
+        let e = String::from_utf8_lossy(&o.stderr);
+        assert!(o.status.success(), "{name}: {e}");
+        assert!(
+            e.contains("the original produces silence here")
+                && e.contains("wave 127 has pattern length 0")
+                && e.contains("0x10016811"),
+            "{name}: {e}"
+        );
+        let b = std::fs::read(&wav).unwrap();
+        assert!(b[44..].iter().all(|&x| x == 0), "{name}");
+    }
 }
 
 #[test]

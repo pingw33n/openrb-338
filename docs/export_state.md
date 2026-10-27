@@ -406,8 +406,8 @@ They change only on hits, so they depend on every snare and bass-drum hit since 
 | Delay pan gains (smoothed 0.9/0.1) | delay `+0x54..+0x60` | 0 at load (`sub_1000F5A0`) | [G] settles | — |
 | Distortion, PCF, compressor counters | effect `+0x30` | 0 at load | fixed with MME | update phase |
 | Distortion gains: current in/out `+0x44`/`+0x48`, targets `+0x54`/`+0x58` (smoothing at 0x10010A50) | dist object | load values [G: ctor `sub_10010700` not read]; never reset | [G] settles | first blocks of the export |
-| Compressor: env `+0x50`, gain G `+0x5C`, hold counter `+0x64` (word, reload `+0x66`) (mono 0x1000EC70) | comp object | load values [G: ctor `sub_1000E990` not read]; never reset | [G] settles | first blocks of the export |
-| PCF: LP state `+0x50`/`+0x54`, BP state `+0x58`/`+0x5C`, trigger level E `+0x68`, cutoff base `+0x6C` and its smoother `+0x80`/`+0x84`, envelope `+0x70`, last step `+0x74`, attack `r` `+0x78`, decay `+0x7C` (0x100166D0) | PCF object | load values [G: ctor `sub_10016490` not read]; never reset | [G] settles; the last step is recomputed from the song position every block | first blocks of the export |
+| Compressor: env `+0x50`, gain G `+0x5C`, hold counter `+0x64` (word, reload `+0x66`) (mono 0x1000EC70) | comp object | [C] ctor `sub_1000E990` (task-027): env 1.0, G 0, hold 0, reload 300, X and offset 1.0, floor 1000; never reset (slots 4 and 5 reach the no-op slot 6) | [C] reproduced: every compressor corpus song matches at 9088 with the ctor state and no preset | first blocks of the export |
+| PCF: LP state `+0x50`/`+0x54`, BP state `+0x58`/`+0x5C`, trigger level E `+0x68`, cutoff base `+0x6C` and its smoother `+0x80`/`+0x84`, envelope `+0x70`, last step `+0x74`, attack `r` `+0x78`, decay `+0x7C` (0x100166D0) | PCF object | [C] ctor `sub_10016490` (task-027): all 0, the last step -1; never reset (slots 4 and 5 reach the no-op slot 6) | [C] reproduced: every PCF corpus song matches at 9088 with the ctor state and no preset; the step is recomputed from the song position every block | first blocks of the export |
 
 ### 7.5 Outside the songs
 
@@ -479,7 +479,8 @@ Exporting twice in one process is worse: the second export starts after the firs
   export call.
 - [C] The port's ring layout (§2.7) and the `_SEMA` object type: traced for task-011.
 - [G] The pending song switch while playing (`transport+0x170`).
-- [G] Field-level reset audit of the 808/909 devices, PCF, compressor and distortion constructors.
+- [G] Field-level reset audit of the 808/909 devices and distortion constructors. [C] The PCF and
+  the compressor: task-027 (§7.4).
 - [G] The startup sample of the standard mod and its length (it did not reach any export, §11.4).
 - [G] The constant phase offset of 0.0114 note periods between first and later exports in one
   process (§11.2).
@@ -708,8 +709,12 @@ empirical fit.
     same file. Their matching `N` is still unique.
   - Three songs export the same file for every `N`: `silence`, `pcf_lp_wave127` and
     `pcf_bp_wave127`. All three are **all zeros**, in the app as in rbhost (sha256 `0a90d04342bf`).
-    The two PCF songs with wave 127 therefore silence the 808 completely. [G] Why (the PCF's wave
-    127 mode) is not traced.
+    The two PCF songs with wave 127 therefore silence the 808 completely. [C] task-027: they
+    silence everything. Wave 127 reads a pattern length of 0 past the 55 patterns (as do waves
+    55, 111 and 113..126: 17 waves in all), and the PCF block divides by it (`idiv` at 0x10016811); `SafeSoundCallback`'s `catch (...)` (handler
+    0x1001B055) ends every call there, before the int16 conversion and the zero fill, so the
+    host's buffer is never written (`docs/initial_investigation.md` §8.2). The engine renders
+    both songs exact.
   - [C] This refutes the expectation that songs without 303 notes match at any `N`: every non-silent
     export depends on its `N`, drum-only songs included. [G] The mechanism is the idle 303 output
     (§11.2), present because the template's 303 channels are at level 100. Every song carries that

@@ -230,6 +230,7 @@ fn audio_zeroes_the_bus_and_sums_in_order() {
         tables: &t,
         meter_index: 0,
         tempo: 120_000,
+        tick: 0,
     };
     let mut bus = [5.0; BLOCK];
     d.process(&mut bus, &ctx);

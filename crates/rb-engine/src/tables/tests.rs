@@ -282,7 +282,7 @@ fn static_tables_match_dll() {
     let f32s = |v: &[f32]| le_bytes(v, f32::to_le_bytes);
     let u16s = |v: &[u16]| le_bytes(v, u16::to_le_bytes);
     let i16s = |v: &[i16]| le_bytes(v, i16::to_le_bytes);
-    let tables: [(&str, u32, Vec<u8>); 16] = [
+    let tables: [(&str, u32, Vec<u8>); 17] = [
         ("LEVEL_STEP", 0x1014_F8E4, f32s(&[LEVEL_STEP])),
         ("TB303_TUNE", 0x1003_3F90, i16s(&TB303_TUNE)),
         ("DIST_GRID", 0x1015_1AB8, f32s(DIST_GRID.as_flattened())),
@@ -290,6 +290,7 @@ fn static_tables_match_dll() {
         ("PCF_LENGTHS", 0x1003_3310, u16s(&PCF_LENGTHS)),
         ("PCF_RESOLUTIONS", 0x1003_3380, u16s(&PCF_RESOLUTIONS)),
         ("PCF_STEPS", 0x1003_33F0, PCF_STEPS.as_flattened().to_vec()),
+        ("PCF_DATA", 0x1003_3310, PCF_DATA.to_vec()),
         ("TR808_SD_SAMPLE", 0x1003_4090, i16s(&TR808_SD_SAMPLE)),
         ("TR808_SD_NOISE_SEQ", 0x1003_409C, u16s(&TR808_SD_NOISE_SEQ)),
         (
@@ -314,6 +315,9 @@ fn static_tables_match_dll() {
     // the noise sequences only index the four-entry sample maps (909: three used)
     assert!(TR808_SD_NOISE_SEQ.iter().all(|&s| s < 4));
     assert!(TR909_SD_NOISE_SEQ.iter().all(|&s| s < 3));
+    // PCF_DATA ends where `.data`'s file part ends (raw size 0x4400 at 0x10030000; above it
+    // is BSS, computed at run time)
+    assert_eq!(0x1003_3310 + PCF_DATA.len(), 0x1003_4400);
 }
 
 #[test]

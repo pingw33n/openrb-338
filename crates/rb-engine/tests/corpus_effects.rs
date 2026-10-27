@@ -9,8 +9,9 @@
 //! They are split, without overlap, among the corpus tests: the 36 TB-303 songs of
 //! `corpus_tb303.rs` (`delay_303` among them), the 45 TR-808 songs of `corpus_tr808.rs` (the
 //! other `delay_*` songs and `mixer_delay_send_sweep`), the 33 TR-909 songs of `corpus_tr909.rs`,
-//! and the 9 distortion songs here (task-049). Left out (the PCF or the compressor, task-027):
-//! `comp_*`, `pcf_*`, `mixer_pcf_switch` and `full_mix`.
+//! and the 9 distortion songs here (task-049). The other 22, which route the PCF or the
+//! compressor (`comp_*`, `pcf_*`, `mixer_pcf_switch` and `full_mix`), are in
+//! `corpus_pcf_comp.rs` (task-027).
 
 mod common;
 

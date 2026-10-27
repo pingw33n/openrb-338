@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use super::export::{ExportRange, chunk_sizes, frame_count};
+use super::export::{CHUNK_FRAMES, ExportRange, chunk_sizes, frame_count};
 use super::*;
 
 fn tables() -> Arc<Tables> {
@@ -98,7 +98,7 @@ fn quiet_state() -> EngineState {
 fn block_once(e: &mut Engine) -> (Block, Block) {
     let mut l = [0.0; BLOCK];
     let mut r = [0.0; BLOCK];
-    e.frame.block(&mut l, &mut r);
+    e.frame.block(&mut l, &mut r).unwrap();
     (l, r)
 }
 
@@ -446,6 +446,107 @@ fn leftover_buffer() {
     let c0 = split.frame.state.counter;
     split.render(&mut big, MAX_FRAMES + 64);
     assert_eq!(split.frame.state.counter, c0 + 256);
+}
+
+/// An insert that faults on every call from its `from`-th on (counted from 0), as the PCF with
+/// a zero pattern length does on every call.
+struct Faulty {
+    log: Log,
+    calls: u32,
+    from: u32,
+}
+impl SongDevice for Faulty {}
+impl InsertEffect for Faulty {
+    fn process(&mut self, bus: &mut Block, _ctx: &BlockContext) {
+        self.log.borrow_mut().push("faulty".into());
+        bus.fill(9.0);
+        self.calls += 1;
+    }
+    fn faulted(&mut self) -> Option<Fault> {
+        (self.calls > self.from).then_some(Fault::PcfZeroLength { wave: 127 })
+    }
+}
+
+#[test]
+fn a_fault_ends_the_block_and_the_call() {
+    let log: Log = Rc::default();
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let mut e = loud_engine();
+    e.frame.devices.pcf = Box::new(Faulty {
+        log: log.clone(),
+        calls: 0,
+        from: 0,
+    });
+    e.frame.devices.comp = Box::new(Op {
+        name: "comp",
+        f: |x| x,
+        log: log.clone(),
+    });
+    e.frame.devices.delay = Box::new(Recorder {
+        seen: seen.clone(),
+        log: log.clone(),
+    });
+    // the PCF and the compressor on channel 0
+    e.frame.devices.mixer.live.pcf_id = 1;
+    e.frame.devices.mixer.live.comp_id = 2;
+    e.frame.mixer_update();
+    log.borrow_mut().clear();
+    let c0 = e.frame.state.counter;
+    let lp = e.output.leftover_pos;
+    // the int16 buffer keeps what the caller had in it, and the leftover position stands
+    let mut buf = vec![7i16; 2 * 100];
+    e.render(&mut buf, 100);
+    assert_eq!(buf, vec![7i16; 2 * 100]);
+    assert_eq!(e.output.leftover_pos, lp);
+    // one block ran up to the fault: no compressor, no later channel, no send effect
+    assert_eq!(*log.borrow(), ["faulty"]);
+    assert_eq!(e.frame.state.counter, c0 + 1);
+    assert!(seen.borrow().is_empty());
+    // every later call faults the same way
+    e.render(&mut buf, 100);
+    assert_eq!(*log.borrow(), ["faulty", "faulty"]);
+    assert_eq!(buf, vec![7i16; 2 * 100]);
+    // the record: the first fault, its block, and both calls
+    let b0 = e.frame.blocks - 2;
+    assert_eq!(
+        e.fault(),
+        Some(&FaultRecord {
+            first: Fault::PcfZeroLength { wave: 127 },
+            block: b0,
+            calls: 2,
+        })
+    );
+    assert_eq!(
+        Fault::PcfZeroLength { wave: 55 }.to_string(),
+        "the PCF's wave 55 has pattern length 0 and divides by zero (0x10016811)"
+    );
+}
+
+/// One int16 buffer serves the idle calls and every chunk, as in rbhost (`chunk_buf`) and the
+/// app's export loop (the `new(0x2000)` buffer of 0x427C2F, reused by every call at
+/// 0x4281C3): a chunk whose call faults keeps the previous chunk's samples.
+#[test]
+fn a_faulting_chunk_repeats_the_buffer() {
+    let log: Log = Rc::default();
+    let mut e = loud_engine();
+    // fault from the first block of the second 2048-frame chunk on (32 blocks per chunk)
+    e.frame.devices.pcf = Box::new(Faulty {
+        log,
+        calls: 0,
+        from: 32,
+    });
+    e.frame.devices.mixer.live.pcf_id = 1;
+    e.frame.mixer_update();
+    let r = ExportRange {
+        tempo: 120_000,
+        loop_start: 0,
+        loop_end: 768,
+    };
+    let s = export::export(&mut e, r, 0);
+    let c = 2 * CHUNK_FRAMES as usize;
+    assert!(s[..c].iter().any(|&x| x != 0));
+    assert_eq!(s[c..2 * c], s[..c]);
+    assert_eq!(e.fault().unwrap().calls as usize, chunk_sizes(r).len() - 1);
 }
 
 /// Marks the global delay line: a value that is not the guard and the gate cleared.

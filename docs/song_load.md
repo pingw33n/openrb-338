@@ -186,8 +186,12 @@ in pattern mode (`sub_1001FCB0` returns global byte 0):
   handlers (0x1000FB40: msgs 81..86; 0x10010D60: 89..94) index the jump table with the raw message
   byte (`jmp [eax*4 + 0x101516A8]`, table at 0x101517EC for 81). Song mode reaches the live block
   only through the track's controllers (slot 11) and the chase.
-- [G] PCF and compressor follow the same rule; their msg-41 cases were located (§1) but not read
-  through.
+- [C] task-027: the PCF (msg 116, 0x10016EA5: `sub_10019C80` into `+0x40`, 8 bytes; live `+0x38`)
+  and the compressor (msg 104, 0x1000F1DF: `sub_10019BE0` into `+0x3D`, 5 bytes; live `+0x38`)
+  follow the same rule: the block goes live only when `sub_1001FCB0` is zero. Their handlers
+  (0x10016C50: msgs 111..116; 0x1000EFD0: 99..104) index the jump table with the raw byte too.
+  Neither checks a byte: the PCF's wave reaches the pattern lookup unchanged (§4.3 and
+  `docs/initial_investigation.md` §8.2).
 
 ### 4.1 Mixer, `0/143`, 29 bytes
 
@@ -497,7 +501,8 @@ Follow-up: task-034.
 - [C] Top-level msg 52/58 handling inside the DLL: a new song creates new device objects, and 58
   starts the startup-sound preview (task-004, `docs/export_state.md` §3, §8).
 - [G] The constructor values of the controllers that a song-mode song never sets.
-- [G] The msg-41 song-mode rule for PCF and compressor (808, 909, delay and distortion [C], §4).
+- [C] The msg-41 song-mode rule for PCF and compressor (task-027, §4; 808, 909, delay and
+  distortion before it).
 - [C] The 4.0 mixer-track converter `sub_437380` (§5.1, task-018). No 4.0 song is available to test
   it against the app.
 - [C] Global byte 2 (msg 35 id 2, `0x10021194`) is record: it makes the loop wrap merge the
