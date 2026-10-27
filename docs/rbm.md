@@ -249,3 +249,18 @@ defects.
 - Not checked dynamically: the table that `Rebirth.exe` itself computes (no memory dump of the app
   was taken). An app export of a song with a mod, compared with an rbhost render (task-031,
   task-033), would close that.
+
+## 9. The `rbm` crate (task-032, 2026-10-27)
+
+`crates/rbm` implements sections 2 to 5 (`Rbm::parse`, `KeyTable::read` from a reader over
+`RB20FUL.DAT`, `Rbm::file`, `Rbm::load_samples`). Its tests (`RB_RB20FUL`, `RB_RBM_DIR`) compare
+every embedded file and the 46 samples of the four shipped mods with `tools/rbm.py extract`.
+
+One fact found on the way: 19 of the 46 AIFFs of Metallicon.rbm have a **12-byte COMM chunk** (the
+rate field is 4 bytes, not 10; the SSND chunk follows at once); the other 27 have 18 bytes. [C]
+The DLL reads the COMM fields in `sub_10001674` (0x10001674) at +0 channels, +2 frames, +6 bits and
++8 the 80-bit rate, from the chunk start with no size argument; the chunk walk only checks that
+the 8-byte chunk header fits (0x100050CD..0x100050D6); `sub_100016F4` then validates the values
+(non-zero channels, frames and rate, bits 8..32). So the rate is read through the chunk end into
+the SSND header. `rbm.py` does the same, and the engine's AIFF reader (`samples/aiff.rs`) takes
+COMM from the chunk start to the end of the file rather than rejecting a chunk under 18 bytes.

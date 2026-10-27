@@ -442,6 +442,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbm"
+version = "0.1.0"
+dependencies = [
+ "rb-engine",
+]
+
+[[package]]
 name = "rbs"
 version = "0.1.0"
 dependencies = [

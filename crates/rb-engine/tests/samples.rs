@@ -118,6 +118,32 @@ fn aiff_mono_stereo_and_offset() {
 }
 
 #[test]
+fn a_short_comm_chunk_reads_through_into_ssnd() {
+    // The Metallicon mod's AIFFs: COMM of 12 bytes (a 4-byte rate field), SSND right after.
+    // The DLL reads the 18 bytes from the chunk start whatever its size (sub_10001674).
+    let full = aiff(1, 2, 16, 0, &[0, 5, 0, 6]);
+    let mut d = full[..12 + 8 + 12].to_vec(); // FORM header, COMM header, 12 body bytes
+    d[12 + 4..12 + 8].copy_from_slice(&12u32.to_be_bytes());
+    d.extend(&full[12 + 8 + 18..]); // SSND chunk
+    let n = (d.len() - 8) as u32;
+    d[4..8].copy_from_slice(&n.to_be_bytes());
+    let s = Sample::from_aiff(&d).unwrap();
+    assert_eq!(s.audio(), &[5, 6]);
+
+    // SSND first, then a short COMM that is the last chunk: the COMM read runs off the end of
+    // the file and is rejected for that reason.
+    let mut end = full[..12].to_vec();
+    end.extend(&full[12 + 8 + 18..]); // SSND
+    end.extend(&full[12..12 + 8 + 12]); // COMM header and 12 body bytes
+    let at = end.len() - 12 - 4;
+    end[at..at + 4].copy_from_slice(&12u32.to_be_bytes());
+    let n = (end.len() - 8) as u32;
+    end[4..8].copy_from_slice(&n.to_be_bytes());
+    let e = err(Sample::from_aiff(&end));
+    assert!(e.contains("COMM chunk is shorter than 18 bytes"), "{e}");
+}
+
+#[test]
 fn aiff_errors() {
     let e = err(Sample::from_aiff(&aiff(1, 2, 8, 0, &[1, 2])));
     assert!(e.contains("8 bits") && e.contains("16-bit"), "{e}");

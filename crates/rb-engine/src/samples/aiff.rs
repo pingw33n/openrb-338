@@ -45,7 +45,10 @@ pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
                 ))
             })?;
         match id {
-            b"COMM" if comm.is_none() => comm = Some(&d[p + 8..body_end]),
+            // The COMM fields are read from the file at the chunk's start, whatever its size:
+            // the Metallicon mod's AIFFs have a 12-byte COMM (a 4-byte rate field) and the DLL
+            // reads the 18 bytes straight through into the SSND header (task-032).
+            b"COMM" if comm.is_none() => comm = Some(&d[p + 8..]),
             b"SSND" if ssnd.is_none() => ssnd = Some(&d[p + 8..body_end]),
             _ => {}
         }
@@ -55,7 +58,9 @@ pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
     let ssnd = ssnd.ok_or_else(|| bad("missing SSND chunk"))?;
 
     if comm.len() < 18 {
-        return Err(bad("the COMM chunk is shorter than 18 bytes"));
+        return Err(bad(
+            "the COMM chunk is shorter than 18 bytes and the file ends before 18 bytes of it are available",
+        ));
     }
     let channels = u16::from_be_bytes([comm[0], comm[1]]) as usize;
     let frames = u32::from_be_bytes(comm[2..6].try_into().unwrap()) as usize;

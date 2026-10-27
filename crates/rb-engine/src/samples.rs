@@ -169,6 +169,16 @@ impl SampleSet {
         }
     }
 
+    /// A set made of shared `samples`, in resource ID order from 1000 (a mod's samples with the
+    /// built-in ones in the slots it lacks).
+    ///
+    /// # Panics
+    /// If there are not exactly [`COUNT`] samples.
+    pub fn from_shared(samples: Vec<Arc<Sample>>) -> SampleSet {
+        assert_eq!(samples.len(), COUNT);
+        SampleSet { samples }
+    }
+
     /// TR-808 sample `i` (an index into [`NAMES_808`]).
     pub fn tr808(&self, i: usize) -> &Sample {
         self.get(id_808(i))

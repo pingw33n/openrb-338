@@ -862,6 +862,10 @@ every product in f64 in this order, one f32 store, then the voice's `f32(gain * 
       (`sub_10004110`, truncated to an integer by `fistp`). `sub_100016F4` accepts a non-zero
       channel count, frame count and rate, and bits 8..=32. `sub_10003170` then flags `bits ==
       16`; any other depth throws `XUnsupportedFormat` (0x10003376..0x10003388).
+      `sub_10001674` reads the fields at offsets +0, +2, +6 and +8 from the COMM chunk's start
+      with no chunk size argument, and the chunk walk (0x100050CD..0x100050D6) only checks that
+      the 8-byte chunk header fits: a COMM of 12 bytes (as in Metallicon.rbm's AIFFs) is read
+      through into the SSND header (docs/rbm.md section 9).
     - SSND `sub_10002FC4` (0x10002FC4): u32 offset, u32 blocksize; `offset > 0` bytes are
       skipped (vtable +0x2C seek) before the audio.
     - Mono: `2 * frames` bytes are read to the buffer start and byte-swapped in place
