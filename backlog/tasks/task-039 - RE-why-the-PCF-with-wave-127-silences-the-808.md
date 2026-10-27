@@ -2,9 +2,10 @@
 id: TASK-039
 title: 'RE: why the PCF with wave 127 silences the 808'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-chore'
 created_date: '2026-10-26 15:48'
-updated_date: '2026-10-27 03:04'
+updated_date: '2026-10-27 04:27'
 labels:
   - re
   - engine
@@ -38,4 +39,6 @@ Settled by task-027 (branch worktree-agent-ae2be2426a5f128a5), not marked Done h
 Correction (task-027 review round 1): wave 127 is not the only faulting wave. The pattern length is 0 for 17 waves: 55, 111 and 113..127. Each of them divides by zero at 0x10016811 in every block and silences the export the same way; wave 112 reads a length of 120. 73 waves of 55..127 have a resolution other than 8/16/32. The rb CLI now warns when a render faults.
 
 Supervisor 2026-10-27: the bug itself is recorded in docs/original_bugs.md by task-051; this task's remaining AC #2 (the diag README row) can cite it.
+
+Supervisor 2026-10-27: reassigned to @agent-chore for AC #2 (the README rows); AC #1 is settled by task-027 (docs/initial_investigation.md 8.2, docs/export_state.md section 13, docs/original_bugs.md OB-6).
 <!-- SECTION:NOTES:END -->
