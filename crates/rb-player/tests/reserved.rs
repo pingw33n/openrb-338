@@ -12,7 +12,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use common::tables;
-use rb_engine::seq::{Event, POOL_NODES, Sequencer};
+use rb_engine::seq::{Event, MERGE_CHUNK, POOL_NODES, Sequencer};
 use rb_player::{Player, Tracks};
 
 struct Live;
@@ -63,7 +63,12 @@ fn a_song_reserves_one_pool() {
     let (player, p) = held(|| Player::new(tables.clone(), None));
     println!("one pool {pool} B; Sequencer {seq} B; Tracks {copy} B; Player::new {player} B");
     drop((s, t, p));
-    assert_eq!(seq, pool, "a sequencer holds one pool");
+    // and the merge's buffer (task-084)
+    assert_eq!(
+        seq,
+        pool + MERGE_CHUNK * size_of::<Event>(),
+        "a sequencer holds one pool"
+    );
     assert_eq!(copy, pool, "a tracks copy holds one pool");
     // the empty song's pool, the three tracks copies, and the rest (devices, queues, snapshots:
     // 700188 B when measured, task-082)

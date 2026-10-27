@@ -34,6 +34,8 @@
 //! hold more than [`POOL_NODES`] nodes (then the DLL refuses nodes rb still gives).
 
 #[cfg(test)]
+mod merge_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::frame::Devices;
@@ -52,9 +54,9 @@ pub const LISTS: usize = 2 * TRACKS;
 /// insert or a removal moves the nodes after it within that capacity, so a pooled insert, which
 /// takes a node only while more than one is free, never allocates. `pool[k]` is list k.
 ///
-/// The tracks' lists come first, so a recorded node moves only the recording lists after it;
-/// a merge's insert into a track list moves the nodes of the lists after it (up to the pool's
-/// 800 KB, of the order of the DLL's walk of a full list).
+/// The tracks' lists come first, so a recorded node moves only the recording lists after it.
+/// The merge ([`Track::merge`]) moves the nodes after a track's list a few times per track,
+/// not once per node it inserts (task-084).
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pool {
     /// The nodes of every list.
@@ -191,6 +193,44 @@ pub struct Event {
     pub tick: i32,
     pub ctrl: u8,
     pub value: u8,
+}
+
+/// The new nodes a merge holds before it moves them into the track's list in one pass
+/// ([`Track::merge`]); a merge of more moves them in chunks of this many.
+pub const MERGE_CHUNK: usize = 4096;
+
+/// A merge's new nodes, in the list's order (tick ascending; of one tick, the latest insert
+/// first), in a buffer of [`MERGE_CHUNK`] nodes reserved with the [`Sequencer`], so that the
+/// merge, which runs in the audio callback, never allocates. Empty between merges.
+#[derive(Debug)]
+struct MergeBuf(Vec<Event>);
+
+impl Default for MergeBuf {
+    fn default() -> Self {
+        MergeBuf(Vec::with_capacity(MERGE_CHUNK))
+    }
+}
+
+impl Clone for MergeBuf {
+    /// A new buffer with the whole capacity (it holds nothing between merges).
+    fn clone(&self) -> Self {
+        MergeBuf::default()
+    }
+}
+
+impl PartialEq for MergeBuf {
+    /// Scratch space, not state.
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+/// Where [`Track::find`] found a node.
+enum Found {
+    /// In the merge's buffer, at this index.
+    Pending(usize),
+    /// In the pool, at this index of `nodes`.
+    Node(usize),
 }
 
 /// One track: the events of one device. Its two lists are in the song's [`Pool`]: list
@@ -438,29 +478,53 @@ impl Track {
     /// The applied pointer `+0x228` is not touched: when its own node is removed it dangles in
     /// the DLL (OB-19); here it moves to the node before. Every caller but record off in
     /// pattern mode chases right after, which sets it again.
-    fn merge(&mut self, pool: &mut Pool, t: i32) {
+    ///
+    /// How rb does it (task-084): the result is the DLL's insert by insert, node for node, but
+    /// the pool's nodes after the list move a few times per track, not once per node (which
+    /// cost 1.8 ms for 1000 recorded nodes on a 10000-node song). The walk keeps its nodes in
+    /// one pass and frees the removed ones at once; the returns and the recorded nodes go
+    /// through [`Track::add`], which applies `sub_10014750`'s rules (the quantisation, the
+    /// last tick, a node of the same tick and controller taking the value, the free check
+    /// counting the nodes taken so far) against the list and the new nodes held in `buf`;
+    /// [`Track::flush`] then moves them into the list.
+    fn merge(&mut self, pool: &mut Pool, buf: &mut MergeBuf, t: i32) {
         let (ev, rec) = (self.list, self.rec());
+        if pool.list(rec).is_empty() {
+            // nothing marked, removed or inserted
+            self.hold = [false; 128];
+            return;
+        }
         let mut marked = [false; 128];
         let mut value = [0xFFu8; 128];
+        let (s, end) = (pool.start(ev), pool.ends[ev]);
+        let (rs, rn) = (pool.start(rec), pool.list(rec).len());
+        // the applied node's index before the walk: a removed node before it moves it back
+        let applied = s + self.next;
         let mut r = 0;
-        let mut i = 0;
-        while i < pool.list(ev).len() && t >= pool.list(ev)[i].tick {
-            let m = pool.list(ev)[i];
-            let recorded = pool.list(rec);
-            while r < recorded.len() && recorded[r].tick <= m.tick {
-                marked[recorded[r].ctrl as usize & 127] = true;
+        let (mut i, mut w) = (s, s);
+        while i < end && t >= pool.nodes[i].tick {
+            let m = pool.nodes[i];
+            while r < rn && pool.nodes[rs + r].tick <= m.tick {
+                marked[pool.nodes[rs + r].ctrl as usize & 127] = true;
                 r += 1;
             }
             let c = m.ctrl as usize & 127;
             value[c] = m.value;
             if marked[c] && m.tick != 0 {
                 // the node goes back to the pool
-                pool.remove(ev, i);
-                if i < self.next {
+                if i < applied {
                     self.next -= 1;
                 }
             } else {
-                i += 1;
+                pool.nodes[w] = m;
+                w += 1;
+            }
+            i += 1;
+        }
+        if w < i {
+            pool.nodes.drain(w..i);
+            for end in &mut pool.ends[ev..] {
+                *end -= i - w;
             }
         }
         let recorded = pool.list(rec);
@@ -468,24 +532,120 @@ impl Track {
             marked[recorded[r].ctrl as usize & 127] = true;
             r += 1;
         }
+        buf.0.clear();
         // 0x1001F675: the return to the automation, controllers ascending
         for c in 0..128u8 {
             if !marked[c as usize] {
                 continue;
             }
             let back = self.quantise(t.wrapping_add(1), c);
-            if !pool.list(ev).iter().any(|e| e.tick == back && e.ctrl == c) {
-                self.insert_pooled(pool, back, c, value[c as usize]);
+            if self.find(pool, buf, back, c).is_none() {
+                self.add(pool, buf, back, c, value[c as usize]);
             }
         }
         // 0x1001F722: the recorded nodes up to t, in list order; their nodes stay taken until
         // the whole recording list is freed after them
         for k in 0..r {
             let e = pool.list(rec)[k];
-            self.insert_pooled(pool, e.tick, e.ctrl, e.value);
+            self.add(pool, buf, e.tick, e.ctrl, e.value);
         }
+        self.flush(pool, buf);
         pool.clear(rec);
         self.hold = [false; 128];
+    }
+
+    /// The node of tick `t` and controller `ctrl` in the list as the merge has it so far: the
+    /// new nodes in `buf` first (of one tick they go before the list's), then the list's.
+    fn find(&self, pool: &Pool, buf: &MergeBuf, t: i32, ctrl: u8) -> Option<Found> {
+        let of_tick = |l: &[Event]| {
+            let at = l.partition_point(|e| t > e.tick);
+            l[at..]
+                .iter()
+                .take_while(|e| e.tick == t)
+                .position(|e| e.ctrl == ctrl)
+                .map(|j| at + j)
+        };
+        if let Some(j) = of_tick(&buf.0) {
+            return Some(Found::Pending(j));
+        }
+        of_tick(pool.list(self.list)).map(|j| Found::Node(pool.start(self.list) + j))
+    }
+
+    /// [`Track::insert_pooled`] during a merge: a new node goes into `buf` (before the nodes
+    /// of its tick, as `sub_10014750` puts it before the list's), its pool node counted as
+    /// taken; a full `buf` is flushed first.
+    fn add(&mut self, pool: &mut Pool, buf: &mut MergeBuf, tick: i32, ctrl: u8, value: u8) {
+        let t = round_up(tick, quant_of(&self.quant, ctrl));
+        if t > LAST_EVENT_TICK {
+            return;
+        }
+        match self.find(pool, buf, t, ctrl) {
+            Some(Found::Pending(j)) => buf.0[j].value = value,
+            Some(Found::Node(j)) => pool.nodes[j].value = value,
+            None => {
+                // 0x1001443A: cmp [pool+4], 1; jle (no node), the held nodes taken
+                if POOL_NODES.saturating_sub(pool.nodes.len() + buf.0.len()) <= 1 {
+                    return;
+                }
+                if buf.0.len() == MERGE_CHUNK {
+                    self.flush(pool, buf);
+                }
+                let at = buf.0.partition_point(|e| t > e.tick);
+                buf.0.insert(
+                    at,
+                    Event {
+                        tick: t,
+                        ctrl,
+                        value,
+                    },
+                );
+            }
+        }
+    }
+
+    /// Moves the new nodes of `buf` into the list: the pool's nodes after the list move once,
+    /// then the list and `buf` merge from the back, a new node before the list's nodes of its
+    /// tick. The applied node keeps its place: the new nodes of a tick up to its tick go
+    /// before it (`sub_10014750` puts a node before the first of a tick not below it).
+    fn flush(&mut self, pool: &mut Pool, buf: &mut MergeBuf) {
+        let n = buf.0.len();
+        if n == 0 {
+            return;
+        }
+        let (s, e, used) = (
+            pool.start(self.list),
+            pool.ends[self.list],
+            pool.nodes.len(),
+        );
+        if self.next > 0 {
+            let p = pool.nodes[s + self.next - 1].tick;
+            self.next += buf.0.partition_point(|x| x.tick <= p);
+        }
+        // within the capacity: every new node found more than one free
+        pool.nodes.resize(
+            used + n,
+            Event {
+                tick: 0,
+                ctrl: 0,
+                value: 0,
+            },
+        );
+        pool.nodes.copy_within(e..used, e + n);
+        let (mut i, mut j, mut w) = (e, n, e + n);
+        while j > 0 {
+            w -= 1;
+            if i > s && pool.nodes[i - 1].tick >= buf.0[j - 1].tick {
+                i -= 1;
+                pool.nodes[w] = pool.nodes[i];
+            } else {
+                j -= 1;
+                pool.nodes[w] = buf.0[j];
+            }
+        }
+        for end in &mut pool.ends[self.list..] {
+            *end += n;
+        }
+        buf.0.clear();
     }
 
     /// The chase `sub_100151F0(list, state, p)`: the value of the last event at or before `p` for
@@ -561,6 +721,8 @@ pub struct Sequencer {
     pub revision: u64,
     /// Not in the original: the merges that moved recorded events into the tracks.
     pub merges: u64,
+    /// Not in the original: the merge's new nodes ([`MergeBuf`]).
+    buf: MergeBuf,
 }
 
 impl Default for Sequencer {
@@ -588,6 +750,7 @@ impl Default for Sequencer {
             },
             revision: 0,
             merges: 0,
+            buf: MergeBuf::default(),
         }
     }
 }
@@ -814,7 +977,7 @@ impl Sequencer {
             self.merges += 1;
         }
         for tr in &mut self.tracks {
-            tr.merge(&mut self.pool, t);
+            tr.merge(&mut self.pool, &mut self.buf, t);
         }
         self.revision += 1;
     }
@@ -894,6 +1057,7 @@ impl Sequencer {
 pub(crate) struct Solo {
     pub track: Track,
     pub pool: Pool,
+    buf: MergeBuf,
 }
 
 #[cfg(test)]
@@ -917,6 +1081,7 @@ impl Solo {
         Solo {
             track: Track::new(device),
             pool: Pool::new(),
+            buf: MergeBuf::default(),
         }
     }
 
@@ -964,7 +1129,7 @@ impl Solo {
     }
 
     pub fn merge(&mut self, t: i32) {
-        self.track.merge(&mut self.pool, t)
+        self.track.merge(&mut self.pool, &mut self.buf, t)
     }
 
     pub fn free(&self) -> usize {

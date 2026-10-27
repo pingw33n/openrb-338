@@ -498,7 +498,14 @@ a locate forward with record on, the song end with record on) render to the same
 and the nine tracks queried with msg 22 at two points of each session equal rb's byte for byte.
 rb: `crates/rb-engine/src/seq.rs` (`Sequencer::record_hook`, `Track::record`, `Track::merge`,
 `Sequencer::set_record`); the pool is per song in rb and the lists reserve a whole pool each, so
-the real-time callback never grows them (the module doc).
+the real-time callback never grows them (the module doc). rb's merge (task-084) gives the
+DLL's insert-by-insert result node for node but moves the pool's nodes after a track's list a
+few times per track instead of once per inserted node: the walk compacts in one pass, the
+returns and recorded nodes are held in a reserved buffer of 4096 nodes (`seq::MERGE_CHUNK`)
+under `sub_10014750`'s rules, then merged into the list from the back. Measured in release on
+an M1 Pro for ~1000 recorded nodes: 1.78 ms → 0.13 ms on a ~10000-node song, 17.3 ms → 0.34 ms
+on a nearly full pool (a 64-frame block is 1.45 ms); `crates/rb-engine/src/seq/merge_tests.rs`
+checks it against the insert-by-insert merge and times both.
 
 ---
 
