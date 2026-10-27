@@ -433,3 +433,30 @@ See OB-8 for the unclean buffer.
   which `Rbm::load_samples` propagates, refusing the whole mod rather than falling back for that
   slot. The stereo path (0x10003087, `sub_10009DD0`) was not examined. No mod reaches either.
 - **Home.** `docs/rbm.md` sections 9 and 11.
+
+### Q-4: a mod change from the Mods menu activates another open song and back [C: the exe code; C: the MDI order, from a probe; G: the composed sequence]
+
+- **What.** Changing the mod rebuilds the song window (`sub_42D80D`). Its destructor sends
+  WM_MDIDESTROY (0x49626B) [C]. On the test machine's Windows, a probe program that mimics these
+  calls showed that the next MDI child gets WM_NCACTIVATE 1 before the old one is destroyed, when
+  the frame is the active window [C, probe]. In the exe, WM_NCACTIVATE 1 runs `sub_494DF1` → slot
+  14 `sub_42D7BE` → `sub_40D163`, which sends top-level 53 for that window's song [C]. So with
+  another song window open, the exe sends 53 for the other song, and the new window's constructor
+  then sends 53 for the changed song (0x42E5AE) [G: inferred, not observed in Rebirth.exe].
+- **Where.** `sub_42D80D` (0x42D886 mark, 0x42D892 `sub_473401` deletes, 0x42D8BE new window);
+  `sub_49617E` (0x49625C `push 221h`); `sub_494DF1` (0x494E20 `call [edx+38h]`); 0x42D7DD;
+  0x42E5AE. All re-read with llvm-objdump on `original/Rebirth.exe`.
+- **Trigger.** Two or more songs open; a mod chosen from the Mods menu (command `5000 + i`, the
+  frame active). The Mod Selector's OK runs the same code while the dialog is up. The probe
+  tested an owned popup being the active window, and then the other child got no WM_NCACTIVATE 1.
+  [G] That the dialog is the active window when OK runs, and so that OK sends no msg 53, is
+  inferred, not traced.
+- **Effect.** A playing song: none (both activations only set the pending song, `sub_1001BDA4`). A
+  stopped song: slot 6 runs on the devices of both songs (303 note-off release, drum voices
+  silenced, the shared delay line cleared). [G] An audio callback may render the other song for
+  the moment between the two messages (not observed).
+- **Verdict.** A side effect of the window rebuild, not claimed as a defect; there is nothing to
+  reproduce in an export.
+- **Corpus.** None (the corpus uses one song, and its exports change no mod).
+- **rb.** Not modelled: rb opens one song.
+- **Home.** `docs/rbm.md` section 14.5.

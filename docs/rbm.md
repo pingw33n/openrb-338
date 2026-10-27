@@ -697,8 +697,8 @@ voices. The song plays on. [C: read in the disassembly; run in the DLL by rbhost
   which copies the open mod's name at `+1595`, `add eax, 63Bh` at 0x416924).
   Selecting an entry already opens that mod (`sub_416300` at 0x41A16A, releasing the one opened
   before, `sub_4165BE` at 0x41A13E) and plays its startup sound (`sub_426C67` at 0x41A180). OK
-  (0x41A2B6..0x41A305) calls `sub_42D80D(window, mod)`, stores `dword_4DA788` and closes the
-  dialog (`sub_47350E`).
+  (0x41A2B6..0x41A305) calls `sub_42D80D(window, mod)`, stores `dword_4DA788` and marks the
+  dialog for deletion (`sub_47350E`, section 14.5).
 - **Opening a mod** (`sub_416300`): the mod object's word `+1088` counts its users; the first
   one builds the open mod (`sub_41813E` for a file mod, `sub_417AE9` for "Standard ReBirth"),
   whose `sub_41693C` sends top-level 55 (the samples, section 6) or 56 (id 411). Releasing
@@ -709,11 +709,13 @@ voices. The song plays on. [C: read in the disassembly; run in the DLL by rbhost
   freeing the mod (`sub_1001A6B0`) and clearing the startup-sound preview (`engine+0x428`).
 - **`sub_42D80D(window, mod)`**: when the song document's mod (`sub_426F83`, the open mod at
   `doc+4`) is another one, it calls `sub_426FB3(doc, mod)`, then detaches the window from the
-  document (`sub_42D7F7(0)`), destroys it (`sub_47350E`) and builds a new song window for the
+  document (`sub_42D7F7(0)`), marks it for deletion (`sub_47350E`), deletes it (`sub_473401`,
+  0x42D892; section 14.5) and builds a new song window for the
   document (`sub_42DA72(doc, 0, rect)`, at the old window's place), which draws the panel with the
   new mod's bitmaps (section 13.1). The new window's activation (`sub_40D163` at 0x42E5AE) sends
-  top-level 53 only when the document is not already the current one (0x40D178), and it is, so no
-  msg 53 is sent. The same mod again does nothing.
+  top-level 53 only when the document is not already the current one (0x40D178); with this one
+  song window open it is, so no msg 53 is sent. With other song windows open, the Mods menu sends
+  msg 53 for another song and back (inferred, section 14.5). The same mod again does nothing.
 - **`sub_426FB3(doc, mod)`**, in this order: the document is marked modified (`sub_42590B`);
   `doc+4` = the new mod opened (`sub_416300`, which sends 55 or 56 if it was not open); **song
   msg 19 `{u16 BE id}`** to the document's song (`sub_4259FF`: `sub_465F5E` packs the id,
@@ -750,10 +752,9 @@ patterns, the 303s, the effects, the mixer and the process globals (the shared d
 only the delay's slot 6 clears; the drum counters) are untouched; voices that sounded stop at once
 (no release), and the next step plays from the new samples. A song that plays keeps playing.
 
-[G, not traced] With more than one song window open, destroying the old window may let Windows
-activate another song's window (`sub_42D7BE` → msg 53 for that song) before the new window
-activates this one again (msg 53 back), which on a stopped song runs slot 6 on both songs
-(docs/export_state.md section 3). rb's UI has one song, so this is not modelled (task-075).
+The "no msg 53" holds for one open song. With more than one song window open, the Mods menu (not
+the Mod Selector's OK) also sends top-level 53 for another song and then back for this one
+(inferred, section 14.5).
 
 ### 14.3 rb
 
@@ -796,8 +797,69 @@ byte equal, on the first run, with no change to rb. The same sessions without th
 otherwise in rb (the test checks it), so the changes are audible: the mod swap while playing
 (slot 6 on the 808 and the 909, then the new table, the transport untouched), while stopped, to
 and from the built-in kit and between two file mods all do in rb what they do in the DLL. Not
-covered: the startup sound (msg 58, task-074) and more than one open song (14.2, task-075).
+covered: the startup sound (msg 58, task-074) and more than one open song (14.5).
 
 rb-ui's Mods menu (task-047, docs/ui_spec.md section 18) is this change: `Link::set_mod` forwards the
 panel's pending events and sends `Player::set_mod`; the song is marked modified, and a save writes
 the mod's INFO name (GLOB) and URLs. The mod's panel bitmaps are not applied (rb draws its own art).
+
+### 14.5 Several song windows open: the msg 53 round trip (task-075, 2026-10-27)
+
+**The Mods menu sends top-level 53 for another open song, then 53 back for the changed song
+[G: inferred from the two facts below]. The Mod Selector's OK sends neither [G: inferred, and the
+dialog being active is not traced].** The marks are split:
+- the exe code is [C], read in the disassembly (and the addresses re-read with llvm-objdump on
+  `original/Rebirth.exe`);
+- the order of Windows' MDI messages is [C for the test machine's Windows], measured with a probe
+  program that mimics the exe's calls, not with Rebirth.exe;
+- the sequence in Rebirth.exe composed from the two is inferred, not observed.
+
+- **The destroy is synchronous and goes through WM_MDIDESTROY [C].** `sub_47350E` only marks the
+  window (`mov byte ptr [eax+18h],1`); `sub_42D80D` then calls `sub_473401` (0x42D892), which walks
+  the window list `dword_4DFA60` and deletes each marked window through its vtable slot 0 (`push 1;
+  call [edx]`, 0x4734D8..0x4734E2). The song window (`CReBirthWindow`, vtable 0x4BBFB4) is deleted
+  by `sub_42F2D0` → `sub_42E6CA` → `sub_498085` (`CDocumentWindow`) → `sub_49629E` (`CABCWindow`) →
+  `sub_49617E`, which first takes the window off the list (`sub_472A09`, 0x49620F) and then, for
+  window type 1 (`this+0x3C`, the MDI child; the type is the first argument of the `CABCWindow`
+  ctor `sub_495B0B`, stored at 0x495BC9), sends message 545 = WM_MDIDESTROY `{hwnd, 0}` to the MDI
+  client (`sub_481A59`; the call through the user32 table `dword_4DFB24 + 4`, 0x49626B). All of it
+  runs before `sub_42DA72` builds the new window (0x42D8BE).
+- **WM_NCACTIVATE TRUE is the activation [C].** The window procedure `sub_49395B` sends message 0x86
+  to `sub_494DF1` (0x493E2C): with wParam TRUE it finds the window object by hwnd (`sub_473376`)
+  and calls its vtable slot 14 (`call [edx+38h]`, 0x494E20; FALSE calls slot 15, 0x494E2D).
+  Slot 14 of the song window (0x4BBFEC) is `sub_42D7BE`, which calls `sub_40D163(document)`
+  (0x42D7DD): top-level 53 `{the document's slot}` when the document is not app `+0x2544`
+  (0x40D172..0x40D1B1). WM_MDIACTIVATE (0x222, `sub_494DCF`) only goes to `DefMDIChildProc`.
+- **What Windows sends on WM_MDIDESTROY of the active child [C for the test machine's
+  Windows, from a probe, not from Rebirth.exe].** The probe was a 32-bit program built with
+  llvm-mingw: an MDI frame, children A and B, B active, then WM_MDIDESTROY of B and a new child
+  B2, logging the children's messages. It ran from `C:\re\rb\t075` and was not kept.
+  - With the frame being the active window, the client activates A before B is destroyed, and A
+    gets `WM_NCACTIVATE` 1. The log order: B NCACTIVATE 0, B MDIACTIVATE, A NCACTIVATE 1, A
+    SETFOCUS, A MDIACTIVATE, B WM_DESTROY. B2's creation then gives A NCACTIVATE 0 and B2
+    NCACTIVATE 1.
+  - With an owned popup being the active window (the frame disabled or not), A becomes the
+    MDI-active child but gets only WM_MDIACTIVATE, no WM_NCACTIVATE 1. B2 gets its NCACTIVATE 1
+    only when the frame is active again.
+- **So, for the Mods menu [G: inferred from the above]** (command `5000 + i` in the frame's
+  `sub_40C163`; the frame is the active window): the next MDI child in Z order (another song
+  window) gets NCACTIVATE 1 during the destroy → `sub_42D7BE` → msg 53 for its song, then the new
+  window's constructor sends msg 53 for the changed song at 0x42E5AE (app `+0x2544` is now the
+  other document). The new window's own NCACTIVATE 1 finds its document current and sends
+  nothing. The order is msg 19 (in `sub_426FB3`, before the destroy), 53 {other}, 53 {this}.
+- **For the Mod Selector's OK [G: inferred]** (`sub_41A2B6..` calling `sub_42D80D` while the
+  dialog is up): the dialog is a `CModalDialog` (`sub_49836A`, `sub_495B0B(2, ...)` at
+  0x49838F: type 2, a top-level window with `DefWindowProc`) run by the modal loop `sub_498496`,
+  and it is the active window, so the other song window gets no NCACTIVATE 1 and no msg 53 is
+  sent. When the dialog closes the
+  frame is active again and the new window (already the current document) gets NCACTIVATE 1: no
+  msg 53. [G: that the dialog is the active window when OK runs is inferred (a click on OK
+  activates it), not traced.]
+- **The effect in the DLL** (docs/export_state.md section 3, `sub_1001BDA4`): when the changed
+  song plays, 53 {other} only makes the other song pending and 53 {this} makes this one pending
+  again, so nothing changes. When it is stopped, 53 {other} runs slot 6 on this song's devices and
+  makes the other current, and 53 {this} runs slot 6 on the other song's devices and makes this one
+  current again: both songs' 303s get the note-off release, their drum voices are silenced, and the
+  shared delay line is cleared. [G] Between the two messages an audio callback may render the
+  other song (not observed). This is docs/original_bugs.md Q-4.
+- **rb.** rb opens one song, so there is no other song to activate and nothing is modelled.

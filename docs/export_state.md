@@ -242,7 +242,8 @@ the new song current. [C] (task-011) When no song is current, slot 6 is called o
 instead (0x1001BDF3), so its 303s get the note-off release constants (`+0xCC8`, `+0xCCC`) before
 they idle; in the app an opened song always replaces "Untitled song" and keeps its constructor
 values. This changes the export by ±1 LSB (§12). Sent by `sub_40D163` (app `+0x2544` = current document) from the song window
-constructor (`sub_42DA72`, 0x42E5AE: after the load), from MDI activation (`sub_42D7BE`), from the
+constructor (`sub_42DA72`, 0x42E5AE: after the load), from MDI activation (`sub_42D7BE`, vtable
+slot 14 of the song window, called on WM_NCACTIVATE 1 by `sub_494DF1`; docs/rbm.md 14.5), from the
 document destructor (`sub_426E4A`, deactivates before deleting) and from the benchmark (0x402024).
 With no active song, `SafeSoundCallback` outputs silence (plus the preview).
 
