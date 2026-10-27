@@ -1,10 +1,11 @@
 ---
 id: TASK-071
 title: 'Decide: delay pan and distortion amount/shape above 127 from a song file'
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-27 13:27'
+updated_date: '2026-10-27 13:33'
 labels:
   - decision
   - engine
@@ -28,3 +29,9 @@ Options: (a) keep the clamp (rb renders such a file as if the byte were 127), do
 
 Recommendation: (a), unless the user wants bit-exactness for crafted files: no real song carries these bytes, and (b) needs run-time table dumps and a corpus capture.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by @pingw33n on 2026-10-27: option (a), keep the clamp. A song file whose DELY pan or DIST amount/shape byte is 128..255 renders in rb as if the byte were 127, as documented in docs/original_bugs.md OB-9 and OB-10 and docs/song_load.md section 4.10; no real song carries such bytes and the panel sends 0..127 only. No code change.
+<!-- SECTION:FINAL_SUMMARY:END -->
