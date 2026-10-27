@@ -2,8 +2,10 @@
 id: TASK-060
 title: 'ReBirth 1.x songs (MIDI-file .rbs): RE the 2.01 import and load them in rb'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-complex'
 created_date: '2026-10-27 08:19'
+updated_date: '2026-10-27 08:58'
 labels:
   - re
   - engine

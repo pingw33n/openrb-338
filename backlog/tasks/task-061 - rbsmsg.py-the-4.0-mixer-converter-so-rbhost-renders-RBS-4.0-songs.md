@@ -2,8 +2,10 @@
 id: TASK-061
 title: 'rbsmsg.py: the 4.0 mixer converter, so rbhost renders RBS 4.0 songs'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-worker'
 created_date: '2026-10-27 08:38'
+updated_date: '2026-10-27 08:58'
 labels:
   - tools
   - tests

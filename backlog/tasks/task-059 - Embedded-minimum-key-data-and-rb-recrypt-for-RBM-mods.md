@@ -5,13 +5,14 @@ status: To Do
 assignee:
   - '@agent-complex'
 created_date: '2026-10-27 07:44'
-updated_date: '2026-10-27 07:44'
+updated_date: '2026-10-27 08:58'
 labels:
   - rbm
   - cli
 milestone: m-2
 dependencies:
   - TASK-033
+  - TASK-062
 references:
   - docs/rbm.md
 priority: medium
