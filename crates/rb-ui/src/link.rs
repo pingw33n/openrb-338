@@ -34,6 +34,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+use rb_engine::frame::LoadRefused;
 use rb_engine::samples::{STARTUP_ID, SampleSet};
 use rb_engine::seq::Event as TrackEvent;
 use rb_engine::song::{Device, Song};
@@ -363,12 +364,18 @@ impl Link {
     /// Opens `song`: builds it and queues it as the newest song, and resets the panel to its
     /// values (the data blocks as the pattern mode shows them: a song that is already playing
     /// keeps playing, and the new one starts when Play is pressed). The song's own drum samples
-    /// are `samples`.
-    pub fn load(&mut self, song: &Song, samples: Option<Arc<SampleSet>>, panel: &mut Panel) {
+    /// are `samples`. A song the node pool refuses ([`LoadRefused`]) is not opened: the current
+    /// song, the panel and the kit stay as they were.
+    pub fn load(
+        &mut self,
+        song: &Song,
+        samples: Option<Arc<SampleSet>>,
+        panel: &mut Panel,
+    ) -> Result<(), LoadRefused> {
+        let engine = self.player.build(song, samples.clone())?;
         // what the panel did before is sent first (the panel is replaced below)
         self.forward(panel);
-        self.kit = samples.clone();
-        let engine = self.player.build(song, samples);
+        self.kit = samples;
         self.backlog.push_back(Command::Load(engine));
         self.recorded = None;
         self.recorded_at = None;
@@ -415,6 +422,7 @@ impl Link {
         }
         self.fill_views(panel);
         self.flush_marked();
+        Ok(())
     }
 
     /// The Mods menu's mod change of the open song (song msg 19): the pending panel events go

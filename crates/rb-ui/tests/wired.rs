@@ -73,7 +73,8 @@ impl Harness {
     fn load(&mut self, path: &str) {
         let song = rb_ui::session::load_song(&root().join(path)).unwrap();
         let link = self.app.link.as_mut().unwrap();
-        link.load(&song, Some(samples()), &mut self.app.panel);
+        link.load(&song, Some(samples()), &mut self.app.panel)
+            .unwrap();
         self.calls(2);
         self.take_log();
     }
@@ -705,7 +706,7 @@ fn a_song_whose_pattern_select_is_past_31_opens_on_pattern_32() {
         song.tr808.params[1] = byte;
         song.tr909.params[1] = byte;
         let link = h.app.link.as_mut().unwrap();
-        link.load(&song, Some(samples()), &mut h.app.panel);
+        link.load(&song, Some(samples()), &mut h.app.panel).unwrap();
         for r in 0..4 {
             assert_eq!(h.app.panel.rows[r].pattern, 31, "row {r} byte {byte}");
         }
@@ -1077,7 +1078,7 @@ fn load_sends_the_events_the_panel_had_first() {
     h.take_log();
     let song = rb_ui::session::load_song(&root().join("tests/songs/shipped/Calm.rbs")).unwrap();
     let link = h.app.link.as_mut().unwrap();
-    link.load(&song, Some(samples()), &mut h.app.panel);
+    link.load(&song, Some(samples()), &mut h.app.panel).unwrap();
     assert_eq!(h.take_log(), vec![global(20, 40)]);
 }
 

@@ -304,7 +304,7 @@ fn saving_an_unedited_corpus_song_gives_back_the_file() {
         let opened = session::open_song(path).unwrap();
         let (mut link, _audio) = Link::new(tables(), None);
         let mut panel = Panel::new();
-        link.load(&opened.engine, None, &mut panel);
+        link.load(&opened.engine, None, &mut panel).unwrap();
         let song = compose(&opened.source, &panel, &link, &opened.engine.mod_name);
         let bytes = song.write().unwrap();
         let a = read_rbs(path);
@@ -1026,4 +1026,56 @@ fn the_mods_menu_lists_the_mods_folder() {
     assert!(h.app.notice.as_deref().unwrap().contains("No Such Mod"));
     assert_eq!(h.app.doc.kit, Kit::Standard);
     assert_eq!(h.app.doc.mod_name, "No Such Mod");
+}
+
+/// task-088: a song the node pool refuses (more than 100000 events) opens no song: the alert's
+/// text is shown, the open song, its document and the panel stay, and no startup sound plays
+/// (sub_40B575's STOP alert, docs/song_load.md section 5.2).
+#[test]
+fn a_song_the_node_pool_refuses_is_not_opened() {
+    let events = |n: u32, ctrls: [u8; 2]| -> Vec<rbs::Event> {
+        (0..n)
+            .map(|i| rbs::Event {
+                pos: i / 2,
+                ctrl: ctrls[(i % 2) as usize],
+                value: (i / 2 % 2) as u8 + 1,
+            })
+            .collect()
+    };
+    let mut big = rbs::Song::empty();
+    big.tracks[5].events = events(60_000, [3, 4]);
+    big.tracks[6].events = events(41_000, [1, 2]);
+    let dir = tempfile::tempdir().unwrap();
+    let big_path = dir.path().join("big.rbs");
+    std::fs::write(&big_path, big.write().unwrap()).unwrap();
+
+    let src = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = true;
+    h.open(&src);
+    // let the startup sound of the first open end
+    h.calls(2000);
+    assert_eq!(h.audio.preview_position(), None);
+    // a panel value the refused song's load would reset
+    h.app.panel.transport.tempo = 77;
+    let doc_path = h.app.doc.path.clone();
+    h.app.open_song(&big_path);
+    assert_eq!(
+        h.app.notice.as_deref(),
+        Some("There is not enough memory for opening the Song.")
+    );
+    assert_eq!(h.app.panel.transport.tempo, 77);
+    h.calls(2);
+    assert_eq!(h.audio.preview_position(), None, "no startup sound");
+    assert_eq!(h.app.doc.path, doc_path);
+
+    // the start with the refused song as the command-line song opens nothing either
+    let mut s = Harness::new();
+    s.app.settings.startup_sound = true;
+    let opened = rb_ui::session::open_song(&big_path).unwrap();
+    s.app.start(Some((big_path.clone(), opened)));
+    assert!(s.app.notice.is_some());
+    s.calls(2);
+    assert_eq!(s.audio.preview_position(), None, "no startup sound");
+    assert_eq!(s.app.doc.path, None);
 }

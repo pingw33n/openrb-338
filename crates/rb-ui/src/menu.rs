@@ -26,6 +26,7 @@ use eframe::egui::{
 use rb_cli::encode::Format;
 use rb_cli::mods::{self, Kit, ModOpts, STANDARD};
 use rb_cli::render::{DEFAULT_IDLE_BLOCKS, DEFAULT_QUALITY, Renderer, load_mod};
+use rb_engine::frame::LoadRefused;
 use rb_engine::samples::SampleSet;
 
 use crate::app::App;
@@ -206,7 +207,12 @@ impl App {
         let Some(link) = &mut self.link else {
             return;
         };
-        link.load(&opened.engine, samples, &mut self.panel);
+        // a song the node pool refuses opens no window (sub_40B575's STOP alert): the current
+        // song, the panel and the document stay, and no startup sound plays
+        if link.load(&opened.engine, samples, &mut self.panel).is_err() {
+            self.notice = Some(LoadRefused::ALERT.into());
+            return;
+        }
         // the song document's constructor `sub_425C4D` opens the mod, then `sub_426C67`
         // (0x425FAB for a 1.x song, 0x426400 for an RBS song): the old song was closed first
         // (the unsaved prompt is the close's), so this song is its mod's only user

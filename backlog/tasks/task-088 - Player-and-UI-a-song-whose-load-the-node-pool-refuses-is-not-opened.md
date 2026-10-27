@@ -1,9 +1,11 @@
 ---
 id: TASK-088
 title: 'Player and UI: a song whose load the node pool refuses is not opened'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@agent-worker'
 created_date: '2026-10-27 20:22'
+updated_date: '2026-10-27 21:22'
 labels:
   - ui
   - cli
@@ -29,7 +31,29 @@ Found by task-083 (2026-10-27). When ReBirth.dll refuses a song-load msg-37 batc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Player::build or Player::load reports a refused load instead of queueing the song
-- [ ] #2 rb-ui shows 'There is not enough memory for opening the Song.' and keeps the current song; rb play exits with the error
-- [ ] #3 A unit or integration test loads a generated song of more than 100000 events and checks it
+- [x] #1 Player::build or Player::load reports a refused load instead of queueing the song
+- [x] #2 rb-ui shows 'There is not enough memory for opening the Song.' and keeps the current song; rb play exits with the error
+- [x] #3 A unit or integration test loads a generated song of more than 100000 events and checks it
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. rb-engine: LoadRefused::ALERT const (the exe's text). 2. rb-player: build -> Result<Box<Engine>, LoadRefused>; load -> Result<(), LoadError{Refused,Queue}>; test with a generated 101000-event song. 3. rb-ui: Link::load returns Result before touching panel/kit/backlog; App::adopt shows ALERT in notice, keeps doc/panel, no startup sound; start() likewise. 4. rb play: exit 1 with the refusal. 5. tests, clippy, fmt.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-a90771e36cd50ddb6
+
+Done: LoadRefused::ALERT (rb-engine); Player::build -> Result<Box<Engine>,LoadRefused>; Player::load -> Result<(),LoadError{Refused,Queue}>; Link::load -> Result<(),LoadRefused> (builds first, so panel/kit/backlog untouched on refusal); App::adopt shows ALERT in notice, returns before mod_opened and doc change (covers start too); rb play fails exit 1 with the refusal text. Tests: crates/rb-player/tests/load_refused.rs, crates/rb-ui/tests/menu.rs a_song_the_node_pool_refuses_is_not_opened (open path and start path, generated 101000-event song in a tempdir). rb play exit path not run on a real big file (needs audio device; the code is the load() error map before output start). Full cargo test --release all pass, clippy -D warnings clean, fmt clean.
+
+Review round 1: send back for the commit message only (subject 78 chars, Testing line without a count). Amended: subject shortened, cargo test 450 pass.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Player::build/load report the node pool's refusal; rb-ui shows 'There is not enough memory for opening the Song.' and keeps song, panel, document, no startup sound; rb play exits 1 with the error. Tests added in rb-player and rb-ui; cargo test --release all pass, clippy and fmt clean. Branch worktree-agent-a90771e36cd50ddb6.
+<!-- SECTION:FINAL_SUMMARY:END -->

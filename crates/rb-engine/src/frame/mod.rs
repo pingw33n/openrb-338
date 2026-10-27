@@ -145,6 +145,11 @@ pub struct LoadRefused {
     pub free: u32,
 }
 
+impl LoadRefused {
+    /// The exe's alert text (sub_40B575, alert id 0x1DCF592A).
+    pub const ALERT: &'static str = "There is not enough memory for opening the Song.";
+}
+
 impl std::fmt::Display for LoadRefused {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

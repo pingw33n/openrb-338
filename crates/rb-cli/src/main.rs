@@ -487,7 +487,11 @@ fn play(
     let samples = r.samples(&label, &song)?;
     let (mut player, audio) = Player::new(r.tables.clone(), samples.clone());
     let queue = |_| fail(1, "the player's command queue is full");
-    player.load(&song, samples).map_err(queue)?;
+    player.load(&song, samples).map_err(|e| match e {
+        // the exe's alert text, then the numbers
+        rb_player::LoadError::Refused(r) => fail(1, format!("{label}: {r}")),
+        e @ rb_player::LoadError::Queue(_) => fail(1, e.to_string()),
+    })?;
     if let Some(b) = bar {
         player
             .send(Command::Locate(b * TICKS_PER_BAR))

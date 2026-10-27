@@ -86,7 +86,7 @@ use std::sync::Arc;
 
 use rb_engine::frame::edit::PatternShape;
 use rb_engine::frame::export::REALTIME_FRAMES;
-use rb_engine::frame::{Devices, Engine, MixerParams};
+use rb_engine::frame::{Devices, Engine, LoadRefused, MixerParams};
 use rb_engine::process::ProcessState;
 use rb_engine::samples::{Retired, STARTUP_ID, Sample, SampleSet};
 use rb_engine::seq::Pool;
@@ -105,6 +105,32 @@ pub const COMMANDS: usize = 1024;
 pub const GARBAGE: usize = 64;
 /// The boxes one command can hand back: a load replaces the pending song and the current one.
 pub const GARBAGE_PER_COMMAND: usize = 2;
+
+/// Why [`Player::load`] did not queue a song.
+pub enum LoadError {
+    /// The node pool refused a batch of the song's events.
+    Refused(LoadRefused),
+    /// The command queue was full; the command is given back.
+    Queue(Command),
+}
+
+impl std::fmt::Debug for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::Refused(r) => write!(f, "Refused({r:?})"),
+            LoadError::Queue(_) => write!(f, "Queue(..)"),
+        }
+    }
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::Refused(r) => r.fmt(f),
+            LoadError::Queue(_) => write!(f, "the player's command queue is full"),
+        }
+    }
+}
 
 /// What the UI sends to the newest song (current, or pending: see the crate doc). Each variant
 /// names the engine message it stands for.
@@ -444,24 +470,26 @@ impl Player {
     /// A song as the original makes it when a file is opened: the song constructor (msg 52),
     /// then the load's messages (msgs 36, 41, 37, 32), on this player's process globals.
     ///
-    /// A load whose msg-37 batch the node pool refuses still gives the engine, holding the
-    /// batches before it as the DLL's song does; [`Engine::load_refused`] tells. The exe shows
-    /// "There is not enough memory for opening the Song." then and opens no window; the player
-    /// and the UI do not act on it yet (task-088).
-    pub fn build(&self, song: &Song, samples: Option<Arc<SampleSet>>) -> Box<Engine> {
+    /// A load whose msg-37 batch the node pool refuses gives the [`LoadRefused`], not the
+    /// engine (which would hold the batches before it, as the DLL's song does). The exe shows
+    /// [`LoadRefused::ALERT`] then and opens no window (docs/song_load.md section 5.2).
+    pub fn build(
+        &self,
+        song: &Song,
+        samples: Option<Arc<SampleSet>>,
+    ) -> Result<Box<Engine>, LoadRefused> {
         let mut e = Box::new(Engine::new(
             self.tables.clone(),
             Devices::implemented_with(samples, self.process.clone()),
         ));
-        // kept on the engine (Engine::load_refused)
-        let _ = e.load(song);
-        e
+        e.load(song)?;
+        Ok(e)
     }
 
-    /// [`Player::build`] and [`Command::Load`].
-    pub fn load(&mut self, song: &Song, samples: Option<Arc<SampleSet>>) -> Result<(), Command> {
-        let e = self.build(song, samples);
-        self.send(Command::Load(e))
+    /// [`Player::build`] and [`Command::Load`]. A refused song is not queued.
+    pub fn load(&mut self, song: &Song, samples: Option<Arc<SampleSet>>) -> Result<(), LoadError> {
+        let e = self.build(song, samples).map_err(LoadError::Refused)?;
+        self.send(Command::Load(e)).map_err(LoadError::Queue)
     }
 
     /// [`Command::Mod`] with `samples`: the newest song's drum machines take them (song msg 19).
