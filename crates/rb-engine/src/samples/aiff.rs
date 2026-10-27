@@ -67,7 +67,12 @@ pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
             // the Metallicon mod's AIFFs have a 12-byte COMM (a 4-byte rate field) and the DLL
             // reads the 18 bytes straight through into the SSND header (task-032).
             b"COMM" if comm.is_none() => comm = Some(&d[p + 8..]),
-            b"SSND" if ssnd.is_none() => ssnd = Some(&d[p + 8..body_end]),
+            // Likewise the audio: sub_10002FC4 reads the SSND offset and block size, skips the
+            // offset, then reads `2 * frames` bytes from the stream (0x10003060..0x1000306F)
+            // with no check against the chunk's size. The 8tRack and DJ Turn's MOD mods have a
+            // TR808BD.aif whose FORM and SSND sizes are stale (smaller than the audio that
+            // follows), and the DLL plays the whole sample (task-058).
+            b"SSND" if ssnd.is_none() => ssnd = Some(&d[p + 8..]),
             _ => {}
         }
         p = body_end + (size & 1);
@@ -103,14 +108,14 @@ pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
     let offset = u32::from_be_bytes(ssnd[..4].try_into().unwrap()) as usize;
     let data = ssnd[8..]
         .get(offset..)
-        .ok_or_else(|| bad("the SSND offset is past the end of the chunk"))?;
+        .ok_or_else(|| bad("the SSND offset is past the end of the file"))?;
     let need = frames
         .checked_mul(channels)
         .and_then(|n| n.checked_mul(2))
         .ok_or_else(|| bad("the frame count overflows"))?;
     if data.len() < need {
         return Err(bad(format!(
-            "the SSND chunk holds {} bytes of audio, the COMM chunk says {need}",
+            "the file holds {} bytes of audio after the SSND header, the COMM chunk says {need}",
             data.len()
         )));
     }
@@ -134,6 +139,37 @@ mod tests {
         r[..2].copy_from_slice(&exp.to_be_bytes());
         r[2..].copy_from_slice(&mant.to_be_bytes());
         r
+    }
+
+    /// A mono 16-bit AIFF of `frames` samples whose FORM and SSND sizes claim only `claimed`.
+    fn stale_sizes(frames: usize, claimed: usize) -> Vec<u8> {
+        let mut d = b"FORM".to_vec();
+        d.extend(((4 + 8 + 18 + 8 + 8 + 2 * claimed) as u32).to_be_bytes());
+        d.extend(b"AIFFCOMM");
+        d.extend(18u32.to_be_bytes());
+        d.extend(1u16.to_be_bytes());
+        d.extend((frames as u32).to_be_bytes());
+        d.extend(16u16.to_be_bytes());
+        d.extend([0x40, 0x0E, 0xAC, 0x44, 0, 0, 0, 0, 0, 0]);
+        d.extend(b"SSND");
+        d.extend((8 + 2 * claimed as u32).to_be_bytes());
+        d.extend([0u8; 8]);
+        for i in 0..frames {
+            d.extend((i as i16 * 3 - 100).to_be_bytes());
+        }
+        d
+    }
+
+    #[test]
+    fn the_audio_is_read_past_a_stale_ssnd_size() {
+        // sub_10002FC4 reads 2 * frames bytes after the SSND header whatever the chunk says
+        let s = super::parse(&stale_sizes(100, 60)).unwrap();
+        assert_eq!(s.len(), 100 + super::PADDING);
+        assert_eq!(s[99], 99 * 3 - 100);
+        // a file that really ends early is still an error
+        let mut d = stale_sizes(100, 60);
+        d.truncate(d.len() - 2);
+        assert!(super::parse(&d).is_err());
     }
 
     #[test]

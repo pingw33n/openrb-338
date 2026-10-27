@@ -75,6 +75,22 @@ class Descramble(unittest.TestCase):
             self.assertEqual(out[1024:], expect, key)
         self.assertEqual((17 * 255) % 1925 + 123, 608)
 
+    def test_equals_the_byte_loop(self):
+        # the translate-per-residue implementation against the DLL's loop written out
+        rnd = random.Random(4)
+        table = bytes(rnd.randrange(256) for _ in range(4096))
+        for size in (1025, 1024 + 123, 1024 + 124, 7000):
+            payload = bytes(rnd.randrange(256) for _ in range(size))
+            for key in (0, 1, 113, 255):
+                period = (17 * key) % 1925 + 123
+                base = (key & 1) * 2048
+                expect = bytearray(payload)
+                j = 0
+                for n in range(1024, size):
+                    expect[n] = (expect[n] + table[base + j]) & 0xFF
+                    j = 0 if j + 1 == period else j + 1
+                self.assertEqual(rbm.descramble(payload, key, table), bytes(expect), (size, key))
+
     def test_short_payload_untouched(self):
         self.assertEqual(rbm.descramble(b"\x01" * 1024, 3, bytes(4096)), b"\x01" * 1024)
 
@@ -154,6 +170,37 @@ class Container(unittest.TestCase):
         data[4:8] = struct.pack(">I", len(data))
         with self.assertRaises(rbm.FormatError):
             rbm.parse(bytes(data))
+
+    def test_check_dir(self):
+        import contextlib
+        import io
+        import json
+        with tempfile.TemporaryDirectory() as d:
+            dat = os.path.join(d, "RB20FUL.DAT")
+            with open(dat, "wb") as f:
+                f.write(struct.pack(">I", rbm.DAT_MAGIC))
+                f.truncate(rbm.DAT_HEADER + rbm.DAT_BODY)    # sparse: a zero table
+            mods = os.path.join(d, "Mods")
+            os.mkdir(mods)
+            # same INFO name: "AXIOM(B3).RBM" < "AXIOM.RBM" in NTFS order, so axiom(b3) owns it
+            for name in ("AXIOM.rbm", "axiom(b3).rbm"):
+                with open(os.path.join(mods, name), "wb") as f:
+                    f.write(build_mod(self.files))
+            with open(os.path.join(mods, "junk.rbm"), "wb") as f:
+                f.write(b"not a mod")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = rbm.main(["check-dir", mods, dat, "--json"])
+        self.assertEqual(rc, 1)                                   # junk.rbm fails
+        res = json.loads(out.getvalue())
+        self.assertEqual([m["file"] for m in res], ["axiom(b3).rbm", "AXIOM.rbm", "junk.rbm"])
+        self.assertNotIn("shadowed_by", res[0])
+        self.assertEqual(res[1]["shadowed_by"], "axiom(b3).rbm")
+        self.assertTrue(res[2]["error"].startswith("parse"))
+        self.assertEqual(sorted(res[0]["slots"]), ["TR808BD.aif", "TR909sd1.aif"])
+        self.assertEqual(res[0]["slots"]["TR808BD.aif"]["frames"], 3000)
+        self.assertIn("44 of 46 slots built in", res[0]["notes"])
+        self.assertEqual(len(res[0]["files"]), 3)
 
     def test_check_stride_pages(self):
         with tempfile.TemporaryDirectory() as d:

@@ -143,7 +143,38 @@ fn implicit_dirs(sub: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The `.rbm` files of `dir` (sorted), each with its INFO menu name when it has one.
+/// The order in which the original meets the files of its `Mods` folder: `FindFirstFile` /
+/// `FindNextFile` over `*.*` (`sub_4862C9`, `sub_486355`). The first mod with a given INFO name
+/// is kept and a later one is dropped (`sub_4158A9` -> `sub_4155D1` at 0x415A90), so this order
+/// decides which file owns a duplicated name. The order is the volume's, not the app's: rb models
+/// NTFS, which lists a folder by the names' UTF-16 units after its per-unit `$UpCase` table [G:
+/// general NTFS behavior; the AXIOM case, `axiom(b3).rbm` before `AXIOM.rbm`, was seen on the test
+/// machine]. The upcase here is per character and only where it gives one character (so `ß`
+/// stays `ß`, as in `$UpCase`), an approximation of that table; FAT or a network share may list
+/// in another order.
+fn folder_order(a: &Path, b: &Path) -> std::cmp::Ordering {
+    let key = |p: &Path| -> Vec<u16> {
+        let name = p
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let up: String = name
+            .chars()
+            .map(|c| {
+                let mut u = c.to_uppercase();
+                match (u.next(), u.next()) {
+                    (Some(x), None) => x,
+                    _ => c,
+                }
+            })
+            .collect();
+        up.encode_utf16().collect()
+    };
+    key(a).cmp(&key(b)).then_with(|| a.cmp(b))
+}
+
+/// The `.rbm` files of `dir` in the original's folder order, each with its INFO menu name when
+/// it has one.
 fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
     let rd = std::fs::read_dir(dir).map_err(|e| {
         fail(
@@ -156,7 +187,7 @@ fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
         .map(|e| e.path())
         .filter(|p| p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("rbm")))
         .collect();
-    files.sort();
+    files.sort_by(|a, b| folder_order(a, b));
     Ok(files
         .into_iter()
         .map(|p| {
@@ -232,5 +263,73 @@ pub fn resolve(opts: &ModOpts, label: &str, mod_name: &str) -> Result<Kit, Fail>
                  choice)"
             ),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A mod with no files whose INFO menu name is `name`.
+    fn empty_mod(name: &str) -> Vec<u8> {
+        let mut b = b"CAT \0\0\0\0PRBM".to_vec();
+        b.extend(b"INFO");
+        b.extend(1280u32.to_be_bytes());
+        let mut info = vec![0u8; 1280];
+        info[1003..1003 + name.len()].copy_from_slice(name.as_bytes());
+        b.extend(info);
+        let size = (b.len() - 8) as u32;
+        b[4..8].copy_from_slice(&size.to_be_bytes());
+        b
+    }
+
+    #[test]
+    fn folder_order_is_ntfs_upcased() {
+        let mut v: Vec<PathBuf> = [
+            "AXIOM.rbm",
+            "axiom(b3).rbm",
+            "b.rbm",
+            "Alpha2.rbm",
+            "alpha3.rbm",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+        v.sort_by(|a, b| folder_order(a, b));
+        let names: Vec<_> = v.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        assert_eq!(
+            names,
+            [
+                "Alpha2.rbm",
+                "alpha3.rbm",
+                "axiom(b3).rbm",
+                "AXIOM.rbm",
+                "b.rbm"
+            ]
+        );
+    }
+
+    #[test]
+    fn folder_order_upcases_per_character() {
+        // 'ß' has no one-character uppercase: it stays U+00DF and sorts after 'S' (a full
+        // Unicode uppercase would make it "SS" and put "ßa" first)
+        let (a, b) = (Path::new("ßa.rbm"), Path::new("SSb.rbm"));
+        assert_eq!(folder_order(a, b), std::cmp::Ordering::Greater);
+        assert_eq!(
+            folder_order(Path::new("é.rbm"), Path::new("É.rbm")),
+            Path::new("é.rbm").cmp(Path::new("É.rbm"))
+        );
+    }
+
+    #[test]
+    fn the_first_file_in_folder_order_owns_a_duplicated_name() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("AXIOM.rbm"), empty_mod("AXIOM")).unwrap();
+        std::fs::write(d.path().join("axiom(b3).rbm"), empty_mod("AXIOM")).unwrap();
+        let p = find_in_dir(d.path(), "AXIOM").ok().flatten().unwrap();
+        assert_eq!(p.file_name().unwrap(), "axiom(b3).rbm");
+        // a file name still finds the other one
+        let p = find_in_dir(d.path(), "axiom.rbm").ok().flatten().unwrap();
+        assert_eq!(p.file_name().unwrap(), "AXIOM.rbm");
     }
 }

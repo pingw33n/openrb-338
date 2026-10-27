@@ -47,6 +47,15 @@ log = rb_export.log
 Failure = rb_export.Failure
 
 
+def set_remote_dir(name):
+    """--remote-dir NAME: work in C:\\re\\rb\\NAME instead of C:\\re\\rb\\rbhost (rbhost.exe, the
+    messages, the mods and the renders all go there; delete the folder when done)."""
+    global REMOTE_DIR, REMOTE_WIN
+    if not name or any(c in name for c in "/\\:") or name in (".", ".."):
+        raise SystemExit("--remote-dir: a plain folder name under C:\\re\\rb, got %r" % name)
+    REMOTE_DIR, REMOTE_WIN = "rb/" + name, "C:\\re\\rb\\" + name
+
+
 class OnePermit(rb_export.Permits):
     """One permit of redc-win-run: rbhost does not use the desktop."""
 
@@ -220,6 +229,7 @@ def main(argv):
     ap.add_argument("-o", "--outdir", default=".")
     ap.add_argument("--owner", help="locky owner (default: the git branch)")
     ap.add_argument("--tag", default="x", help="prefix of the remote file names (default x)")
+    ap.add_argument("--remote-dir", metavar="NAME", help="work in C:\\re\\rb\\NAME (default rbhost)")
     ap.add_argument("--runs", type=int, default=1, help="render each song this many times")
     ap.add_argument("--timeout", type=float, default=600.0)
     ap.add_argument("--dll", help="remote ReBirth.dll (default: rbhost's, C:\\ReBirth RB-338\\ReBirth.dll)")
@@ -244,6 +254,8 @@ def main(argv):
     ap.add_argument("--dump-samples", action="store_true", help="the mod's loaded samples (the DLL's table)")
     ap.add_argument("-v", action="store_true")
     args = ap.parse_args(argv)
+    if args.remote_dir:
+        set_remote_dir(args.remote_dir)
     outdir = os.path.abspath(args.outdir)
     os.makedirs(outdir, exist_ok=True)
     exe = os.path.join(HERE, "build", "rbhost.exe")

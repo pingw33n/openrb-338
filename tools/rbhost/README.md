@@ -40,6 +40,9 @@ of message 56 {411} and creates the songs with the mod's id (`--mod-id`, default
 `OUT/SONG.samples/slotNN.bin` (i16, the CWaveSample buffers). Mods, `RB20FUL.DAT` and the dumps are
 Propellerhead material: keep OUT outside the repository.
 
+`--remote-dir NAME` (run.py and fit.py) works in `C:\re\rb\NAME` instead of `C:\re\rb\rbhost`:
+rbhost.exe, the messages, the mod and the renders go there; delete the folder when done.
+
 `run.py` holds one permit of `redc-win-run` (rbhost takes neither the keyboard nor the screen) and
 stops only the processes it started. The sidecar JSON has the arguments, rbhost's log, the hashes and
 the RIFF check of `tools/rb_export.py` (the frame count must equal the export length formula).

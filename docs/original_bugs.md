@@ -250,3 +250,22 @@ See OB-8 for the unclean buffer.
   host-driven resets would also have. They matter because they make an export depend on what ran
   before it in the process (the counters), which rb models by starting fresh (counters 0).
 - **Home.** `docs/export_state.md` (the state tables near the 303 and drum rows).
+
+### Q-3: the AIFF reader trusts COMM over the chunk sizes [C for the mono read]
+
+- **What.** The DLL's AIFF reader reads the COMM fields from the chunk's start whatever its size,
+  and reads `2 * frames` bytes of audio after the SSND header whatever the SSND size says.
+- **Where.** COMM: `sub_10001674` (no size argument). SSND: `sub_10002FC4`, the header by
+  `sub_10004F00`, the offset skip (vtable +0x2C), then the read of `2 * frames` bytes
+  (0x10003060 `lea eax,[ebx+ebx]`, vtable +4 at 0x1000306F) for a mono file.
+- **Trigger.** Mods: 19 AIFFs of Metallicon.rbm have a 12-byte COMM; TR808BD.aif of 8tRack.rbm,
+  DJ Turn's 8-Track.rbm and DJ Turn's MOD.rbm has FORM and SSND sizes smaller than the audio
+  that follows (21064 frames where SSND holds 15798; 18052 where it holds 13539).
+- **Verdict.** Leniency, not a defect: the file holds the audio and the DLL plays all of it
+  (rbhost `--dump-samples`: 42128 and 36104 bytes, equal to the file's audio; task-058).
+- **rb.** `crates/rb-engine/src/samples/aiff.rs` reads both through to the end of the file.
+- **Open.** A file that really ends before `2 * frames` bytes: the DLL ignores the read's result
+  (0x10003071) and the stream's behavior at its end was not traced [G]; rb's policy is an error,
+  which `Rbm::load_samples` propagates, refusing the whole mod rather than falling back for that
+  slot. The stereo path (0x10003087, `sub_10009DD0`) was not examined. No mod reaches either.
+- **Home.** `docs/rbm.md` sections 9 and 11.

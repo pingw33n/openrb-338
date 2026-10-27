@@ -272,6 +272,8 @@ the 8-byte chunk header fits (0x100050CD..0x100050D6); `sub_100016F4` then valid
 (non-zero channels, frames and rate, bits 8..32). So the rate is read through the chunk end into
 the SSND header. `rbm.py` does the same, and the engine's AIFF reader (`samples/aiff.rs`) takes
 COMM from the chunk start to the end of the file rather than rejecting a chunk under 18 bytes.
+The audio is read the same way (section 11.2): `sub_10002FC4` reads `2 * frames` bytes after the
+SSND header whatever the SSND size says, and so does the engine's reader since task-058.
 
 ## 10. Mods in the engine and the CLI (task-033, 2026-10-27)
 
@@ -302,3 +304,116 @@ COMM from the chunk start to the end of the file rather than rejecting a chunk u
   with zero low 32 bits, such as 2^32, or one that does not fit in 63 bits, is rejected).
   [G: the slot is a qword, from the 8-byte stack variable; a dword `fistp` would differ only for
   rates of 2^31 and up, which no mod has.]
+
+## 11. A third-party collection (task-058, 2026-10-27)
+
+The user's collection (`~/rb_stuff`: `Mods/`, 172 `.rbm`; `songs/`, 193 distinct songs; and a large
+song archive, `CaveysRebirthStuff/`) is third-party material: it is read in place and nothing of it
+is in the repository. Mod names and counts only below.
+
+**The check.** `tools/rbm.py check-dir DIR RB20FUL.DAT [--json]` (the reference: every mod's
+parse, key pages, every embedded file descrambled, the 46 slots' AIFFs, JPEG end markers,
+duplicate INFO names in the original's folder order) and the env-gated cargo test
+`crates/rb-cli/tests/thirdparty.rs` (`RB_THIRDPARTY_DIR`, `RB_RB20FUL`; run it with
+`cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1`), which compares
+`crates/rbm` with `check-dir --json` (the SHA-256 of every embedded file, the channel-0 PCM of every
+slot) and reads, writes back and renders every distinct song.
+
+### 11.1 Mods
+
+- **All 172 load**, in `rbm.py` and in `crates/rbm`, with the same 16680 embedded files and the
+  same 7285 slot samples. Every one is a `CAT ` of type `PRBM` with `HEAD` first and a 1280-byte
+  `INFO` last, only `EMBF` between, under 256 chunks, version major 1 (or zero), no duplicate EMBF
+  name. Every slot AIFF is mono, 16-bit, 44100 Hz. [C]
+- **The key table is right for all of them**: the mean |x[n] - x[n-1]| of the descrambled slot
+  audio past byte 1024 is 180..1710 per mod, against 20328..22071 for the stored bytes; and the
+  rbhost renders of section 11.4 load the samples through the DLL's own descrambler. [C]
+- **54 mods leave slots built in** (1 to 46 of the 46): the original sends `present = 0` and the
+  DLL loads the built-in sample (section 3); `rb` does the same (`Rbm::load_samples`). One mod,
+  ReBirth 666, holds no sample at all (panel graphics only): it plays the built-in kit.
+- **Stale AIFF sizes** (3 mods: 8tRack, DJ Turn's 8-Track, a byte-identical copy of it, and DJ
+  Turn's MOD): their `TR808BD.aif` has FORM and SSND sizes smaller than the audio that follows
+  (COMM 21064 frames, SSND 15798; 18052 and 13539). `crates/rbm` rejected the sample; the DLL plays
+  it whole (section 11.2). Fixed in the engine's AIFF reader.
+- **JPEGs without an end marker** (1 mod, YellowBirth): its 59 panel JPEGs end without `FF D9`
+  (progressive JPEGs cut short by its packer [G]); `splash.jpg` decodes with a garbled edge. The
+  samples are fine, and the engine uses none of the JPEGs.
+- **Duplicate INFO names** (5 pairs): 8tRack (the two identical files), AXIOM (`AXIOM.rbm`,
+  `axiom(b3).rbm`), dejenerate (`dejenerate.rbm`, `dejenerate(b3).rbm`), Alpha 2.0 (`Alpha2.rbm`,
+  `alpha3.rbm`), AlpJunUV (`AlpJunUV.rbm`, `UVJ.rbm`). Which file the original keeps is section
+  11.3.
+
+### 11.2 The AIFF audio is read past a stale SSND size [C for the mono read]
+
+`sub_10002FC4` (the SSND reader of `CAIFFReader`) finds SSND and reads its 8-byte offset and block
+size (`sub_10004F00`, `sub_10001774`), skips the offset (vtable +0x2C), and for a mono file reads
+`2 * frames` bytes (0x10003060 `lea eax,[ebx+ebx]`, the read at vtable +4, 0x1000306F; `frames`
+from COMM) into the sample buffer; nothing compares that with the SSND size. The stream is the
+whole descrambled payload (section 4), so the audio past the stale size is there and is played.
+Confirmed with `rbhost --dump-samples` and 8tRack.rbm / DJ Turn's MOD.rbm: slot 1 is 42128 and
+36104 bytes, equal to the file's audio sample for sample. `samples/aiff.rs` now reads the audio
+through to the end of the file, as it already did COMM (section 9). `docs/original_bugs.md` Q-3.
+
+Open (not checked against the DLL):
+- **A file that really ends early.** The read's result is ignored (0x10003071 goes straight on to
+  `sub_10009990`), and what the memory stream does when asked for more than it holds (a short
+  read, zeros, stale bytes or an exception) was not traced; no mod in the collection reaches it.
+  rb's policy is an error, and `Rbm::load_samples` propagates it, so the **whole mod** is refused
+  rather than that one slot falling back to its built-in sample.
+- **Stereo.** Only the mono path was read; the multichannel path (0x10003087, `sub_10009DD0`) was
+  not examined. Every slot AIFF of the collection is mono.
+
+### 11.3 The Mods folder order and duplicate names
+
+`sub_4158A9` lists the `Mods` folder with `FindFirstFile`/`FindNextFile` over `*.*`
+(`sub_4862C9`, the pattern at 0x4D11C4; `sub_486355`, the app's function table +164 and +112),
+builds a mod object for each file (`sub_414D18`) and, when `sub_4155D1` finds its INFO name already
+in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [C: the disassembly.]
+
+- **The first file listed wins** [C]: on the test machine (NTFS), a copy of the app with both
+  AXIOM files in its `Mods` showed **"The MOD "AXIOM.rbm" was not added because another Mod with
+  the same name is already installed."**, and its export of AXIOM.rbs matches the `axiom(b3).rbm`
+  render, not the `AXIOM.rbm` one (section 11.4). So there `axiom(b3).rbm` was listed first.
+- **The listing order is the volume's, not the app's** [G: general file-system behavior, not
+  verified here beyond the AXIOM case]: NTFS lists a folder by the names' UTF-16 units after its
+  per-unit `$UpCase` table, which puts `axiom(b3).rbm` before `AXIOM.rbm` (`(` is 0x28, `.` 0x2E)
+  and `dejenerate(b3).rbm` before `dejenerate.rbm`; FAT or a network share may list in directory
+  order, so which duplicate wins depends on the user's volume.
+- **rb models NTFS**: it sorted bytewise, which put `AXIOM.rbm` first; `mods.rs` (`folder_order`)
+  now sorts by the name upcased per character (only where the uppercase is one character, so `ß`
+  stays `ß` as in `$UpCase`), then compares UTF-16 units. This approximates `$UpCase` (it agrees
+  for ASCII, which is every name of the collection).
+
+### 11.4 Songs and the reference check
+
+- `songs/`: 193 distinct songs by SHA-256 (208 files whose name contains `.rbs` when the task
+  started, with "... copy" duplicates; 195 after the user's cleanup during it). At the review
+  (same day) the folder had grown to 206 distinct songs, 77 RBS 4.2 and the same 129 1.x: the
+  check passed again, every mod resolving by its exact INFO name (51 Standard, 14 PBE2, 5 MSM2,
+  2 Poison-Box, 1 each of Regulation Issue, Orbit 2.0, Nord Beat, Metallicon+, RedTop 2.0). The
+  counts below are those of the first run. **64 are RBS 4.2**: every one reads and writes back byte-identical through
+  `crates/rbs` and renders with `rb render --mod-dir` without a fault. Their mods: 46 Standard
+  ReBirth, 12 Pitch Black Edition 2.0, 2 Massen's MSM 2.0, 2 Poison-Box, 1 each Orbit 2.0, Massen
+  RedTop 2.0, Regulation Issue, Nord Beat; all resolve by the exact INFO name (none missing, none
+  by case only).
+- **129 are ReBirth 1.x songs**: a Standard MIDI File (`MThd`, a meta text "File version 3.1.0")
+  named `.rbs`. The original imports them (`sub_425C4D` tries `sub_43037D` first: the MIDI file and
+  its "File version %s" text, `sub_431341` at 0x431481; then `sub_430BA0` loads it with the built-in
+  mod, 0x425FCE); `rb` refuses them with an error. Follow-up: task-060.
+- **rbhost**: 49 songs from `~/rb_stuff` (mostly the archive, where the mod songs are) over 29
+  third-party mods, each with the mod its GLOB names and where that mod is audible (the render
+  differs from the built-in kit's). 47 rendered with `run.py --mod --rb20ful --idle-blocks 9088`
+  and **all 47 equal `rb render` byte for byte** (27 mods). The other 2 (the RB-SEMx and TB-909e
+  mkII songs) are RBS 4.0 files, which `tools/rbhost/rbsmsg.py` cannot convert (no 4.0 mixer
+  converter); `rb` renders them. Also exact: AXIOM.rbs with `AXIOM.rbm` (it differs from the
+  `axiom(b3).rbm` render), and two songs each with 8tRack and DJ Turn's MOD (the stale-size
+  samples; GLOB renamed in scratch copies).
+- **The app** (`tools/rb_export.py --app-dir`, a copy of the installation in `C:\re\rb` with its
+  own `Mods`; `--startup-boxes 2` for the duplicate-name box; `--restore-prf --startup-sound
+  off`) exported AXIOM.rbs (AXIOM, both AXIOM files present), Commutation (Trancer) and Meth X
+  State (Poison-Box), each mod found by the app's own scan. `fit.py --all` (200 candidates) found
+  one N each, 3616, 3600 and 3632 (N - N_t = -71, -5, -9), and `rb compare --mod-dir` at that N is
+  **EQUAL** for all three. AXIOM.rbs against `AXIOM.rbm` matches at no N: the app used
+  `axiom(b3).rbm`, as section 11.3 says.
+- `run.py` and `fit.py` take `--remote-dir NAME` (work in `C:\re\rb\NAME`), `rb_export.py`
+  `--app-dir` and `--startup-boxes`.

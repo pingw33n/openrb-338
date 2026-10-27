@@ -28,6 +28,9 @@ Protocol options (docs/export_state.md section 9):
     --play-seconds S        press Space, play S seconds, press Space (stop) before the export
     --exports K             export K times in a row in the same session (default 1)
     --reuse-process         one app for all the songs given (default: a fresh process per song)
+    --app-dir WINPATH       run the Rebirth.exe of a copy under C:\\re\\rb (its own Mods folder)
+    --startup-boxes K       dismiss K boxes at start (default 1: the MIDI box; the Mods scan adds one
+                            per mod it drops as a duplicate INFO name)
 
 Exit status: 0 when every export is complete and verified, 1 otherwise (a screenshot of the
 screen is saved as OUTDIR/<stem>.fail.bmp, the app it started is stopped, the permits released).
@@ -372,10 +375,15 @@ class Session:
             self.mark("preferences restored (sha256 %s)" % prf_sha[:12])
         self.pid = m.start_app()
         self.mark("app started, pid %d" % self.pid)
-        m.wait_frame(box=True)
-        self.mark("MIDI box up")
-        m.sleep(self.args.start_wait)
-        m.keys(["key:enter"])  # "Failed opening MIDI input" box
+        # The "Failed opening MIDI input" box; before it, one box per mod the scan drops (a second
+        # mod with an INFO name already listed: "The MOD ... was not added", docs/rbm.md 11).
+        for k in range(self.args.startup_boxes):
+            m.wait_frame(box=True)
+            self.mark("startup box %d up" % (k + 1) if k + 1 < self.args.startup_boxes else "MIDI box up")
+            m.sleep(self.args.start_wait)
+            m.keys(["key:enter"])
+            if k + 1 < self.args.startup_boxes:
+                m.sleep(1.0)
         m.wait_frame(box=False)
         self.mark("MIDI box dismissed")
 
@@ -590,7 +598,17 @@ def main(argv):
                     help="seconds the export file must keep its final size (the original runner: 1.5)")
     ap.add_argument("--test-fail", action="store_true", help="force a dialog timeout (tests the failure path)")
     ap.add_argument("--export-timeout", type=float, default=900.0)
+    ap.add_argument("--app-dir", metavar="WINPATH",
+                    help="run the Rebirth.exe of this folder (a copy under C:\\re\\rb, e.g. with other "
+                         "mods in its Mods folder: the app scans the Mods folder next to its exe) "
+                         "instead of the installation's")
+    ap.add_argument("--startup-boxes", type=int, default=1, metavar="K",
+                    help="message boxes to dismiss at start (default 1, the MIDI box; one more per "
+                         "mod the app's scan drops as a duplicate name)")
     args = ap.parse_args(argv)
+    if args.app_dir:
+        global APP_DIR
+        APP_DIR = args.app_dir.replace("\\", "/").rstrip("/")
     outdir = os.path.abspath(args.outdir)
     os.makedirs(outdir, exist_ok=True)
     owner = args.owner or default_owner()

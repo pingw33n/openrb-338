@@ -13,6 +13,8 @@ CLI:
     rbm.py info MOD                       chunks, INFO fields, the slot mapping, the key pages
     rbm.py extract MOD DAT -o DIR         write every embedded file, descrambled, to DIR
     rbm.py check-dat DAT                  the anti-tamper constants that make the key stride 4
+    rbm.py check-dir DIR DAT [--json]     every .rbm of DIR: parse, key pages, descrambling, the
+                                          46 slots' AIFFs, duplicate INFO names (exit 1 on a failure)
     rbm.py msg MOD DAT --path WINPATH --id N -o FILE
                                           the exe's top-level message 55 for the mod (rbhost --mod-msg)
 """
@@ -212,34 +214,32 @@ def key_table(rbm, dat_path):
     return bytes(out)
 
 
-def descramble(payload, key, table):
-    """Undo the scrambling of one EMBF payload (DLL sub_100163D0 on bytes [1024, size))."""
+_ADD = [bytes((x + k) & 0xFF for x in range(256)) for k in range(256)]
+
+
+def _add_keystream(payload, key, table, sign):
+    """payload[n] += sign * table[base + (n - 1024) % P] for n >= 1024, as u8. Byte n with
+    (n - 1024) % P == j gets the same addend, so each residue class is one bytes.translate."""
     out = bytearray(payload)
     if len(out) <= CLEAR:
         return bytes(out)
     period = (17 * key) % 0x785 + 123
     base = (key & 1) << 11
-    j = 0
-    for n in range(CLEAR, len(out)):
-        out[n] = (out[n] + table[base + j]) & 0xFF
-        j += 1
-        if j == period:
-            j = 0
+    for j in range(min(period, len(out) - CLEAR)):
+        sl = slice(CLEAR + j, None, period)
+        out[sl] = out[sl].translate(_ADD[(sign * table[base + j]) & 0xFF])
     return bytes(out)
+
+
+def descramble(payload, key, table):
+    """Undo the scrambling of one EMBF payload (DLL sub_100163D0 on bytes [1024, size)):
+    clear[n] = stored[n] + table[base + (n - 1024) % P]."""
+    return _add_keystream(payload, key, table, 1)
 
 
 def scramble(payload, key, table):
     """The inverse of descramble (what the mod packer did)."""
-    out = bytearray(payload)
-    period = (17 * key) % 0x785 + 123
-    base = (key & 1) << 11
-    j = 0
-    for n in range(CLEAR, len(out)):
-        out[n] = (out[n] - table[base + j]) & 0xFF
-        j += 1
-        if j == period:
-            j = 0
-    return bytes(out)
+    return _add_keystream(payload, key, table, -1)
 
 
 def embedded_file(rbm, chunk, table):
@@ -378,6 +378,101 @@ def cmd_msg(a):
         f.write(mod_message(rbm, key_table(rbm, a.dat), a.path, a.id))
 
 
+def ntfs_order_key(file_name):
+    """The order FindFirstFile/FindNextFile list a folder on NTFS: names compared after upcasing
+    (ASCII names: str.upper, then ordinal). The exe scans the Mods folder in this order (*.*,
+    sub_4862C9 / sub_486355) and drops a mod whose INFO name is already listed (sub_4158A9 ->
+    sub_4155D1 at 0x415A90), so the first file in this order owns a duplicated name."""
+    return file_name.upper()
+
+
+def check_mod(path, dat):
+    """One mod of check-dir: a dict with the INFO name, every embedded file's SHA-256, the slots'
+    AIFF facts (channel 0's int16 BE SHA-256) and the problems found; "error" when the mod does
+    not load at all."""
+    import hashlib
+    r = {"file": os.path.basename(path), "name": None, "error": None, "files": [], "slots": {},
+         "notes": []}
+    try:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            rbm = read(path)
+        r["notes"] += [str(x.message) for x in w]
+    except (FormatError, struct.error) as e:
+        r["error"] = "parse: %s" % e
+        return r
+    if rbm.info is None:
+        r["error"] = "no 1280-byte INFO (the exe throws XBadFormat, 0x4150BC)"
+        return r
+    r["name"] = rbm.info.name.decode("latin-1")
+    if not r["name"]:
+        r["error"] = "empty INFO menu name (XBadFormat, 0x415126)"
+    if rbm.info.version and rbm.info.version[0] != 1:
+        r["notes"].append("version %d.%d.%d" % rbm.info.version)
+    table = key_table(rbm, dat)
+    jpg_bad = 0
+    for c in rbm.embf():
+        b = embedded_file(rbm, c, table)
+        r["files"].append({"name": c.name, "sha256": hashlib.sha256(b).hexdigest()})
+        if c.name.lower().endswith(".jpg") and b.rstrip(b"\0")[-2:] != b"\xff\xd9":
+            jpg_bad += 1
+    if jpg_bad:
+        r["notes"].append("%d JPEGs without an end marker" % jpg_bad)
+    names = [c.name.lower() for c in rbm.embf()]
+    dup = sorted({n for n in names if names.count(n) > 1})
+    if dup:
+        r["notes"].append("duplicate file names (the first wins): %s" % ", ".join(dup))
+    missing = 0
+    for s in SLOT_NAMES[1:]:
+        c = rbm.find(s)
+        if c is None:
+            missing += 1
+            continue
+        b = embedded_file(rbm, c, table)
+        try:
+            ch, frames, bits, rate, _ = aiff_info(b)
+            pcm = struct.pack(">%dh" % frames, *aiff_samples(b))
+            r["slots"][s] = {"channels": ch, "frames": frames, "rate": rate,
+                             "sha256": hashlib.sha256(pcm).hexdigest()}
+            if (ch, rate) != (1, 44100):
+                r["notes"].append("%s: %d ch %d Hz" % (s, ch, rate))
+        except (FormatError, struct.error) as e:
+            r["slots"][s] = {"error": str(e)}
+            r["notes"].append("%s: bad AIFF: %s" % (s, e))
+    if missing:
+        r["notes"].append("%d of 46 slots built in" % missing)
+    return r
+
+
+def cmd_check_dir(a):
+    import json
+    files = sorted((f for f in os.listdir(a.dir) if f.lower().endswith(".rbm")), key=ntfs_order_key)
+    mods = [check_mod(os.path.join(a.dir, f), a.dat) for f in files]
+    owner = {}
+    for m in mods:
+        if m["error"] is None:
+            if m["name"] in owner:
+                m["notes"].append("INFO name %r already taken by %s: the exe drops this mod"
+                                  % (m["name"], owner[m["name"]]))
+                m["shadowed_by"] = owner[m["name"]]
+            else:
+                owner[m["name"]] = m["file"]
+    if a.json:
+        json.dump(mods, sys.stdout, indent=1)
+        print()
+    else:
+        for m in mods:
+            st = "FAIL" if m["error"] else "OK  "
+            print("%s %-34s %-28r %2d/46 %s" % (st, m["file"], m["name"], len(m["slots"]),
+                                                 m["error"] or "; ".join(m["notes"])))
+        bad = sum(1 for m in mods if m["error"])
+        print("%d mods: %d load, %d fail; %d with built-in slots; %d shadowed by a duplicate name"
+              % (len(mods), len(mods) - bad, bad,
+                 sum(1 for m in mods if not m["error"] and len(m["slots"]) < 46),
+                 sum(1 for m in mods if "shadowed_by" in m)))
+    return 1 if any(m["error"] for m in mods) else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -392,6 +487,11 @@ def main(argv=None):
     p = sub.add_parser("check-dat")
     p.add_argument("dat")
     p.set_defaults(fn=cmd_check_dat)
+    p = sub.add_parser("check-dir")
+    p.add_argument("dir")
+    p.add_argument("dat")
+    p.add_argument("--json", action="store_true", help="per mod: files, slots and notes as JSON")
+    p.set_defaults(fn=cmd_check_dir)
     p = sub.add_parser("msg")
     p.add_argument("mod")
     p.add_argument("dat")

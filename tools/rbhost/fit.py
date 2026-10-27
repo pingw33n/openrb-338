@@ -228,6 +228,7 @@ def main(argv):
     ap.add_argument("-o", "--outdir", default=".")
     ap.add_argument("--owner", help="locky owner (default: the git branch)")
     ap.add_argument("--tag", default="fit", help="prefix of the remote file names (default fit)")
+    ap.add_argument("--remote-dir", metavar="NAME", help="work in C:\\re\\rb\\NAME (default rbhost)")
     ap.add_argument("--jobs", type=int, default=2, help="parallel rbhost processes, one permit each (default 2)")
     ap.add_argument("--offset", type=float, default=48.0, help="start value of N - N_t (default 48)")
     ap.add_argument("--max-candidates", type=int, default=200)
@@ -246,6 +247,8 @@ def main(argv):
     ap.add_argument("--mod-id", type=int, default=412)
     ap.add_argument("-v", action="store_true")
     args = ap.parse_args(argv)
+    if args.remote_dir:
+        run.set_remote_dir(args.remote_dir)
     outdir = os.path.abspath(args.outdir)
     os.makedirs(outdir, exist_ok=True)
 
