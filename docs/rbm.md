@@ -681,7 +681,7 @@ mod's samples. The corpus is unchanged: 164 of 164 EQUAL, 175 of 175 with `RB_MO
 
 The Mods menu does not make a new song: it sends the song **message 19** `{u16 mod id}`, and the
 DLL swaps the sample table of the song's TR-808 and TR-909 in place, after silencing their
-voices. The song plays on. [C: read in the disassembly; not run on the test machine.]
+voices. The song plays on. [C: read in the disassembly; run in the DLL by rbhost, section 14.4.]
 
 ### 14.1 The exe [C]
 
@@ -770,5 +770,28 @@ set on a stopped new song equals building the song with it; on a playing song th
 without the change, the drums go silent at once with a silent kit and sound again with the
 built-in one); `no_alloc.rs` (the change twice while playing, the first kit freed on the UI side
 before the voices retrigger). The startup sound (msg 58, the preview player) is not modelled by
-rb-player (task-074). The check against the DLL itself (an rbhost `--live` session with a msg-19
-record) is task-076.
+rb-player (task-074). The check against the DLL itself is section 14.4.
+
+### 14.4 Against the DLL (task-076, 2026-10-27) [C]
+
+rbhost (`tools/rbhost`, `--live`) ran three sessions through `ReBirth.dll` 2.01 on the test
+machine with song msg 19 `{78, slot, 19, id_hi, id_lo}` written to the port before given
+1024-frame calls (dispatched by the 0-frame `SafeSoundCallback`, which forwards it as top-level 78,
+then `EngineIdle`, which runs `sub_10012940` case 19 → `sub_10011D84`, before the call renders).
+The mods were loaded first: the song's with `--mod-msg` (msg 55) or the built-in 56 {411}, the
+others with the new `--load-msg` (msg 55 of the original `.rbm` made by `tools/rbm.py msg` with
+the id, or 56 {411}, hex `38 01 9B`). Each session: idle 0, pattern mode and play at call 0, 400 calls.
+
+| Session | Song | Built with | Changes (call: id) | WAV sha256 |
+|---|---|---|---|---|
+| `mod_kit` | `drums_kit` (808 and 909) | 411 | 100: 412 PBE2, 200: 413 Orbit2, stop at 270, 290: 411 (stopped), play at 300 | `0ded17da…` |
+| `mod_808` | `808_cymbal` | 412 Metallicon | 150: 413 MSM2, 250: 411 | `3954a36b…` |
+| `mod_909` | `909_crash` | 412 Orbit2 | 150: 411, 250: 413 PBE2 | `cf414eb6…` |
+
+rb-player's render of the same sessions (`Player::set_mod` with the recrypted mod's samples
+before the same call, `crates/rb-player/tests/live_messages.rs`) has the same hashes: byte for
+byte equal, on the first run, with no change to rb. The same sessions without the changes render
+otherwise in rb (the test checks it), so the changes are audible: the mod swap while playing
+(slot 6 on the 808 and the 909, then the new table, the transport untouched), while stopped, to
+and from the built-in kit and between two file mods all do in rb what they do in the DLL. Not
+covered: the startup sound (msg 58, task-074) and more than one open song (14.2, task-075).

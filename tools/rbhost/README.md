@@ -37,6 +37,11 @@ tools/rbhost/run.py --mod MOD.rbm --rb20ful RB20FUL.DAT --dump-samples -o OUT SO
 `--mod` (task-030, `docs/rbm.md`) uploads the mod to `C:\re\rb\rbhost\<tag>.rbm` with its message
 55, built by `tools/rbm.py` with the key table from the local `RB20FUL.DAT`; rbhost sends it instead
 of message 56 {411} and creates the songs with the mod's id (`--mod-id`, default 412).
+`--load-msg FILE` (task-076, repeatable) loads one more mod that the songs do not use, after the
+song's mod and before the songs are created: FILE is a message 55 (`tools/rbm.py msg MOD.rbm
+RB20FUL.DAT --path C:\re\rb\DIR\MOD.rbm --id 413 -o FILE`) or the 3 bytes hex `38 01 9B` (56 {411}, the built-in
+kit, 411). A live session's song msg 19 `{78, slot, 19, id_hi, id_lo}` then switches the song to
+it (the Mods menu, `docs/rbm.md` section 14). run.py has no option for it.
 `--dump-samples` writes the mod's 46 loaded samples from the DLL's sample table to
 `OUT/SONG.samples/slotNN.bin` (i16, the CWaveSample buffers). Mods, `RB20FUL.DAT` and the dumps are
 Propellerhead material: keep OUT outside the repository.

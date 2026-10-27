@@ -15,11 +15,21 @@
 //! `DIR/NAME.wav` per test; run `rbhost.exe --live NAME.rblv full_mix.rbhm out.wav` (the
 //! `.rbhm` from `tools/rbhost/rbsmsg.py tests/songs/diag/songs/full_mix.rbs`) and compare the
 //! hashes.
+//!
+//! The mod-change sessions (task-076, `docs/rbm.md` section 14.4) play a drum song and switch
+//! its mod with song msg 19 mid-song, `Player::set_mod` here. They need `RB_MOD_DIR`, the
+//! recrypted mods (skipped without it). rbhost loads the original mods (the msg 55 of
+//! `tools/rbm.py msg` with the mod id the session names) with `--mod-msg` (the song's mod) and
+//! `--load-msg` (the others; hex `38 01 9B`, 56 {411}, for the built-in kit), and its `.rbhm` carries the
+//! song's mod id (`rbsmsg.message_file(song, 412)`).
 
 mod common;
 
+use std::sync::Arc;
+
 use common::{manifest, samples, send, song, tables};
 use rb_engine::frame::export;
+use rb_engine::samples::SampleSet;
 use rb_engine::song::{Device, Song};
 use rb_player::{CALL_FRAMES, Command, Player};
 use sha2::{Digest, Sha256};
@@ -375,26 +385,44 @@ fn patterns(s: &Song) -> [u8; 4] {
     .map(|d| s.device_payload(d)[1])
 }
 
-/// Renders `events` over `full_mix` through the player and returns its WAV's sha256; with
-/// `RB_LIVE_OUT` set, writes the session for rbhost and the WAV as `name`.
-fn render(name: &str, s: &Song, events: Vec<(u32, Command)>) -> String {
+/// What a session does before a call: a panel command, or the Mods menu's change to the mod
+/// with this id (song msg 19, `docs/rbm.md` section 14) and its samples.
+enum Ev {
+    Cmd(Command),
+    Mod(u16, Arc<SampleSet>),
+}
+
+fn cmds(events: Vec<(u32, Command)>) -> Vec<(u32, Ev)> {
+    events.into_iter().map(|(c, x)| (c, Ev::Cmd(x))).collect()
+}
+
+/// Renders `events` over `s` (built with `kit`) through the player for `calls` calls and returns
+/// its WAV's sha256; with `RB_LIVE_OUT` set, writes the session for rbhost and the WAV as `name`.
+fn render(name: &str, s: &Song, kit: Arc<SampleSet>, calls: u32, events: Vec<(u32, Ev)>) -> String {
     let mut rblv = b"RBLV".to_vec();
     rblv.extend_from_slice(&1u32.to_le_bytes());
-    rblv.extend_from_slice(&CALLS.to_le_bytes());
+    rblv.extend_from_slice(&calls.to_le_bytes());
     rblv.extend_from_slice(&(events.len() as u32).to_le_bytes());
-    for (call, c) in &events {
-        let r = raw(c);
+    for (call, e) in &events {
+        let r = match e {
+            Ev::Cmd(c) => raw(c),
+            // sub_4259FF: song msg 19 {u16 BE id}
+            Ev::Mod(id, _) => vec![78, 0, 19, (id >> 8) as u8, *id as u8],
+        };
         rblv.extend_from_slice(&call.to_le_bytes());
         rblv.extend_from_slice(&(r.len() as u32).to_le_bytes());
         rblv.extend_from_slice(&r);
     }
     let (mut p, mut a) = Player::new(tables(), Some(samples()));
-    assert!(p.load(s, Some(samples())).is_ok());
-    let mut out = vec![0i16; 2 * CALL_FRAMES * CALLS as usize];
+    assert!(p.load(s, Some(kit)).is_ok());
+    let mut out = vec![0i16; 2 * CALL_FRAMES * calls as usize];
     let mut it = events.into_iter().peekable();
     for (call, buf) in out.chunks_mut(2 * CALL_FRAMES).enumerate() {
-        while let Some((_, c)) = it.next_if(|(at, _)| *at == call as u32) {
-            send(&mut p, c);
+        while let Some((_, e)) = it.next_if(|(at, _)| *at == call as u32) {
+            match e {
+                Ev::Cmd(c) => send(&mut p, c),
+                Ev::Mod(_, m) => assert!(p.set_mod(m).is_ok(), "the command queue is full"),
+            }
         }
         a.render_i16(buf);
     }
@@ -417,16 +445,120 @@ fn render(name: &str, s: &Song, events: Vec<(u32, Command)>) -> String {
 #[test]
 fn the_session_equals_rbhost() {
     let s = song(&manifest()["diag"]["full_mix"]);
-    let sha = render("live", &s, session(patterns(&s)));
+    let sha = render("live", &s, samples(), CALLS, cmds(session(patterns(&s))));
     assert_eq!(sha, RBHOST, "the player's session differs from rbhost's");
 }
 
 #[test]
 fn pcf_wave_after_returning_to_pattern_mode() {
     let s = song(&manifest()["diag"]["full_mix"]);
-    let sha = render("pcf", &s, pcf_session());
+    let sha = render("pcf", &s, samples(), CALLS, cmds(pcf_session()));
     assert_eq!(
         sha, RBHOST_PCF,
         "the player's session differs from rbhost's"
     );
+}
+
+// ------------------------------------------------------------------ the mod change (task-076)
+
+/// The id of the built-in kit (exe sub_41693C, message 56 {411}).
+const BUILTIN: u16 = 411;
+
+/// The calls of a mod-change session.
+const MOD_CALLS: u32 = 400;
+
+/// A recrypted mod of `RB_MOD_DIR` loaded over the built-in kit, as `rb render` loads it; `None`
+/// (the test is skipped) when `RB_MOD_DIR` is not set.
+fn file_mod(file: &str) -> Option<Arc<SampleSet>> {
+    let dir = std::env::var_os("RB_MOD_DIR").filter(|v| !v.is_empty())?;
+    let p = std::path::Path::new(&dir).join(file);
+    let data = std::fs::read(&p).unwrap_or_else(|err| panic!("{}: {err}", p.display()));
+    let rbm = rbm::Rbm::parse(data).unwrap();
+    let table = rbm::KeyTable::embedded(&rbm)
+        .filter(|t| rbm.slots_covered(t))
+        .unwrap_or_else(|| panic!("{}: not a recrypted mod", p.display()));
+    Some(Arc::new(rbm.load_samples(&table, &samples()).unwrap().set))
+}
+
+/// Pattern mode and play at call 0, the transport commands `transport`, and the mod changes
+/// `changes` (call, mod id, kit) over `s` built with `kit`: the player's sha256 must be `expect`,
+/// rbhost's, and the same session without the changes must render otherwise (the changes matter).
+fn mod_session(
+    name: &str,
+    s: &Song,
+    kit: Arc<SampleSet>,
+    transport: &[(u32, bool)],
+    changes: Vec<(u32, u16, Arc<SampleSet>)>,
+    expect: &str,
+) {
+    let base = || {
+        let mut v = vec![(0, Command::SongMode(false)), (0, Command::Play)];
+        v.extend(
+            transport
+                .iter()
+                .map(|&(c, play)| (c, if play { Command::Play } else { Command::Stop })),
+        );
+        cmds(v)
+    };
+    let mut ev = base();
+    ev.extend(changes.into_iter().map(|(c, id, m)| (c, Ev::Mod(id, m))));
+    ev.sort_by_key(|(call, _)| *call);
+    let sha = render(name, s, kit.clone(), MOD_CALLS, ev);
+    assert_eq!(sha, expect, "the player's session differs from rbhost's");
+    let plain = render(&format!("{name}_unchanged"), s, kit, MOD_CALLS, base());
+    assert_ne!(plain, expect, "the mod changes change nothing");
+}
+
+/// rbhost's WAV of [`mods_on_808_and_909`] (2026-10-27): `drums_kit` (808 and 909) built with
+/// the built-in kit, PBE2.rbm (id 412) and Orbit2.rbm (413) loaded with `--load-msg`; 412 at call
+/// 100, 413 at 200, stop at 270, the built-in kit at 290 while stopped, play at 300.
+const RBHOST_MOD_KIT: &str = "0ded17da6c345854237f3176b1c605ddc117defd3a331ba09a36f5cba3cbe841";
+
+/// rbhost's WAV of [`mod_change_808_long_cymbal`]: `808_cymbal` built with Metallicon.rbm
+/// (`--mod-msg`, 412), MSM2.rbm (413) and the built-in kit loaded; 413 at call 150, 411 at 250.
+const RBHOST_MOD_808: &str = "3954a36be3017e835f22bd15bfed4dfde4b90135862ac8b5ad317df28f4ea4ba";
+
+/// rbhost's WAV of [`mod_change_909_long_crash`]: `909_crash` built with Orbit2.rbm (412),
+/// the built-in kit and PBE2.rbm (413) loaded; 411 at call 150, 413 at 250.
+const RBHOST_MOD_909: &str = "cf414eb6493779e935fa8e12fea27c9fadeaf045beaaa5febb9722efbc98d0ba";
+#[test]
+fn mods_on_808_and_909() {
+    let (Some(pbe), Some(orbit)) = (file_mod("PBE2.rbm"), file_mod("Orbit2.rbm")) else {
+        return eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+    };
+    let s = song(&manifest()["diag"]["drums_kit"]);
+    let changes = vec![
+        (100, 412, pbe),
+        (200, 413, orbit),
+        (290, BUILTIN, samples()),
+    ];
+    let transport = [(270, false), (300, true)];
+    mod_session(
+        "mod_kit",
+        &s,
+        samples(),
+        &transport,
+        changes,
+        RBHOST_MOD_KIT,
+    );
+}
+
+#[test]
+fn mod_change_808_long_cymbal() {
+    let (Some(metal), Some(msm)) = (file_mod("Metallicon.rbm"), file_mod("MSM2.rbm")) else {
+        return eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+    };
+    let s = song(&manifest()["diag"]["808_cymbal"]);
+    let changes = vec![(150, 413, msm), (250, BUILTIN, samples())];
+    mod_session("mod_808", &s, metal, &[], changes, RBHOST_MOD_808);
+}
+
+#[test]
+fn mod_change_909_long_crash() {
+    let (Some(orbit), Some(pbe)) = (file_mod("Orbit2.rbm"), file_mod("PBE2.rbm")) else {
+        return eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+    };
+    let s = song(&manifest()["diag"]["909_crash"]);
+    let changes = vec![(150, BUILTIN, samples()), (250, 413, pbe)];
+    mod_session("mod_909", &s, orbit, &[], changes, RBHOST_MOD_909);
 }

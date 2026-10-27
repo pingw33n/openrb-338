@@ -3359,6 +3359,7 @@ version = "0.1.0"
 dependencies = [
  "cpal",
  "rb-engine",
+ "rbm",
  "rbs",
  "rtrb",
  "rubato",

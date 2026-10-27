@@ -37,6 +37,10 @@
  *   --mod-msg FILE          load a mod: send FILE (the exe's top-level message 55, made by
  *                           tools/rbm.py msg; docs/rbm.md) instead of message 56 {411}, and create
  *                           the songs with its mod id
+ *   --load-msg FILE         load one more mod, which the songs do not use (repeatable, task-076):
+ *                           FILE is a top-level 55 (as for --mod-msg) or a 3-byte 56 {u16 id}
+ *                           (the built-in kit: hex 38 01 9B), sent after the songs' mod and before the
+ *                           songs are created, reply 'C'; a live song msg 19 {id} switches to it
  *   --dump-samples DIR      write the mod's 46 loaded samples from the DLL's sample table
  *                           (sub_1001A030, list dword_10118280) as DIR/slotNN.bin (i16 LE), with
  *                           DIR/manifest.json
@@ -605,7 +609,7 @@ static void usage(void) {
             "usage: rbhost [--dll PATH] [--idle-blocks N] [--post-stop-blocks M] [--drum-counters A,B,C,D]\n"
             "              [--startup-sound] [--first-chunk-drain] [--no-untitled] [--private-port] [--idle-fpu-cw HEX]\n"
             "              [--dump-tables DIR] [--dump-state DIR] [--dump-float DIR]\n"
-            "              [--mod-msg FILE] [--dump-samples DIR] [--live FILE] [-v]\n"
+            "              [--mod-msg FILE] [--load-msg FILE]... [--dump-samples DIR] [--live FILE] [-v]\n"
             "              SONG.rbhm OUT.wav\n");
     exit(2);
 }
@@ -614,6 +618,8 @@ int main(int argc, char **argv) {
     const char *dll_path = "C:\\ReBirth RB-338\\ReBirth.dll";
     const char *msg_path = NULL, *wav_path = NULL, *tables_dir = NULL, *state_dir = NULL, *float_dir = NULL;
     const char *mod_msg_path = NULL, *samples_dir = NULL, *live_path = NULL;
+    const char *load_paths[8];
+    int loads = 0;
     FILE *float_out = NULL;
     long idle_blocks = 0, post_stop_blocks = 0;
     int drum[4], drum_set = 0, startup_sound = 0, first_chunk_drain = 0, untitled = 1, i;
@@ -645,7 +651,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--dump-state") && i + 1 < argc) state_dir = argv[++i];
         else if (!strcmp(a, "--dump-float") && i + 1 < argc) float_dir = argv[++i];
         else if (!strcmp(a, "--mod-msg") && i + 1 < argc) mod_msg_path = argv[++i];
-        else if (!strcmp(a, "--dump-samples") && i + 1 < argc) samples_dir = argv[++i];
+        else if (!strcmp(a, "--load-msg") && i + 1 < argc) {
+            if (loads == (int)(sizeof load_paths / sizeof *load_paths)) die("too many --load-msg");
+            load_paths[loads++] = argv[++i];
+        } else if (!strcmp(a, "--dump-samples") && i + 1 < argc) samples_dir = argv[++i];
         else if (!strcmp(a, "--live") && i + 1 < argc) live_path = argv[++i];
         else if (!strcmp(a, "-v")) verbose = 1;
         else if (a[0] == '-') usage();
@@ -724,6 +733,18 @@ int main(int argc, char **argv) {
         send_msg(m, 3);
         expect(67, "msg 56");
         if (samples_dir) dump_samples(samples_dir, mod);
+    }
+    /* --load-msg: more mods, opened as the exe opens the mod a Mods-menu change selects (sub_416300
+     * -> sub_41693C: 55 for a file mod, 56 for the built-in one; docs/rbm.md section 14.1). */
+    for (i = 0; i < loads; i++) {
+        long lsize;
+        unsigned char *lm = read_file(load_paths[i], &lsize);
+        if (lsize < 3 || !((lm[0] == 55 && lsize == 1 + 0x2546) || (lm[0] == 56 && lsize == 3)))
+            die("%s is not a message 55 or 56", load_paths[i]);
+        send_msg(lm, (int)lsize);
+        expect(67, "--load-msg");
+        fprintf(stderr, "rbhost: mod %u loaded (msg %d) from %s\n", lm[1] << 8 | lm[2], lm[0], load_paths[i]);
+        free(lm);
     }
     /* The app's "Untitled song", active before the song is opened. Activating the opened song then
      * calls slot 6 (note-off, silence, delay clear) on the untitled song's devices; with no song

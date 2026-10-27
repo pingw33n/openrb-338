@@ -18,5 +18,7 @@ rubato = { version = "5.0.1", default-features = false }
 
 [dev-dependencies]
 rbs = { path = "../rbs" }
+# The recrypted mods of the mod-change sessions (tests/live_messages.rs).
+rbm = { path = "../rbm" }
 serde_json = "1"
 sha2 = "0.10"
