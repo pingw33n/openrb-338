@@ -167,4 +167,8 @@ control of the spec against `layout.tsv`.
   above 8 is the bank's business of the app.
 - The Sync and MIDI LEDs (MIDI is out of scope) are drawn dark in the demo.
 - The art was rendered with resvg directly (`ui-art check`), the same usvg + resvg that
-  `egui_extras` uses; it was not run through egui itself (task-044).
+  `egui_extras` uses. task-044 then ran every part through egui itself (`rb-ui`,
+  `crates/rb-ui/tests/interaction.rs`: all parts load and rasterize at 1x/2x/3x; screenshots
+  in `docs/ui_app/`).
+- `layout.tsv` ids are not unique: `tb303_N.accent` is both the accent knob and the accent flag
+  button. The app keys controls by kind and id.
