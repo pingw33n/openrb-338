@@ -229,7 +229,8 @@ is 0 in every shipped song; the TRAK values are 0..4.
 
 The 4.0 layout has 7 bytes per channel: `[?, level, pan, send, dist, PCF flag, comp flag]`. The
 converter (0x4352C0) sets enabled = 1, compressor id = (MIXR[1] != 0) or `c+2` for a channel with the
-comp flag, PCF id = `c+1` for a channel with the PCF flag. No 4.0 song was available to check.
+comp flag, PCF id = `c+1` for a channel with the PCF flag. Two 4.0 songs render equal in rb and in
+the original DLL through rbhost (task-061; see the open items at the end).
 [C] (task-018) The parse `sub_433B86` copies MIXR[0], MIXR[1] and the four 7-byte channels at
 `MIXR[16 + 12c]`, the same offsets as the 5-byte channels of later versions. The target struct starts
 from `sub_433BEA`'s defaults (master 100, compressor id 0, PCF id 0). The channels are processed in
@@ -626,7 +627,11 @@ Every engine-side point of task-003 is now answered:
 - [C] Byte 22 (`+0x16E`) has no effect on the engine (§3, task-034).
 
 Still open:
-- [G] No 4.0 song is available to test `sub_437380` against the app.
+- [G] task-061: two 4.0 songs (RB-SEMx, TB-909e mkII b7x7) rendered by the original DLL through
+  rbhost (messages from `tools/rbhost/rbsmsg.py`, a second port of 0x4352C0 and `sub_437380`
+  written from this section) equal `rb render` byte for byte: the Rust and Python ports agree
+  and the DLL accepts their messages. The app's own export of a 4.0 song was not run, so the
+  conversion is not checked against the exe itself.
 - [G] What the exe uses byte 22 for (it always sends 1, and the load sends no msg 21 that would
   read it back, §2).
 

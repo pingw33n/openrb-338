@@ -57,6 +57,24 @@ def version_tuple(song):
     return major, minor
 
 
+def version_key(song):
+    """The exe's CVersion key major << 16 | minor << 8 | revision (sub_47D9ED); HEAD byte 7 is the
+    revision. All three come from one source, head.build(): the HEAD bytes 5..7 with head.version
+    applied over bytes 5 and 6 (the revision is kept, 0 for a song built in memory)."""
+    raw = song.head.build()
+    return raw[5] << 16 | raw[6] << 8 | raw[7]
+
+
+def is_4_0(song):
+    """sub_47DA82 against 0x4DB938: exactly 4.0.0 (the 4.0 MIXR converter and mixer track)."""
+    return version_key(song) == 0x040000
+
+
+def is_4_1(song):
+    """sub_47DA82 against 0x4DB928: exactly 4.1.0 (the enable forcing of 0x435708)."""
+    return version_key(song) == 0x040100
+
+
 # ------------------------------------------------------------------ msg 36
 
 
@@ -84,19 +102,39 @@ def globals_payload(song):
 
 
 def mixer_payload(song):
-    """29 bytes (section 4.1); 4.1 files get every channel enabled (0x435708)."""
+    """29 bytes (section 4.1); 4.1.0 files get every channel enabled (0x435708); a 4.0.0 file's
+    7-byte channels are converted (0x4352C0, mixer_payload_40)."""
     raw = song.mixer.build()
-    major, minor = version_tuple(song)
-    if (major, minor) < (4, 1):
-        raise ValueError("file version %s: the 4.0 mixer converter is not implemented" % song.head.version)
+    if is_4_0(song):
+        return mixer_payload_40(raw)
     out = bytearray(29)
     out[0], out[1], out[2] = raw[0], raw[1], raw[2]
     for c in range(4):
         o = 16 + 12 * c
         ch = bytearray(raw[o:o + 5])
-        if (major, minor) == (4, 1):
+        if is_4_1(song):
             ch[0] = 1
         out[5 + 6 * c:5 + 6 * c + 5] = ch
+    return bytes(out)
+
+
+def mixer_payload_40(raw):
+    """The 4.0 MIXR (parse sub_433B86 + converter 0x4352C0..0x43561B, docs/song_load.md 4.1) as
+    the 29-byte payload. RAW is the 64-byte chunk: [0] master, [1] a compressor flag, then four
+    7-byte channels at 16 + 12c: [?, level, pan, send, dist, PCF flag, comp flag]. Every channel is
+    enabled; the compressor id starts as (raw[1] != 0) (master) and a channel with the comp flag
+    sets c + 2, one with the PCF flag sets the PCF id c + 1 (the last channel wins); MIXR[2] and
+    channel byte 0 are not read."""
+    out = bytearray(29)
+    out[0] = raw[0]
+    out[1] = 1 if raw[1] else 0
+    for c in range(4):
+        ch = raw[16 + 12 * c:16 + 12 * c + 7]
+        out[5 + 6 * c:5 + 6 * c + 5] = bytes([1, ch[1], ch[2], ch[3], ch[4]])
+        if ch[5]:
+            out[2] = c + 1
+        if ch[6]:
+            out[1] = c + 2
     return bytes(out)
 
 
@@ -182,8 +220,42 @@ def _ranges():
 RANGES = _ranges()
 
 
-def track_batches(track_no, raw, old808):
-    """The msg-37 packets of one TRAK chunk (sub_436B6F; sub_436F5A for an 808 track before 4.2).
+class Mixer40:
+    """The flag conversion of sub_437380 (docs/song_load.md 5.1): the tick of the last compressor
+    and PCF flag event (var_18, var_14), compared signed, both starting at 0."""
+
+    def __init__(self):
+        self.comp_last = 0
+        self.pcf_last = 0
+
+    def _flag(self, which, tick, new_ctrl, ident, value):
+        last = getattr(self, which)
+        if value != 0:
+            setattr(self, which, tick)
+            return new_ctrl, ident, True
+        if tick > last:
+            setattr(self, which, tick)
+            return new_ctrl, 0, True
+        return new_ctrl, value, False      # dropped, the tracker stays
+
+    def convert(self, tick, ctrl, value):
+        """(ctrl, value, keep) of an old mixer event (switch at 0x43764E). It runs before the tick
+        check, so an event with an invalid tick still moves the trackers."""
+        if ctrl == 1:
+            return self._flag("comp_last", tick, 1, 1, value)
+        if ctrl in (10, 18, 26, 34):
+            return self._flag("comp_last", tick, 1, (ctrl - 10) // 8 + 2, value)
+        if ctrl in (9, 17, 25, 33):
+            return self._flag("pcf_last", tick, 2, (ctrl - 9) // 8 + 1, value)
+        if 4 <= ctrl <= 34 and (ctrl - 4) % 8 <= 4:
+            c, k = divmod(ctrl - 4, 8)
+            return 5 + 6 * c + k, value, True
+        return ctrl, value, True
+
+
+def track_batches(track_no, raw, old808, mixer40=False):
+    """The msg-37 packets of one TRAK chunk (sub_436B6F; sub_436F5A for an 808 track before 4.2;
+    sub_437380 for the mixer track of a 4.0.0 file when MIXER40).
 
     raw is the TRAK body: u32 count, then per event a variable-length delta, ctrl, value."""
     count = struct.unpack(">I", raw[0:4])[0]
@@ -193,6 +265,7 @@ def track_batches(track_no, raw, old808):
     done = 0
     out = []
     ranges = RANGES[track_no]
+    conv = Mixer40()
     while done < count:
         n = min(BATCH, count - done)
         first = accepted
@@ -204,13 +277,16 @@ def track_batches(track_no, raw, old808):
             cand = (absolute + delta) & 0xFFFFFFFF
             tick = (24 * cand) & 0x1FFFFFFF
             done += 1
+            keep = True
+            if mixer40:
+                ctrl, value, keep = conv.convert(tick, ctrl, value)
             if not (tick < MAX_TICK and tick % 24 == 0):
                 continue
             absolute = cand
             if old808 and track_no == 3 and ctrl in (10, 13, 16):
                 value = tom_tune(value)
             rng = ranges.get(ctrl)
-            if rng is None or not rng[0] <= value <= rng[1]:
+            if not keep or rng is None or not rng[0] <= value <= rng[1]:
                 continue
             body += bytes([99]) + u32be(tick) + bytes([ctrl, value])
             accepted += 1
@@ -243,7 +319,7 @@ def load_messages(song):
             device_msg("tr808", tr808_payload(song.tr808, old)),
             device_msg("tr909", tr909_payload(song.tr909))]
     for i, name in enumerate(rbs.TRACK_NAMES):
-        msgs += track_batches(i, track_raw(song, name), old)
+        msgs += track_batches(i, track_raw(song, name), old, mixer40=i == 0 and is_4_0(song))
     msgs.append(song_msg(32))
     return msgs
 

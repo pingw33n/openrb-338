@@ -422,8 +422,9 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
   third-party mods, each with the mod its GLOB names and where that mod is audible (the render
   differs from the built-in kit's). 47 rendered with `run.py --mod --rb20ful --idle-blocks 9088`
   and **all 47 equal `rb render` byte for byte** (27 mods). The other 2 (the RB-SEMx and TB-909e
-  mkII songs) are RBS 4.0 files, which `tools/rbhost/rbsmsg.py` cannot convert (no 4.0 mixer
-  converter); `rb` renders them. Also exact: AXIOM.rbs with `AXIOM.rbm` (it differs from the
+  mkII songs) are RBS 4.0 files, which `tools/rbhost/rbsmsg.py` could not convert at the time;
+  task-061 added the 4.0 mixer converter and both then render with rbhost equal to `rb render`
+  byte for byte (49 of 49). Also exact: AXIOM.rbs with `AXIOM.rbm` (it differs from the
   `axiom(b3).rbm` render), and two songs each with 8tRack and DJ Turn's MOD (the stale-size
   samples; GLOB renamed in scratch copies).
 - **The app** (`tools/rb_export.py --app-dir`, a copy of the installation in `C:\re\rb` with its

@@ -103,6 +103,57 @@ class Payloads(unittest.TestCase):
         self.song.head.version = "4.1"
         self.assertEqual(rbsmsg.mixer_payload(self.song)[11], 1)   # 4.1: enabled forced (0x435708)
 
+    def test_mixer_40(self):
+        raw = bytearray(64)
+        raw[0], raw[1], raw[2] = 77, 1, 9               # master; MIXR[1] != 0 -> master compressor; [2] unread
+        for c, ch in enumerate(([9, 10, 11, 12, 1, 0, 0], [9, 20, 21, 22, 0, 1, 0],
+                                [9, 30, 31, 32, 1, 0, 1], [9, 40, 41, 42, 0, 1, 1])):
+            raw[16 + 12 * c:16 + 12 * c + 7] = bytes(ch)
+        p = rbsmsg.mixer_payload_40(bytes(raw))
+        self.assertEqual(len(p), 29)
+        self.assertEqual(p[:5], bytes([77, 5, 4, 0, 0]))   # the last comp / PCF flag wins: c + 2 = 5, c + 1 = 4
+        for c, (lv, pan, snd, dist) in enumerate(((10, 11, 12, 1), (20, 21, 22, 0), (30, 31, 32, 1), (40, 41, 42, 0))):
+            self.assertEqual(p[5 + 6 * c:11 + 6 * c], bytes([1, lv, pan, snd, dist, 0]))   # all enabled
+        raw[16 + 36 + 6] = 0
+        raw[16 + 36 + 5] = 0
+        raw[16 + 24 + 6] = 0
+        self.assertEqual(rbsmsg.mixer_payload_40(bytes(raw))[1:3], bytes([1, 2]))         # master flag, PCF of ch 1
+
+    def test_mixer_40_by_version(self):
+        # setUp mixer: master 90, comp_id 3, pcf_id 2, channel 1 {enabled 0, 50, 10, 20, dist 1}, no 4.0 flags
+        def head(minor, revision):
+            self.song.head.version = "4.%d" % minor
+            self.song.head._raw = bytes([0x5b, 0x54, 0x5b, 0x54, 0xbc, 4, minor, revision]) + bytes(248)
+
+        head(0, 0)
+        self.assertTrue(rbsmsg.is_4_0(self.song))
+        p = rbsmsg.mixer_payload(self.song)
+        self.assertEqual(p[:5], bytes([90, 1, 0, 0, 0]))           # MIXR[1] != 0 -> master compressor; [2] unread
+        self.assertEqual(p[11:17], bytes([1, 50, 10, 20, 1, 0]))   # enabled forced to 1
+        head(0, 1)                                                 # 4.0.1: read like 4.1 without the forcing
+        self.assertFalse(rbsmsg.is_4_0(self.song))
+        p = rbsmsg.mixer_payload(self.song)
+        self.assertEqual((p[:3], p[11]), (bytes([90, 3, 2]), 0))
+        head(1, 0)                                                 # 4.1.0: enable forcing
+        self.assertEqual(rbsmsg.mixer_payload(self.song)[11], 1)
+        head(1, 1)                                                 # 4.1.1: neither converter nor forcing
+        p = rbsmsg.mixer_payload(self.song)
+        self.assertEqual((p[:3], p[11]), (bytes([90, 3, 2]), 0))
+        head(2, 0)                                                 # 4.2: as stored
+        p = rbsmsg.mixer_payload(self.song)
+        self.assertEqual((p[:3], p[11:16]), (bytes([90, 3, 2]), bytes([0, 50, 10, 20, 1])))
+
+    def test_load_messages_dispatch(self):
+        """Track 0 gets the 4.0 mixer track conversion only for an exact 4.0.0 file."""
+        self.song.tracks["mixer"].events = [rbs.Event(0, 5, 10)]        # old: channel 0 level -> ctrl 6
+        for minor, revision, ctrl in ((0, 0, 6), (0, 1, 5), (1, 0, 5), (2, 0, 5)):
+            self.song.head.version = "4.%d" % minor
+            self.song.head._raw = bytes([0x5b, 0x54, 0x5b, 0x54, 0xbc, 4, minor, revision]) + bytes(248)
+            pk = [m for m in rbsmsg.load_messages(self.song) if m[2] == 37 and m[3] == 0]
+            got = [(c, v) for pkt in pk for _, c, v in events_of(pkt)[3]]
+            # ctrl 5 (4.1+) is not a mixer controller and is dropped; the conversion yields ctrl 6
+            self.assertEqual(got, [(6, 10)] if ctrl == 6 else [], (minor, revision))
+
     def test_comp_tail(self):
         self.assertEqual(rbsmsg.simple_payload(self.song.comp, 3, [127, 0]), bytes([1, 5, 6, 127, 0]))
 
@@ -160,6 +211,39 @@ class Tracks(unittest.TestCase):
         bad = [(0, 1, 6), (0, 3, 0), (0, 5, 0), (0, 27, 2), (0, 28, 0)]
         (pk,) = rbsmsg.track_batches(0, trak(ok + bad), False)
         self.assertEqual([(c, v) for _, c, v in events_of(pk)[3]], [(c, v) for _, c, v in ok])
+
+    def mixer40(self, events):
+        """[(tick, ctrl, value)] of the mixer track of a 4.0 file with (delta, ctrl, value) EVENTS."""
+        out = []
+        for pk in rbsmsg.track_batches(0, trak(events), False, mixer40=True):
+            out += events_of(pk)[3]
+        return out
+
+    def test_mixer_40_renumbering(self):
+        # channel 2 (808): old 4 + 16 = 20 unaccepted, 21..24 -> 18..21 (level, pan, send, dist)
+        ev = [(0, 20, 5), (0, 21, 6), (0, 22, 7), (0, 23, 8), (0, 24, 1),
+              (0, 5, 10), (0, 8, 1),       # channel 0 level -> 6, dist -> 9
+              (0, 2, 3), (0, 3, 0), (0, 11, 0)]   # 2 unchanged; 3 and 11 not mixer controllers
+        self.assertEqual(self.mixer40(ev), [(0, 18, 6), (0, 19, 7), (0, 20, 8), (0, 21, 1), (0, 6, 10), (0, 9, 1),
+                                            (0, 2, 3)])
+
+    def test_mixer_40_flags(self):
+        # compressor: ctrl 1 on -> id 1, ctrl 10 / 34 on -> 2 / 5; PCF ctrl 9 / 33 on -> 1 / 4
+        on = self.mixer40([(0, 1, 7), (0, 10, 1), (0, 34, 3), (0, 9, 1), (0, 33, 1)])
+        self.assertEqual(on, [(0, 1, 1), (0, 1, 2), (0, 1, 5), (0, 2, 1), (0, 2, 4)])
+        # off at tick 0 is dropped (0 > 0 is false); later off keeps value 0 and moves the tracker
+        off = self.mixer40([(0, 10, 0), (1, 10, 0), (0, 10, 0), (1, 10, 0), (2, 9, 0)])
+        self.assertEqual(off, [(24, 1, 0), (48, 1, 0), (96, 2, 0)])
+        # the tracker is shared by the compressor events (1, 10..34): an on event at tick 48 blocks a later
+        # off event at the same tick, while the PCF tracker is separate
+        shared = self.mixer40([(2, 18, 1), (0, 1, 0), (0, 9, 0)])
+        self.assertEqual(shared, [(48, 1, 3), (48, 2, 0)])
+
+    def test_mixer_40_invalid_tick_moves_tracker(self):
+        # an on event at an invalid tick (>= 768000) sets the tracker (switch runs before sub_42FD60),
+        # the position does not advance, so the following off event (tick 24) is not later than the tracker
+        ev = [(40000, 10, 1), (1, 10, 0)]
+        self.assertEqual(self.mixer40(ev), [])
 
     def test_old_808_toms(self):
         (pk,) = rbsmsg.track_batches(3, trak([(0, 10, 100), (0, 11, 100)]), True)
