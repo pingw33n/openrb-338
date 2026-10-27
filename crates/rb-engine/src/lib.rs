@@ -19,6 +19,7 @@
 //!   bit-identical to dumps of the original's tables (task-019), so none is embedded.
 
 pub mod comp;
+pub mod compare;
 pub mod delay;
 pub mod dist;
 pub mod drums;

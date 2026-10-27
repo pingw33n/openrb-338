@@ -14,3 +14,5 @@ libm = "=0.2.16"
 # The corpus tests: the manifest and the reference WAVs' sha256.
 serde_json = "1"
 sha2 = "0.10"
+# The golden test decodes the FLAC references to locate the first difference.
+claxon = "0.4.3"

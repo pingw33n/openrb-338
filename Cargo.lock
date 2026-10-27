@@ -434,6 +434,7 @@ dependencies = [
 name = "rb-engine"
 version = "0.1.0"
 dependencies = [
+ "claxon",
  "libm",
  "rbs",
  "serde_json",

@@ -1,8 +1,11 @@
-//! The `rb` command line tool: renders an `.rbs` song to audio.
+//! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), and compares
+//! renders with their references (`rb compare`).
 //!
-//! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable),
-//! 2 a usage error (bad arguments, unknown output extension).
+//! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable)
+//! or, for `compare`, a song differs from its reference, 2 a usage error (bad arguments,
+//! unknown output extension).
 
+mod compare;
 mod encode;
 
 use std::path::{Path, PathBuf};
@@ -54,6 +57,30 @@ enum Cmd {
         #[arg(long, value_name = "PATH")]
         rebirth_dll: Option<PathBuf>,
     },
+    /// Render songs and compare each with its reference, byte for byte as a WAV: prints EQUAL
+    /// or the first difference (frame, time, bar, channel, both values) per song, and exits 1
+    /// when any song differs. Either `SONG --reference REF` or `--manifest PATH [NAME...]`.
+    Compare {
+        /// With --reference: the song, an .rbs file. With --manifest: the entries to compare,
+        /// as NAME or SET/NAME (all of the sets' entries when none is given).
+        names: Vec<String>,
+        /// The reference of the one song: a .flac or a .wav (16-bit stereo 44100 Hz).
+        #[arg(long, value_name = "PATH")]
+        reference: Option<PathBuf>,
+        /// A corpus manifest, e.g. tests/refs/manifest.json.
+        #[arg(long, value_name = "PATH")]
+        manifest: Option<PathBuf>,
+        /// With --manifest: the sets to compare, comma-separated (default diag,app,shipped).
+        #[arg(long = "set", value_name = "SET", value_delimiter = ',')]
+        sets: Vec<String>,
+        /// The idle 64-frame blocks before the export, as in render. Default: each manifest
+        /// entry's own idle_blocks, or 9088 for a single song.
+        #[arg(long, value_name = "N")]
+        idle_blocks: Option<u32>,
+        /// The ReBirth.dll with the built-in drum samples, as in render.
+        #[arg(long, value_name = "PATH")]
+        rebirth_dll: Option<PathBuf>,
+    },
 }
 
 /// A failure with its exit code.
@@ -65,22 +92,46 @@ fn fail(code: u8, msg: impl Into<String>) -> Fail {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let Cmd::Render {
-        input,
-        output,
-        quality,
-        range,
-        idle_blocks,
-        rebirth_dll,
-    } = cli.command;
-    match render(
-        &input,
-        &output,
-        quality,
-        range.as_deref(),
-        idle_blocks,
-        rebirth_dll.as_deref(),
-    ) {
+    let result = match cli.command {
+        Cmd::Render {
+            input,
+            output,
+            quality,
+            range,
+            idle_blocks,
+            rebirth_dll,
+        } => render(
+            &input,
+            &output,
+            quality,
+            range.as_deref(),
+            idle_blocks,
+            rebirth_dll.as_deref(),
+        ),
+        Cmd::Compare {
+            names,
+            reference,
+            manifest,
+            sets,
+            idle_blocks,
+            rebirth_dll,
+        } => compare::run(&compare::Args {
+            names,
+            reference,
+            manifest,
+            sets,
+            idle_blocks,
+            rebirth_dll,
+        })
+        .and_then(|equal| {
+            if equal {
+                Ok(())
+            } else {
+                Err(Fail(1, "some songs differ from their references".into()))
+            }
+        }),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(Fail(code, msg)) => {
             eprintln!("rb: error: {msg}");
@@ -253,6 +304,23 @@ fn render(
     }
     let range = range.map(parse_range).transpose()?;
 
+    let mut song = load_song(input)?;
+    if let Some((start, end)) = range {
+        song.globals.loop_start = start;
+        song.globals.loop_end = end;
+    }
+    warn_unsupported(&song);
+    let label = input.display().to_string();
+    let samples = Renderer::new(rebirth_dll).render(&label, &song, idle_blocks)?;
+    let bytes = encode::encode(format, &samples, quality)
+        .map_err(|e| fail(1, format!("encoding failed: {e}")))?;
+    std::fs::write(output, bytes)
+        .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
+    Ok(())
+}
+
+/// Reads and converts an `.rbs` song.
+fn load_song(input: &Path) -> Result<Song, Fail> {
     let data = std::fs::read(input)
         .map_err(|e| fail(1, format!("{}: cannot read the song: {e}", input.display())))?;
     let parsed = rbs::Song::parse(&data).map_err(|e| {
@@ -261,17 +329,16 @@ fn render(
             format!("{}: not a valid .rbs song: {e}", input.display()),
         )
     })?;
-    let mut song = rb_engine::load::convert(&parsed).map_err(|e| {
+    rb_engine::load::convert(&parsed).map_err(|e| {
         fail(
             1,
             format!("{}: cannot load the song: {e:?}", input.display()),
         )
-    })?;
-    if let Some((start, end)) = range {
-        song.globals.loop_start = start;
-        song.globals.loop_end = end;
-    }
+    })
+}
 
+/// Warns of what the render cannot do as the original would: a mod, pattern mode.
+fn warn_unsupported(song: &Song) {
     if song.mod_name != "Standard ReBirth" {
         eprintln!(
             "rb: warning: the song uses the mod {:?}; mods are not supported yet (m-2), \
@@ -285,29 +352,52 @@ fn render(
              output is the engine's song-mode render of the loop"
         );
     }
-    // The drum samples are loaded only for a song that plays a drum machine; a 303-only song
-    // renders without a ReBirth.dll (its drum machines play no step, so the silent placeholders
-    // the engine uses without samples are exact).
-    let drums = drums_playing(&song);
-    let samples = if drums.is_empty() {
-        None
-    } else {
-        Some(Arc::new(load_samples(rebirth_dll, &drums)?))
-    };
-    let mut engine = Engine::new(Arc::new(Tables::new()), Devices::implemented(samples));
-    let samples = export::export_song(&mut engine, &song, idle_blocks);
-    // A render call that faults in the original (the PCF's divide by zero) writes nothing; the
-    // output is what the original writes, but say why it is silent or repeats itself.
-    if let Some(f) = engine.fault() {
-        eprintln!(
-            "rb: warning: the original produces silence here: {}; {} render calls faulted, \
-             the first in block {}, and each left its output unwritten",
-            f.first, f.calls, f.block
-        );
+}
+
+/// Renders songs, each in a new engine with every device, sharing the tables and the drum
+/// samples (loaded from the ReBirth.dll the first time a song plays a drum machine).
+struct Renderer {
+    tables: Arc<Tables>,
+    rebirth_dll: Option<PathBuf>,
+    samples: Option<Arc<SampleSet>>,
+}
+
+impl Renderer {
+    fn new(rebirth_dll: Option<&Path>) -> Self {
+        Renderer {
+            tables: Arc::new(Tables::new()),
+            rebirth_dll: rebirth_dll.map(Path::to_path_buf),
+            samples: None,
+        }
     }
-    let bytes = encode::encode(format, &samples, quality)
-        .map_err(|e| fail(1, format!("encoding failed: {e}")))?;
-    std::fs::write(output, bytes)
-        .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
-    Ok(())
+
+    /// The export of `song` after `idle_blocks` idle blocks: interleaved int16 stereo.
+    /// `label` names the song in a warning.
+    fn render(&mut self, label: &str, song: &Song, idle_blocks: u32) -> Result<Vec<i16>, Fail> {
+        // The drum samples are loaded only for a song that plays a drum machine; a 303-only
+        // song renders without a ReBirth.dll (its drum machines play no step, so the silent
+        // placeholders the engine uses without samples are exact).
+        let drums = drums_playing(song);
+        let samples = if drums.is_empty() {
+            None
+        } else {
+            if self.samples.is_none() {
+                let set = load_samples(self.rebirth_dll.as_deref(), &drums)?;
+                self.samples = Some(Arc::new(set));
+            }
+            self.samples.clone()
+        };
+        let mut engine = Engine::new(self.tables.clone(), Devices::implemented(samples));
+        let samples = export::export_song(&mut engine, song, idle_blocks);
+        // A render call that faults in the original (the PCF's divide by zero) writes nothing;
+        // the output is what the original writes, but say why it is silent or repeats itself.
+        if let Some(f) = engine.fault() {
+            eprintln!(
+                "rb: warning: {label}: the original produces silence here: {}; {} render calls \
+                 faulted, the first in block {}, and each left its output unwritten",
+                f.first, f.calls, f.block
+            );
+        }
+        Ok(samples)
+    }
 }

@@ -173,8 +173,9 @@ status is a judgment call.
 
 - **What.** `dec = dword_100332D0[decay >> 3]` (16 entries) and the resonance row
   `(res*8) >> 7` (8 rows) are not bounded for bytes above 127.
-- **Where.** The PCF block 0x100166D0. Decay: 0x1001684C `sar ecx,3` then 0x1001685E `mov
-  ebx,[4*ebx+0x100332D0]`. Resonance row: 0x1001691B `shl eax,3` / 0x1001691E `sar eax,7`, then
+- **Where.** The PCF block 0x100166D0. Decay: 0x1001684C `mov cl,[esi+3Dh]` loads the byte,
+  0x1001684F `sar ecx,3` shifts it, then 0x1001685E `mov ebx,[4*ebx+0x100332D0]` (bytes
+  `8A 4E 3D` and `C1 F9 03` in the file). Resonance row: 0x1001691B `shl eax,3` / 0x1001691E `sar eax,7`, then
   `lea eax,[4*eax+0x1010C270]` at 0x10016941 (and the 0x10100270 table at 0x10016AC2). No `cmp`
   guards any of them.
 - **Trigger.** A decay or resonance byte above 127 (an RBS file) [G].
@@ -205,18 +206,6 @@ See OB-8 for the unclean buffer.
 
 ## Quirks that are not claimed as defects
 
-### Q-2: state carried across msg 33 and across songs [C for the facts, see `docs/export_state.md`]
-
-- **What.** Some device state is never reset by a song load or by msg 33: the TB-303 filter
-  coefficients `+0xCF4..+0xD00` (set to 0 at construction only; ramped to the target every block,
-  so they settle [G]); the 808 and 909 snare noise counters `word_1014CBD4` and `word_1014E548`
-  (BSS, 0 at DLL load, `c = (c+1) & 31` per hit, global); the drum voices' sample pointer and
-  filter state (rewritten at every trigger).
-- **Verdict.** Not claimed as defects: they are ordinary static state that a design without
-  host-driven resets would also have. They matter because they make an export depend on what ran
-  before it in the process (the counters), which rb models by starting fresh (counters 0).
-- **Home.** `docs/export_state.md` (the state tables near the 303 and drum rows).
-
 ### Q-1: the export's frame count is one frame short of an exact length [C]
 
 - **What.** The export loop counts frames in double precision: `n = trunc((end - pos) / (tempo *
@@ -230,3 +219,15 @@ See OB-8 for the unclean buffer.
   requires rb to repeat. It is listed here because it is visible in the file length.
 - **rb.** `crates/rb-engine/src/frame/export.rs`, which matches the frame count of all references.
 - **Home.** `docs/initial_investigation.md` section 3 (the export loop).
+
+### Q-2: state carried across msg 33 and across songs [C for the facts, see `docs/export_state.md`]
+
+- **What.** Some device state is never reset by a song load or by msg 33: the TB-303 filter
+  coefficients `+0xCF4..+0xD00` (set to 0 at construction only; ramped to the target every block,
+  so they settle [G]); the 808 and 909 snare noise counters `word_1014CBD4` and `word_1014E548`
+  (BSS, 0 at DLL load, `c = (c+1) & 31` per hit, global); the drum voices' sample pointer and
+  filter state (rewritten at every trigger).
+- **Verdict.** Not claimed as defects: they are ordinary static state that a design without
+  host-driven resets would also have. They matter because they make an export depend on what ran
+  before it in the process (the counters), which rb models by starting fresh (counters 0).
+- **Home.** `docs/export_state.md` (the state tables near the 303 and drum rows).

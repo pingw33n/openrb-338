@@ -4,7 +4,8 @@
 //! output (about 1e-6 at idle, plus 1e-6 × the channels D samples later) into the master, so the
 //! corpus references of the TB-303 songs depend on the delay. The 303s are checked two ways: on
 //! the songs as they are against their corpus references, with the engine's delay (task-026,
-//! task-049), and on the songs with the delay disabled against rbhost renders of those variants
+//! task-049; the golden test `corpus_golden.rs`, task-029, with the control here), and on the
+//! songs with the delay disabled against rbhost renders of those variants
 //! (`tests/fixtures/tb303_nodelay.json`, made with `tools/nodelay.py`, task-023). No corpus song
 //! disables the delay, so the second is the only reference check of the delay's disabled path
 //! (0x1000FAD1).
@@ -95,16 +96,9 @@ fn tb303_songs_without_the_delay_match_rbhost() {
     assert!(bad.is_empty(), "differ from rbhost: {bad:?}");
 }
 
-/// Every TB-303 song, as it is, equals its corpus reference with the engine's devices (its
-/// delay included; no drum samples: these songs play no drum step).
-#[test]
-fn tb303_songs_match_their_references() {
-    let bad = differing(TB303_SONGS, || Devices::implemented(None));
-    assert!(bad.is_empty(), "differ from their references: {bad:?}");
-}
-
-/// The control: with both TB-303s silent, a 303 song differs from its reference, so the test
-/// above hears the 303s. (`silence` and `mixer_master_low`, whose master is low, may not.)
+/// The control: with both TB-303s silent, a 303 song differs from its reference, so the golden
+/// test (`corpus_golden.rs`, which compares every song as it is with its corpus reference) hears
+/// the 303s. (`silence` and `mixer_master_low`, whose master is low, may not.)
 #[test]
 fn tb303_songs_differ_without_the_303s() {
     let silent = || {

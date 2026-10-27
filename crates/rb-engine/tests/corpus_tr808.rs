@@ -3,7 +3,8 @@
 //! (`tests/refs/manifest.json`, the WAV's sha256 at the entry's `idle_blocks`), with the built-in
 //! samples of `original/ReBirth.dll` and the engine's delay (task-026, task-049). The references
 //! were rendered by rbhost in a fresh process per song, so the process-global drum counters start
-//! at 0, as in a new [`rb_engine::process::ProcessState`].
+//! at 0, as in a new [`rb_engine::process::ProcessState`]. The comparison itself is the golden
+//! test's (`corpus_golden.rs`, task-029); this file keeps the control and the counter test.
 
 mod common;
 
@@ -69,21 +70,16 @@ const TR808_SONGS: &[&str] = &[
     "tempo_97_3",
 ];
 
-/// AC #1: every 808 song equals its corpus reference.
-#[test]
-fn tr808_songs_match_their_references() {
-    let set = samples();
-    let bad = differing(TR808_SONGS, || Devices::implemented(Some(set.clone())));
-    assert_eq!(TR808_SONGS.len(), 45);
-    assert!(bad.is_empty(), "differ from their references: {bad:?}");
-}
-
-/// The control: without the 808 (no samples, the silent placeholder) an 808 song differs from
-/// its reference, so the test above hears the 808.
+/// The control: without the 808 (no samples, the silent placeholder) every 808 song differs
+/// from its reference, so the golden test (`corpus_golden.rs`, which compares every song with
+/// its corpus reference, task-029) hears the 808 in each.
 #[test]
 fn tr808_songs_differ_without_the_808() {
-    let names = ["808_snare", "808_bass", "delay_straight_fb64"];
-    assert_eq!(differing(&names, || Devices::implemented(None)), names);
+    assert_eq!(TR808_SONGS.len(), 45);
+    assert_eq!(
+        differing(TR808_SONGS, || Devices::implemented(None)),
+        TR808_SONGS
+    );
 }
 
 /// An export of `808_snare` (8 snare hits in its loop) moves the 808 snare counter by 9, the

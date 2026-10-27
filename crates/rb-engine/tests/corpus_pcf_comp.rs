@@ -3,19 +3,15 @@
 //! the WAV's sha256 at the entry's `idle_blocks`, 9088) with the engine's devices
 //! ([`Devices::implemented`]) and the built-in samples of `original/ReBirth.dll`.
 //!
-//! The shipped songs (manifest `shipped`, the eight that use the built-in kit) are checked in
-//! `shipped_songs_match_their_references`, which renders about 37 minutes of audio (4 s in a
-//! release build, about a minute in a debug one) and is `#[ignore]`d: run it with
-//! `cargo test --release -p rb-engine --test corpus_pcf_comp -- --ignored`.
+//! That comparison, and the one of the shipped songs, is the golden test's (`corpus_golden.rs`,
+//! task-029); this file keeps the routing lists and the controls, which prove the golden test
+//! hears the PCF and the compressor.
 
 mod common;
 
-use std::sync::Arc;
-
-use common::{differing, manifest, render_with, samples, sha256, song};
+use common::{differing, manifest, samples, song};
 use rb_engine::frame::{Bypass, Devices};
 use rb_engine::song::{Device, Mixer, Song};
-use rb_engine::tables::Tables;
 
 /// Whether the song routes the PCF or the compressor: a non-zero id in the mixer chunk or in
 /// any mixer-track event of that id (an insert that is never routed is never heard).
@@ -80,20 +76,8 @@ fn the_lists_are_the_routing_songs() {
     assert_eq!(derive(Mixer::CTRL_COMP_ID), COMP_SONGS);
 }
 
-/// AC #1: every PCF and compressor song equals its corpus reference with the engine's devices.
-#[test]
-fn pcf_and_comp_songs_match_their_references() {
-    let set = samples();
-    let mut names: Vec<&str> = PCF_SONGS.iter().chain(COMP_SONGS).copied().collect();
-    names.sort();
-    names.dedup();
-    assert_eq!(names.len(), 22);
-    let bad = differing(&names, || Devices::implemented(Some(set.clone())));
-    assert!(bad.is_empty(), "differ from their references: {bad:?}");
-}
-
 /// The controls: with the PCF bypassed every PCF song differs from its reference, and with
-/// the compressor bypassed every compressor song does, so the test above hears both.
+/// the compressor bypassed every compressor song does, so the golden test hears both.
 #[test]
 fn the_songs_differ_without_the_effects() {
     let set = samples();
@@ -119,31 +103,4 @@ fn the_songs_differ_without_the_effects() {
         COMP_SONGS,
         "equal without the compressor"
     );
-}
-
-/// The shipped songs that use the built-in kit against their references (rbhost at 9088,
-/// sha256 and frame count only, no audio committed).
-#[test]
-#[ignore = "about a minute in a debug build; run with --release -- --ignored"]
-fn shipped_songs_match_their_references() {
-    let m = manifest();
-    let set = samples();
-    let tables = Arc::new(Tables::new());
-    let shipped = m["shipped"].as_object().unwrap();
-    assert_eq!(shipped.len(), 8);
-    let mut bad = Vec::new();
-    for (name, e) in shipped {
-        let idle = e["idle_blocks"].as_u64().unwrap() as u32;
-        let wav = render_with(
-            &tables,
-            Devices::implemented(Some(set.clone())),
-            &song(e),
-            idle,
-        );
-        let frames = e["frames"].as_u64().unwrap() as usize;
-        if wav.len() != 44 + 4 * frames || sha256(&wav) != e["wav_sha256"].as_str().unwrap() {
-            bad.push(name.clone());
-        }
-    }
-    assert!(bad.is_empty(), "differ from their references: {bad:?}");
 }

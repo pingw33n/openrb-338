@@ -4,9 +4,11 @@
 //! 145, render byte-identical to their corpus references (`tests/refs/manifest.json`, the WAV's
 //! sha256 at the entry's `idle_blocks`, 9088 for every diag song) with the engine's own delay
 //! ([`rb_engine::delay::Delay`]) and distortion ([`rb_engine::dist::Distortion`]) and the
-//! built-in samples of `original/ReBirth.dll`. Every one has the delay enabled.
+//! built-in samples of `original/ReBirth.dll`. Every one has the delay enabled. The reference
+//! comparison of every corpus song is the golden test's (`corpus_golden.rs`, task-029); the
+//! device tests keep the controls, which prove the golden test hears each device.
 //!
-//! They are split, without overlap, among the corpus tests: the 36 TB-303 songs of
+//! They are split, without overlap, among the device tests: the 36 TB-303 songs of
 //! `corpus_tb303.rs` (`delay_303` among them), the 45 TR-808 songs of `corpus_tr808.rs` (the
 //! other `delay_*` songs and `mixer_delay_send_sweep`), the 33 TR-909 songs of `corpus_tr909.rs`,
 //! and the 9 distortion songs here (task-049). The other 22, which route the PCF or the
@@ -48,22 +50,13 @@ const DELAY_SONGS: &[&str] = &[
     "delay_triplet_fb64",
 ];
 
-/// AC #1: every distortion song equals its corpus reference with the engine's devices.
-#[test]
-fn dist_songs_match_their_references() {
-    let set = samples();
-    let bad = differing(DIST_SONGS, || Devices::implemented(Some(set.clone())));
-    assert_eq!(DIST_SONGS.len(), 9);
-    assert!(bad.is_empty(), "differ from their references: {bad:?}");
-}
-
 /// The controls: with the distortion bypassed every enabled distortion song differs from its
 /// reference (both the shaper and the clip of shape 0), and with the idle send in place of the
-/// delay every delay song does, so the device tests hear the delay and the test above the
-/// distortion.
+/// delay every delay song does, so the golden test hears the distortion and the delay.
 #[test]
 fn the_effect_songs_differ_without_the_effects() {
     let set = samples();
+    assert_eq!(DIST_SONGS.len(), 9);
     let dist: Vec<&str> = DIST_SONGS
         .iter()
         .copied()
