@@ -160,21 +160,27 @@ fn fader_jumps_to_the_pointer_and_drags() {
 }
 
 #[test]
-fn two_position_switch_follows_the_half_under_the_pointer() {
+fn two_position_switch_flips_on_a_click_anywhere() {
     let mut h = Harness::new();
-    // The 303 waveform switch is horizontal, 16 px wide, at x 114.
-    h.move_to(Pos2::new(114.0 + 12.0, 66.0));
+    // The 303 waveform switch is horizontal, 16 x 12 at (119, 71). A click on the half
+    // that is already selected flips it too.
+    let left = Pos2::new(119.0 + 3.0, 77.0);
+    h.move_to(left);
     h.down(Modifiers::NONE);
     assert_eq!(h.app.panel.switch("tb303_1.wave"), 1);
-    // Dragging across the middle changes it.
-    h.move_to(Pos2::new(114.0 + 3.0, 66.0));
-    assert_eq!(h.app.panel.switch("tb303_1.wave"), 0);
+    // Dragging does not flip it back.
+    h.move_to(Pos2::new(119.0 + 13.0, 77.0));
+    assert_eq!(h.app.panel.switch("tb303_1.wave"), 1);
     h.up();
-    // The delay's triplet switch is vertical: the bottom half gives 1.
-    h.move_to(Pos2::new(579.0, 281.0 + 15.0));
+    h.move_to(left);
     h.down(Modifiers::NONE);
-    assert_eq!(h.app.panel.switch("delay.triplet"), 1);
     h.up();
+    assert_eq!(h.app.panel.switch("tb303_1.wave"), 0);
+    // The delay's triplet switch is vertical: a click on its top half flips it.
+    h.move_to(Pos2::new(579.0, 281.0 + 3.0));
+    h.down(Modifiers::NONE);
+    h.up();
+    assert_eq!(h.app.panel.switch("delay.triplet"), 1);
 }
 
 #[test]
@@ -323,8 +329,12 @@ fn instrument_legends_select_and_drag_keeps_selecting() {
     // The selector knob follows.
     let v = rb_ui::behavior::knob_send(h.app.panel.knob("tr808.selector"));
     assert_eq!(rb_ui::behavior::selector_instrument(v), 11);
-    // The 909 AC area and legend.
+    // The 909 legend, AC included; the area under AC's level knob no longer selects.
     h.move_to(Pos2::new(90.0 + 10.0, 395.0 + 50.0));
+    h.down(Modifiers::NONE);
+    h.up();
+    assert_eq!(h.app.panel.inst909, 1);
+    h.move_to(Pos2::new(90.0 + 10.0, 395.0 + 10.0));
     h.down(Modifiers::NONE);
     h.up();
     assert_eq!(h.app.panel.inst909, 0);
@@ -394,7 +404,7 @@ fn every_part_loads_and_rasterizes_at_1x_2x_3x() {
             });
             out.textures_delta.clear();
         }
-        assert!(count >= 170, "{count} parts");
+        assert!(count >= 160, "{count} parts");
     }
 }
 

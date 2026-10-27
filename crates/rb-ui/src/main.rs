@@ -117,6 +117,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("rb")
+            .with_icon(Arc::new(rb_ui::art::app_icon(256)))
             // the menu bar is above the panel
             .with_inner_size([size[0], size[1] + MENU_H])
             // The minimum is half the native panel size (decision task-040).

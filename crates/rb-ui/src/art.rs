@@ -81,24 +81,24 @@ pub const KNOBS: [KnobDesign; 6] = [
         arc: [0xe2, 0x41, 0x3b],
     },
     KnobDesign {
-        name: "knob_18",
-        w: 18.0,
-        h: 19.0,
-        cx: 9.0,
-        cy: 9.5,
-        ring_r: 8.3,
-        ring_w: 1.2,
-        arc: [0xff, 0xb0, 0x00],
-    },
-    KnobDesign {
         name: "knob_sel",
-        w: 29.0,
-        h: 31.0,
-        cx: 14.5,
-        cy: 15.5,
+        w: 38.0,
+        h: 38.0,
+        cx: 19.0,
+        cy: 19.0,
         ring_r: 0.0,
         ring_w: 0.0,
         arc: [0xf0, 0x8a, 0x24],
+    },
+    KnobDesign {
+        name: "knob_22",
+        w: 22.0,
+        h: 22.0,
+        cx: 11.0,
+        cy: 11.0,
+        ring_r: 10.1,
+        ring_w: 1.4,
+        arc: [0xff, 0xb0, 0x00],
     },
 ];
 
@@ -108,6 +108,34 @@ pub fn knob_design(part: &str) -> &'static KnobDesign {
         .iter()
         .find(|k| k.name == part)
         .unwrap_or_else(|| panic!("no knob design {part}"))
+}
+
+/// The window's icon: the `app_icon` part rendered at `size` x `size` pixels.
+pub fn app_icon(size: u32) -> eframe::egui::IconData {
+    let svg = part("app_icon").expect("app_icon part").svg;
+    let tree = resvg::usvg::Tree::from_data(svg, &resvg::usvg::Options::default())
+        .expect("app_icon parses");
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size).unwrap();
+    let scale = size as f32 / tree.size().width();
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    // IconData is straight (not premultiplied) RGBA.
+    let rgba = pixmap
+        .pixels()
+        .iter()
+        .flat_map(|p| {
+            let c = p.demultiply();
+            [c.red(), c.green(), c.blue(), c.alpha()]
+        })
+        .collect();
+    eframe::egui::IconData {
+        rgba,
+        width: size,
+        height: size,
+    }
 }
 
 #[cfg(test)]

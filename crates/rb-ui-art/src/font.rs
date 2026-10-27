@@ -5,8 +5,21 @@
 
 use crate::svg::{Svg, n};
 
-/// Gap between two glyphs in glyph units.
-const GAP: f32 = 1.4;
+/// The clear space between two glyphs' strokes in glyph units, and at least `MIN_CLEAR`
+/// panel pixels, so small labels (whose stroke is thickened) do not run together.
+const CLEAR: f32 = 0.56;
+const MIN_CLEAR: f32 = 0.6;
+
+/// The stroke width in glyph units at cap height `cap`: at least half a panel pixel so
+/// small labels stay legible.
+fn stroke_units(cap: f32) -> f32 {
+    (cap * 0.14).max(0.55) / (cap / 6.0)
+}
+
+/// The gap between two glyphs' boxes in glyph units: the stroke plus the clear space.
+fn gap_units(cap: f32) -> f32 {
+    stroke_units(cap) + CLEAR.max(MIN_CLEAR / (cap / 6.0))
+}
 
 /// (width, path) of a glyph on a 6-unit-high grid, or None.
 fn glyph(c: char) -> Option<(f32, &'static str)> {
@@ -92,14 +105,14 @@ pub enum Anchor {
     End,
 }
 
-/// The width of `text` in glyph units.
-fn units(text: &str) -> f32 {
+/// The width of `text` in glyph units at cap height `cap`.
+fn units(cap: f32, text: &str) -> f32 {
     let mut w = 0.0;
     let mut first = true;
     for c in text.chars() {
         let (gw, _) = glyph(c).unwrap_or_else(|| panic!("no glyph for {c:?}"));
         if !first {
-            w += GAP;
+            w += gap_units(cap);
         }
         first = false;
         w += gw;
@@ -109,25 +122,24 @@ fn units(text: &str) -> f32 {
 
 /// The gap between two glyphs in pixels at cap height `cap`.
 pub fn gap(cap: f32) -> f32 {
-    GAP * cap / 6.0
+    gap_units(cap) * cap / 6.0
 }
 
 /// The width of `text` in pixels at cap height `cap`.
 pub fn text_width(cap: f32, text: &str) -> f32 {
-    units(text) * cap / 6.0
+    units(cap, text) * cap / 6.0
 }
 
 /// Draws `text` with cap height `cap`, its vertical center at `yc`.
 pub fn text(s: &mut Svg, x: f32, yc: f32, cap: f32, anchor: Anchor, color: &str, text: &str) {
     let scale = cap / 6.0;
-    let w = units(text) * scale;
+    let w = units(cap, text) * scale;
     let x0 = match anchor {
         Anchor::Start => x,
         Anchor::Middle => x - w / 2.0,
         Anchor::End => x - w,
     };
-    // The stroke is at least half a panel pixel so small labels stay legible.
-    let stroke = (cap * 0.14).max(0.55) / scale;
+    let stroke = stroke_units(cap);
     s.raw(&format!(
         r#"<g transform="translate({} {}) scale({})" fill="none" stroke="{color}" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round">"#,
         n(x0),
@@ -144,7 +156,7 @@ pub fn text(s: &mut Svg, x: f32, yc: f32, cap: f32, anchor: Anchor, color: &str,
                 n(dx)
             ));
         }
-        dx += gw + GAP;
+        dx += gw + gap_units(cap);
     }
     s.raw("</g>");
 }

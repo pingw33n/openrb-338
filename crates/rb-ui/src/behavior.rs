@@ -89,12 +89,6 @@ pub fn repeat_extra_steps(t_ms: u32) -> u32 {
     a + b
 }
 
-/// A two-position switch's value for a pointer at `pos` along its axis: the first half gives
-/// 0, the second 1 (`CBitmapSwitch`).
-pub fn switch_value(pos: f32, size: f32) -> u8 {
-    u8::from(pos >= size / 2.0)
-}
-
 /// The pattern grid's button 1..=8 for a point in its 68 x 40 area (`sub_41A5B0`).
 pub fn pattern_grid_button(dx: f32, dy: f32) -> u8 {
     let col = ((4.0 * dx / 68.0) as i32).clamp(0, 3);
@@ -151,13 +145,10 @@ pub fn tr808_hit(x: f32, y: f32) -> Option<usize> {
     None
 }
 
-/// The TR-909 instrument under a point of its section: the legend row (y 4..18), the name
-/// row (y 70..85) and the AC area (4..26, 44..62).
+/// The TR-909 instrument under a point of its section: the legend row (y 4..18, AC at
+/// x 4..26) and the name row (y 74..89).
 pub fn tr909_hit(x: f32, y: f32) -> Option<usize> {
-    if (4.0..26.0).contains(&x) && (44.0..62.0).contains(&y) {
-        return Some(0);
-    }
-    if !((4.0..18.0).contains(&y) || (70.0..85.0).contains(&y)) {
+    if !((4.0..18.0).contains(&y) || (74.0..89.0).contains(&y)) {
         return None;
     }
     let dx = x as i32;
@@ -171,15 +162,15 @@ pub fn tr909_hit(x: f32, y: f32) -> Option<usize> {
     (0..=11).contains(&i).then_some(i as usize)
 }
 
-/// The TR-808 step under `x` (section pixels): 16 cells of 16 px from x 16.
+/// The TR-808 step under `x` (section pixels): 16 cells of 16 px from x 14.
 pub fn tr808_step(x: f32) -> Option<usize> {
-    let i = ((x - 16.0) / 16.0).floor();
+    let i = ((x - 14.0) / 16.0).floor();
     (0.0..16.0).contains(&i).then_some(i as usize)
 }
 
-/// The TR-909 step under `x` (section pixels): 16 cells of 21 px from x 29.
+/// The TR-909 step under `x` (section pixels): 16 cells of 21 px from x 26.
 pub fn tr909_step(x: f32) -> Option<usize> {
-    let i = ((x - 29.0) / 21.0).floor();
+    let i = ((x - 26.0) / 21.0).floor();
     (0.0..16.0).contains(&i).then_some(i as usize)
 }
 
@@ -277,9 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn switches_and_grid() {
-        assert_eq!(switch_value(2.0, 16.0), 0);
-        assert_eq!(switch_value(8.0, 16.0), 1);
+    fn pattern_grid() {
         assert_eq!(pattern_grid_button(1.0, 1.0), 1);
         assert_eq!(pattern_grid_button(67.0, 1.0), 4);
         assert_eq!(pattern_grid_button(1.0, 39.0), 5);
@@ -332,17 +321,17 @@ mod tests {
         assert_eq!(tr909_hit(26.0, 10.0), Some(1));
         assert_eq!(tr909_hit(235.0, 10.0), Some(5));
         assert_eq!(tr909_hit(236.0, 75.0), Some(6));
-        assert_eq!(tr909_hit(361.0, 75.0), Some(11));
+        assert_eq!(tr909_hit(361.0, 88.0), Some(11));
         assert_eq!(tr909_hit(362.0, 10.0), None);
-        assert_eq!(tr909_hit(10.0, 50.0), Some(0));
+        assert_eq!(tr909_hit(10.0, 50.0), None);
         assert_eq!(tr909_hit(100.0, 50.0), None);
-        assert_eq!(tr808_step(15.0), None);
-        assert_eq!(tr808_step(16.0), Some(0));
-        assert_eq!(tr808_step(271.0), Some(15));
-        assert_eq!(tr808_step(272.0), None);
-        assert_eq!(tr909_step(29.0), Some(0));
-        assert_eq!(tr909_step(364.0), Some(15));
-        assert_eq!(tr909_step(365.0), None);
+        assert_eq!(tr808_step(13.0), None);
+        assert_eq!(tr808_step(14.0), Some(0));
+        assert_eq!(tr808_step(269.0), Some(15));
+        assert_eq!(tr808_step(270.0), None);
+        assert_eq!(tr909_step(26.0), Some(0));
+        assert_eq!(tr909_step(361.0), Some(15));
+        assert_eq!(tr909_step(362.0), None);
     }
 
     #[test]

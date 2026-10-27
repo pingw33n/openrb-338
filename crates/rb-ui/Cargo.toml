@@ -24,6 +24,8 @@ rbm = { path = "../rbm" }
 rb-cli = { path = "../rb-cli" }
 eframe = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["svg"] }
+# Renders the window icon; the version egui_extras' SVG loader uses.
+resvg = { version = "0.45.1", default-features = false }
 # Saves the --screenshot PNG.
 image = { version = "0.25", default-features = false, features = ["png"] }
 

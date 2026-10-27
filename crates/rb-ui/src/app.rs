@@ -473,7 +473,11 @@ impl App {
                             self.panel.press(&c.id, now);
                         }
                     }
-                    "hswitch" | "vswitch" => self.two_position(ui, view, c, &r),
+                    // A click anywhere on a two-position switch flips it.
+                    "hswitch" | "vswitch" if self.first_press(ui, c, &r) => {
+                        let v = 1 - self.panel.switch(&c.id);
+                        self.panel.set_switch(&c.id, v);
+                    }
                     _ => {}
                 }
                 let name = self.panel.part_name(c, down, now);
@@ -538,24 +542,6 @@ impl App {
     fn press_origin(ui: &Ui, view: &View) -> Option<Pos2> {
         ui.input(|i| i.pointer.press_origin().or(i.pointer.latest_pos()))
             .map(|p| view.to_panel(p))
-    }
-
-    /// The horizontal and vertical two-position switches: the half the pointer is in.
-    fn two_position(&mut self, ui: &Ui, view: &View, c: &Ctl, r: &Response) {
-        if !r.is_pointer_button_down_on() {
-            return;
-        }
-        let Some(p) = Self::pointer(ui, view) else {
-            return;
-        };
-        let v = if c.kind == "hswitch" {
-            behavior::switch_value(p.x - c.x, c.w)
-        } else {
-            behavior::switch_value(p.y - c.y, c.h)
-        };
-        if self.panel.switch(&c.id) != v {
-            self.panel.set_switch(&c.id, v);
-        }
     }
 
     fn knob(&mut self, ui: &mut Ui, view: &View, c: &Ctl, rect: Rect) {
@@ -631,9 +617,9 @@ impl App {
     fn drum_strips(&mut self, ui: &mut Ui, view: &View) {
         for is808 in [true, false] {
             let (origin, x0, y0, w, h) = if is808 {
-                (layout::TR808_ORIGIN, 16.0, 91.0, 256.0, 17.0)
+                (layout::TR808_ORIGIN, 14.0, 91.0, 256.0, 17.0)
             } else {
-                (layout::TR909_ORIGIN, 29.0, 86.0, 336.0, 16.0)
+                (layout::TR909_ORIGIN, 26.0, 94.0, 336.0, 16.0)
             };
             let rect = view.rect(origin.0 + x0, origin.1 + y0, w, h);
             let name = if is808 { "strip808" } else { "strip909" };
@@ -697,18 +683,17 @@ impl App {
         self.ctls = ctls;
     }
 
-    /// The legends, name rows and AC area select the instrument; dragging keeps selecting.
+    /// The legends and name rows select the instrument; dragging keeps selecting.
     /// Also draws the selection frames.
     fn instrument_selection(&mut self, ui: &mut Ui, view: &View) {
         let (o8, o9) = (layout::TR808_ORIGIN, layout::TR909_ORIGIN);
         /// (is the 808, section origin, [x y w h] in the section, name)
         type Area = (bool, (f32, f32), [f32; 4], &'static str);
-        let areas: [Area; 5] = [
+        let areas: [Area; 4] = [
             (true, o8, [10.0, 71.0, 264.0, 14.0], "legend808"),
             (true, o8, [78.0, 43.0, 106.0, 12.0], "upper808"),
-            (false, o9, [4.0, 4.0, 362.0, 14.0], "legend909"),
-            (false, o9, [26.0, 70.0, 340.0, 15.0], "names909"),
-            (false, o9, [4.0, 44.0, 22.0, 18.0], "ac909"),
+            (false, o9, [4.0, 4.0, 358.0, 14.0], "legend909"),
+            (false, o9, [26.0, 74.0, 336.0, 15.0], "names909"),
         ];
         for (is808, o, [x, y, w, h], name) in areas {
             let rect = view.rect(o.0 + x, o.1 + y, w, h);
@@ -745,7 +730,7 @@ impl App {
         paint_part(ui, "sel_22x14", view.rect(fx, fy, 22.0, 14.0));
         let i = self.panel.inst909;
         let (name, x, y, w, h) = match i {
-            0 => ("sel_22x18", 4.0, 44.0, 22.0, 18.0),
+            0 => ("sel_22x14", 4.0, 4.0, 22.0, 14.0),
             1..=5 => ("sel_42x14", 26.0 + 42.0 * (i - 1) as f32, 4.0, 42.0, 14.0),
             _ => ("sel_21x14", 236.0 + 21.0 * (i - 6) as f32, 4.0, 21.0, 14.0),
         };

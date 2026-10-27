@@ -495,16 +495,16 @@ impl Panel {
     }
 
     /// Sets a knob position and sends the value when it changed; the 808 selector also
-    /// selects its instrument.
+    /// selects its instrument and snaps to it.
     pub fn set_knob(&mut self, id: &str, p: i32) {
         let p = p.clamp(0, KNOB_MAX);
-        let old = self.knobs.insert(id.into(), p).unwrap_or(-1);
         if id == "tr808.selector" {
-            self.inst808 = behavior::selector_instrument(behavior::knob_send(p));
+            self.select_instrument(true, behavior::selector_instrument(behavior::knob_send(p)));
+            return;
         }
+        let old = self.knobs.insert(id.into(), p).unwrap_or(-1);
         let changed = old < 0 || behavior::knob_send(old) != behavior::knob_send(p);
-        // The selector is UI state only.
-        if changed && id != "tr808.selector" {
+        if changed {
             self.set_event(id, behavior::knob_send(p));
         }
     }
@@ -1052,14 +1052,7 @@ impl Panel {
                 }
             }
             "trigger" | "wind" | "repeat" => push(),
-            "led" => {
-                let on = self.led_on(c, now);
-                if fam == "led_11_" {
-                    format!("{fam}off")
-                } else {
-                    on_off(on)
-                }
-            }
+            "led" => on_off(self.led_on(c, now)),
             "grid" => {
                 if let Some(n) = name.strip_prefix("pattern") {
                     let r = index_of(sec, "pattern").unwrap_or(0).min(3);
@@ -1100,7 +1093,6 @@ impl Panel {
             "accent_led" => step.accent,
             "slide_led" => step.slide,
             "note_led" => !step.rest,
-            "rest_led" => step.rest,
             n => n
                 .strip_prefix("key")
                 .and_then(|n| n.strip_suffix("_led"))
@@ -1341,6 +1333,13 @@ mod tests {
         );
         p.set_knob("tr808.selector", 1000);
         assert_eq!(p.inst808, 11);
+        // between two drums the knob snaps to the nearer one
+        p.set_knob("tr808.selector", 140);
+        assert_eq!(p.inst808, 2);
+        assert_eq!(
+            p.knob("tr808.selector"),
+            behavior::knob_from_engine(behavior::selector_value(2))
+        );
     }
 
     #[test]

@@ -3381,6 +3381,7 @@ dependencies = [
  "rb-ui-art",
  "rbm",
  "rbs",
+ "resvg 0.45.1",
  "tempfile",
 ]
 
