@@ -117,9 +117,22 @@ fn a_pattern_change_waits_for_the_bar_line() {
 
 #[test]
 fn live_parameters_from_another_thread() {
+    // Pattern mode on purpose: in song mode the free-running audio thread replays the tracks'
+    // tick-0 controller state at every loop wrap, which overwrites the commands before the
+    // polling thread sees them (task-073: that was the flake). The chase and the event replay
+    // run only in song mode.
     let (mut p, mut a) = player(&diag("full_mix"));
+    send(&mut p, Command::SongMode(false));
     send(&mut p, Command::Play);
     let done = Arc::new(AtomicBool::new(false));
+    // a failing wait must not leave the audio thread spinning
+    struct Stop(Arc<AtomicBool>);
+    impl Drop for Stop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
+    let _stop = Stop(done.clone());
     let audio = {
         let done = done.clone();
         std::thread::spawn(move || {
@@ -131,11 +144,14 @@ fn live_parameters_from_another_thread() {
         })
     };
     let wait = |p: &mut Player, f: &dyn Fn(&rb_player::Snapshot) -> bool| {
-        for _ in 0..100_000 {
+        // bounded by wall-clock time, not by iterations: a loaded machine may starve the
+        // audio thread for a long while
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while std::time::Instant::now() < deadline {
             if f(p.snapshot()) {
                 return;
             }
-            std::thread::yield_now();
+            std::thread::sleep(std::time::Duration::from_micros(200));
         }
         panic!("the change never showed: {:?}", p.snapshot());
     };
@@ -159,7 +175,7 @@ fn live_parameters_from_another_thread() {
             },
         );
         wait(&mut p, &|s| {
-            s.live[device as usize].as_slice()[ctrl as usize] == value
+            s.playing && !s.song_mode && s.live[device as usize].as_slice()[ctrl as usize] == value
         });
     }
     send(
@@ -185,7 +201,9 @@ fn live_parameters_from_another_thread() {
     send(&mut p, Command::LoopStart(BAR as u32));
     send(&mut p, Command::LoopEnd(4 * BAR as u32));
     wait(&mut p, &|s| {
-        s.mixer.channels[0].pan == 3
+        s.playing
+            && !s.song_mode
+            && s.mixer.channels[0].pan == 3
             && s.mixer.master == 77
             && s.mixer.channels[1].enabled == 0
             && s.tempo == 97_000

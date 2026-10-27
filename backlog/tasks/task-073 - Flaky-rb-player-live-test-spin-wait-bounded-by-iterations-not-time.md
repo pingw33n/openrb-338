@@ -1,10 +1,11 @@
 ---
 id: TASK-073
 title: 'Flaky rb-player live test: spin-wait bounded by iterations, not time'
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-27 14:23'
+updated_date: '2026-10-27 15:07'
 labels:
   - tests
 milestone: m-3
@@ -27,6 +28,32 @@ Fix: bound the wait by wall-clock time (e.g. up to 10 s with a short sleep or yi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The live tests' waits are bounded by wall-clock time, not iteration counts, with the last snapshot in the failure message
-- [ ] #2 The live test passes 50 runs in a row under load (the command and result in the notes); other spin-waits in rb-player and rb-ui tests are checked and fixed
+- [x] #1 The live tests' waits are bounded by wall-clock time, not iteration counts, with the last snapshot in the failure message
+- [x] #2 The live test passes 50 runs in a row under load (the command and result in the notes); other spin-waits in rb-player and rb-ui tests are checked and fixed
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Bound live.rs wait by a 30 s wall-clock deadline. 2. Check other loops in rb-player/rb-ui tests. 3. 50 runs under load (20 busy loops).
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-a09a0ff5db6533286
+
+With only the 30 s wall-clock deadline, 3 of 50 loaded runs still failed: the free-running audio thread, in song mode, replays the tracks' tick-0 controller state (mixer ch0 pan 40, device controllers such as tb303_1 cutoff ctrl 3) at each loop wrap (seq.rs:302-316), overwriting the commands between polls. Fix: the test sends SongMode(false) then Play (chase/replay only in song mode), asserts playing && !song_mode in every wait, and has a drop guard that stops the audio thread. Other loops in rb-player/rb-ui tests are fixed call counts on the synchronous harness; no other waits.
+
+Reproduce: 20 busy loops + 50x cargo test --release -p rb-player --test live. Before (deadline only, song mode): 3/50 failed. After: 0/50.
+
+Review round 1: subject shortened, pattern mode instead of stopped, drop guard, diagnosis corrected. Review round 2: the per-device wait predicate also asserts playing && !song_mode; 20-load 50 runs re-run (see below).
+
+Round 2 result: 0 of 50 failed under 20 busy loops.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+live.rs wait bounded by a 30 s wall-clock deadline (last snapshot in the panic). The remaining flake was the song-mode loop wrap replaying tick-0 controller state over the commands; the test now plays in pattern mode (still asserting playing), with a drop guard stopping the audio thread. 50/50 under 20 busy loops; other tests have no spin-waits. Workspace cargo test --release passes.
+<!-- SECTION:FINAL_SUMMARY:END -->
