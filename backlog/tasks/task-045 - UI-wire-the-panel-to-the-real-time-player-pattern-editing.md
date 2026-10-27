@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 16:23'
-updated_date: '2026-10-27 07:30'
+updated_date: '2026-10-27 07:55'
 labels:
   - ui
 milestone: m-3
@@ -13,6 +13,7 @@ dependencies:
   - TASK-043
   - TASK-044
   - TASK-054
+  - TASK-055
 priority: high
 type: feature
 ordinal: 45000
