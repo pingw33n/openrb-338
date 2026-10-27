@@ -346,3 +346,57 @@ fn a_mod_without_a_key_file_is_an_error() {
     let (o, _) = render(&s, &named, "n.wav", &[os("--mod-dir"), s.mods.as_os_str()]);
     ok(&o);
 }
+
+#[test]
+fn a_recrypted_mod_renders_without_the_key_file() {
+    let s = setup();
+    let named = song(&s, "named.rbs", "Test Mod");
+    let src = s.mods.join("tm.rbm");
+    let re_dir = s.dir.path().join("re");
+    std::fs::create_dir(&re_dir).unwrap();
+    let re = re_dir.join("tm.rbm");
+    let recrypt = |extra: &[&OsStr]| {
+        Command::new(env!("CARGO_BIN_EXE_rb"))
+            .arg("recrypt")
+            .arg(&src)
+            .arg("-o")
+            .arg(&re)
+            .args(extra)
+            .env_remove("RB_MOD_DIR")
+            .env_remove("RB_RBM_DIR")
+            .env_remove("RB_RB20FUL")
+            .output()
+            .unwrap()
+    };
+    // the first recrypt needs the key file
+    let o = recrypt(&[]);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("RB20FUL.DAT"), "{err}");
+    assert!(!re.exists());
+    ok(&recrypt(&[os("--rb20ful"), s.dat.as_os_str()]));
+    let back = rbm::Rbm::parse(std::fs::read(&re).unwrap()).unwrap();
+    assert!(rbm::KeyTable::embedded(&back).is_some_and(|t| back.all_covered(&t)));
+
+    // the recrypted mod renders with no key file anywhere, as the original does with it
+    let (o, a) = render(&s, &named, "a.wav", &[os("--mod"), re.as_os_str()]);
+    ok(&o);
+    let (o, b) = render(
+        &s,
+        &named,
+        "b.wav",
+        &[
+            os("--mod-dir"),
+            s.mods.as_os_str(),
+            os("--rb20ful"),
+            s.dat.as_os_str(),
+        ],
+    );
+    ok(&o);
+    let want = std::fs::read(b).unwrap();
+    assert_eq!(std::fs::read(a).unwrap(), want);
+    // and the mod folder lookup finds it by its INFO name
+    let (o, c) = render(&s, &named, "c.wav", &[os("--mod-dir"), re_dir.as_os_str()]);
+    ok(&o);
+    assert_eq!(std::fs::read(c).unwrap(), want);
+}

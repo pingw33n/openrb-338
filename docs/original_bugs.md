@@ -223,6 +223,25 @@ See OB-8 for the unclean buffer.
   section 10 has both facts.
 - **Home.** `docs/ui_spec.md` sections 10 and 13.
 
+## 5. Mods (Rebirth.exe)
+
+### OB-14: the open mod's table of 200 EMBF entries has no bound check [C: no check; G: the effect]
+
+- **What.** `COpenMod` (`sub_41813E`) keeps one 276-byte entry per EMBF chunk (name, payload
+  offset, size, ordinal) in a fixed table of 200 entries and writes entry `count` for every EMBF
+  of the file without comparing `count` with 200.
+- **Where.** The table: 200 entries (`mov [ebp+var_23C], 0C8h` at 0x4182ED, stride 0x114) from
+  object offset 0x69C (1692); the count is the word at 0xDE3C (56892 = 1692 + 200 * 276). The
+  write: 0x418758..0x41876B (`count * 0x114 + 0x69C`), `strcpy` at 0x418786, the fields at
+  0x41879A..0x4187BC, `count + 1` at 0x4187DA.
+- **Trigger.** A mod with more than 200 EMBF chunks.
+- **Effect.** Entry 200 starts at the count word itself, so the 201st name overwrites the count
+  and later entries land at an index taken from the name's bytes, past the object [G: not run].
+- **Corpus.** None: every known mod has at most 106 EMBF chunks (docs/rbm.md 11.1).
+- **rb.** `rb recrypt` refuses a result with more than 200 EMBF chunks (`rbm::MAX_EMBF`); the
+  reader parses any count, as it should for files the original never opens.
+- **Home.** `docs/rbm.md` section 12.
+
 ## Quirks that are not claimed as defects
 
 ### Q-1: the export's frame count is one frame short of an exact length [C]

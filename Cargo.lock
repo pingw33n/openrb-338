@@ -911,6 +911,7 @@ name = "rbm"
 version = "0.1.0"
 dependencies = [
  "rb-engine",
+ "sha2",
 ]
 
 [[package]]

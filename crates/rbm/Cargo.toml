@@ -7,3 +7,7 @@ publish.workspace = true
 
 [dependencies]
 rb-engine = { path = "../rb-engine" }
+
+[dev-dependencies]
+# The gated check of the embedded key bytes against the user's RB20FUL.DAT.
+sha2 = "0.10"

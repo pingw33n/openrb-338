@@ -6,7 +6,11 @@
 //! file) and `INFO`. Every EMBF payload is stored in the clear up to byte 1024 and scrambled from
 //! there on with a 4096-byte key table: two 2048-byte pages of the user's `RB20FUL.DAT`, at
 //! offsets fixed by the mod's own bytes (task-053: the key material is read at run time from the
-//! user's file; nothing of it is embedded or committed). Only those two pages are read.
+//! user's file). Only those two pages are read.
+//!
+//! The one exception (task-059, the user's decisions of 2026-10-27): [`embedded`] holds one
+//! 2047-byte window of the file, and [`recrypt`] rewrites a mod so that those bytes are all it needs; such a mod
+//! loads with [`KeyTable::embedded`] and no `RB20FUL.DAT`, in rb and in the original.
 //!
 //! ```no_run
 //! # use rbm::*; use rb_engine::samples::SampleSet;
@@ -25,6 +29,11 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Arc;
 
 use rb_engine::samples::{self, Sample, SampleSet};
+
+pub mod embedded;
+mod recrypt;
+
+pub use recrypt::{MAX_EMBF, PAD_NAME, recrypt};
 
 /// EMBF payload bytes `[0, CLEAR)` are stored as they are; the rest is scrambled.
 pub const CLEAR: usize = 1024;
@@ -124,6 +133,11 @@ pub enum RbmError {
     Sample(String, String),
     /// No embedded file has this name.
     NoSuchFile(String),
+    /// The key table lacks bytes this embedded file needs (a table of the embedded window for
+    /// a mod that was not recrypted; the file name).
+    KeyNotCovered(String),
+    /// The mod cannot be recrypted (the text says why).
+    Recrypt(String),
 }
 
 impl fmt::Display for RbmError {
@@ -135,6 +149,12 @@ impl fmt::Display for RbmError {
             RbmError::KeyTable => write!(f, "the key table is not 4096 bytes"),
             RbmError::Sample(n, m) => write!(f, "the mod's sample {n}: {m}"),
             RbmError::NoSuchFile(n) => write!(f, "the mod has no file {n}"),
+            RbmError::KeyNotCovered(n) => write!(
+                f,
+                "the mod's file {n} needs key material rb does not embed (the mod is not \
+                 recrypted: it needs RB20FUL.DAT)"
+            ),
+            RbmError::Recrypt(m) => write!(f, "cannot recrypt the mod: {m}"),
         }
     }
 }
@@ -161,10 +181,62 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    /// The descrambling key: the low byte of the ordinal.
+    /// The DLL's descrambling key, for the 46 slot samples: the low byte of the ordinal
+    /// (`sub_41693C` sends the byte `Str[272]`, 0x416A9B).
     pub fn key(&self) -> u8 {
         self.ordinal as u8
     }
+
+    /// The exe's descrambling key, for every file it reads itself (the panel JPEGs, the demo
+    /// song): the whole u16 ordinal (`sub_41678A` -> `sub_4148DF`, `and eax, 0FFFFh` at
+    /// 0x4148F1). It equals [`Chunk::key`] below ordinal 256.
+    pub fn exe_key(&self) -> u16 {
+        self.ordinal as u16
+    }
+}
+
+/// Who reads (and descrambles) an embedded file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reader {
+    /// `ReBirth.dll` (`sub_1001A500`), keyed by the ordinal's low byte: the first EMBF of each
+    /// of the 46 slot names.
+    Dll,
+    /// `Rebirth.exe` (`sub_41678A`), keyed by the u16 ordinal: every other file.
+    Exe,
+}
+
+impl Reader {
+    /// The key this reader descrambles `ordinal` with.
+    pub fn key(self, ordinal: usize) -> u16 {
+        match self {
+            Reader::Dll => u16::from(ordinal as u8),
+            Reader::Exe => ordinal as u16,
+        }
+    }
+}
+
+/// The descrambler's period for `key`: `(17 * key) % 0x785 + 123`, 123..=2047
+/// (DLL 0x100163EF..0x10016404, exe 0x4148EE..0x414905).
+pub fn period(key: u16) -> usize {
+    (17 * usize::from(key)) % 0x785 + 123
+}
+
+/// The table bytes a payload of `size` bytes needs under `key`: page `key & 1`, from its start,
+/// this many bytes (0 for a payload that is not scrambled).
+pub fn key_need(size: usize, key: u16) -> (usize, usize) {
+    (
+        usize::from(key & 1),
+        size.saturating_sub(CLEAR).min(period(key)),
+    )
+}
+
+/// Whether `name` is one of the 46 slot file names (case-insensitive, as the lookup).
+pub fn is_slot_name(name: &str) -> bool {
+    SLOTS_808
+        .iter()
+        .chain(SLOTS_909.iter())
+        .chain(std::iter::once(&STARTUP))
+        .any(|s| s.eq_ignore_ascii_case(name))
 }
 
 /// The `INFO` chunk (docs/rbm.md section 2).
@@ -320,15 +392,64 @@ impl Rbm {
             .map(|s| DAT_HEADER + u64::from(s) % (DAT_BODY - PAGE as u64))
     }
 
-    /// The descrambled embedded file of `chunk` (without its name).
-    pub fn file(&self, chunk: &Chunk, table: &KeyTable) -> Result<Vec<u8>, RbmError> {
+    /// Who reads the EMBF `chunk`: the DLL for the first file of each slot name (the lookup of
+    /// `sub_416710` takes the first match), the exe for every other file.
+    pub fn reader(&self, chunk: &Chunk) -> Reader {
+        match chunk.name.as_deref() {
+            Some(n)
+                if is_slot_name(n) && self.find(n).map(|c| c.ordinal) == Some(chunk.ordinal) =>
+            {
+                Reader::Dll
+            }
+            _ => Reader::Exe,
+        }
+    }
+
+    /// The key `chunk` is descrambled with, by its reader.
+    pub fn chunk_key(&self, chunk: &Chunk) -> u16 {
+        self.reader(chunk).key(chunk.ordinal)
+    }
+
+    /// The raw (stored) payload of a chunk.
+    pub fn raw_payload(&self, chunk: &Chunk) -> &[u8] {
+        &self.data[chunk.offset..chunk.offset + chunk.size]
+    }
+
+    /// The descrambled payload of the EMBF `chunk`, its name included.
+    pub fn payload(&self, chunk: &Chunk, table: &KeyTable) -> Result<Vec<u8>, RbmError> {
         if &chunk.tag != b"EMBF" || self.chunks.get(chunk.ordinal) != Some(chunk) {
             return Err(fmt_err("not a chunk of this mod"));
         }
-        let mut p = self.data[chunk.offset..chunk.offset + chunk.size].to_vec();
-        descramble(&mut p, chunk.key(), &table.0);
+        let key = self.chunk_key(chunk);
+        if !table.covers(chunk.size, key) {
+            return Err(RbmError::KeyNotCovered(
+                chunk.name.clone().unwrap_or_default(),
+            ));
+        }
+        let mut p = self.raw_payload(chunk).to_vec();
+        descramble(&mut p, key, &table.bytes);
+        Ok(p)
+    }
+
+    /// The descrambled embedded file of `chunk` (without its name).
+    pub fn file(&self, chunk: &Chunk, table: &KeyTable) -> Result<Vec<u8>, RbmError> {
+        let mut p = self.payload(chunk, table)?;
         p.drain(..chunk.name_len);
         Ok(p)
+    }
+
+    /// Whether `table` holds every byte the 46 slot samples of the mod need (always true for a
+    /// table read from `RB20FUL.DAT`).
+    pub fn slots_covered(&self, table: &KeyTable) -> bool {
+        (samples::FIRST_ID..=samples::LAST_ID)
+            .filter_map(|id| self.find(slot_name(id).expect("id in range")))
+            .all(|c| table.covers(c.size, self.chunk_key(c)))
+    }
+
+    /// Whether `table` holds every byte that every embedded file of the mod needs.
+    pub fn all_covered(&self, table: &KeyTable) -> bool {
+        self.embedded()
+            .all(|c| table.covers(c.size, self.chunk_key(c)))
     }
 
     /// The descrambled embedded file called `name` (case-insensitive, first match).
@@ -387,17 +508,64 @@ impl LoadedSamples {
     }
 }
 
-/// The 4096-byte key table of one mod.
+/// The 4096-byte key table of one mod, or the part of it rb knows: `known[j]` bytes from the
+/// start of page `j` (2048 for a table read from `RB20FUL.DAT`).
 #[derive(Clone, PartialEq, Eq)]
-pub struct KeyTable(Box<[u8; TABLE_LEN]>);
+pub struct KeyTable {
+    bytes: Box<[u8; TABLE_LEN]>,
+    known: [usize; 2],
+}
 
 impl fmt::Debug for KeyTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "KeyTable(..)")
+        write!(f, "KeyTable(known {:?})", self.known)
     }
 }
 
 impl KeyTable {
+    /// The table of `rbm` from the bytes rb embeds ([`embedded`]): a page whose offset is
+    /// [`embedded::WINDOW`] is known for its first [`embedded::WINDOW_LEN`] bytes. `None` when
+    /// neither page is there. Whether it is enough is [`Rbm::slots_covered`] /
+    /// [`Rbm::all_covered`]; it is for every mod [`recrypt`] wrote.
+    pub fn embedded(rbm: &Rbm) -> Option<KeyTable> {
+        let mut t = KeyTable {
+            bytes: Box::new([0u8; TABLE_LEN]),
+            known: [0, 0],
+        };
+        for (j, off) in rbm.key_pages().into_iter().enumerate() {
+            if off == embedded::WINDOW {
+                t.bytes[j * PAGE..j * PAGE + embedded::WINDOW_LEN]
+                    .copy_from_slice(embedded::WINDOW_BYTES);
+                t.known[j] = embedded::WINDOW_LEN;
+            }
+        }
+        (t.known != [0, 0]).then_some(t)
+    }
+
+    /// The table [`recrypt`] scrambles against: both pages are the embedded window.
+    pub(crate) fn window() -> KeyTable {
+        let mut t = KeyTable {
+            bytes: Box::new([0u8; TABLE_LEN]),
+            known: [embedded::WINDOW_LEN; 2],
+        };
+        for j in 0..2 {
+            t.bytes[j * PAGE..j * PAGE + embedded::WINDOW_LEN]
+                .copy_from_slice(embedded::WINDOW_BYTES);
+        }
+        t
+    }
+
+    /// Whether the table holds the bytes a payload of `size` bytes needs under `key`.
+    pub fn covers(&self, size: usize, key: u16) -> bool {
+        let (page, n) = key_need(size, key);
+        n <= self.known[page]
+    }
+
+    /// The number of bytes known from the start of each page.
+    pub fn known(&self) -> [usize; 2] {
+        self.known
+    }
+
     /// Reads the mod's two pages from `RB20FUL.DAT` (only 256 + 2 * 2048 bytes are read) after
     /// checking the header magic.
     pub fn read<R: Read + Seek>(rbm: &Rbm, dat: &mut R) -> Result<KeyTable, RbmError> {
@@ -415,13 +583,19 @@ impl KeyTable {
             dat.read_exact(&mut t[k * PAGE..(k + 1) * PAGE])
                 .map_err(short)?;
         }
-        Ok(KeyTable(t))
+        Ok(KeyTable {
+            bytes: t,
+            known: [PAGE; 2],
+        })
     }
 
     /// A table from its 4096 bytes (tests and tools).
     pub fn from_bytes(b: &[u8]) -> Result<KeyTable, RbmError> {
         let a: [u8; TABLE_LEN] = b.try_into().map_err(|_| RbmError::KeyTable)?;
-        Ok(KeyTable(Box::new(a)))
+        Ok(KeyTable {
+            bytes: Box::new(a),
+            known: [PAGE; 2],
+        })
     }
 }
 
@@ -433,26 +607,33 @@ fn short(e: io::Error) -> RbmError {
     }
 }
 
-/// Undoes the scrambling of one EMBF payload, in place (DLL `sub_100163D0`).
-fn descramble(p: &mut [u8], key: u8, table: &[u8; TABLE_LEN]) {
+/// Undoes the scrambling of one EMBF payload, in place (DLL `sub_100163D0`, exe `sub_4148DF`;
+/// `key` is the reader's, [`Reader::key`]).
+fn descramble(p: &mut [u8], key: u16, table: &[u8; TABLE_LEN]) {
     if p.len() <= CLEAR {
         return;
     }
-    let period = (17 * usize::from(key)) % 0x785 + 123;
+    let period = period(key);
     let base = usize::from(key & 1) << 11;
     for (n, b) in p[CLEAR..].iter_mut().enumerate() {
         *b = b.wrapping_add(table[base + n % period]);
     }
 }
 
-/// The inverse of the descrambling (what the mod packer did), for tests and tools.
-pub fn scramble(p: &mut [u8], key: u8, table: &KeyTable) {
-    if p.len() <= CLEAR {
-        return;
+/// The inverse of the descrambling (what the mod packer did): the key is the reader's
+/// ([`Reader::key`]; below ordinal 256 both readers' keys are the ordinal). Only the bytes the
+/// payload needs must be known in `table` (else [`RbmError::KeyNotCovered`]).
+pub fn scramble(p: &mut [u8], key: u16, table: &KeyTable) -> Result<(), RbmError> {
+    if !table.covers(p.len(), key) {
+        return Err(RbmError::KeyNotCovered(String::new()));
     }
-    let period = (17 * usize::from(key)) % 0x785 + 123;
+    if p.len() <= CLEAR {
+        return Ok(());
+    }
+    let period = period(key);
     let base = usize::from(key & 1) << 11;
     for (n, b) in p[CLEAR..].iter_mut().enumerate() {
-        *b = b.wrapping_sub(table.0[base + n % period]);
+        *b = b.wrapping_sub(table.bytes[base + n % period]);
     }
+    Ok(())
 }

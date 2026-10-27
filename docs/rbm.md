@@ -8,6 +8,8 @@ files; [G] marks an inference. The reference implementation is `tools/rbm.py` (t
 
 RB20FUL.DAT, its pages, any key table and the mods themselves are Propellerhead material: they stay
 on the user's machine and are never committed. Tests read them from `RB_RB20FUL` and `RB_RBM_DIR`.
+The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte window of section
+12 is embedded in rb (`crates/rbm/src/rb20ful_window.bin`, `embedded.rs`).
 
 ## 1. Summary
 
@@ -17,11 +19,15 @@ on the user's machine and are never committed. Tests read them from `RB_RB20FUL`
   built-in sample of that slot. [C]
 - Each EMBF payload is stored in the clear up to byte 1024 and scrambled from byte 1024 on:
   `clear[n] = stored[n] + table[(key&1)*2048 + (n-1024) % ((17*key) % 1925 + 123)]` (u8 add), with
-  `key` the low byte of the chunk's index in the CAT. [C]
+  `key` the low byte of the chunk's index in the CAT for the 46 samples (the DLL reads them), the
+  whole u16 index for the files the exe reads itself (the panel JPEGs, the demo song); the two
+  agree below index 256, which every known mod is (section 12). [C]
 - The 4096-byte `table` is two 2048-byte pages of `RB20FUL.DAT` (the ReBirth CD), at offsets
   `256 + sum_j % (0x8000000 - 2048)`, where `sum_j` are two u32 sums over the first 1024 bytes of
   every EMBF payload of the mod. The pages depend only on the mod's bytes: **each mod needs exactly
   4096 bytes of key material**. [C]
+- `rb recrypt` rewrites a mod so that it needs only the 2047 bytes of `RB20FUL.DAT` that rb
+  embeds; the original loads the result unchanged (section 12).
 - Shown correct on the four shipped mods: every embedded file decodes (JPEGs, the demo songs, the
   AIFFs), and the samples the original DLL loads from them equal `rbm.py`'s (section 8). [C]
 
@@ -114,6 +120,8 @@ for n in 1024 .. size-1:                  // j counts 0..P-1, then wraps (0x1001
   which hold the name and the AIFF header.
 - Only byte `base + j` with `j < P <= 2047` is used: the half of the table is chosen by the key's
   parity.
+- The exe has its own copy of the descrambler for the files it reads (section 12.1):
+  `sub_4148DF`, the same formula with the key taken as the whole u16 ordinal.
 
 ## 5. The key table (exe) [C]
 
@@ -228,9 +236,10 @@ The 909 records' stride and the record count are computed through the anti-tampe
 
 ## 7. Defects
 
-None found in this path. The key wraps every 256 chunks (a mod with more than 255 chunks reuses
-keys), and two EMBF of the same name leave the second unreachable; both are format limits, not
-defects.
+- More than 200 EMBF chunks overrun the open mod's entry table (section 12.1;
+  `docs/original_bugs.md` OB-14).
+- The DLL's key wraps every 256 chunks and the exe's every 65536 (section 12.1), and two EMBF of
+  the same name leave the second unreachable; these are format limits, not defects.
 
 ## 8. Verification (task-030, 2026-10-27)
 
@@ -296,7 +305,8 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   an `RB20FUL.DAT` in the mod folder or its parent or next to the binary, or the Windows install
   folders) and `--standard-kit` (a missing mod renders with the built-in kit and a warning).
   Without it a song naming a mod that is not found is an error. A mod needs the key file only
-  when a drum machine plays (the mod holds nothing else). `rb compare --manifest` includes the
+  when a drum machine plays (the mod holds nothing else), and a recrypted mod never does
+  (section 12). `rb compare --manifest` includes the
   sets `mod` and `modapp` by default only when a mod folder is given.
 - **AIFF rate** [C]: `sub_10001674` (0x100016B2..0x100016DE) converts the 80-bit rate with `fistp`
   under a control word with rounding set to truncate (`| 0xC00`) into a 64-bit slot and keeps the low
@@ -417,3 +427,110 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
   `axiom(b3).rbm`, as section 11.3 says.
 - `run.py` and `fit.py` take `--remote-dir NAME` (work in `C:\re\rb\NAME`), `rb_export.py`
   `--app-dir` and `--startup-boxes`.
+
+## 12. Recrypted mods: one 2047-byte embedded key window (task-059, 2026-10-27)
+
+The user decided on 2026-10-27 (superseding task-053's "nothing bundled" for this only) that rb
+embeds a minimum of `RB20FUL.DAT` that lets a mod load without the CD, and that
+`rb recrypt IN.rbm -o OUT.rbm [--rb20ful PATH]` rewrites a mod to need only that. Shown the
+trade-off of 12.2 (123 bytes with 113663-chunk mods against 2 KB with compact ones), the user
+chose, the same day, **one 2 KB window and compact mods**: rb embeds `RB20FUL.DAT[W .. W + 2047]`,
+and a recrypted mod keeps its chunk count and size (plus one 1024-byte chunk). A mod that is not
+recrypted still needs the user's `RB20FUL.DAT`.
+
+### 12.1 Facts the scheme rests on [C]
+
+- **Two descramblers, two keys.** The DLL descrambles the 46 slot samples with the byte key of
+  message 55 (section 4, the ordinal's low byte, `Str[272]` at 0x416A9B). The exe reads every
+  other file itself: `sub_41678A` (the open mod's reader; called by `sub_41703A` for the panel
+  JPEGs `%d.jpg` and `Splash.jpg`, id 12999, and by `sub_417022` for the demo song that
+  `sub_419E92` saves) reads the payload and, if it is over 1024 bytes, calls `sub_4145FE` ->
+  `sub_4148DF(buf + 1024 - name_len, size - 1024, word entry+272)`, which computes
+  `P = (17 * (key & 0xFFFF)) % 0x785 + 123` (0x4148EE..0x414905) and `base = (key & 0xFFFF) % 2
+  << 11`, then `buf[i] += table[base + j]` (`add dl,[eax+ecx]` at 0x41494D). So for the exe the
+  key is the **whole u16 ordinal** (the word at entry +272, `v59`, an int16 counter of all
+  chunks, 0x418832). Below ordinal 256 the two keys are equal, which is why no shipped mod shows
+  it; the parity, hence the page, is always the same. Confirmed by output: in the app, the
+  PBE2 and Metallicon+ panels of the 123-byte recrypt (12.2; JPEGs at ordinals past 255, scrambled
+  with the u16 key) display clean (12.3). `sub_414620` (0x4145F3 is its only reference, outside any function) is
+  the inverse (`sub dl`), the packer's scrambler [G: dead code].
+- **200 EMBF at most.** `COpenMod` has 200 entries of 276 bytes from +0x69C and writes entry
+  `count` with no bound check (0x418758..0x4187DA): `docs/original_bugs.md` OB-14. Chunks of other
+  ids take no entry and are only counted.
+- **Any other chunk id is skipped.** The CAT walk (`sub_49F63C`) moves to `start + size`, plus 1 if
+  that is odd; `sub_49F477` gives every id but `FORM`, `CAT ` and `LIST` kind 0, and a size of 0
+  is fine. The sums (section 5.1) read EMBF chunks only.
+- **The pages depend only on the first 1024 bytes of each EMBF**, which are never scrambled
+  (sections 4 and 5), and a file's table bytes depend only on its reader's key, i.e. on its
+  ordinal: a file with key `k` and payload size `s > 1024` uses bytes `0 .. min(P(k), s - 1024)`
+  of page `k & 1`.
+
+### 12.2 The scheme and the window size
+
+With both pages at one window `W` of `L` bytes, a file with key `k` is covered when `P(k) <= L`
+(or its payload is short). A filler chunk between files moves the next file to another key, so
+`L` trades against the chunk count:
+
+- **The analysis: 123 bytes is the floor.** `P(k) = (17k) % 1925 + 123` is 123 only at
+  `k = 0` (mod 1925): ordinal `o` with `o % 256 == 0` for the DLL, `o % 65536 % 1925 == 0` for
+  the exe (35 ordinals in each 65536). A mod whose every scrambled file sits at such an ordinal
+  needs exactly `RB20FUL.DAT[W .. W + 123]`, and no smaller amount works for a mod with a payload
+  over 1147 bytes (all 176 known mods). The cost is the fillers: about 255 per sample and 1925 per
+  exe file, 8 bytes each; a shipped mod grows from 108 to 113663 chunks (+909 KB). The curve over
+  the 176 mods of sections 8 and 11 (most chunks any of them needs): 123 bytes, 113662 chunks; 132,
+  11551; 136, 8154; 140, 6343; 174, 2154; 293, 630; 2047, 107 (scratch analysis in task-059's
+  notes). The original accepted the 123-byte form (12.3).
+- **The choice (the user, 2026-10-27): 2047 bytes, no fillers.** The longest period is 2047
+  (`17k % 1925` reaches 1924 for the exe's u16 keys; 2044 at the DLL's `k = 113`), and the table
+  index is `base + j` with `j < P`, so byte 2047 of a page is never read: 2047 bytes cover every
+  key, and 2048 would add a byte no key uses. Every file then keeps its place.
+
+`rbm::recrypt` (crates/rbm/src/recrypt.rs):
+1. Decrypts every EMBF with the mod's real table and each file's reader key.
+2. Lays the CAT out again: the non-EMBF chunks before the first EMBF (HEAD); a 1024-byte EMBF
+   `rb-recrypt.pad` (never scrambled; its name is none of the files anything reads); then,
+   ordinal by ordinal, the first remaining file in file order that is not scrambled or whose
+   reader's period there is at most `L`, else a filler chunk (id `"    "`, the IFF 85 filler id,
+   size 0; with `L = 2047` there is none); files of the same name keep their order (the lookup
+   takes the first); the remaining non-EMBF chunks (INFO) last. So a recrypted mod is the original
+   with the pad after HEAD: 108 -> 109 chunks, +1032 bytes for every known mod.
+3. Sets the pad's words at payload offsets 508 (in sum[0]'s half) and 1020 (sum[1]'s) so that both
+   sums are `W - 256`: both pages are `W`.
+4. Scrambles every file against the window under its new key, and checks the result (pages,
+   coverage, at most 200 EMBF).
+
+**Dropped input chunks.** An earlier pad (an EMBF `rb-recrypt.pad` of 1024 bytes) and every
+zero-size chunk of the id `"    "` are taken for an earlier recrypt's and dropped, so recrypting a
+recrypted mod gives the same bytes. Nothing reads such a chunk; no known mod has one.
+
+The window is `W = 118280160`, PBE2.rbm's page 0 (section 5.3), a page the original already reads
+for a shipped mod; `crates/rbm/src/rb20ful_window.bin` holds the 2047 bytes and
+`crates/rbm/src/embedded.rs` `W`, their SHA-256 (`2c292d92...56bc`) and the SHA-256 of the DAT
+they came from (`62071e99...2797`), checked against `RB_RB20FUL` by the test
+`embedded_window_is_the_dats`. rb's loader (`KeyTable::embedded`, `Rbm::slots_covered`) takes a
+mod whose page offsets are `W` and whose files need no more than the embedded bytes; any other mod
+needs `RB20FUL.DAT`.
+
+### 12.3 What the original accepted
+
+On the test machine (a copy of the installation with only the four recrypted mods in its `Mods`,
+`RB20FUL.DAT` from the CD as always), both forms were run the same way: the app's Mods scan raised
+no box (`rb_export.py` expects the MIDI box only), the three songs opened their recrypted mods with
+no Download / Standard dialog, the exports of RSI (PBE2), Fonda Workout (MSM2) and Metallicon City
+(Metallicon+) each matched rbhost with the **original** mod at exactly one N among 200
+(`fit.py --all`), `rb compare` with the recrypted mod and no `RB20FUL.DAT` at that N is EQUAL for
+all three, and the panels display clean:
+
+| Form | Chunks | RSI N (N - N_t) | Fonda Workout | Metallicon City |
+|---|---|---|---|---|
+| 123 bytes, fillers | 113663 / 98263 | 3584 (-503) | 3728 (-176) | 3648 (-444) |
+| 2047 bytes (rb's) | 109 | 3600 (-33) | 3552 (+10) | 3568 (-6) |
+
+With the original mods N - N_t was -28, -40 and -5 (section 8): the 2 KB form is back in that
+range, and the 123-byte form's gap came with its 113663 chunks [G: the open mod's chunk walk
+delays the export; not measured further].
+
+All 172 third-party mods of section 11 and the four shipped ones recrypt, and every file and slot
+sample of the result equals the original's (`crates/rbm/tests/rbm.rs`, `thirdparty_mods_recrypt`
+and `real_mods_recrypt`); the corpus mod songs render byte-exact with recrypted mods loaded without
+the DAT (`crates/rb-cli/tests/corpus_mods.rs`). `tools/rbm.py` decodes with each reader's key.

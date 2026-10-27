@@ -1,6 +1,6 @@
 //! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), compares renders
-//! with their references (`rb compare`), and plays a song through the audio output with the
-//! real-time player (`rb play`).
+//! with their references (`rb compare`), plays a song through the audio output with the
+//! real-time player (`rb play`), and rewrites a mod to need no RB20FUL.DAT (`rb recrypt`).
 //!
 //! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable)
 //! or, for `compare`, a song differs from its reference, 2 a usage error (bad arguments,
@@ -154,6 +154,21 @@ enum Cmd {
         #[arg(long)]
         standard_kit: bool,
     },
+    /// Rewrite a .rbm mod so that it needs no RB20FUL.DAT: rb then loads it with the 2047 key
+    /// bytes it embeds, and the original ReBirth loads it unchanged (it reads the same bytes of
+    /// its own RB20FUL.DAT). Needs the key file once, unless the mod is already recrypted.
+    Recrypt {
+        /// The mod, an .rbm file.
+        input: PathBuf,
+        /// The recrypted mod to write.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// The CD's RB20FUL.DAT. Search order: this option, the RB_RB20FUL environment
+        /// variable, then an RB20FUL.DAT in the mod folder (RB_MOD_DIR, or its parent), next to
+        /// the rb binary, or in the usual install locations on Windows.
+        #[arg(long, value_name = "PATH")]
+        rb20ful: Option<PathBuf>,
+    },
 }
 
 /// A failure with its exit code.
@@ -244,6 +259,11 @@ fn main() -> ExitCode {
                 Err(Fail(1, "some songs differ from their references".into()))
             }
         }),
+        Cmd::Recrypt {
+            input,
+            output,
+            rb20ful,
+        } => recrypt(&input, &output, rb20ful),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -546,14 +566,89 @@ struct Renderer {
 }
 
 /// The mod's samples on top of the built-in ones: a slot the mod lacks stays built in.
-fn load_mod(path: &Path, key_file: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
+fn read_mod(path: &Path) -> Result<rbm::Rbm, Fail> {
     let bytes = std::fs::read(path)
         .map_err(|e| fail(1, format!("{}: cannot read the mod: {e}", path.display())))?;
-    let rbm = rbm::Rbm::parse(bytes).map_err(|e| fail(1, format!("{}: {e}", path.display())))?;
+    rbm::Rbm::parse(bytes).map_err(|e| fail(1, format!("{}: {e}", path.display())))
+}
+
+fn read_key_table(rbm: &rbm::Rbm, key_file: &Path) -> Result<rbm::KeyTable, Fail> {
     let mut dat = std::fs::File::open(key_file)
         .map_err(|e| fail(1, format!("{}: cannot read: {e}", key_file.display())))?;
-    let table = rbm::KeyTable::read(&rbm, &mut dat)
-        .map_err(|e| fail(1, format!("{}: {e}", key_file.display())))?;
+    rbm::KeyTable::read(rbm, &mut dat).map_err(|e| fail(1, format!("{}: {e}", key_file.display())))
+}
+
+/// `rb recrypt`: rewrites a mod to need only the key bytes rb embeds (task-059).
+fn recrypt(input: &Path, output: &Path, rb20ful: Option<PathBuf>) -> Result<(), Fail> {
+    let rbm = read_mod(input)?;
+    let table = match rbm::KeyTable::embedded(&rbm).filter(|t| rbm.all_covered(t)) {
+        Some(t) => t,
+        None => {
+            let opts = ModOpts {
+                rb20ful,
+                ..ModOpts::default()
+            };
+            let key_file = opts.rb20ful().map_err(|Fail(c, m)| {
+                fail(
+                    c,
+                    format!(
+                        "{}: recrypting needs the key file once; {m}",
+                        input.display()
+                    ),
+                )
+            })?;
+            read_key_table(&rbm, &key_file)?
+        }
+    };
+    let out =
+        rbm::recrypt(&rbm, &table).map_err(|e| fail(1, format!("{}: {e}", input.display())))?;
+    let chunks = rbm::Rbm::parse(out.clone())
+        .map(|r| r.chunks().len())
+        .map_err(|e| {
+            fail(
+                1,
+                format!(
+                    "{}: internal: the recrypted mod does not parse: {e}",
+                    input.display()
+                ),
+            )
+        })?;
+    let before = std::fs::metadata(input)
+        .map(|m| m.len())
+        .map_err(|e| fail(1, format!("{}: {e}", input.display())))?;
+    std::fs::write(output, &out)
+        .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
+    eprintln!(
+        "rb: {} -> {}: {} -> {} chunks, {before} -> {} bytes",
+        input.display(),
+        output.display(),
+        rbm.chunks().len(),
+        chunks,
+        out.len()
+    );
+    Ok(())
+}
+
+/// A recrypted mod (`rb recrypt`) loads with the key bytes rb embeds; any other needs the key
+/// file, found by `mods`.
+fn load_mod(path: &Path, mods: &ModOpts, builtin: &SampleSet) -> Result<SampleSet, Fail> {
+    let rbm = read_mod(path)?;
+    let table = match rbm::KeyTable::embedded(&rbm).filter(|t| rbm.slots_covered(t)) {
+        Some(t) => t,
+        None => {
+            let key_file = mods.rb20ful().map_err(|Fail(c, m)| {
+                fail(
+                    c,
+                    format!(
+                        "the song plays a drum machine with the mod {}, which needs the key \
+                         file (or `rb recrypt` it once); {m}",
+                        path.display()
+                    ),
+                )
+            })?;
+            read_key_table(&rbm, &key_file)?
+        }
+    };
     let loaded = rbm
         .load_samples(&table, builtin)
         .map_err(|e| fail(1, format!("{}: {e}", path.display())))?;
@@ -611,17 +706,7 @@ impl Renderer {
                 Kit::Standard => Some(builtin),
                 Kit::Mod(path) => {
                     if !self.mod_sets.contains_key(&path) {
-                        let key_file = self.mods.rb20ful().map_err(|Fail(c, m)| {
-                            fail(
-                                c,
-                                format!(
-                                    "the song plays a drum machine with the mod {}, which \
-                                     needs the key file; {m}",
-                                    path.display()
-                                ),
-                            )
-                        })?;
-                        let set = load_mod(&path, &key_file, &builtin)?;
+                        let set = load_mod(&path, &self.mods, &builtin)?;
                         self.mod_sets.insert(path.clone(), Arc::new(set));
                     }
                     Some(self.mod_sets[&path].clone())

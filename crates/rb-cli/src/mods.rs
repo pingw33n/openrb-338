@@ -6,7 +6,7 @@
 //! which is INFO offset 1003); a name not in the list gets a dialog, Download / Standard /
 //! Cancel. rb does the same: the INFO name, exact; as a convenience a file name (`PBE2.rbm`, or
 //! `PBE2`, any case) also matches when no INFO name does. Descrambling a mod needs the user's
-//! `RB20FUL.DAT` (task-053).
+//! `RB20FUL.DAT` (task-053), unless `rb recrypt` rewrote it (task-059).
 
 use std::path::{Path, PathBuf};
 

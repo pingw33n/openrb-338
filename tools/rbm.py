@@ -55,6 +55,7 @@ SLOTS909 = ["TR909bd1.aif", "TR909bd2.aif", "TR909bd3.aif", "TR909bd4.aif", "TR9
 STARTUP = "Startup.aif"
 # The DLL's sample table slots (sub_1001A030): 1..24 = 808, 25..45 = 909, 46 = startup.
 SLOT_NAMES = [None] + SLOTS808 + SLOTS909 + [STARTUP]
+_SLOT_LOWER = {n.lower() for n in SLOT_NAMES[1:]}
 
 
 class FormatError(ValueError):
@@ -72,8 +73,16 @@ class Chunk:
 
     @property
     def key(self):
-        """The descrambling key: the low byte of the ordinal (sub_41693C v32[1] = Str[272])."""
+        """The DLL's descrambling key, for the 46 slot samples: the low byte of the ordinal
+        (sub_41693C v32[1] = Str[272])."""
         return self.ordinal & 0xFF
+
+    @property
+    def exe_key(self):
+        """The exe's key, for the files it reads itself (panel JPEGs, the demo song): the u16
+        ordinal (sub_41678A -> sub_4148DF, `and eax, 0FFFFh` at 0x4148F1). Equal to `key` below
+        ordinal 256 (docs/rbm.md section 12)."""
+        return self.ordinal & 0xFFFF
 
 
 @dataclass
@@ -101,6 +110,13 @@ class Rbm:
             if c.name.lower() == low:
                 return c
         return None
+
+    def chunk_key(self, chunk):
+        """The key of the reader of `chunk`: the DLL's for the first EMBF of a slot name, the
+        exe's for every other file."""
+        if chunk.name is not None and chunk.name.lower() in _SLOT_LOWER and self.find(chunk.name) is chunk:
+            return chunk.key
+        return chunk.exe_key
 
 
 def _cstr(b):
@@ -243,9 +259,9 @@ def scramble(payload, key, table):
 
 
 def embedded_file(rbm, chunk, table):
-    """The descrambled embedded file of an EMBF chunk (without its name)."""
+    """The descrambled embedded file of an EMBF chunk (without its name), with its reader's key."""
     payload = rbm.data[chunk.offset:chunk.offset + chunk.size]
-    return descramble(payload, chunk.key, table)[chunk.name_len:]
+    return descramble(payload, rbm.chunk_key(chunk), table)[chunk.name_len:]
 
 
 # ---------------------------------------------------------------- AIFF check

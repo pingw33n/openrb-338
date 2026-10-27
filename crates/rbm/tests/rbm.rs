@@ -127,7 +127,7 @@ fn synthetic_mod(files: &[(&str, Vec<u8>)]) -> (Vec<u8>, KeyTable) {
     let table = KeyTable::read(&Rbm::parse(clear).unwrap(), &mut VirtualDat::new()).unwrap();
     for (i, c) in chunks.iter_mut().enumerate() {
         if c.0 == b"EMBF" {
-            scramble(&mut c.1, i as u8, &table);
+            scramble(&mut c.1, i as u16, &table).unwrap();
         }
     }
     (cat(&chunks), table)
@@ -431,4 +431,256 @@ fn real_mods_equal_the_reference_extraction() {
         eprintln!("  {checked} files and 46 samples equal tools/rbm.py");
         let _ = std::fs::remove_dir_all(dir);
     }
+}
+
+// ---------------------------------------------------------------- recrypt (task-059)
+
+/// The files of `r` by lower-case name, in file order per name; the recrypt pad left out.
+fn files_by_name(r: &Rbm, t: &KeyTable) -> std::collections::BTreeMap<String, Vec<Vec<u8>>> {
+    let mut m = std::collections::BTreeMap::<String, Vec<Vec<u8>>>::new();
+    for c in r.embedded() {
+        let n = c.name.clone().unwrap();
+        if n != PAD_NAME {
+            m.entry(n.to_ascii_lowercase())
+                .or_default()
+                .push(r.file(c, t).unwrap());
+        }
+    }
+    m
+}
+
+/// Checks a recrypted mod against its source: the pages are the embedded window, the embedded
+/// bytes cover every file, every file and sample is the same, every scrambled file sits at an
+/// ordinal whose period under its reader's key fits the window, the non-EMBF chunks keep their
+/// bytes, and recrypting again changes nothing. Returns the embedded table.
+fn check_recrypted(src: &Rbm, table: &KeyTable, out: &[u8], label: &str) -> KeyTable {
+    let back = Rbm::parse(out.to_vec()).unwrap();
+    assert_eq!(back.key_pages(), [embedded::WINDOW; 2], "{label}");
+    let t = KeyTable::embedded(&back).expect("the embedded window");
+    assert_eq!(t.known(), [embedded::WINDOW_LEN; 2]);
+    assert!(back.all_covered(&t) && back.slots_covered(&t), "{label}");
+    assert_eq!(
+        files_by_name(&back, &t),
+        files_by_name(src, table),
+        "{label}"
+    );
+    for c in back.embedded() {
+        if c.size > CLEAR {
+            assert!(period(back.chunk_key(c)) <= embedded::WINDOW_LEN, "{label}");
+        }
+    }
+    assert_eq!(
+        back.embedded().count(),
+        src.embedded().count() + 1,
+        "{label}"
+    );
+    assert!(back.embedded().count() <= MAX_EMBF);
+    let others = |r: &Rbm| -> Vec<(Vec<u8>, Vec<u8>)> {
+        r.chunks()
+            .iter()
+            .filter(|c| &c.tag != b"EMBF" && &c.tag != b"    ")
+            .map(|c| (c.tag.to_vec(), r.raw_payload(c).to_vec()))
+            .collect()
+    };
+    assert_eq!(others(&back), others(src), "{label}");
+    assert_eq!(back.info(), src.info(), "{label}");
+    let bi = builtin();
+    assert_eq!(
+        back.load_samples(&t, &bi).unwrap().set,
+        src.load_samples(table, &bi).unwrap().set,
+        "{label}"
+    );
+    assert_eq!(recrypt(&back, &t).unwrap(), out, "{label}: recrypt again");
+    t
+}
+
+#[test]
+fn recrypt_needs_only_the_embedded_window() {
+    let files = test_files();
+    let (data, table) = synthetic_mod(&files);
+    let rbm = Rbm::parse(data).unwrap();
+    // A mod as packed selects other pages: the embedded bytes are not its table.
+    assert!(KeyTable::embedded(&rbm).is_none());
+    let out = recrypt(&rbm, &table).unwrap();
+    check_recrypted(&rbm, &table, &out, "synthetic");
+    // The second TR808BD.aif still comes after the first (the lookup takes the first).
+    let back = Rbm::parse(out).unwrap();
+    let bds: Vec<usize> = back
+        .embedded()
+        .filter(|c| {
+            c.name
+                .as_deref()
+                .unwrap()
+                .eq_ignore_ascii_case("tr808bd.aif")
+        })
+        .map(|c| c.ordinal)
+        .collect();
+    assert_eq!(bds.len(), 2);
+    assert_eq!(back.reader(back.find("TR808BD.aif").unwrap()), Reader::Dll);
+    assert_eq!(
+        back.file_by_name("TR808BD.aif", &KeyTable::embedded(&back).unwrap())
+            .unwrap(),
+        files[1].1
+    );
+    // HEAD stays first and INFO last.
+    assert_eq!(&back.chunks()[0].tag, b"HEAD");
+    assert_eq!(&back.chunks().last().unwrap().tag, b"INFO");
+}
+
+#[test]
+fn the_exe_keys_its_files_by_the_whole_ordinal() {
+    // A JPEG (read by the exe) and a slot sample (read by the DLL) past ordinal 255.
+    let jpg: Vec<u8> = (0..4000).map(|i| (i * 13) as u8).collect();
+    let bd = aiff(1500, 7);
+    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"HEAD", vec![7u8; 256])];
+    chunks.extend((0..299).map(|_| (b"    ", Vec::new())));
+    chunks.push((b"EMBF", embf("12017.jpg", &jpg))); // ordinal 300
+    chunks.push((b"EMBF", embf("TR808BD.aif", &bd))); // ordinal 301
+    chunks.push((b"INFO", info_chunk()));
+    let table = KeyTable::read(&Rbm::parse(cat(&chunks)).unwrap(), &mut VirtualDat::new()).unwrap();
+    scramble(&mut chunks[300].1, 300, &table).unwrap(); // the exe's key
+    scramble(&mut chunks[301].1, 301 % 256, &table).unwrap(); // the DLL's key
+    let rbm = Rbm::parse(cat(&chunks)).unwrap();
+    let c = rbm.find("12017.jpg").unwrap();
+    assert_eq!((rbm.reader(c), rbm.chunk_key(c)), (Reader::Exe, 300));
+    assert_eq!(rbm.file(c, &table).unwrap(), jpg);
+    let c = rbm.find("tr808bd.aif").unwrap();
+    assert_eq!(
+        (rbm.reader(c), rbm.chunk_key(c), c.key()),
+        (Reader::Dll, 45, 45)
+    );
+    assert_eq!(rbm.file(c, &table).unwrap(), bd);
+    // and the recrypt of such a mod (fillers of an unknown origin are dropped and redone)
+    let out = recrypt(&rbm, &table).unwrap();
+    check_recrypted(&rbm, &table, &out, "ordinals past 255");
+}
+
+#[test]
+fn recrypt_limits_and_coverage() {
+    // Over the original's 200 EMBF entries with the pad: refused.
+    let many: Vec<(String, Vec<u8>)> = (0..200).map(|i| (format!("f{i}"), vec![1u8; 4])).collect();
+    let refs: Vec<(&str, Vec<u8>)> = many.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+    let (data, table) = synthetic_mod(&refs);
+    let r = recrypt(&Rbm::parse(data).unwrap(), &table);
+    assert!(matches!(r, Err(RbmError::Recrypt(_))), "{r:?}");
+    // 199 is fine.
+    let (data, table) = synthetic_mod(&refs[..199]);
+    let rbm = Rbm::parse(data).unwrap();
+    let out = recrypt(&rbm, &table).unwrap();
+    check_recrypted(&rbm, &table, &out, "199 files");
+
+    // The embedded window covers every key: the longest period is 2047.
+    let (data, table) = synthetic_mod(&test_files());
+    let out = recrypt(&Rbm::parse(data).unwrap(), &table).unwrap();
+    let back = Rbm::parse(out.clone()).unwrap();
+    let t = KeyTable::embedded(&back).unwrap();
+    assert_eq!((0..=u16::MAX).map(period).max(), Some(2047));
+    assert_eq!((period(0), period(113)), (123, 2044));
+    assert!((0..=u16::MAX).all(|k| t.covers(CLEAR + 5000, k)));
+    // The original order is kept and no filler is needed: HEAD, the pad, the files, INFO.
+    assert_eq!(back.chunks().len(), test_files().len() + 3);
+    let names: Vec<&str> = back
+        .embedded()
+        .map(|c| c.name.as_deref().unwrap())
+        .collect();
+    let want: Vec<&str> = std::iter::once(PAD_NAME)
+        .chain(test_files().iter().map(|(n, _)| *n))
+        .collect();
+    assert_eq!(names, want);
+
+    // A mod with only page 0 at the window: page 1 is unknown, and its files need the DAT.
+    let mut bad = out;
+    let pad = back.find(PAD_NAME).unwrap();
+    bad[pad.offset + 1020] ^= 1;
+    let bad = Rbm::parse(bad).unwrap();
+    let t = KeyTable::embedded(&bad).unwrap();
+    assert_eq!(t.known(), [embedded::WINDOW_LEN, 0]);
+    assert!(!t.covers(CLEAR + 1, 1) && t.covers(CLEAR, 1) && t.covers(CLEAR + 5000, 2));
+    let odd = bad
+        .embedded()
+        .find(|c| c.size > CLEAR && bad.chunk_key(c) % 2 == 1)
+        .unwrap();
+    assert!(matches!(bad.file(odd, &t), Err(RbmError::KeyNotCovered(_))));
+    assert!(!bad.all_covered(&t));
+    let mut p = vec![0u8; CLEAR + 200];
+    assert!(matches!(
+        scramble(&mut p, 3, &t),
+        Err(RbmError::KeyNotCovered(_))
+    ));
+}
+
+#[test]
+fn embedded_window_is_the_dats() {
+    use sha2::{Digest, Sha256};
+    let Some(dat) = std::env::var_os("RB_RB20FUL") else {
+        eprintln!("skipped: RB_RB20FUL is not set");
+        return;
+    };
+    let bytes = std::fs::read(dat).unwrap();
+    assert_eq!(bytes.len() as u64, DAT_HEADER + DAT_BODY);
+    let w = embedded::WINDOW as usize;
+    assert_eq!(
+        &bytes[w..w + embedded::WINDOW_LEN],
+        &embedded::WINDOW_BYTES[..]
+    );
+    let hex: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(hex, embedded::DAT_SHA256);
+    let hex: String = Sha256::digest(embedded::WINDOW_BYTES)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(hex, embedded::WINDOW_SHA256);
+    // The window is PBE2.rbm's page 0 (docs/rbm.md 5.3).
+    assert_eq!(embedded::WINDOW, 118_280_160);
+}
+
+/// Recrypts every mod of `mods` with the real table and checks it (`check_recrypted`).
+fn recrypt_all(dat: &Path, mods: &[PathBuf]) {
+    for m in mods {
+        let rbm = Rbm::parse(std::fs::read(m).unwrap()).unwrap();
+        let table = KeyTable::read(&rbm, &mut std::fs::File::open(dat).unwrap()).unwrap();
+        let out = recrypt(&rbm, &table).unwrap();
+        check_recrypted(&rbm, &table, &out, &m.display().to_string());
+        eprintln!(
+            "{}: {} -> {} chunks, {} -> {} bytes",
+            m.display(),
+            rbm.chunks().len(),
+            Rbm::parse(out.clone()).unwrap().chunks().len(),
+            std::fs::metadata(m).unwrap().len(),
+            out.len()
+        );
+    }
+}
+
+#[test]
+fn real_mods_recrypt() {
+    let Some((dat, mods)) = real_env() else {
+        return;
+    };
+    recrypt_all(&dat, &mods);
+}
+
+/// The user's third-party collection (`RB_THIRDPARTY_DIR`, docs/rbm.md section 11), read in
+/// place: every mod recrypts and keeps every file and sample.
+#[test]
+fn thirdparty_mods_recrypt() {
+    let (Some(dat), Some(dir)) = (
+        std::env::var_os("RB_RB20FUL"),
+        std::env::var_os("RB_THIRDPARTY_DIR"),
+    ) else {
+        eprintln!("skipped: RB_RB20FUL and RB_THIRDPARTY_DIR are not both set");
+        return;
+    };
+    let dir = Path::new(&dir).join("Mods");
+    let mut mods: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rbm")))
+        .collect();
+    mods.sort();
+    recrypt_all(Path::new(&dat), &mods);
+    eprintln!("{} third-party mods recrypted", mods.len());
 }

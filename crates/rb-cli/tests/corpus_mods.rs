@@ -35,8 +35,16 @@ fn env() -> Option<(PathBuf, PathBuf)> {
     Some((PathBuf::from(dir), PathBuf::from(dat)))
 }
 
-/// Renders the entry with its mod's samples; `None` when equal to the reference.
-fn check(label: &str, e: &Value, dir: &std::path::Path, dat: &std::path::Path) -> Option<String> {
+/// Renders the entry with its mod's samples; `None` when equal to the reference. With
+/// `recrypted`, the mod is first rewritten by `rbm::recrypt` (task-059) and its samples are
+/// loaded with the embedded key bytes alone, RB20FUL.DAT unused.
+fn check(
+    label: &str,
+    e: &Value,
+    dir: &std::path::Path,
+    dat: &std::path::Path,
+    recrypted: bool,
+) -> Option<String> {
     let m = &e["mod"];
     let file = dir.join(m["file"].as_str().unwrap());
     let bytes = std::fs::read(&file).unwrap_or_else(|err| panic!("{}: {err}", file.display()));
@@ -57,7 +65,14 @@ fn check(label: &str, e: &Value, dir: &std::path::Path, dat: &std::path::Path) -
     assert_eq!(s.mod_name, m["name"].as_str().unwrap(), "{label}");
     let mut dat = std::fs::File::open(dat).unwrap();
     let table = rbm::KeyTable::read(&rbm, &mut dat).unwrap();
-    let set = rbm.load_samples(&table, &samples()).unwrap().set;
+    let set = if recrypted {
+        let back = rbm::Rbm::parse(rbm::recrypt(&rbm, &table).unwrap()).unwrap();
+        let t = rbm::KeyTable::embedded(&back).expect("a recrypted mod selects the window");
+        assert!(back.slots_covered(&t), "{label}");
+        back.load_samples(&t, &samples()).unwrap().set
+    } else {
+        rbm.load_samples(&table, &samples()).unwrap().set
+    };
     let idle = e["idle_blocks"].as_u64().unwrap() as u32;
     let mut eng = Engine::new(
         Arc::new(Tables::new()),
@@ -77,7 +92,7 @@ fn check(label: &str, e: &Value, dir: &std::path::Path, dat: &std::path::Path) -
     })
 }
 
-fn check_set(set: &str, expect: usize) {
+fn check_set(set: &str, expect: usize, recrypted: bool) {
     let Some((dir, dat)) = env() else { return };
     let m = manifest();
     let entries: Vec<(&String, &Value)> = m[set].as_object().unwrap().iter().collect();
@@ -87,7 +102,7 @@ fn check_set(set: &str, expect: usize) {
             .iter()
             .map(|(name, e)| {
                 let (dir, dat) = (&dir, &dat);
-                sc.spawn(move || check(&format!("{set}/{name}"), e, dir, dat))
+                sc.spawn(move || check(&format!("{set}/{name}"), e, dir, dat, recrypted))
             })
             .collect();
         hs.into_iter().filter_map(|h| h.join().unwrap()).collect()
@@ -107,7 +122,27 @@ fn check_set(set: &str, expect: usize) {
     ignore = "41 minutes of audio; runs in cargo test --release"
 )]
 fn mod_songs_match_their_references() {
-    check_set("mod", 8);
+    check_set("mod", 8, false);
+}
+
+/// The same 8 songs with the recrypted mods, loaded without RB20FUL.DAT (task-059).
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "41 minutes of audio; runs in cargo test --release"
+)]
+fn mod_songs_match_with_recrypted_mods() {
+    check_set("mod", 8, true);
+}
+
+/// The 3 app exports with the recrypted mods, loaded without RB20FUL.DAT (task-059).
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "22 million frames; runs in cargo test --release"
+)]
+fn modapp_exports_match_with_recrypted_mods() {
+    check_set("modapp", 3, true);
 }
 
 /// The 3 exports of the original app with a mod, each at its own fitted N.
@@ -117,5 +152,5 @@ fn mod_songs_match_their_references() {
     ignore = "22 million frames; runs in cargo test --release"
 )]
 fn modapp_exports_match_at_their_fitted_n() {
-    check_set("modapp", 3);
+    check_set("modapp", 3, false);
 }
