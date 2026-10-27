@@ -795,3 +795,7 @@ otherwise in rb (the test checks it), so the changes are audible: the mod swap w
 (slot 6 on the 808 and the 909, then the new table, the transport untouched), while stopped, to
 and from the built-in kit and between two file mods all do in rb what they do in the DLL. Not
 covered: the startup sound (msg 58, task-074) and more than one open song (14.2, task-075).
+
+rb-ui's Mods menu (task-047, docs/ui_spec.md section 18) is this change: `Link::set_mod` forwards the
+panel's pending events and sends `Player::set_mod`; the song is marked modified, and a save writes
+the mod's INFO name (GLOB) and URLs. The mod's panel bitmaps are not applied (rb draws its own art).

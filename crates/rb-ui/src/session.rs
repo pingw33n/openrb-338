@@ -3,27 +3,64 @@
 //! The song loader is that of `rb play` (`crates/rb-cli/src/main.rs`): an RBS 4.x file or a
 //! ReBirth 1.x MIDI-file song. The samples come from the standard mod (`rb standard-mod`,
 //! docs/rbm.md section 13), found as `rb` finds it: `--standard-mod`, the `RB_STANDARD_MOD`
-//! environment variable, or `Standard.rbm` next to the binary. A song's own mod is not applied
-//! yet (task-047 adds the mod menu); every song plays with the built-in kit.
+//! environment variable, or `Standard.rbm` next to the binary. The song's own mod is applied by
+//! the window (`App::open_song`, the Mods menu).
 
 use std::path::{Path, PathBuf};
 
 use rb_engine::samples::SampleSet;
 use rb_engine::song::Song;
 
-/// Reads and converts an `.rbs` song.
-pub fn load_song(path: &Path) -> Result<Song, String> {
+/// A song file read: the engine's song and the `rbs` song it came from (the document's source).
+pub struct Opened {
+    pub engine: Song,
+    pub source: rbs::Song,
+}
+
+/// Reads and converts an `.rbs` song, keeping the file's `rbs` song.
+pub fn open_song(path: &Path) -> Result<Opened, String> {
     let data = std::fs::read(path).map_err(|e| format!("{}: cannot read: {e}", path.display()))?;
     if rbs::rb1x::is_1x(&data) {
         let parsed = rbs::rb1x::Song1x::parse(&data)
             .map_err(|e| format!("{}: not a valid ReBirth 1.x song: {e}", path.display()))?;
-        return rb_engine::load::convert_1x(&parsed)
-            .map_err(|e| format!("{}: cannot load the song: {e}", path.display()));
+        let engine = rb_engine::load::convert_1x(&parsed)
+            .map_err(|e| format!("{}: cannot load the song: {e}", path.display()))?;
+        let source = crate::document::source_of_1x(&engine);
+        return Ok(Opened { engine, source });
     }
-    let parsed = rbs::Song::parse(&data)
+    let source = rbs::Song::parse(&data)
         .map_err(|e| format!("{}: not a valid .rbs song: {e}", path.display()))?;
-    rb_engine::load::convert(&parsed)
-        .map_err(|e| format!("{}: cannot load the song: {e:?}", path.display()))
+    let engine = rb_engine::load::convert(&source)
+        .map_err(|e| format!("{}: cannot load the song: {e:?}", path.display()))?;
+    Ok(Opened { engine, source })
+}
+
+/// Reads and converts an `.rbs` song.
+pub fn load_song(path: &Path) -> Result<Song, String> {
+    open_song(path).map(|o| o.engine)
+}
+
+/// The INFO chunk of a mod file (its menu name and URLs).
+pub fn mod_info(path: &Path) -> Result<rbm::Info, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: cannot read: {e}", path.display()))?;
+    let rbm = rbm::Rbm::parse(bytes).map_err(|e| format!("{}: not a mod: {e}", path.display()))?;
+    rbm.info()
+        .cloned()
+        .ok_or_else(|| format!("{}: not a mod: it has no INFO chunk", path.display()))
+}
+
+/// Writes `bytes` to `path` through a temporary file next to it, renamed over it, so a failed
+/// write leaves the old file.
+pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, bytes)
+        .and_then(|()| std::fs::rename(&tmp, path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("{}: cannot write: {e}", path.display())
+        })
 }
 
 /// Where the standard mod is: `explicit`, `RB_STANDARD_MOD`, then `Standard.rbm` next to the

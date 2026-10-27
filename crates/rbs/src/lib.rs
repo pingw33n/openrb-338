@@ -883,6 +883,98 @@ fn is_cat(c: &RawChunk, kind: &[u8; 4]) -> bool {
 }
 
 impl Song {
+    /// An empty 4.2 song for a writer to fill: every parameter 0, 32 empty patterns of 16 steps
+    /// in each pattern device, no automation, the built-in sounds ("Standard ReBirth").
+    pub fn empty() -> Song {
+        let params = |n: usize| Params {
+            values: vec![0; n],
+            raw: Vec::new(),
+        };
+        let drums = |kind: DrumKind| Drums {
+            kind,
+            params: vec![0; kind.count()],
+            patterns: (0..32)
+                .map(|_| PatternDrum {
+                    shuffle: 0,
+                    length: 16,
+                    steps: [[0; 12]; 16],
+                })
+                .collect(),
+            raw: Vec::new(),
+        };
+        let tb303 = || Tb303 {
+            params: [0; 9],
+            patterns: (0..32)
+                .map(|_| Pattern303 {
+                    shuffle: 0,
+                    length: 16,
+                    steps: [Step303 {
+                        note: 0,
+                        slide: 0,
+                        accent: 0,
+                        up: 0,
+                        down: 0,
+                        rest: 1,
+                        flags_hi: 0,
+                    }; 16],
+                })
+                .collect(),
+            raw: Vec::new(),
+        };
+        let channel = MixChannel {
+            enabled: 1,
+            level: 0,
+            pan: 64,
+            delay_send: 0,
+            dist: 0,
+        };
+        Song {
+            head: Head {
+                major: 4,
+                minor: 2,
+                revision: 0,
+                copyright: String::new(),
+                raw: Vec::new(),
+            },
+            glob: Glob {
+                song_mode: 0,
+                loop_on: 0,
+                tempo: 140_000,
+                loop_start: 0,
+                loop_end: 4 * 768,
+                shuffle: 0,
+                mod_name: "Standard ReBirth".into(),
+                mod_ftp: String::new(),
+                mod_www: String::new(),
+                vintage: 0,
+                raw: Vec::new(),
+            },
+            usri: Usri {
+                window_title: String::new(),
+                text: String::new(),
+                web_page: String::new(),
+                show_on_open: 0,
+                raw: Vec::new(),
+            },
+            mixer: Mixer {
+                master: 0,
+                comp_id: 0,
+                pcf_id: 0,
+                channels: [channel; 4],
+                raw: Vec::new(),
+            },
+            delay: params(DELAY_PARAMS.len()),
+            pcf: params(PCF_PARAMS.len()),
+            dist: params(DIST_PARAMS.len()),
+            comp: params(COMP_PARAMS.len()),
+            tb303: [tb303(), tb303()],
+            tr808: drums(DrumKind::Tr808),
+            tr909: drums(DrumKind::Tr909),
+            tracks: Default::default(),
+            unknown: Vec::new(),
+        }
+    }
+
     pub fn parse(data: &[u8]) -> Result<Song, Error> {
         let top = read_chunks(data, 0, data.len(), "file")?;
         if top.len() != 1 || !is_cat(&top[0], b"RB40") {
@@ -1109,6 +1201,18 @@ mod tests {
             out.windows(9)
                 .any(|w| w == [0, 0, 0, 1, 1, 6, 9, 0xAA, 0xBB])
         );
+    }
+
+    #[test]
+    fn the_empty_song_writes_and_reads_back() {
+        let s = Song::empty();
+        let bytes = s.write().unwrap();
+        let back = Song::parse(&bytes).unwrap();
+        assert_eq!(back.head.version(), "4.2");
+        assert_eq!(back.glob.mod_name, "Standard ReBirth");
+        assert_eq!(back.tb303[1].patterns.len(), 32);
+        assert_eq!(back.tr909.patterns[31].length, 16);
+        assert_eq!(back.write().unwrap(), bytes);
     }
 
     #[test]

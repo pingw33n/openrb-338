@@ -20,11 +20,12 @@ use eframe::egui::{
 use crate::art::{self, KnobDesign};
 use crate::behavior::{self, Mods};
 use crate::browser::{Browser, Mode, Poll};
+use crate::document::Document;
 use crate::keys::{self, Action, KeyMode};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
+use crate::menu::{Job, MENU_H, ModEntry, Then};
 use crate::model::Panel;
-use crate::session;
 use crate::settings::Settings;
 
 /// The panel's background and the letterbox color.
@@ -106,19 +107,34 @@ pub struct App {
     /// The player the panel drives (task-045); without one the model's events pile up in
     /// `Panel::events`.
     pub link: Option<Link>,
-    /// The drum samples a song is opened with (the standard mod's).
+    /// The built-in drum samples (the standard mod's): the kit "Standard ReBirth", and what a
+    /// mod's samples are laid over.
     pub samples: Option<Arc<SampleSet>>,
+    /// The standard mod file named on the command line, for the export (`rb render`'s lookup
+    /// applies without it).
+    pub standard_path: Option<PathBuf>,
     /// The folders of the file browser (task-046).
     pub settings: Settings,
     /// The open file browser, if any (`open_browser`).
     browser: Option<Browser>,
-    /// The last path a browser chose for a mode the app does not act on yet (save, export,
-    /// choose mod: task-047's menu takes it from here).
-    pub choice: Option<(Mode, PathBuf)>,
-    /// A message shown at the bottom of the window (a song that could not be opened).
+    /// The open song: its file, its mod, whether it has unsaved changes (task-047).
+    pub doc: Document,
+    /// An error shown at the bottom of the window (a song that could not be opened or written).
     pub notice: Option<String>,
-    /// The Options menu's keyboard mode (Ctrl+F / Ctrl+G; the menu of task-047 shows it).
+    /// What was done, shown at the bottom when there is no error ("Saved ...").
+    pub status: Option<String>,
+    /// The Options menu's keyboard mode (Ctrl+F / Ctrl+G).
     pub key_mode: KeyMode,
+    /// Whether the window draws the menu bar (the window of `rb-ui` does; the headless tests of
+    /// the panel at 1:1 do not).
+    pub menu: bool,
+    pub(crate) prompt: Option<Then>,
+    pub(crate) after_save: Option<Then>,
+    pub(crate) export: Option<Job>,
+    pub(crate) mod_list: Option<Result<Vec<ModEntry>, String>>,
+    pub(crate) events_seen: usize,
+    pub(crate) allow_close: bool,
+    pub(crate) title: String,
     holds: Vec<Hold>,
     ctls: Vec<Ctl>,
     shot: Option<Shot>,
@@ -130,19 +146,29 @@ impl App {
             panel,
             link: None,
             samples: None,
+            standard_path: None,
             settings: Settings::default(),
             browser: None,
-            choice: None,
+            doc: Document::new(),
             notice: None,
+            status: None,
             key_mode: KeyMode::default(),
+            menu: false,
+            prompt: None,
+            after_save: None,
+            export: None,
+            mod_list: None,
+            events_seen: 0,
+            allow_close: false,
+            title: String::new(),
             holds: Vec::new(),
             ctls: layout::controls(),
             shot,
         }
     }
 
-    /// Opens the file browser for `mode` over the panel (task-047's menu calls this). Ctrl+O
-    /// opens it for a song.
+    /// Opens the file browser for `mode` over the panel (the menu calls this). Ctrl+O opens it
+    /// for a song.
     pub fn open_browser(&mut self, mode: Mode) {
         self.notice = None;
         self.browser = Some(Browser::new(mode, &self.settings));
@@ -161,51 +187,44 @@ impl App {
         let mode = b.mode();
         match b.show(ctx, &mut self.settings) {
             Poll::Open => {}
-            Poll::Cancelled => self.browser = None,
+            Poll::Cancelled => {
+                self.browser = None;
+                // a Save As that the prompt's Save started, and was cancelled, ends that action
+                self.after_save = None;
+            }
             Poll::Chosen(path) => {
                 self.browser = None;
-                if mode == Mode::OpenSong {
-                    self.open_song(&path);
-                } else {
-                    self.choice = Some((mode, path));
-                }
+                self.chosen(mode, path);
             }
         }
     }
 
-    /// Opens the song at `path` in the player; a failure goes to the notice line.
-    pub fn open_song(&mut self, path: &std::path::Path) {
-        let Some(link) = &mut self.link else {
-            self.notice = Some("There is no player to open the song in.".into());
-            return;
-        };
-        match session::load_song(path) {
-            Ok(song) => {
-                link.load(&song, self.samples.clone(), &mut self.panel);
-                self.notice = None;
-            }
-            Err(e) => self.notice = Some(e),
-        }
-    }
-
+    /// The line at the bottom of the window: the error, else what was done.
     fn notice_bar(&mut self, ui: &Ui) {
-        let Some(text) = &self.notice else {
-            return;
+        let (text, fill, ink) = match (&self.notice, &self.status) {
+            (Some(t), _) => (t, (0x3a, 0x1a, 0x18), (0xff, 0xb0, 0x00)),
+            (None, Some(t)) => (t, (0x1f, 0x2d, 0x24), (0xb8, 0xd8, 0xc0)),
+            (None, None) => return,
         };
         let avail = ui.ctx().content_rect();
         let bar = Rect::from_min_max(Pos2::new(avail.min.x, avail.max.y - 22.0), avail.max);
         ui.painter()
-            .rect_filled(bar, 0.0, Color32::from_rgb(0x3a, 0x1a, 0x18));
+            .rect_filled(bar, 0.0, Color32::from_rgb(fill.0, fill.1, fill.2));
         ui.painter().text(
             bar.left_center() + Vec2::new(8.0, 0.0),
             egui::Align2::LEFT_CENTER,
             text,
             egui::FontId::proportional(12.0),
-            Color32::from_rgb(0xff, 0xb0, 0x00),
+            Color32::from_rgb(ink.0, ink.1, ink.2),
         );
         // Clicks in the browser over it do not dismiss it.
-        if self.browser.is_none() && ui.input(|i| i.pointer.any_click()) {
-            self.notice = None;
+        let blocked = self.browser.is_some() || self.prompt.is_some();
+        if !blocked && ui.input(|i| i.pointer.any_click()) {
+            if self.notice.is_some() {
+                self.notice = None;
+            } else if self.export.is_none() {
+                self.status = None;
+            }
         }
     }
 
@@ -220,6 +239,7 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         egui_extras::install_image_loaders(ui.ctx());
+        self.close_check(&ui.ctx().clone());
         self.show(ui);
         self.screenshot(ui.ctx());
     }
@@ -242,16 +262,23 @@ fn paint_part_rotated(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>)
 impl App {
     /// Draws the whole panel in the free area of `ui` and handles the input.
     pub fn show(&mut self, ui: &mut Ui) {
-        let avail = ui.ctx().content_rect();
+        let mut avail = ui.ctx().content_rect();
         ui.painter().rect_filled(avail, 0.0, BG);
+        if self.menu {
+            // the panel takes the window below the menu bar
+            avail.min.y += MENU_H;
+        }
         let view = View::fit(avail, ui.ctx().pixels_per_point());
         let now = ui.input(|i| i.time);
         self.panel.held = None;
 
-        // While the file browser is open the panel takes no keys and no clicks of its own.
-        if self.browser.is_none() {
+        // While the file browser or the prompt is open the panel takes no keys and no clicks
+        // of its own.
+        if self.browser.is_none() && self.prompt.is_none() {
             if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::O)) {
                 self.open_browser(Mode::OpenSong);
+            } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::S)) {
+                self.save();
             } else {
                 // Ctrl+F / Ctrl+G: the Options menu's two keyboard modes.
                 ui.input_mut(|i| {
@@ -292,12 +319,21 @@ impl App {
         self.instrument_selection(ui, &view);
 
         // Send what was done, take what the engine did (the panel follows playback).
+        self.note_edits();
         if let Some(link) = &mut self.link {
             link.sync(&mut self.panel);
             ui.ctx().request_repaint_after(Duration::from_millis(16));
         }
         self.notice_bar(ui);
-        self.browse(&ui.ctx().clone());
+        if self.menu {
+            self.menu_bar(ui);
+        }
+        let ctx = ui.ctx().clone();
+        self.browse(&ctx);
+        self.prompt_ui(&ctx);
+        self.poll_export(&ctx);
+        self.update_title(&ctx);
+        self.close_if_allowed(&ctx);
     }
 
     /// The computer keyboard (`keys`): a key press acts like a mouse press on its button, a

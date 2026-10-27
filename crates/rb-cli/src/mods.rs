@@ -225,7 +225,7 @@ fn folder_order(a: &Path, b: &Path) -> std::cmp::Ordering {
 
 /// The `.rbm` files of `dir` in the original's folder order, each with its INFO menu name when
 /// it has one.
-fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
+pub fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
     let rd = std::fs::read_dir(dir).map_err(|e| {
         fail(
             1,

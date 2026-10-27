@@ -20,8 +20,9 @@ use rb_engine::song::Song;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::mods::ModOpts;
-use crate::{Fail, Renderer, fail, load_song, warn_unsupported};
+use rb_cli::mods::ModOpts;
+use rb_cli::render::{Renderer, load_song, warn_unsupported};
+use rb_cli::{Fail, fail};
 
 /// The default idle-block count of the single-song form, the corpus' capture protocol.
 const DEFAULT_IDLE: u32 = 9088;

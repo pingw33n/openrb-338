@@ -9,6 +9,9 @@ use vorbis_rs::{VorbisBitrateManagementStrategy, VorbisEncoderBuilder};
 
 pub const SAMPLE_RATE: u32 = 44100;
 
+/// The Ogg stream serial of every .ogg file rb writes ("rb").
+const OGG_SERIAL: i32 = 0x7262;
+
 /// The container chosen by the output file's extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -54,11 +57,13 @@ fn flac(samples: &[i16]) -> Result<Vec<u8>, Box<dyn Error>> {
 
 fn ogg(samples: &[i16], quality: f32) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut out = Vec::new();
-    let mut enc = VorbisEncoderBuilder::new(
+    // A fixed stream serial, so that the same samples give the same file.
+    let mut enc = VorbisEncoderBuilder::new_with_serial(
         NonZeroU32::new(SAMPLE_RATE).unwrap(),
         NonZeroU8::new(2).unwrap(),
         &mut out,
-    )?
+        OGG_SERIAL,
+    )
     .bitrate_management_strategy(VorbisBitrateManagementStrategy::QualityVbr {
         target_quality: quality,
     })

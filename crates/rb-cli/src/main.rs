@@ -9,22 +9,16 @@
 //! unknown output extension).
 
 mod compare;
-mod encode;
-mod mods;
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
-use encode::Format;
-use mods::{Kit, ModOpts};
-use rb_engine::frame::export;
-use rb_engine::frame::{Devices, Engine};
-use rb_engine::samples::SampleSet;
-use rb_engine::song::{DrumPattern, MAX_TICK, Song, TICKS_PER_BAR};
-use rb_engine::tables::Tables;
+use rb_cli::encode::Format;
+use rb_cli::mods::{self, ModOpts};
+use rb_cli::render::{Renderer, load_song, read_mod, warn_unsupported};
+use rb_cli::{Fail, fail};
+use rb_engine::song::{MAX_TICK, TICKS_PER_BAR};
 
 #[derive(Parser)]
 #[command(name = "rb", about = "ReBirth RB-338 engine reimplementation")]
@@ -183,13 +177,6 @@ enum Cmd {
     },
 }
 
-/// A failure with its exit code.
-struct Fail(u8, String);
-
-fn fail(code: u8, msg: impl Into<String>) -> Fail {
-    Fail(code, msg.into())
-}
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
@@ -314,38 +301,6 @@ fn parse_range(s: &str) -> Result<(u32, u32), Fail> {
     Ok((a * TICKS_PER_BAR, b * TICKS_PER_BAR))
 }
 
-/// The drum machines that play in the song: "TR-808" and "TR-909".
-fn drums_playing(song: &Song) -> Vec<&'static str> {
-    // A drum machine is audible when it is enabled and a pattern it plays has a step: the
-    // initial selection (controller 1, `params[1]`) plus the values of its controller-1 track
-    // events (tracks 3 and 4, docs/song_load.md section 5). With no such event the initial
-    // selection plays throughout.
-    // The enable flag counts as on when the chunk or any enable event (controller 0) sets it.
-    let plays = |params: &[u8], track: usize, patterns: &[DrumPattern]| {
-        (params[0] != 0
-            || song.tracks[track]
-                .iter()
-                .any(|e| e.ctrl == 0 && e.value != 0))
-            && std::iter::once(params[1])
-                .chain(
-                    song.tracks[track]
-                        .iter()
-                        .filter(|e| e.ctrl == 1)
-                        .map(|e| e.value),
-                )
-                .filter_map(|p| patterns.get(p as usize))
-                .any(|p| p.steps.iter().any(|s| s.iter().any(|&c| c != 0)))
-    };
-    let mut v = Vec::new();
-    if plays(&song.tr808.params, 3, &song.tr808.patterns) {
-        v.push("TR-808");
-    }
-    if plays(&song.tr909.params, 4, &song.tr909.patterns) {
-        v.push("TR-909");
-    }
-    v
-}
-
 /// The ReBirth.dll `rb standard-mod` reads, in the order: the `--rebirth-dll` path (which must
 /// exist), a ReBirth.dll next to the rb binary, then the Windows install locations. An explicit
 /// choice is never second-guessed by a search.
@@ -460,46 +415,6 @@ fn standard_mod(dll: Option<&Path>, exe: Option<&Path>, output: Option<&Path>) -
     Ok(())
 }
 
-/// Loads the built-in drum samples from the standard mod that `mods::locate_standard_mod`
-/// finds.
-fn load_standard(
-    explicit: Option<&Path>,
-    mods: &ModOpts,
-    drums: &[&str],
-) -> Result<SampleSet, Fail> {
-    let need = format!(
-        "the song plays the {}, which needs the built-in drum samples",
-        drums.join(" and ")
-    );
-    let path = mods::locate_standard_mod(explicit, mods)
-        .map_err(|Fail(c, m)| fail(c, format!("{need}; {m}")))?;
-    let rbm = read_mod(&path)?;
-    let remake = "make it with `rb standard-mod --rebirth-dll ReBirth.dll -o FILE`";
-    if !rbm.is_standard() {
-        return Err(fail(
-            1,
-            format!(
-                "{}: not a standard mod (its menu name is not \"{}\"); {remake}",
-                path.display(),
-                rbm::standard::NAME
-            ),
-        ));
-    }
-    let table = rbm::KeyTable::embedded(&rbm)
-        .filter(|t| rbm.slots_covered(t))
-        .ok_or_else(|| {
-            fail(
-                1,
-                format!(
-                    "{}: the standard mod is not recrypted for rb; {remake}",
-                    path.display()
-                ),
-            )
-        })?;
-    rbm.load_all_samples(&table)
-        .map_err(|e| fail(1, format!("{}: {e}; {remake}", path.display())))
-}
-
 fn render(
     input: &Path,
     output: &Path,
@@ -534,12 +449,14 @@ fn render(
     }
     warn_unsupported(&song);
     let label = input.display().to_string();
-    let samples = Renderer::new(standard_mod, mods).render(&label, &song, idle_blocks)?;
-    let bytes = encode::encode(format, &samples, quality)
-        .map_err(|e| fail(1, format!("encoding failed: {e}")))?;
-    std::fs::write(output, bytes)
-        .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
-    Ok(())
+    Renderer::new(standard_mod, mods).render_to_file(
+        &label,
+        &song,
+        idle_blocks,
+        format,
+        quality,
+        output,
+    )
 }
 
 /// `rb play`: the song in the real-time player (`rb-player`) on the default output device.
@@ -614,63 +531,6 @@ fn play(
     Ok(())
 }
 
-/// Reads and converts an `.rbs` song: an RBS 4.x file or a ReBirth 1.x MIDI file.
-fn load_song(input: &Path) -> Result<Song, Fail> {
-    let data = std::fs::read(input)
-        .map_err(|e| fail(1, format!("{}: cannot read the song: {e}", input.display())))?;
-    if rbs::rb1x::is_1x(&data) {
-        // a ReBirth 1.x song: a MIDI file, imported as Rebirth.exe does (docs/song_load.md 12)
-        let parsed = rbs::rb1x::Song1x::parse(&data).map_err(|e| {
-            fail(
-                1,
-                format!("{}: not a valid ReBirth 1.x song: {e}", input.display()),
-            )
-        })?;
-        return rb_engine::load::convert_1x(&parsed)
-            .map_err(|e| fail(1, format!("{}: cannot load the song: {e}", input.display())));
-    }
-    let parsed = rbs::Song::parse(&data).map_err(|e| {
-        fail(
-            1,
-            format!("{}: not a valid .rbs song: {e}", input.display()),
-        )
-    })?;
-    rb_engine::load::convert(&parsed).map_err(|e| {
-        fail(
-            1,
-            format!("{}: cannot load the song: {e:?}", input.display()),
-        )
-    })
-}
-
-/// Warns of what the render cannot do as the original would: pattern mode.
-fn warn_unsupported(song: &Song) {
-    if song.globals.song_mode == 0 {
-        eprintln!(
-            "rb: warning: the song is in pattern mode; the original cannot export it, the \
-             output is the engine's song-mode render of the loop"
-        );
-    }
-}
-
-/// Renders songs, each in a new engine with every device, sharing the tables and the sample
-/// sets: the built-in drum samples (loaded from the standard mod the first time a song plays a
-/// drum machine) and one set per mod file used.
-struct Renderer {
-    tables: Arc<Tables>,
-    standard_mod: Option<PathBuf>,
-    mods: ModOpts,
-    builtin: Option<Arc<SampleSet>>,
-    mod_sets: HashMap<PathBuf, Arc<SampleSet>>,
-}
-
-/// The mod's samples on top of the built-in ones: a slot the mod lacks stays built in.
-fn read_mod(path: &Path) -> Result<rbm::Rbm, Fail> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| fail(1, format!("{}: cannot read the mod: {e}", path.display())))?;
-    rbm::Rbm::parse(bytes).map_err(|e| fail(1, format!("{}: {e}", path.display())))
-}
-
 fn read_key_table(rbm: &rbm::Rbm, key_file: &Path) -> Result<rbm::KeyTable, Fail> {
     let mut dat = std::fs::File::open(key_file)
         .map_err(|e| fail(1, format!("{}: cannot read: {e}", key_file.display())))?;
@@ -723,87 +583,4 @@ fn recrypt(input: &Path, output: &Path, rb20ful: Option<PathBuf>) -> Result<(), 
         out.len()
     );
     Ok(())
-}
-
-/// Only a recrypted mod (`rb recrypt`) loads: with the key bytes rb embeds. Any other mod is an
-/// error that names the fix; rb render, compare and play never read RB20FUL.DAT (task-063).
-fn load_mod(path: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
-    let rbm = read_mod(path)?;
-    let Some(table) = rbm::KeyTable::embedded(&rbm).filter(|t| rbm.slots_covered(t)) else {
-        return Err(fail(
-            1,
-            format!(
-                "{}: the song plays a drum machine with this mod, which is not recrypted. \
-                 Run `rb recrypt --rb20ful RB20FUL.DAT {} -o OUT.rbm` once and use OUT.rbm",
-                path.display(),
-                path.display()
-            ),
-        ));
-    };
-    let loaded = rbm
-        .load_samples(&table, builtin)
-        .map_err(|e| fail(1, format!("{}: {e}", path.display())))?;
-    Ok(loaded.set)
-}
-
-impl Renderer {
-    fn new(standard_mod: Option<&Path>, mods: ModOpts) -> Self {
-        Renderer {
-            tables: Arc::new(Tables::new()),
-            standard_mod: standard_mod.map(Path::to_path_buf),
-            mods,
-            builtin: None,
-            mod_sets: HashMap::new(),
-        }
-    }
-
-    /// The export of `song` after `idle_blocks` idle blocks: interleaved int16 stereo.
-    /// `label` names the song in a warning.
-    fn render(&mut self, label: &str, song: &Song, idle_blocks: u32) -> Result<Vec<i16>, Fail> {
-        let samples = self.samples(label, song)?;
-        let mut engine = Engine::new(self.tables.clone(), Devices::implemented(samples));
-        let samples = export::export_song(&mut engine, song, idle_blocks);
-        // A render call that faults in the original (the PCF's divide by zero) writes nothing;
-        // the output is what the original writes, but say why it is silent or repeats itself.
-        if let Some(f) = engine.fault() {
-            eprintln!(
-                "rb: warning: {label}: the original produces silence here: {}; {} render calls \
-                 faulted, the first in block {}, and each left its output unwritten",
-                f.first, f.calls, f.block
-            );
-        }
-        Ok(samples)
-    }
-
-    /// The drum samples `song` renders with: its mod's on top of the built-in kit, or the
-    /// built-in kit, or none when no drum machine plays.
-    fn samples(&mut self, label: &str, song: &Song) -> Result<Option<Arc<SampleSet>>, Fail> {
-        // The mod is resolved for every song, so that a missing one is an error even when no
-        // drum machine plays (and then needs no key file: nothing of it is read).
-        let kit = mods::resolve(&self.mods, label, &song.mod_name)?;
-        // The drum samples are loaded only for a song that plays a drum machine; a 303-only
-        // song renders without the standard mod (its drum machines play no step, so the silent
-        // placeholders the engine uses without samples are exact).
-        let drums = drums_playing(song);
-        let samples = if drums.is_empty() {
-            None
-        } else {
-            if self.builtin.is_none() {
-                let set = load_standard(self.standard_mod.as_deref(), &self.mods, &drums)?;
-                self.builtin = Some(Arc::new(set));
-            }
-            let builtin = self.builtin.clone().unwrap();
-            match kit {
-                Kit::Standard => Some(builtin),
-                Kit::Mod(path) => {
-                    if !self.mod_sets.contains_key(&path) {
-                        let set = load_mod(&path, &builtin)?;
-                        self.mod_sets.insert(path.clone(), Arc::new(set));
-                    }
-                    Some(self.mod_sets[&path].clone())
-                }
-            }
-        };
-        Ok(samples)
-    }
 }

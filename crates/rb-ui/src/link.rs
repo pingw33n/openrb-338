@@ -55,7 +55,8 @@ pub const ROW_DEVICES: [Device; 4] = [
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Msg {
     /// Song msg 35 `{id, v}` (`docs/song_load.md` section 3): 0 song mode, 1 play, 2 record,
-    /// 3 loop, 4 tempo (BPM * 1000), 8 locate (ticks), 12 loop start, 16 loop end, 20 shuffle.
+    /// 3 loop, 4 tempo (BPM * 1000), 8 locate (ticks), 12 loop start, 16 loop end, 20 shuffle,
+    /// 21 the Vintage sound model (the Edit menu's item 323, handler 0x42C32E).
     Global { id: u8, value: u32 },
     /// Song msg 41 `[device, sub, data...]`.
     Device { dev: u8, sub: u8, data: Vec<u8> },
@@ -347,6 +348,7 @@ impl Link {
         t.loop_start = g.loop_start as i32;
         t.loop_end = g.loop_end as i32;
         panel.adopt("transport.shuffle", g.shuffle as i32);
+        panel.vintage = g.is_vintage();
         let payloads: Vec<Vec<u8>> = Device::ALL
             .iter()
             .map(|&d| song.device_payload(d))
@@ -378,6 +380,18 @@ impl Link {
             }
         }
         self.fill_views(panel);
+        self.flush_marked();
+    }
+
+    /// The Mods menu's mod change of the open song (song msg 19): the pending panel events go
+    /// first, then the drum machines of the newest song take `samples`
+    /// ([`Player::set_mod`], docs/rbm.md section 14).
+    pub fn set_mod(&mut self, samples: Arc<SampleSet>, panel: &mut Panel) {
+        self.forward(panel);
+        if let Err(c) = self.player.set_mod(samples) {
+            // a full queue: the change waits in the backlog, behind what is queued
+            self.backlog.push_back(c);
+        }
         self.flush_marked();
     }
 
@@ -525,6 +539,7 @@ impl Link {
             "transport.loop_start" => return global(12),
             "transport.loop_end" => return global(16),
             "transport.shuffle" => return global(20),
+            "song.vintage" => return global(21),
             _ => {}
         }
         if let Some(t) = mixer_target(id) {
@@ -589,6 +604,7 @@ impl Link {
                 12 => Command::LoopStart(*value),
                 16 => Command::LoopEnd(*value),
                 20 => Command::Shuffle(*value as u8),
+                21 => Command::Vintage(*value != 0),
                 _ => return None,
             }),
             Msg::Device { dev, sub, data } => {
@@ -749,6 +765,7 @@ impl Link {
             t.recording = false;
         }
         panel.adopt("transport.shuffle", s.shuffle as i32);
+        panel.vintage = s.vintage;
         for (id, &(d, c)) in &self.controls {
             let i = if d == Device::Tr909 {
                 tr909::internal_index(c as usize)

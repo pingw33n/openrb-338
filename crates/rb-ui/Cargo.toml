@@ -20,6 +20,8 @@ rb-player = { path = "../rb-player" }
 # Song files and the standard mod (the built-in drum samples).
 rbs = { path = "../rbs" }
 rbm = { path = "../rbm" }
+# The export and the mod lookup of `rb render` (task-047).
+rb-cli = { path = "../rb-cli" }
 eframe = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["svg"] }
 # Saves the --screenshot PNG.

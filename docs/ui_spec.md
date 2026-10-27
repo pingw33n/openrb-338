@@ -848,8 +848,8 @@ read, and what it leaves out.
   signal shows. The compressor's gain reduction (live byte 3, `min(G*18, 127)`) lights the centre
   LED ("0") and up to four LEDs to its left, the first two amber and the others red. Neither scale
   was read in the original (`sub_424220`, `sub_424A7E`; section 15).
-- **Not done.** The logo click (msg 58), and the song's own mod (the built-in kit plays every song;
-  task-047). The computer keyboard is done (task-070, section 10) except PgUp/PgDn (no scrolling rack)
+- **Not done.** The logo click (msg 58), and the mod's panel art (not drawn by decision, section 18). The song's own mod
+  is applied (section 18). The computer keyboard is done (task-070, section 10) except PgUp/PgDn (no scrolling rack)
   and the drums' Shift+Tab.
 
 ## 17. The in-app file browser (task-046)
@@ -861,8 +861,8 @@ format button row that rewrites the name's extension) and choose a mod (`*.rbm`)
 for the menu (task-047): `Browser::new(mode, &settings)`, then `show(ctx, &mut settings)` each frame
 returns `Poll::Open`, `Chosen(path)` or `Cancelled`. `App::open_browser(mode)` opens one over the
 panel; Ctrl+O opens a song through it (`App::open_song`), `rb-ui --browse open|save|export|mod`
-starts with it open. The panel takes no key or click while a browser is open. The paths chosen for
-save, export and mod land in `App::choice` until the menu acts on them.
+starts with it open. The panel takes no key or click while a browser is open. The menu (section
+18) acts on the paths: `App::chosen(mode, path)`.
 
 - **Keys.** Up/Down/PageUp/PageDown/Home/End select; Enter enters a folder or accepts the file
   (in the name field: accepts the typed name); Backspace and Alt+Up go to the parent (the folder
@@ -889,3 +889,68 @@ save, export and mod land in `App::choice` until the menu acts on them.
   `$XDG_CONFIG_HOME` (Linux `~/.config`, macOS `~/Library/Application Support`, Windows
   `%APPDATA%`); it is rewritten when a path is chosen or a folder set, and a missing or damaged
   file means the defaults. egui's own persistence is not used.
+
+## 18. The menu (task-047)
+
+`crates/rb-ui/src/menu.rs` is the menu bar above the panel (22 points; the panel takes the rest of
+the window, `App::menu`; the headless panel tests run without it) and the commands behind it
+(`App::command(Cmd)`). It is the user's reduced menu (2026-10-26): of the original's menu
+(section 12) only the song files, the mod and the Vintage flag, plus the keyboard mode of section
+10.
+
+| Menu | Item | What it does |
+|---|---|---|
+| File | Open... (Ctrl+O) | the browser for a song; with unsaved changes the prompt first |
+| File | Save (Ctrl+S) | writes the song's file; a song with none goes to Save As |
+| File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
+| File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
+| Mods | Standard ReBirth, one entry per mod of the Mods folder, Choose file... | the song's kit (below) |
+| Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
+| Options | Program Synth (Ctrl+F), Select Patterns (Ctrl+G) | `App::key_mode` (section 10, task-070) |
+
+- **Save** (`document::compose`). The original saves by asking every device for its data block
+  (`sub_43920E` .. `sub_43A1F4`, `docs/song_load.md` section 4.10) and passing them to the RBS
+  writer `sub_438025`. rb's panel and link hold the same blocks, so the song written is the song
+  file as read, with over it: the controllers (`link::controls`, controller c = parameter c), the
+  pattern selection and on/off switches, the 32 patterns of the four pattern devices
+  (`Link::patterns`), the mixer, the tempo, mode, loop and shuffle, GLOB's vintage byte 482, and the
+  mod name and its INFO URLs. The track events, the user text, unknown chunks and unused bytes stay
+  as read. The values are those the panel shows, which follow the song's automation while it plays
+  (the original also saves the live blocks). The version is written as 4.2 [G: the original's
+  version write in `sub_438025` was not read; rb writes the version it reads, 4.2]. A 4.2 file whose
+  controls were not touched is saved byte for byte, including the bytes the load changes
+  (the 909's mid tom decay is the low tom's after a load: such a byte keeps the file's value until
+  the control is changed; 146 songs of the corpus are saved byte for byte, the 17 older ones load to the same engine
+  song, `tests/menu.rs`). An older file
+  (4.0, 4.1) is saved as a 4.2 file with the values the load made of it: the tom tunings of the
+  808's controllers and track events, every mixer channel enabled in a 4.1 file; it loads to the
+  same engine song. A ReBirth 1.x song has no `rbs` file: the empty song stands in, with its
+  track events. A new song is saved from the empty 4.2 song (`rbs::Song::empty`) and the panel.
+  The file is written next to itself and renamed over it; an error is shown in the notice line.
+- **Export** uses `rb render`'s code (`rb_cli::render`, the `rb-cli` library: `Renderer::render_to_file`,
+  the same encoders, 9088 idle blocks, Ogg quality 0.5): the song as saved (composed, written, parsed
+  and converted again) is rendered on a thread and written, so the file is the one `rb render`
+  writes for the saved song with the same kit (`tests/menu.rs` compares WAV, FLAC and Ogg byte for byte; the
+  Ogg stream serial is fixed, so `rb render` .ogg files are reproducible). The standard mod
+  is the one named by `--standard-mod` or found as `rb render` finds it. Errors are shown in the
+  notice line, progress and the result in the status line.
+- **The mod** (`docs/rbm.md` section 14). Opening a song looks its GLOB mod name up in the Mods
+  folder (the settings' folder, else `RB_MOD_DIR` and the defaults of `rb render`); "Standard
+  ReBirth" is the built-in kit; a mod that is not found, or not recrypted, plays the built-in kit
+  with a notice and the song keeps the name. A choice in the Mods menu is `sub_426FB3`: the same
+  kit again does nothing; else the song is marked modified, its mod name is the mod's INFO menu
+  name, and `Link::set_mod` (song msg 19, `Player::set_mod`) gives the newest song's drum machines
+  the kit; the save writes the name. The entries are the INFO names of the folder in the original's
+  folder order, the first file of a duplicated name owning it. The mod's panel art is not
+  drawn: the original redraws the window with the mod's bitmaps (`sub_42D80D`), and the user
+  decided (task-078, 2026-10-27) that rb keeps its SVG art and a mod changes the sound only. Not
+  done: the startup sound (task-074).
+- **The Vintage flag** is song message 35 id 21 (`Command::Vintage`); the menu item shows the
+  engine's byte and a change marks the song modified.
+- **Unsaved changes.** The song is modified by any edit of the panel that the save writes (not by
+  play, stop and locate), a mod change and the Vintage flag. Open (after the browser chose a file)
+  and closing the window then ask "Save changes to NAME?" with Save (S, Enter), Don't Save (D, N)
+  and Cancel (Esc). Save on a song with no file goes through the Save As browser and then goes on.
+- **Fixed with it.** The model took the engine's value for a mixer channel's distortion insert
+  only after the button had been pressed, and never for a pattern section's on/off switch
+  (`Panel::adopt`); both now follow the song, and the save needs them.

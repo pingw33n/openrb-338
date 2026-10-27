@@ -282,6 +282,9 @@ pub struct Panel {
     pub meters: HashMap<String, u8>,
     /// The compressor's nine gain-reduction LEDs: 0 off, 1 green, 2 amber, 3 red.
     pub gr_leds: [u8; 9],
+    /// The song's sound model: the Options menu's "Vintage ReBirth Synth Sound" (GLOB byte 482,
+    /// the engine's global byte 21). Changes go through [`Panel::set_vintage`].
+    pub vintage: bool,
     /// What the engine must hear, drained by the caller.
     pub events: Vec<Event>,
     /// The knob or fader being dragged (set by the window): the engine's value does not move it.
@@ -327,6 +330,7 @@ impl Panel {
             comp_id: 0,
             meters: HashMap::new(),
             gr_leds: [0; 9],
+            vintage: false,
             events: Vec::new(),
             held: None,
             knobs: HashMap::new(),
@@ -354,9 +358,12 @@ impl Panel {
                     };
                     p.faders.insert(c.id, v);
                 }
-                "toggle" if c.name() == "on" || c.name() == "mute" => {
-                    // Pattern sections and mixer channels start on, the effects off.
-                    let on = c.section.starts_with("pattern") || c.section.starts_with("mixer");
+                "toggle" => {
+                    // Pattern sections and mixer channels start on, the effects off. (Every
+                    // toggle has an entry, so that the engine's value is taken: the mixer
+                    // channel's distortion insert, the 303's and 909's flags.)
+                    let on = (c.name() == "on" || c.name() == "mute")
+                        && (c.section.starts_with("pattern") || c.section.starts_with("mixer"));
                     p.toggles.insert(c.id, on);
                 }
                 "hswitch" | "vswitch" => {
@@ -452,6 +459,35 @@ impl Panel {
         });
     }
 
+    /// Turns the Vintage sound on or off and sends it (song msg 35 `{21, v}`).
+    pub fn set_vintage(&mut self, on: bool) {
+        if self.vintage != on {
+            self.vintage = on;
+            self.set_event("song.vintage", on as i32);
+        }
+    }
+
+    /// The value the engine holds for the control `id` (the one the panel would send, 0..=127;
+    /// a toggle 0 or 1): what a saved song stores. `None` for an id that is not a controller.
+    pub fn value(&self, id: &str) -> Option<u8> {
+        if let Some(&p) = self.knobs.get(id) {
+            return Some(behavior::knob_send(p) as u8);
+        }
+        if let Some(&p) = self.faders.get(id) {
+            return Some(behavior::fader_send(p) as u8);
+        }
+        if let Some(&s) = self.switches.get(id) {
+            return Some(s);
+        }
+        if let Some(&n) = self.numbers.get(id) {
+            return Some(n as u8);
+        }
+        if self.toggles.contains_key(id) || (id.starts_with("pattern") && id.ends_with(".on")) {
+            return Some(self.toggle_on(id) as u8);
+        }
+        None
+    }
+
     // ---- knobs, faders, switches --------------------------------------------------------
 
     pub fn knob(&self, id: &str) -> i32 {
@@ -526,7 +562,14 @@ impl Panel {
         if self.held.as_deref() == Some(id) {
             return;
         }
-        if let Some(p) = self.knobs.get_mut(id) {
+        // a pattern section's on/off switch is the row's state (the toggle map is not read)
+        if let Some(r) = id
+            .strip_suffix(".on")
+            .and_then(|s| index_of(s, "pattern"))
+            .filter(|&r| r < 4)
+        {
+            self.rows[r].enabled = v != 0;
+        } else if let Some(p) = self.knobs.get_mut(id) {
             if id != "tr808.selector" && behavior::knob_send(*p) != v {
                 *p = behavior::knob_from_engine(v);
             }
@@ -540,12 +583,6 @@ impl Panel {
             *s = v as u8;
         } else if let Some(n) = self.numbers.get_mut(id) {
             *n = v;
-        } else if let Some(r) = id
-            .strip_suffix(".on")
-            .and_then(|s| index_of(s, "pattern"))
-            .filter(|&r| r < 4)
-        {
-            self.rows[r].enabled = v != 0;
         } else if id == "mixer.pcf_id" {
             self.pcf_id = v as u8;
         } else if id == "mixer.comp_id" {

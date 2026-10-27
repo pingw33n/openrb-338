@@ -3,16 +3,18 @@
 //! ```text
 //! rb-ui [SONG.rbs] [--standard-mod FILE] [--demo] [--size WxH] [--ppp S] [--screenshot OUT.png]
 //! ```
-//! With a song it opens that song (the menu that opens others is task-047); without one the
-//! panel starts on a new empty song. The drum machines play the built-in kit of the standard mod
-//! (`--standard-mod`, `RB_STANDARD_MOD`, or `Standard.rbm` next to the binary; make it with
-//! `rb standard-mod`); without it they are silent. `--demo` starts the panel in a lively state
-//! with no player (a picture). `--size` is the inner window size in points (default 624x510),
-//! `--ppp` overrides the pixel density. `--screenshot` saves the window to a PNG after a few
-//! frames and quits. Ctrl+O opens the in-app file browser (task-046) to open a song;
-//! `--browse MODE` starts with it open for a mode (the menu of task-047 will call it). The
-//! browser's folders are kept in the settings file (`rb/ui.conf` in the configuration folder,
-//! or `$RB_UI_CONFIG`).
+//! With a song it opens that song, with the mod it names (looked up in the Mods folder of the
+//! settings, `RB_MOD_DIR`, or the default places of `rb render`); without one the panel starts on
+//! a new empty song. The menu bar (task-047, docs/ui_spec.md section 18) opens, saves and exports
+//! songs, chooses the mod and sets the Vintage flag and the keyboard mode. The drum machines play
+//! the built-in kit of the standard mod (`--standard-mod`, `RB_STANDARD_MOD`, or `Standard.rbm`
+//! next to the binary; make it with `rb standard-mod`); without it they are silent. `--demo`
+//! starts the panel in a lively state with no player (a picture). `--size` is the inner size of
+//! the panel in points (default 624x510; the window is as high as the menu bar more), `--ppp`
+//! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
+//! quits. Ctrl+O opens the in-app file browser (task-046) to open a song, Ctrl+S saves;
+//! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
+//! settings file (`rb/ui.conf` in the configuration folder, or `$RB_UI_CONFIG`).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,6 +25,7 @@ use rb_ui::app::{App, Shot};
 use rb_ui::browser::Mode;
 use rb_ui::layout::{PANEL_H, PANEL_W};
 use rb_ui::link::Link;
+use rb_ui::menu::MENU_H;
 use rb_ui::model::Panel;
 use rb_ui::session;
 use rb_ui::settings::Settings;
@@ -78,9 +81,10 @@ fn main() -> eframe::Result {
         }
     }
 
-    let mut panel = if demo { Panel::demo() } else { Panel::new() };
+    let panel = if demo { Panel::demo() } else { Panel::new() };
     let mut link = None;
     let mut app_samples = None;
+    let mut startup = None;
     // keeps the audio stream alive for the whole run
     let mut _stream = None;
     if !demo {
@@ -92,10 +96,11 @@ fn main() -> eframe::Result {
             }
         };
         app_samples = samples.clone();
-        let (mut l, audio) = Link::new(Arc::new(Tables::new()), samples.clone());
+        let (l, audio) = Link::new(Arc::new(Tables::new()), samples.clone());
+        // The song named on the command line is opened by the app (with its mod).
         if let Some(path) = &song {
-            match session::load_song(path) {
-                Ok(s) => l.load(&s, samples, &mut panel),
+            match session::open_song(path) {
+                Ok(o) => startup = Some((path.clone(), o)),
                 Err(e) => {
                     eprintln!("rb-ui: {e}");
                     std::process::exit(1);
@@ -112,9 +117,10 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("rb")
-            .with_inner_size(size)
+            // the menu bar is above the panel
+            .with_inner_size([size[0], size[1] + MENU_H])
             // The minimum is half the native panel size (decision task-040).
-            .with_min_inner_size([PANEL_W / 2.0, PANEL_H / 2.0]),
+            .with_min_inner_size([PANEL_W / 2.0, PANEL_H / 2.0 + MENU_H]),
         ..Default::default()
     };
     eframe::run_native(
@@ -130,7 +136,12 @@ fn main() -> eframe::Result {
                 None => App::new(panel, shot),
             };
             app.samples = app_samples;
+            app.standard_path = standard;
+            app.menu = true;
             app.settings = Settings::load();
+            if let Some((path, opened)) = startup {
+                app.adopt(&path, opened);
+            }
             if let Some(mode) = browse {
                 app.open_browser(mode);
             }

@@ -3375,6 +3375,7 @@ dependencies = [
  "eframe",
  "egui_extras",
  "image",
+ "rb-cli",
  "rb-engine",
  "rb-player",
  "rb-ui-art",
