@@ -8,9 +8,11 @@
 //! the link: [`compose`] takes the song file as it was read, and puts over it everything the
 //! panel can change (the controllers, the pattern selection and on/off switches, the patterns,
 //! the mixer, the transport's tempo, mode, loop and shuffle, the sound model and the mod name).
-//! What the panel cannot change (the track events, the user text, unknown chunks, the unused
-//! bytes) stays as read, so a song saved without an edit is the file read, byte for byte, for
-//! a canonical 4.2 file.
+//! What the panel cannot change (the user text, unknown chunks, the unused bytes, and the track
+//! events unless recording changed them) stays as read, so a song saved without an edit is the
+//! file read, byte for byte, for a canonical 4.2 file. A song whose tracks recording changed
+//! (task-057) is saved with the engine's tracks ([`Link::recorded_tracks`]), as the original
+//! saves the tracks it reads back from the DLL.
 
 use std::path::PathBuf;
 
@@ -101,6 +103,21 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
     if let (false, Some(e)) = (current, &engine) {
         // the events of an older file, as the load converted them (the 808's tom tunings)
         set_tracks(&mut s, e);
+    }
+    if let Some(tracks) = link.recorded_tracks() {
+        // a recorded song: the tracks as the engine holds them, as the original's TRAK writer
+        // `sub_437CFF` reads them back from the DLL (song msg 22, 0x437DE6) and writes each tick
+        // as `8 * tick / 192` (0x437E9E)
+        for (t, events) in tracks.iter().enumerate() {
+            s.tracks[t].events = events
+                .iter()
+                .map(|e| rbs::Event {
+                    pos: e.tick as u32 / 24,
+                    ctrl: e.ctrl,
+                    value: e.value,
+                })
+                .collect();
+        }
     }
     s.head.major = 4;
     s.head.minor = 2;

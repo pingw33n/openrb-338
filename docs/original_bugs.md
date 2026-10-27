@@ -298,10 +298,52 @@ status is a judgment call.
 - **Effect.** A store into another pattern, the live parameters or other device state [G: not
   run].
 - **Corpus.** None.
-- **rb.** `crates/rb-engine/src/frame/edit.rs` (module doc, lines 13-19): within the pattern
+- **rb.** `crates/rb-engine/src/frame/edit.rs` (module doc, "Bounds"): within the pattern
   array rb stores at the same flat address (another step or pattern); a store past the array is
   dropped, and `Engine::mixer_channel` drops a channel above 3.
 - **Home.** `docs/song_load.md` section 4.10 ("Bounds").
+
+### OB-18: a change recorded just before record off is lost [C: the code and the DLL run]
+
+- **What.** The merge `sub_1001F520(track, T)` moves into the track only the recorded events at
+  or before `T` and then frees the whole recording list. The record hook rounds a change made
+  while playing **up** to the controller's unit (24 ticks, or a bar for the 303/808/909 pattern
+  and on/off), so a change made less than a unit before the merge tick is above `T`.
+- **Where.** 0x1001F71A..0x1001F754 (the copy loop stops at `T`), 0x1001F75B `sub_100149A0` (frees
+  every node of `+0x198`); the rounding at 0x100214A7 (`sub_100146E0`).
+- **Trigger.** Record off while playing (msg 35 `{2,0}`: the Record button, Stop, Rewind, Fast
+  forward, Bar down, the switch to pattern mode) within a unit after a recorded change, e.g. a
+  pattern change recorded in the same bar as the Stop that follows it. At the loop wrap (`T =
+  loopEnd - 1`) a change rounded to the loop end goes to the loop start and is kept.
+- **Effect.** The change is not in the track. It was heard live (the store), and the record-off
+  chase in song mode sets the controller back to the track's value at once.
+- **Corpus.** None (no reference capture records). Checked by rbhost: the session
+  `sweep_session` of `crates/rb-player/tests/live_messages.rs` moves a level and turns record off
+  in the same call (rounded tick 1272 > T 1257); the DLL's WAV equals the one of the same session
+  without the move.
+- **rb.** The same (`Track::merge` in `crates/rb-engine/src/seq.rs`).
+- **Home.** `docs/initial_investigation.md` section 5.3.
+
+### OB-19: the merge frees the track's applied node and leaves the pointer to it [C: the code; G: the effect]
+
+- **What.** The merge unlinks and frees a track event whose controller was recorded, without
+  looking at the track's applied pointer `+0x228`; when that pointer is the freed node it points
+  into the free pool (the freed node's next becomes the pool's free list, `sub_10014484` at
+  0x10014491).
+- **Where.** 0x1001F62D `sub_10014B30` (unlink and `sub_10014484`); `+0x228` is set only by the
+  chase (`sub_100151F0`) and the apply loops.
+- **Trigger.** Record off in **pattern mode** after recording in song mode (the only merge with no
+  chase after it): the exe's switch to pattern mode sends `{0,0}` and then `{2,0}`, which merges
+  with no chase. Every other merge (loop wrap, record off in song mode, song end) chases right
+  after, which sets the pointer again; so does the locate of the next switch to song mode.
+- **Effect.** None from the panel: in pattern mode the clock applies no events, and the next
+  song-mode switch chases. An apply loop from the dangling pointer (a locate forward while
+  stopped with record on in pattern mode, which the panel cannot send because Record does nothing
+  in pattern mode) would walk the free list [G].
+- **Corpus.** None.
+- **rb.** `Track::merge` moves its index to the node before the freed one; no path rb models
+  reads it before the next chase.
+- **Home.** `docs/initial_investigation.md` section 5.3.
 
 ## 3. Export (Rebirth.exe)
 

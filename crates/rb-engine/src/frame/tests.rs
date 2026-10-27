@@ -1097,6 +1097,59 @@ fn the_clock_and_an_earlier_insert_write_the_slot() {
     assert_eq!(*seen.borrow(), [Some(0x3F7F_9724)]);
 }
 
+/// The panel's controller messages reach the record hook for the controllers the DLL's
+/// handlers hook (task-057), and record off merges them into the tracks.
+#[test]
+fn panel_messages_record() {
+    use song::Device as D;
+    let mut e = edit_engine();
+    let recorded = |e: &Engine, d: D| -> Vec<(i32, u8, u8)> {
+        e.frame.seq.tracks[d.id() as usize]
+            .recorded()
+            .iter()
+            .map(|x| (x.tick, x.ctrl, x.value))
+            .collect()
+    };
+    e.set_song_mode(1);
+    e.locate(1000);
+    // record off: nothing
+    e.device_param(D::Tb303_1, 3, 77);
+    assert!(recorded(&e, D::Tb303_1).is_empty());
+    e.set_record(1);
+    assert!(e.recording());
+    for c in [3, 8, 9, 10, 11] {
+        e.device_param(D::Tb303_1, c, 70 + c);
+    }
+    for c in [28, 29, 30] {
+        e.device_param(D::Tr808, c, 1);
+        e.device_param(D::Tr909, c, 2);
+    }
+    e.device_param(D::Delay, 5, 9);
+    e.device_param(D::Distortion, 3, 9);
+    e.device_param(D::Mixer, 7, 9);
+    e.mixer_global(0, 50);
+    e.mixer_global(1, 1);
+    e.mixer_channel(1, 2, 60);
+    e.mixer_channel(1, 0, 0);
+    // stopped at 1000: down to 984 (the 303's pattern would go to the bar, 768)
+    assert_eq!(recorded(&e, D::Tb303_1), [(984, 8, 78), (984, 3, 73)]);
+    assert_eq!(recorded(&e, D::Tr808), [(984, 28, 1)]);
+    assert_eq!(recorded(&e, D::Tr909), [(984, 29, 2), (984, 28, 2)]);
+    assert_eq!(recorded(&e, D::Delay), [(984, 5, 9)]);
+    assert_eq!(recorded(&e, D::Distortion), [(984, 3, 9)]);
+    assert_eq!(recorded(&e, D::Mixer), [(984, 13, 60), (984, 1, 1)]);
+    // record off: merged into the tracks, and chased (the 303's controller 3 is 73 live)
+    e.set_record(0);
+    assert!(D::ALL.iter().all(|&d| recorded(&e, d).is_empty()));
+    let tr = &e.frame.seq.tracks[D::Tb303_1.id() as usize];
+    assert!(
+        tr.events()
+            .iter()
+            .any(|x| (x.tick, x.ctrl, x.value) == (984, 3, 73))
+    );
+    assert_eq!(e.frame.devices.channels[0].live()[3], 73);
+}
+
 #[test]
 fn songs_built_on_one_process_state_share_it() {
     let a = Devices::implemented(None);

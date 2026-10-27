@@ -1099,7 +1099,8 @@ fn the_mode_switch_changes_mode_while_playing_and_space_plays_and_stops() {
     assert!(peak(&a) > 0);
     h.click("transport.mode");
     h.calls(2);
-    assert_eq!(h.take_log(), vec![global(0, 0)]);
+    // pattern mode turns record off (`sub_42A058`, 0x42A4CC), whatever record was
+    assert_eq!(h.take_log(), vec![global(0, 0), global(2, 0)]);
     let s = h.snap();
     assert!(s.playing && !s.song_mode && !h.app.panel.transport.song_mode);
     assert!(peak(&h.calls(50)) > 0, "the patterns play on");

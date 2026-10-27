@@ -35,6 +35,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use rb_engine::samples::SampleSet;
+use rb_engine::seq::Event as TrackEvent;
 use rb_engine::song::{Device, Song};
 use rb_engine::tables::Tables;
 use rb_engine::tr909;
@@ -286,6 +287,14 @@ pub struct Link {
     mark: u64,
     /// The messages sent so far, when turned on (`Some`).
     pub log: Option<Vec<Msg>>,
+    /// The open song's tracks once recording has changed them (task-057), as the player last
+    /// copied them ([`rb_player::Tracks`]); what Save writes then.
+    recorded: Option<[Vec<TrackEvent>; 9]>,
+    /// The generation and revision of `recorded`.
+    recorded_at: Option<(u32, u64)>,
+    /// The first player generation that can be the open song: a copy of an older song's tracks
+    /// is not the open song's.
+    tracks_from: u32,
 }
 
 impl Link {
@@ -309,8 +318,24 @@ impl Link {
             backlog: VecDeque::new(),
             mark: 0,
             log: None,
+            recorded: None,
+            recorded_at: None,
+            tracks_from: 0,
         };
         (link, audio)
+    }
+
+    /// The open song's tracks when recording has changed them since it was opened (the merge
+    /// of the loop wrap, record off or the song end), else `None`: Save writes these, as the
+    /// original's save writes the tracks it reads back from the DLL (`sub_437CFF`).
+    pub fn recorded_tracks(&self) -> Option<&[Vec<TrackEvent>; 9]> {
+        self.recorded.as_ref()
+    }
+
+    /// Which copy [`Link::recorded_tracks`] is (the player's generation and track revision): it
+    /// changes when recording changes the open song's tracks.
+    pub fn recorded_revision(&self) -> Option<(u32, u64)> {
+        self.recorded_at
     }
 
     /// The engine's values are taken only from a snapshot with more frames than this: the one
@@ -339,6 +364,9 @@ impl Link {
         self.forward(panel);
         let engine = self.player.build(song, samples);
         self.backlog.push_back(Command::Load(engine));
+        self.recorded = None;
+        self.recorded_at = None;
+        self.tracks_from = self.player.snapshot().generation + 1;
         let g = &song.globals;
         *panel = Panel::new();
         let t = &mut panel.transport;
@@ -591,13 +619,14 @@ impl Link {
         vec![]
     }
 
-    /// The player's command for a message. Record (msg 35 id 2) has none yet (task-057).
+    /// The player's command for a message.
     pub fn command(m: &Msg) -> Option<Command> {
         match m {
             Msg::Global { id, value } => Some(match id {
                 0 => Command::SongMode(*value != 0),
                 1 if *value != 0 => Command::Play,
                 1 => Command::Stop,
+                2 => Command::Record(*value != 0),
                 3 => Command::LoopOn(*value != 0),
                 4 => Command::Tempo(*value),
                 8 => Command::Locate(*value),
@@ -700,6 +729,12 @@ impl Link {
     /// Takes the engine's state into the panel.
     pub fn follow(&mut self, panel: &mut Panel) {
         let s = *self.player.snapshot();
+        let t = self.player.tracks();
+        let at = Some((t.generation, t.revision));
+        if t.generation >= self.tracks_from && t.merges > 0 && at != self.recorded_at {
+            self.recorded = Some(std::array::from_fn(|i| t.events[i].to_vec()));
+            self.recorded_at = at;
+        }
         // the meters and the running lights follow every call
         for c in 0..4 {
             panel.meters.insert(
@@ -761,9 +796,8 @@ impl Link {
         t.loop_start = s.loop_start as i32;
         t.loop_end = s.loop_end as i32;
         t.tempo = s.tempo as i32;
-        if !t.song_mode {
-            t.recording = false;
-        }
+        // record: the engine's byte (the song end turns it off, 0x1001F48C)
+        t.recording = s.recording && t.song_mode;
         panel.adopt("transport.shuffle", s.shuffle as i32);
         panel.vintage = s.vintage;
         for (id, &(d, c)) in &self.controls {

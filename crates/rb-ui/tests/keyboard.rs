@@ -159,6 +159,11 @@ fn the_transport_keys_follow_the_program() {
     assert_eq!(h.events(), vec![press("transport.stop")]);
     h.key(Key::Slash);
     assert_eq!(h.events(), vec![set("transport.loop", 1)]);
+    // Record works in song mode only (task-057, `sub_42A058`)
+    h.key(Key::Insert);
+    assert_eq!(h.events(), vec![]);
+    h.app.panel.set_switch("transport.mode", 1);
+    h.events();
     h.key(Key::Insert);
     assert_eq!(h.events(), vec![set("transport.record", 1)]);
     // numpad 5 / 4: fast forward / rewind by 10 bars (record goes off with the move)

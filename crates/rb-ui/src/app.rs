@@ -321,7 +321,10 @@ impl App {
         // Send what was done, take what the engine did (the panel follows playback).
         self.note_edits();
         if let Some(link) = &mut self.link {
+            let before = link.recorded_revision();
             link.sync(&mut self.panel);
+            // a merge of the recording changed the song's tracks: an edit
+            self.doc.modified |= link.recorded_revision() != before;
             ui.ctx().request_repaint_after(Duration::from_millis(16));
         }
         self.notice_bar(ui);

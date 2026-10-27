@@ -63,7 +63,11 @@ with song messages written to the port before given calls and dispatched there (
 `.rblv` file ("RBLV", u32 version 1, u32 calls, u32 count, then per message u32 call, u32 length and
 the message `{78, slot, msg, ...}`, slot filled in by rbhost, sorted by call) is written by rb-player's
 test `crates/rb-player/tests/live_messages.rs` with `RB_LIVE_OUT=DIR`, which compares the player's
-output of the same session with rbhost's hash. run.py has no option for it: upload `rbhost.exe`, the
+output of the same session with rbhost's hash. `--live-replies FILE` (task-057) also writes every
+reply the session's messages get, as records of u32 call, u32 length and the reply's bytes: the
+recording sessions query the tracks with song msg 22 `{track, u32 from, u32 to}` and compare the
+msg 37 replies `{78, slot, 37, track, u32 from, u32 to, [99, u32 tick, ctrl, value]...}` with rb's
+tracks (the test writes its own as `DIR/NAME.tracks`, the payloads after the 3-byte head). run.py has no option for it: upload `rbhost.exe`, the
 `.rbhm` and the `.rblv` and run it with `rcs_client.py exec` under one permit.
 
 On the machine, `rbhost.exe [options] SONG.rbhm OUT.wav` (`rbsmsg.py SONG.rbs SONG.rbhm` makes the

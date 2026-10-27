@@ -16,6 +16,10 @@
 //! `.rbhm` from `tools/rbhost/rbsmsg.py tests/songs/diag/songs/full_mix.rbs`) and compare the
 //! hashes.
 //!
+//! The recording sessions (task-057) record in song mode and also compare the tracks: song msg
+//! 22 queries ([`Ev::Tracks`]) of all nine tracks at two calls, whose msg 37 replies rbhost
+//! writes with `--live-replies FILE`; the payloads must equal rb's tracks byte for byte.
+//!
 //! The mod-change sessions (task-076, `docs/rbm.md` section 14.4) play a drum song and switch
 //! its mod with song msg 19 mid-song, `Player::set_mod` here. They need `RB_MOD_DIR`, the
 //! recrypted mods (skipped without it). rbhost loads the original mods (the msg 55 of
@@ -84,6 +88,11 @@ fn raw(c: &Command) -> Vec<u8> {
         Command::SongMode(on) => vec![78, 0, 35, 0, *on as u8],
         Command::Play => vec![78, 0, 35, 1, 1],
         Command::Stop => vec![78, 0, 35, 1, 0],
+        Command::Record(on) => vec![78, 0, 35, 2, *on as u8],
+        Command::LoopOn(on) => vec![78, 0, 35, 3, *on as u8],
+        Command::Locate(t) => global32(8, *t),
+        Command::LoopStart(t) => global32(12, *t),
+        Command::LoopEnd(t) => global32(16, *t),
         Command::DeviceParam {
             device,
             ctrl,
@@ -147,6 +156,13 @@ fn raw(c: &Command) -> Vec<u8> {
         }
         _ => unreachable!("not in the session"),
     }
+}
+
+/// Song msg 35 with a u32 value (ids 4, 8, 12, 16), big-endian.
+fn global32(id: u8, v: u32) -> Vec<u8> {
+    let mut m = vec![78, 0, 35, id];
+    m.extend_from_slice(&v.to_be_bytes());
+    m
 }
 
 fn param(device: Device, ctrl: u8, value: u8) -> Command {
@@ -415,6 +431,199 @@ fn pcf_303_session() -> Vec<(u32, Command)> {
     ]
 }
 
+/// task-057: recording. Song mode over a two-bar loop with record on while playing: knobs,
+/// switches, a 303 pattern change and an 808 on/off (both rounded up to the bar), the mixer's
+/// level and PCF routing, the effects; through a loop wrap (which merges) to record off
+/// mid-pass, just after a pattern change that the merge loses (OB-18); later, record on while
+/// stopped (rounded down), a locate forward with record on (applies instead of chasing), play,
+/// more knobs and record off; then the loop off. `record` false leaves out the Record
+/// commands: the control, which must render otherwise.
+fn record_session(pat303: u8, record: bool) -> Vec<(u32, Command)> {
+    use Device as D;
+    let ch = |channel, field, value| Command::MixerChannel {
+        channel,
+        field,
+        value,
+    };
+    let mut s: Vec<(u32, Command)> = vec![
+        (0, Command::SongMode(true)),
+        (0, Command::LoopStart(0)),
+        (0, Command::LoopEnd(2 * 768)),
+        (0, Command::LoopOn(true)),
+        (0, Command::Locate(0)),
+        (0, Command::Record(true)),
+        (0, Command::Play),
+        (10, param(D::Tb303_1, 3, 20)),
+        (12, param(D::Tb303_1, 4, 100)),
+        (15, param(D::Tb303_1, 3, 60)),
+        (20, param(D::Tr909, 3, 50)),
+        (20, ch(1, 1, 30)),
+        (21, Command::MixerGlobal { id: 2, value: 1 }),
+        (22, param(D::Delay, 3, 90)),
+        (30, param(D::Tb303_1, 1, pat303 ^ 1)),
+        (40, param(D::Tr808, 0, 0)),
+        (200, param(D::Tb303_2, 5, 120)),
+        (210, param(D::Distortion, 1, 100)),
+        (250, param(D::Tb303_1, 1, pat303)),
+        (252, Command::Record(false)),
+        (330, Command::Stop),
+        (340, Command::Record(true)),
+        (341, param(D::Tb303_1, 6, 10)),
+        (342, Command::Locate(1152)),
+        (343, param(D::Tb303_1, 5, 30)),
+        (350, Command::Play),
+        (360, ch(0, 2, 10)),
+        (370, param(D::Tr909, 3, 120)),
+        (400, Command::Record(false)),
+        (450, Command::LoopOn(false)),
+    ];
+    for k in 0..10u32 {
+        s.push((60 + 10 * k, param(D::Tb303_1, 3, (10 * k + 5) as u8)));
+    }
+    if !record {
+        s.retain(|(_, c)| !matches!(c, Command::Record(_)));
+    }
+    s.sort_by_key(|(call, _)| *call);
+    s
+}
+
+/// task-057: recording against automation, over `mixer_level_sweep_303` (a level sweep on
+/// mixer channel 0): the channel's level knob moved while the sweep plays (held: the track's
+/// events of that controller are skipped until the merge), a last move and record off in one
+/// call (the move, rounded up past the merge tick, is lost: OB-18; the sweep returns at the
+/// next unit), record on and a knob, pattern mode with record on and record off there (a
+/// merge with no chase), back to song mode, then record on near bar 999 with the loop off and
+/// a knob, so that the song end merges, stops and locates to 0; play from there.
+fn sweep_session(record: bool) -> Vec<(u32, Command)> {
+    let level = |value| Command::MixerChannel {
+        channel: 0,
+        field: 1,
+        value,
+    };
+    let mut s: Vec<(u32, Command)> = vec![
+        (0, Command::SongMode(true)),
+        (0, Command::LoopStart(0)),
+        (0, Command::LoopEnd(4 * 768)),
+        (0, Command::LoopOn(true)),
+        (0, Command::Locate(0)),
+        (0, Command::Record(true)),
+        (0, Command::Play),
+        (
+            50,
+            Command::MixerChannel {
+                channel: 0,
+                field: 2,
+                value: 20,
+            },
+        ),
+        // a change just before record off, rounded up past the merge tick: lost (OB-18)
+        (141, level(99)),
+        (141, Command::Record(false)),
+        (200, Command::Record(true)),
+        (210, level(127)),
+        (220, Command::SongMode(false)),
+        (230, Command::Record(false)),
+        (240, param(Device::Tb303_1, 3, 30)),
+        (250, Command::SongMode(true)),
+        (300, Command::LoopOn(false)),
+        (300, Command::Locate(766_464)),
+        (301, Command::Record(true)),
+        (310, level(40)),
+        (450, Command::Play),
+    ];
+    for k in 0..10u8 {
+        s.push((30 + 10 * k as u32, level(10 * k)));
+    }
+    if !record {
+        s.retain(|(_, c)| !matches!(c, Command::Record(_)));
+    }
+    s.sort_by_key(|(call, _)| *call);
+    s
+}
+
+/// The sha256 of rbhost's WAV of [`record_session`] over `full_mix` (`ReBirth.dll` 2.01,
+/// 2026-10-27).
+const RBHOST_RECORD: &str = "bd067446fcb9f5bb193f0bfc7c2cb620f2b28fe004941ec8e88ba7c10ee1bfb8";
+
+/// The sha256 of rbhost's WAV of [`sweep_session`] (2026-10-27).
+const RBHOST_SWEEP: &str = "e821590917a3cbe3e77a34d7e63fcb4275ea6607495694631e4cf39fe52e5a94";
+
+/// The sha256 of the msg 37 payloads (each reply's bytes after its head `{78, slot, 37}`, as
+/// [`track_reply`] builds them) the DLL gave the track queries of [`recording_equals_rbhost`]:
+/// all nine tracks after the first record off (call 253) and at the end (call 599), rbhost
+/// `--live-replies` (2026-10-27).
+const RBHOST_RECORD_TRACKS: &str =
+    "e44e1bff6418fcdaa7036b15c44901358455eb1022743d5199e63ad69ffea36e";
+
+/// The same for [`recording_against_automation_equals_rbhost`] (calls 142 and 599).
+const RBHOST_SWEEP_TRACKS: &str =
+    "703927890fe42d7cd08c87ff4f1001146bcea6d480c17cc567edd487ea5379d2";
+
+/// `events` with the queries of all nine tracks at each of `calls`.
+fn with_track_queries(mut events: Vec<(u32, Ev)>, calls: &[u32]) -> Vec<(u32, Ev)> {
+    for &c in calls {
+        events.extend((0..9).map(|t| (c, Ev::Tracks(t))));
+    }
+    events.sort_by_key(|(call, _)| *call);
+    events
+}
+
+fn sha256(b: &[u8]) -> String {
+    Sha256::digest(b)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+#[test]
+fn recording_against_automation_equals_rbhost() {
+    let s = song(&manifest()["diag"]["mixer_level_sweep_303"]);
+    let ev = with_track_queries(cmds(sweep_session(true)), &[142, CALLS - 1]);
+    let (sha, tracks) = render_with_tracks("sweep", &s, samples(), CALLS, ev);
+    let plain = render(
+        "sweep_off",
+        &s,
+        samples(),
+        CALLS,
+        cmds(sweep_session(false)),
+    );
+    assert_ne!(sha, plain, "the recording changes nothing");
+    assert_eq!(
+        sha, RBHOST_SWEEP,
+        "the player's session differs from rbhost's"
+    );
+    assert_eq!(
+        sha256(&tracks.concat()),
+        RBHOST_SWEEP_TRACKS,
+        "the player's tracks differ from the DLL's"
+    );
+}
+
+#[test]
+fn recording_equals_rbhost() {
+    let s = song(&manifest()["diag"]["full_mix"]);
+    let p = s.device_payload(Device::Tb303_1)[1];
+    let ev = with_track_queries(cmds(record_session(p, true)), &[253, CALLS - 1]);
+    let (sha, tracks) = render_with_tracks("record", &s, samples(), CALLS, ev);
+    let plain = render(
+        "record_off",
+        &s,
+        samples(),
+        CALLS,
+        cmds(record_session(p, false)),
+    );
+    assert_ne!(sha, plain, "the recording changes nothing");
+    assert_eq!(
+        sha, RBHOST_RECORD,
+        "the player's session differs from rbhost's"
+    );
+    assert_eq!(
+        sha256(&tracks.concat()),
+        RBHOST_RECORD_TRACKS,
+        "the player's tracks differ from the DLL's"
+    );
+}
+
 /// The pattern each pattern device plays in pattern mode: its data block's controller 1.
 fn patterns(s: &Song) -> [u8; 4] {
     [
@@ -431,15 +640,46 @@ fn patterns(s: &Song) -> [u8; 4] {
 enum Ev {
     Cmd(Command),
     Mod(u16, Arc<SampleSet>),
+    /// Song msg 22 `{track, u32 from, u32 to}` (0x10012346 → `sub_10020EC0`), the exe's query
+    /// of a track's events (nodes `from..to` of the first list, clamped to its length), which
+    /// the DLL answers with a msg 37 of `{track, u32 from, u32 to}` and 7-byte records `[99,
+    /// u32 tick, ctrl, value]` (big-endian). In rb nothing is sent: the track is read from the
+    /// current song before the call renders, so the call must hold no command.
+    Tracks(u8),
 }
 
 fn cmds(events: Vec<(u32, Command)>) -> Vec<(u32, Ev)> {
     events.into_iter().map(|(c, x)| (c, Ev::Cmd(x))).collect()
 }
 
+/// The msg 37 payload of [`Ev::Tracks`]: track `t`'s events, all of them.
+fn track_reply(t: u8, events: &[rb_engine::seq::Event]) -> Vec<u8> {
+    let mut b = vec![t];
+    b.extend_from_slice(&0u32.to_be_bytes());
+    b.extend_from_slice(&(events.len() as u32).to_be_bytes());
+    for e in events {
+        b.push(99);
+        b.extend_from_slice(&(e.tick as u32).to_be_bytes());
+        b.extend_from_slice(&[e.ctrl, e.value]);
+    }
+    b
+}
+
 /// Renders `events` over `s` (built with `kit`) through the player for `calls` calls and returns
 /// its WAV's sha256; with `RB_LIVE_OUT` set, writes the session for rbhost and the WAV as `name`.
 fn render(name: &str, s: &Song, kit: Arc<SampleSet>, calls: u32, events: Vec<(u32, Ev)>) -> String {
+    render_with_tracks(name, s, kit, calls, events).0
+}
+
+/// [`render`], and the msg 37 payloads of the session's [`Ev::Tracks`] queries, in order.
+fn render_with_tracks(
+    name: &str,
+    s: &Song,
+    kit: Arc<SampleSet>,
+    calls: u32,
+    events: Vec<(u32, Ev)>,
+) -> (String, Vec<Vec<u8>>) {
+    let mut replies = Vec::new();
     let mut rblv = b"RBLV".to_vec();
     rblv.extend_from_slice(&1u32.to_le_bytes());
     rblv.extend_from_slice(&calls.to_le_bytes());
@@ -449,6 +689,12 @@ fn render(name: &str, s: &Song, kit: Arc<SampleSet>, calls: u32, events: Vec<(u3
             Ev::Cmd(c) => raw(c),
             // sub_4259FF: song msg 19 {u16 BE id}
             Ev::Mod(id, _) => vec![78, 0, 19, (id >> 8) as u8, *id as u8],
+            Ev::Tracks(t) => {
+                let mut m = vec![78, 0, 22, *t];
+                m.extend_from_slice(&0u32.to_be_bytes());
+                m.extend_from_slice(&(rb_engine::seq::POOL_NODES as u32).to_be_bytes());
+                m
+            }
         };
         rblv.extend_from_slice(&call.to_le_bytes());
         rblv.extend_from_slice(&(r.len() as u32).to_le_bytes());
@@ -459,11 +705,19 @@ fn render(name: &str, s: &Song, kit: Arc<SampleSet>, calls: u32, events: Vec<(u3
     let mut out = vec![0i16; 2 * CALL_FRAMES * calls as usize];
     let mut it = events.into_iter().peekable();
     for (call, buf) in out.chunks_mut(2 * CALL_FRAMES).enumerate() {
+        let mut sent = false;
         while let Some((_, e)) = it.next_if(|(at, _)| *at == call as u32) {
             match e {
                 Ev::Cmd(c) => send(&mut p, c),
                 Ev::Mod(_, m) => assert!(p.set_mod(m).is_ok(), "the command queue is full"),
+                Ev::Tracks(t) => {
+                    assert!(!sent, "a track query in a call with commands");
+                    let tr = &a.current().frame.seq.tracks[t as usize];
+                    replies.push(track_reply(t, tr.events()));
+                    continue;
+                }
             }
+            sent = true;
         }
         a.render_i16(buf);
     }
@@ -479,8 +733,11 @@ fn render(name: &str, s: &Song, kit: Arc<SampleSet>, calls: u32, events: Vec<(u3
         std::fs::write(dir.join(format!("{name}.rblv")), &rblv).unwrap();
         std::fs::write(dir.join(format!("{name}.wav")), &wav).unwrap();
         eprintln!("{name}: wav sha256 {sha}");
+        if !replies.is_empty() {
+            std::fs::write(dir.join(format!("{name}.tracks")), replies.concat()).unwrap();
+        }
     }
-    sha
+    (sha, replies)
 }
 
 #[test]

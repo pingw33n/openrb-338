@@ -292,7 +292,7 @@ if t > lastTick:                                   // signed
     if songMode:
         if loopOn and loopEnd <= pos and loopEnd > pos - inc:   // fild loopEnd; fcomp; pos - inc in f64
             every track: apply events with tick <= loopEnd - 1
-            [record on: merge the recording, sub_1001F520]
+            [record on: every track's recording merged up to loopEnd - 1, sub_1001F520, §5.3]
             pos = pos + (double)(loopStart - loopEnd); t = trunc(pos)     // 0x1001F135
             every track: chase to loopStart; every device: slot 2 (relocate) with loopStart
         every track: apply events with tick <= t   // 0x1001F2AD
@@ -312,10 +312,12 @@ lastTick = t
   (0x10010380), `retn 4` (0x1001BF40) and `retn` (0x10012C00).
 - Track events go to the device's slot 11 (set-param, `+0x2C`) through `sub_10011E60`, which finds
   the device by id; a controller whose byte in the track's hold mask (`track+4`) is set is skipped
-  (the mask is cleared by the recording path `sub_1001F520` and set by nothing the load or the
-  export sends).
-- **Song end** (0x1001F484): record off (`sub_10021194(0)`), the host is told (msg 35 `{2,0}`,
-  `{1,0}`), `sub_100218A0` (stop without the bar locate), then locate 0. No step in that block.
+  ([C] task-057: the record hook sets the byte of the controller it records, 0x10021402, and the
+  merge `sub_1001F520` clears all 128, 0x1001F767; nothing the load or the export sends sets it,
+  §5.3).
+- **Song end** (0x1001F484): record off (`sub_10021194(0)`, which with record on merges the
+  recording and chases, §5.3), the host is told (msg 35 `{2,0}`, `{1,0}`), `sub_100218A0` (stop
+  without the bar locate), then locate 0. No step in that block.
 - **Shuffle** (0x1001F3D0): `idiv` truncating, `96*(t/96) + max(0, t%96 - shuffle/6)`.
 
 **The track list** (track ctor `sub_1001EDA0`, 0x22C bytes; list ctor `sub_100144B0` at `+0x108`).
@@ -323,7 +325,13 @@ A circular singly linked list whose head is the list itself with tick `0x7FFFFFF
 `{next, tick, ctrl, value}`. `+0x228` points at the last applied node, `+0x84` is the chase state
 (128 bytes), `+4` the hold mask, `+0x104` the device id, list `+0xD + ctrl` a quantisation in 24-tick
 units (1 for every controller from the ctor; [C] task-023: 32 for controllers 0 and 1 of the 303
-tracks, set by the 303's slot 7 from the song ctor, §6.4).
+tracks, set by the 303's slot 7 from the song ctor, §6.4). A second list at `+0x198` holds the
+recording (§5.3); its quantisation stays 1 (`sub_10021560` sets only `+0x108`'s).
+- **The node pool** [C] (task-057): every node of every list comes from one pool for the process,
+  `dword_10100230` (`sub_10021A10` → `sub_100142C0`: 0x186A0 = 100000 nodes of 12 bytes, a free
+  count at `+4` and a free list at `+8`). `sub_10014434` takes a node only while the free count is
+  above 1, else the insert stores nothing; freed nodes go back (`sub_10014484`, `sub_100149A0`,
+  `sub_10014550`).
 - **Insert** (`sub_10014750`, from msg 37's `sub_10021010`): the tick is rounded up to a multiple of
   `24q` (`sub_100146E4`, no change for loaded ticks with q = 1), an event above 767231 after that is dropped,
   and the node is linked before the first node whose tick is not below it, unless a node of the same
@@ -352,7 +360,7 @@ tracks, set by the 303's slot 7 from the song ctor, §6.4).
 - Ids 3, 4, 12, 16, 20 store loop on, tempo, loop start, loop end and shuffle (`sub_10021110`,
   `sub_1001FCD0`, `sub_10021130`, `sub_10021150`, `sub_10021170`); with `transport+0x15C == 46`
   (a ctor argument, [G] the ReWire mode) the transport keeps them instead. Id 2 is record
-  (`sub_10021194`: turning it off while on merges the recording with `sub_1001F520` and chases).
+  (`sub_10021194`, msg 35 case at 0x100125A7 → `sub_10021190`; [C] task-057, §5.3).
 - **Msg 36** (0x100126B2) applies the 23 bytes in this order: song mode, play or stop, record, loop
   on, tempo, locate, loop start, loop end, shuffle, then stores bytes 21 and 22. The global struct's
   ctor (`sub_10018AC0`): tempo 120000, loop end 768, shuffle 64, byte 22 = 1, the rest 0; the song
@@ -386,14 +394,87 @@ returned for the song (top-level msg 52), not a device.
 
 | msg | Meaning |
 |---|---|
-| 35 `{id,val}` | Set global parameter. Ids: 0 song mode, 1 play/stop, 3 loop on, 4 tempo (BPM×1000), 8 locate, 12 loop start, 16 loop end, 20 shuffle, 21 sound model flag (§6.3). Ids 4, 8, 12, 16 carry a u32 |
+| 35 `{id,val}` | Set global parameter. Ids: 0 song mode, 1 play/stop, 2 record (§5.3), 3 loop on, 4 tempo (BPM×1000), 8 locate, 12 loop start, 16 loop end, 20 shuffle, 21 sound model flag (§6.3). Ids 4, 8, 12, 16 carry a u32 |
 | 36 | Bulk-set the global struct (23 bytes) |
 | 37 | Track events: `[track, u32, u32]`, then 7 bytes each `[99, u32 tick, ctrl, val]` |
+| 22 `{track, u32 from, u32 to}` | [C] task-057: the track query (0x10012346 → `sub_10020EC0`): nodes `from..to` (clamped to the count, `sub_10014670`) of the track's first list, replied at once on the DLL->Panel port (`sub_1001DED0`, engine `+4`) as `[78, slot, 37, track, u32 from, u32 to, then 7 bytes each [99, u32 tick, ctrl, val]]`. The exe's TRAK writer `sub_437CFF` asks with it in batches of 1284 (0x437DE6) and writes each tick as `8*tick/192` (0x437E9E): a saved song has the DLL's tracks, ctor events and recording included |
+| 30, 31 | Not modelled (task-057): 30 (0x100124EA → `sub_1001FEB0`) calls `sub_1001FFE0(0, 0x7FFFFFFF)` on every track, 31 (0x10012508 → `sub_100201E0`) `sub_10020350(loopEnd)` and `sub_1001FFE0(loopStart, loopEnd)`; both then merge every track at `trunc(pos)` (`sub_1001F520`) and reset the applied pointers [C for the calls; G: an edit command that clears a range of the tracks, not read further]; no path rb models sends them |
 | 33 | Full reset |
 | 41 | Device data `[dev, sub, payload]` (parameters and patterns) |
 | 55 / 56 | Load a mod sample bank / select the built-in bank |
 
 The EXE's conversion of an `.rbs` into these messages is in `docs/song_load.md` [C].
+
+### 5.3 Recording [C] (task-057)
+
+Global byte 2 (`song+0x15A`) is record. The panel's Record button sends msg 35 `{2,v}`, only in
+song mode, and the exe also sends `{2,0}` after `{0,0}` when the mode switch goes to pattern mode
+and before the moves of Rewind, Fast forward, Bar down and Stop (`sub_42A058`, 0x42A4CC,
+`docs/ui_spec.md` §3).
+
+**The record hook** `sub_10012BC0(song, dev, ctrl, v)` → `sub_10021340(seq, ...)`. The panel's
+controller messages call it after their store with the message's own controller and value (303
+sub 40 controllers 0..8, 808 57 0..28, 909 74 0..29 raw, delay 84, distortion 92, compressor 102
+and PCF 114 every controller, mixer 145 ids 1 and 2, mixer 147 fields 1..4 as `5 + 6c + k`;
+`docs/song_load.md` §4.10). The 303's MIDI input `sub_100261F0` calls it too (out of scope).
+```
+if !songMode or !record: return                         // 0x10021352, 0x10021367
+[pool free count 99, 50 or < 10: top-level msg 79 to the host, sub_1001D440 (a warning only)]
+track = the track whose device id (+0x104) is dev      // 0x100213BF
+track.hold[ctrl] = 1                                   // 0x10021402
+t = trunc(pos)                                         // fistp qword
+t = playing ? roundUp(t, 24*q[ctrl]) : roundDown(t, 24*q[ctrl])   // sub_100146E0 / sub_10014720,
+                                                       // q of the first list (+0x108)
+if loopOn and t == loopEnd: t = loopStart               // 0x100214B9..0x100214DB
+insert (t, ctrl, v) into the recording list +0x198      // sub_10014750 (its q = 1: up to 24)
+```
+So a 303 pattern change or on/off recorded while playing goes to the next bar line, one while
+stopped to the start of the current bar; a change at the loop end goes to the loop start. The
+hold byte makes the clock's apply loops skip the track's own events of that controller (the
+chase does not look at it), so the value set by hand stays until the merge.
+
+**The merge** `sub_1001F520(track, T)` (`retn 4`), run on every track:
+```
+flags[128] = 0; vals[128] = 0xFF                       // sub_10014270 → sub_10014274
+for each node m of the first list with m.tick <= T, in list order:
+    every recording node r with r.tick <= m.tick sets flags[r.ctrl]
+    vals[m.ctrl] = m.value
+    if flags[m.ctrl] and m.tick != 0: unlink and free m  // sub_10014B30
+every recording node with tick <= T sets flags[ctrl]    // 0x1001F649
+for c in 0..127 with flags[c]:                         // 0x1001F675
+    t1 = roundUp(T + 1, 24*q[c])                        // sub_100146E0
+    if the first list has no node (t1, c): insert (t1, c, vals[c])     // sub_10014840, sub_10014750
+for each recording node with tick <= T: insert it into the first list  // 0x1001F722
+free the whole recording list (sub_100149A0); hold[0..127] = 0           // 0x1001F767
+```
+A recorded span thus replaces the track's events of that controller from the first recorded
+tick up to `T` (tick-0 events stay), and the controller returns to its automation value at the
+next unit after `T` (0xFF, which the chase reads as no value, when the track has no event of it
+up to `T`). Recorded nodes above `T` are freed, not merged ([OB-18](original_bugs.md)). The
+applied pointer `+0x228` is not adjusted; when its own node is freed it dangles
+([OB-19](original_bugs.md)).
+
+**When it merges.**
+- The loop wrap with record on (0x1001F0C7): every track at `T = loopEnd - 1`, after the events up
+  to `loopEnd - 1` are applied and before the jump and the chase to the loop start. Record stays
+  on; the next pass plays the recording.
+- Record off, `sub_10021194(v)` with record on and `v == 0` (msg 35 `{2,0}`, msg 36's byte 2,
+  the song end): every track at `T = trunc(pos)` (0x10021206), then in song mode every track is
+  chased to `T` (0x10021294, as the locate's chase) and applied; then byte 2 = `v` (0x10021327).
+  In pattern mode there is no chase.
+- Msgs 30 and 31 (§5.2), and `sub_1001FD10` from `sub_1001C3C4` (the MIDI song position, out of
+  scope).
+- With record on, a locate while stopped to a later tick applies the events forward (respecting
+  the hold mask) instead of chasing (§5.2, `sub_1001F984`).
+
+Checked against the DLL (`crates/rb-player/tests/live_messages.rs`, rbhost `--live` and
+`--live-replies`): two recording sessions (over `full_mix` and `mixer_level_sweep_303`: record
+while playing over a loop wrap, record off mid-pass and in pattern mode, record on while stopped,
+a locate forward with record on, the song end with record on) render to the same WAV as rb-player,
+and the nine tracks queried with msg 22 at two points of each session equal rb's byte for byte.
+rb: `crates/rb-engine/src/seq.rs` (`Sequencer::record_hook`, `Track::record`, `Track::merge`,
+`Sequencer::set_record`); the pool is per song in rb and the lists reserve a whole pool each, so
+the real-time callback never grows them (the module doc).
 
 ---
 

@@ -453,7 +453,12 @@ sub that changes state does (`p` pattern, `s` step; offsets in the device object
 Notes:
 - **The record hook** `sub_10012BC0` → `sub_10021340` acts only with globals byte 0 (song
   mode) and byte 2 (record) set: it sets the track's hold byte `+4 + ctrl` and inserts the event
-  (`sub_10014750`). With record off, a `{ctrl, v}` message is slot 11's store for every
+  into the track's recording list (`sub_10014750` on `+0x198`; the rounding, the loop rule and
+  the merge into the track are in `docs/initial_investigation.md` §5.3). [C] task-057: every
+  hook call passes the message's own controller and value (e.g. 0x10025D3B..0x10025D57 for the
+  303), for the controllers the table names; the distortion's, the PCF's and the compressor's
+  call it for every k, the ones their switch does not store included (0x10010F66, 0x10016E8A,
+  0x1000F1CE), like the delay's (0x1000FD6C). With record off, a `{ctrl, v}` message is slot 11's store for every
   controller slot 11 takes (303 0x10026180, 808 0x10029050, 909 0x1002C6D0, delay 0x1000FDC0,
   dist 0x10010FB0, PCF 0x10016EF0, compressor 0x1000F220, mixer 0x10015C00), plus the one extra
   live byte of the pattern devices, which no audio reads. The changed flags are the panel
@@ -480,7 +485,8 @@ rb: `Engine::device_param` (the `{ctrl, v}` subs; `SongDevice::param_message`),
 `Engine::pattern_header`, `Engine::pattern`, `Engine::step_field`, `Engine::step`
 (`crates/rb-engine/src/frame/edit.rs`), sent by the `rb_player::Command` variants
 `DeviceParam`, `MixerGlobal`, `MixerChannel`, `PatternField`, `PatternHeader`, `Pattern`,
-`StepField`, `Step`. They model record off (recording: task-057). Where rb differs from the
+`StepField`, `Step`. The controller messages call the record hook as the DLL's do
+(`frame::edit::hooks`, `Sequencer::record_hook`, task-057). Where rb differs from the
 DLL's stores:
 - **Delay pan and distortion amount/shape above 127.** The DLL's subs 84 and 92 store the byte
   raw; rb's slot 11, which `Engine::device_param` uses, clamps the delay's pan
@@ -715,7 +721,11 @@ Every engine-side point of task-003 is now answered:
 - [C] The 4.0 mixer-track converter `sub_437380` (§5.1, task-018).
 - [C] Global byte 2 (msg 35 id 2, `0x10021194`) is record: it makes the loop wrap merge the
   recorded events (`sub_1001F520`) and locate apply events forward instead of chasing (task-022,
-  investigation §5). Nothing in the load or the export sets it.
+  investigation §5). Nothing in the load or the export sets it. The recording itself: task-057,
+  investigation §5.3. The exe's save writes the tracks it reads back from the DLL with song msg
+  22 (`sub_437CFF`, 0x437DE6), so a saved song carries the recording and the ctor's tick-0
+  events (every shipped song has exactly those: 18, 9, 9, 29, 30, 5, 3, 7, 3 events at position
+  0 in tracks 0..8).
 - [C] Byte 22 (`+0x16E`) has no effect on the engine (§3, task-034).
 
 Still open:

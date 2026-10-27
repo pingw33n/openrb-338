@@ -196,6 +196,54 @@ fn the_callback_does_not_allocate() {
         send(&mut p, c);
         events += render(&mut a, &mut buf, 3);
     }
+    // recording (task-057) in song mode over the two-bar loop above: knobs, switches and the
+    // mixer recorded while playing, through two loop wraps (each merges), then record off
+    // (merges and chases)
+    send(&mut p, Command::SongMode(true));
+    send(&mut p, Command::Record(true));
+    events += render(&mut a, &mut buf, 1);
+    assert!(p.snapshot().recording);
+    let before = a.current().frame.seq.tracks[1].events().len();
+    for k in 0..300u32 {
+        let v = (k % 128) as u8;
+        send(
+            &mut p,
+            Command::DeviceParam {
+                device: Device::Tb303_1,
+                ctrl: 2 + (k % 6) as u8,
+                value: v,
+            },
+        );
+        send(
+            &mut p,
+            Command::DeviceParam {
+                device: Device::Tr909,
+                ctrl: (k % 30) as u8,
+                value: v % 4,
+            },
+        );
+        send(
+            &mut p,
+            Command::MixerChannel {
+                channel: (k % 4) as u8,
+                field: 1 + (k % 4) as u8,
+                value: v,
+            },
+        );
+        events += render(&mut a, &mut buf, 1);
+    }
+    send(&mut p, Command::Record(false));
+    events += render(&mut a, &mut buf, 1);
+    assert!(!p.snapshot().recording);
+    let tracks = &a.current().frame.seq.tracks;
+    assert!(tracks[1].events().len() > before, "nothing was recorded");
+    assert!(tracks.iter().all(|t| t.recorded().is_empty()));
+    // the callback copied the recorded tracks for the UI (`Player::tracks`)
+    let copy = p.tracks();
+    assert!(copy.merges > 0);
+    for (c, t) in copy.events.iter().zip(tracks) {
+        assert_eq!(c.as_slice(), t.events());
+    }
     // the Mods menu's change on the playing song (task-056), twice: the second lets go of a
     // kit only the song held (its table and the samples its voices played), which would be
     // freed if the callback dropped it

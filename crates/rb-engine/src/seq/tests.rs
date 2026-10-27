@@ -606,3 +606,255 @@ fn mixer_device_rules() {
     assert_eq!(m.live.channels[2].send, 40);
     assert_ne!(m.live, MixerParams::default());
 }
+
+// ---------------------------------------------------------------- recording (task-057)
+
+fn triples(e: &[Event]) -> Vec<(i32, u8, u8)> {
+    e.iter().map(|e| (e.tick, e.ctrl, e.value)).collect()
+}
+
+/// The record hook `sub_10021340`: only in song mode with record on; the tick rounded down
+/// when stopped and up when playing, to the controller's quantisation of the first list; the
+/// loop end becomes the loop start; the hold byte is set.
+#[test]
+fn record_hook_rounds_and_holds() {
+    use Device as D;
+    let mut r = Rig::new(120_000);
+    r.seq.set_record(1, &mut r.dev);
+    r.seq.record_hook(D::Tb303_1, 3, 50);
+    assert!(r.seq.tracks[1].recorded().is_empty(), "pattern mode");
+    let mut r = Rig::song_mode(120_000);
+    r.seq.tracks[1].set_quant(1, 32);
+    r.locate(100);
+    r.seq.record_hook(D::Tb303_1, 3, 50);
+    assert!(r.seq.tracks[1].recorded().is_empty(), "record off");
+    r.seq.set_record(1, &mut r.dev);
+    // stopped: down (100 → 96; controller 1's unit is a bar: 0)
+    r.seq.record_hook(D::Tb303_1, 3, 50);
+    r.seq.record_hook(D::Tb303_1, 1, 2);
+    assert_eq!(
+        triples(r.seq.tracks[1].recorded()),
+        [(0, 1, 2), (96, 3, 50)]
+    );
+    let hold = r.seq.tracks[1].hold;
+    assert!(hold[1] && hold[3] && !hold[2]);
+    // playing: up (100 → 120, 768); the same tick and controller takes the value
+    r.play();
+    r.seq.record_hook(D::Tb303_1, 3, 51);
+    r.seq.record_hook(D::Tb303_1, 3, 52);
+    r.seq.record_hook(D::Tb303_1, 1, 3);
+    // the loop on: the loop end is the loop start
+    r.seq.set_loop_on(1);
+    r.seq.set_loop_start(0);
+    r.seq.set_loop_end(768);
+    r.seq.record_hook(D::Tb303_1, 1, 4);
+    assert_eq!(
+        triples(r.seq.tracks[1].recorded()),
+        [(0, 1, 4), (96, 3, 50), (120, 3, 52), (768, 1, 3)]
+    );
+    // each device records into its own track; nothing was applied or merged
+    r.seq.record_hook(D::Mixer, 7, 9);
+    assert_eq!(triples(r.seq.tracks[0].recorded()), [(120, 7, 9)]);
+    assert!(r.seq.tracks[1].events().is_empty());
+    r.take();
+    // a controller above 127 is not recorded
+    r.seq.record_hook(D::Delay, 200, 1);
+    assert!(r.seq.tracks[D::Delay as usize].recorded().is_empty());
+}
+
+/// The merge `sub_1001F520` over a track with automation on controllers 2 and 3.
+#[test]
+fn merge_replaces_the_recorded_span() {
+    let mut t = Track::new(Device::Tb303_1);
+    for (tick, c, v) in [
+        (0, 2, 10),
+        (0, 3, 20),
+        (96, 2, 11),
+        (192, 2, 12),
+        (288, 2, 13),
+        (192, 3, 21),
+    ] {
+        t.insert(tick, c, v);
+    }
+    let mut free = 1000;
+    // controller 2 at 144 and 240, controller 4 (no automation) at 48, one above the merge
+    t.record(144, false, None, 2, 50, &mut free);
+    t.record(240, false, None, 2, 51, &mut free);
+    t.record(48, false, None, 4, 7, &mut free);
+    t.record(300, true, None, 2, 60, &mut free);
+    assert_eq!(free, 996);
+    t.chase(250);
+    t.merge(250, &mut free);
+    // controller 2: the node at 192 goes (a recorded node at or before it), 96 stays (before
+    // the first recorded one), 288 is after the merge; it returns to 12, its value at 250, at
+    // the next 24-tick unit 264. Controller 4 returns to 0xFF there (no node up to 250). The
+    // recorded node at 312 is lost (OB-18).
+    assert_eq!(
+        triples(t.events()),
+        [
+            (0, 3, 20),
+            (0, 2, 10),
+            (48, 4, 7),
+            (96, 2, 11),
+            (144, 2, 50),
+            (192, 3, 21),
+            (240, 2, 51),
+            (264, 4, 0xFF),
+            (264, 2, 12),
+            (288, 2, 13)
+        ]
+    );
+    assert!(t.recorded().is_empty());
+    assert_eq!(t.hold, [false; 128]);
+    // 4 recorded, 1 removed, 2 returns, 3 copies, 4 freed
+    assert_eq!(free, 996 + 1 - 2 - 3 + 4);
+    // the applied node (192, 2) was removed: rb moves to the one before it (OB-19)
+    assert_eq!(t.next(), 6);
+}
+
+/// A tick-0 node is never removed, and a return that finds a node of its controller at its
+/// tick leaves it; the unit is the controller's (a bar for the 303's pattern).
+#[test]
+fn merge_keeps_tick_zero_and_existing_returns() {
+    let mut t = Track::new(Device::Tb303_1);
+    t.set_quant(1, 32);
+    t.insert(0, 1, 5);
+    t.insert(768, 1, 6);
+    t.insert(48, 2, 1);
+    t.insert(72, 2, 3);
+    let mut free = 100;
+    t.record(0, false, None, 1, 9, &mut free);
+    t.record(30, false, None, 2, 2, &mut free);
+    t.merge(50, &mut free);
+    // controller 1: tick 0 kept and given the recorded value, 768 (the return's tick) kept as
+    // it is; controller 2: 48 removed, its return at 72 finds a node there, which keeps 3
+    assert_eq!(
+        triples(t.events()),
+        [(0, 1, 9), (24, 2, 2), (72, 2, 3), (768, 1, 6)]
+    );
+}
+
+/// Recording while playing: the held controller ignores its automation; record off merges
+/// and chases.
+#[test]
+fn recording_while_playing_and_record_off() {
+    let mut r = Rig::song_mode(300_000);
+    for (tick, v) in [(0, 1), (384, 2), (768, 3)] {
+        r.add(1, tick, 2, v);
+    }
+    r.locate(0);
+    r.seq.set_record(1, &mut r.dev);
+    r.play();
+    r.take();
+    r.run(100);
+    // block 100: tick 139, up to 144
+    r.seq.record_hook(Device::Tb303_1, 2, 50);
+    let log = r.run(300);
+    assert!(!log.iter().any(|(_, s)| s.starts_with("303a p")), "held");
+    assert_eq!(r.seq.tick_pos(), 557);
+    r.seq.set_record(0, &mut r.dev);
+    // merged at 557 and chased there: 50
+    assert_eq!(r.take(), ["303a p2=50"]);
+    assert_eq!(
+        triples(r.seq.tracks[1].events()),
+        [(0, 2, 1), (144, 2, 50), (576, 2, 2), (768, 2, 3)]
+    );
+    let log = r.run(200);
+    let p: Vec<_> = log
+        .iter()
+        .filter(|(_, s)| s.starts_with("303a p"))
+        .map(|(_, s)| s.as_str())
+        .collect();
+    assert_eq!(p, ["303a p2=2", "303a p2=3"]);
+    // record off while off does nothing
+    r.seq.set_record(0, &mut r.dev);
+    assert!(r.take().is_empty());
+}
+
+/// The loop wrap merges the recording up to loopEnd - 1 (0x1001F0C7): the next pass plays it.
+#[test]
+fn the_loop_wrap_merges() {
+    let mut r = Rig::song_mode(300_000);
+    r.seq.set_loop_on(1);
+    r.seq.set_loop_end(768);
+    r.add(1, 0, 2, 1);
+    r.add(1, 384, 2, 2);
+    r.locate(0);
+    r.seq.set_record(1, &mut r.dev);
+    r.play();
+    r.take();
+    r.run(100);
+    r.seq.record_hook(Device::Tb303_1, 2, 50);
+    // to the wrap (tick 768 at block 552) and on to tick 345 of the next pass
+    let log = r.run(700);
+    let p: Vec<_> = log
+        .iter()
+        .filter(|(_, s)| s.starts_with("303a p"))
+        .map(|(_, s)| s.as_str())
+        .collect();
+    // held in the first pass; the wrap chases to 0 (1), then 50 at 144; 384 is gone and the
+    // return at 768, the loop end, never fires in the loop (OB-4)
+    assert_eq!(p, ["303a p2=1", "303a p2=50"]);
+    assert_eq!(
+        triples(r.seq.tracks[1].events()),
+        [(0, 2, 1), (144, 2, 50), (768, 2, 2)]
+    );
+    assert_eq!(r.seq.tracks[1].hold, [false; 128]);
+    assert_eq!(r.seq.globals.byte2, 1);
+}
+
+/// Song end turns record off through `sub_10021194`, which merges.
+#[test]
+fn song_end_merges_the_recording() {
+    let mut r = Rig::song_mode(300_000);
+    r.locate(767_000);
+    r.seq.set_record(1, &mut r.dev);
+    r.play();
+    r.seq.record_hook(Device::Tb303_1, 3, 9);
+    r.take();
+    r.run(200);
+    assert_eq!(r.seq.globals.byte2, 0);
+    assert_eq!(triples(r.seq.tracks[1].events()), [(767_016, 3, 9)]);
+}
+
+/// The pool refuses a new node when one is free (`sub_10014434`); a replacement takes none,
+/// and a list never outgrows its reservation.
+#[test]
+fn the_pool_refuses_the_last_node() {
+    let mut s = Sequencer::default();
+    assert_eq!(s.free_nodes(), POOL_NODES);
+    let events: Vec<_> = (0..POOL_NODES as u32)
+        .map(|i| song::TrackEvent {
+            tick: i / 128 * 24,
+            ctrl: (i % 128) as u8,
+            value: 1,
+        })
+        .collect();
+    s.add_events(1, &events);
+    assert_eq!(s.tracks[1].events().len(), POOL_NODES - 1);
+    assert_eq!(s.free_nodes(), 1);
+    s.add_events(
+        1,
+        &[song::TrackEvent {
+            tick: 0,
+            ctrl: 0,
+            value: 7,
+        }],
+    );
+    assert_eq!(
+        s.tracks[1].events()[127],
+        Event {
+            tick: 0,
+            ctrl: 0,
+            value: 7
+        }
+    );
+    assert_eq!(s.tracks[1].events.capacity(), POOL_NODES);
+    // recording is refused too, the hold byte set all the same
+    let mut d = probes(&Log::default());
+    s.set_song_mode(1, &mut d);
+    s.set_record(1, &mut d);
+    s.record_hook(Device::Tb303_2, 3, 1);
+    assert!(s.tracks[2].recorded().is_empty());
+    assert!(s.tracks[2].hold[3]);
+}

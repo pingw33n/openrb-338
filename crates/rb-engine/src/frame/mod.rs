@@ -1065,7 +1065,7 @@ impl Engine {
         } else {
             seq.play(d);
         }
-        seq.set_record(g.byte2);
+        seq.set_record(g.byte2, d);
         seq.set_loop_on(g.loop_on);
         seq.set_tempo(g.tempo);
         seq.locate(g.locate as i32, d);
@@ -1254,6 +1254,18 @@ impl Engine {
         f.seq.set_song_mode(mode, &mut f.devices);
     }
 
+    /// Song msg 35 `{2,v}` (`sub_10021194`): record on (non-zero) or off. Off while on merges
+    /// every track's recording and, in song mode, chases ([`crate::seq::Sequencer::set_record`]).
+    pub fn set_record(&mut self, v: u8) {
+        let f = &mut self.frame;
+        f.seq.set_record(v, &mut f.devices);
+    }
+
+    /// Globals byte 2: record is on.
+    pub fn recording(&self) -> bool {
+        self.frame.seq.globals.byte2 != 0
+    }
+
     /// Song msg 35 `{3,v}`: the loop switch.
     pub fn set_loop_on(&mut self, v: u8) {
         self.frame.seq.set_loop_on(v);
@@ -1290,11 +1302,9 @@ impl Engine {
         f.devices.for_each(|d| d.set_sound_model(on));
     }
 
-    /// Slot 11 of device `d` with controller `ctrl` (`sub_10012B40`): what a track event does,
-    /// and what the panel's knob and switch messages do with record off (the 303's msg 40
-    /// `{ctrl, v}` at 0x10025CFC stores the live byte as slot 11 does, then calls the record
-    /// hook `sub_10021340`, which acts only in song mode with record on; the mixer's msg 145
-    /// ids 1, 2 and msg 147 fields 1..4 likewise).
+    /// Slot 11 of device `d` with controller `ctrl` (`sub_10012B40`): what a track event does.
+    /// The panel's knob and switch messages store as slot 11 does and then call the record hook
+    /// (`Engine::device_param` and its siblings in [`edit`]); this does not.
     pub fn set_param(&mut self, d: song::Device, ctrl: u8, value: u8) {
         self.frame.devices.device_mut(d).set_param(ctrl, value);
     }

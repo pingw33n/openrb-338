@@ -50,6 +50,9 @@
  *                           messages of call i into the port, dispatches them (pump()), renders
  *                           call i, and writes the K calls to OUT.wav, as the app's realtime path
  *                           drains the panel's messages at the start of a SafeSoundCallback
+ *   --live-replies FILE     with --live (task-057): every reply the session's messages get, as
+ *                           records of u32 call, u32 length and the reply's bytes (e.g. the
+ *                           msg 37 track events a song msg 22 {track, u32 from, u32 to} asks for)
  *   -v                      log every reply
  */
 #define WIN32_LEAN_AND_MEAN
@@ -94,6 +97,10 @@ static int16_t pump_buf[CHUNK_FRAMES * 2];
 static int16_t chunk_buf[CHUNK_FRAMES * 2];
 static unsigned char reply[10000];
 static int reply_len;
+/* --live-replies: where the live session's replies go, and the call they belong to. */
+static FILE *replies_out;
+static uint32_t live_call;
+static void put_le32(unsigned char *p, uint32_t v);
 
 static void die(const char *fmt, ...) {
     va_list ap;
@@ -267,6 +274,13 @@ static int collect_replies(void) {
             fprintf(stderr, "\n");
         }
         if (len > 0 && buf[0] == 75) die("engine replied 'K' (out of memory), code %d", len > 1 ? buf[1] : -1);
+        if (replies_out) {
+            unsigned char h[8];
+            put_le32(h, live_call);
+            put_le32(h + 4, (uint32_t)len);
+            fwrite(h, 1, 8, replies_out);
+            fwrite(buf, 1, len, replies_out);
+        }
         memcpy(reply, buf, len);
         reply_len = len;
         n++;
@@ -589,6 +603,7 @@ static void live_session(const char *path, const char *wav_path) {
             sent = 1;
         }
         if (k < count && le32(data + p) < call) die("live messages not sorted by call");
+        live_call = call;
         if (sent) pump();
         call_safe(chunk_buf, REALTIME_FRAMES);
         fwrite(chunk_buf, 4, REALTIME_FRAMES, wav);
@@ -596,6 +611,7 @@ static void live_session(const char *path, const char *wav_path) {
     if (k != count) die("live messages after the last call");
     write_wav(wav, calls * REALTIME_FRAMES);
     fclose(wav);
+    if (replies_out) fclose(replies_out);
     fprintf(stderr, "rbhost: live session: %u messages, %u calls of %d frames written to %s\n", count, calls,
             REALTIME_FRAMES, wav_path);
     fflush(stderr);
@@ -609,7 +625,8 @@ static void usage(void) {
             "usage: rbhost [--dll PATH] [--idle-blocks N] [--post-stop-blocks M] [--drum-counters A,B,C,D]\n"
             "              [--startup-sound] [--first-chunk-drain] [--no-untitled] [--private-port] [--idle-fpu-cw HEX]\n"
             "              [--dump-tables DIR] [--dump-state DIR] [--dump-float DIR]\n"
-            "              [--mod-msg FILE] [--load-msg FILE]... [--dump-samples DIR] [--live FILE] [-v]\n"
+            "              [--mod-msg FILE] [--load-msg FILE]... [--dump-samples DIR] [--live FILE]\n"
+            "              [--live-replies FILE] [-v]\n"
             "              SONG.rbhm OUT.wav\n");
     exit(2);
 }
@@ -617,7 +634,7 @@ static void usage(void) {
 int main(int argc, char **argv) {
     const char *dll_path = "C:\\ReBirth RB-338\\ReBirth.dll";
     const char *msg_path = NULL, *wav_path = NULL, *tables_dir = NULL, *state_dir = NULL, *float_dir = NULL;
-    const char *mod_msg_path = NULL, *samples_dir = NULL, *live_path = NULL;
+    const char *mod_msg_path = NULL, *samples_dir = NULL, *live_path = NULL, *replies_path = NULL;
     const char *load_paths[8];
     int loads = 0;
     FILE *float_out = NULL;
@@ -656,6 +673,7 @@ int main(int argc, char **argv) {
             load_paths[loads++] = argv[++i];
         } else if (!strcmp(a, "--dump-samples") && i + 1 < argc) samples_dir = argv[++i];
         else if (!strcmp(a, "--live") && i + 1 < argc) live_path = argv[++i];
+        else if (!strcmp(a, "--live-replies") && i + 1 < argc) replies_path = argv[++i];
         else if (!strcmp(a, "-v")) verbose = 1;
         else if (a[0] == '-') usage();
         else if (!msg_path) msg_path = a;
@@ -783,7 +801,10 @@ int main(int argc, char **argv) {
     send_msg(m, 2);
 
     render_idle(idle_blocks);
-    if (live_path) live_session(live_path, wav_path);
+    if (live_path) {
+        if (replies_path && !(replies_out = fopen(replies_path, "wb"))) die("cannot write %s", replies_path);
+        live_session(live_path, wav_path);
+    }
 
     /* The export, docs/export_state.md section 4 (sub_427988). */
     m[0] = 35, m[1] = 1, m[2] = 0;

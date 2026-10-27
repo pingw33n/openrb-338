@@ -531,9 +531,14 @@ impl Panel {
     pub fn set_switch(&mut self, id: &str, v: u8) {
         if id == "transport.mode" {
             self.transport.song_mode = v != 0;
+            self.set_event(id, v as i32);
             if !self.transport.song_mode {
+                // pattern mode turns record off: `{2, 0}` after `{0, 0}`, whatever record was
+                // (`sub_42A058`, 0x42A4B0..0x42A4CC)
                 self.transport.recording = false;
+                self.set_event("transport.record", 0);
             }
+            return;
         } else if self.switches.insert(id.into(), v) == Some(v) {
             return;
         }
@@ -711,7 +716,9 @@ impl Panel {
                     self.set_event("transport.position", position);
                 }
             }
-            "record" => {
+            // the button works in song mode only (its test at 0x42A1C7 is inside the song-mode
+            // block of `sub_42A058`)
+            "record" if t.song_mode => {
                 t.recording = !t.recording;
                 let v = t.recording as i32;
                 self.set_event("transport.record", v);

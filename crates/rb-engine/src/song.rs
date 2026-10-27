@@ -92,7 +92,8 @@ pub struct Globals {
     pub song_mode: u8,
     /// Byte 1: play (0 = stopped at load).
     pub play: u8,
-    /// Byte 2: 0 at load; meaning not traced (msg 35 id 2, DLL `0x10021194`).
+    /// Byte 2: record (msg 35 id 2, DLL `0x10021194`; [`crate::seq::Sequencer::set_record`]);
+    /// 0 at load.
     pub byte2: u8,
     /// Byte 3.
     pub loop_on: u8,

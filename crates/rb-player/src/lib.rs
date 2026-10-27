@@ -56,8 +56,19 @@
 //! commands: the knobs and switches ([`Command::DeviceParam`], [`Command::MixerGlobal`],
 //! [`Command::MixerChannel`]) and the pattern edits ([`Command::PatternField`],
 //! [`Command::PatternHeader`], [`Command::Pattern`], [`Command::StepField`], [`Command::Step`]).
-//! Not modelled yet: recording (task-057; there is no Record command, and the messages act as
-//! with record off).
+//!
+//! # Recording
+//!
+//! [`Command::Record`] is the transport's Record button (song msg 35 `{2,v}`, task-057): in song
+//! mode with record on, the panel's controller messages above record into the song's tracks
+//! (the record hook, [`rb_engine::seq::Sequencer::record_hook`]), and the loop wrap, record off
+//! and the song end merge the recording into them. The recorded events go into lists whose
+//! capacity is reserved when the song is built (`rb_engine::seq`'s module doc: a whole node
+//! pool per list, as many nodes as the original's pool has), so the callback never grows them;
+//! [`Snapshot::recording`] follows the record byte, which the song end clears, and
+//! [`Player::tracks`] gives the UI the current song's tracks ([`Tracks`], copied by the callback
+//! into a second triple buffer whenever they change), which is what a save of a recorded song
+//! writes.
 
 pub mod output;
 
@@ -68,6 +79,7 @@ use rb_engine::frame::export::REALTIME_FRAMES;
 use rb_engine::frame::{Devices, Engine, MixerParams};
 use rb_engine::process::ProcessState;
 use rb_engine::samples::{Retired, SampleSet};
+use rb_engine::seq::{Event, POOL_NODES};
 use rb_engine::song::{Device, Song};
 use rb_engine::tables::Tables;
 
@@ -95,6 +107,8 @@ pub enum Command {
     Locate(u32),
     /// Song msg 35 `{0,m}`: song mode (`true`) or pattern mode.
     SongMode(bool),
+    /// Song msg 35 `{2,v}`: record on or off ([`Engine::set_record`]; off merges the recording).
+    Record(bool),
     /// Song msg 35 `{3,v}`.
     LoopOn(bool),
     /// Song msg 35 `{12,v}`, ticks.
@@ -244,6 +258,8 @@ pub struct Snapshot {
     /// The song position in ticks (768 per bar).
     pub tick: i32,
     pub playing: bool,
+    /// Record (globals byte 2): set by [`Command::Record`], cleared by it and by the song end.
+    pub recording: bool,
     pub song_mode: bool,
     pub loop_on: bool,
     pub loop_start: u32,
@@ -271,11 +287,56 @@ pub struct Snapshot {
     pub output_errors: u64,
 }
 
+/// The current song's track events (task-057), as the callback last copied them: after a song
+/// becomes current and whenever its lists change ([`rb_engine::seq::Sequencer::revision`]: a
+/// merge of the recording, a stop's prune). This is what the original's save reads from the DLL
+/// (the exe's TRAK writer `sub_437CFF` asks with song msg 22, 0x437DE6). Each list has the
+/// capacity of a whole node pool, so the copy never allocates in the callback.
+#[derive(Debug, PartialEq)]
+pub struct Tracks {
+    /// The [`Snapshot::generation`] of the song copied.
+    pub generation: u32,
+    /// Its [`rb_engine::seq::Sequencer::revision`].
+    pub revision: u64,
+    /// Its [`rb_engine::seq::Sequencer::merges`]: non-zero when recording changed the tracks.
+    pub merges: u64,
+    /// Tracks 0..8 (by device id), in list order.
+    pub events: [Vec<Event>; 9],
+}
+
+impl Default for Tracks {
+    fn default() -> Self {
+        Tracks {
+            generation: 0,
+            revision: 0,
+            merges: 0,
+            events: std::array::from_fn(|_| Vec::with_capacity(POOL_NODES)),
+        }
+    }
+}
+
+impl Clone for Tracks {
+    /// A copy with the capacity reserved again (the triple buffer's three copies).
+    fn clone(&self) -> Self {
+        let mut t = Tracks {
+            generation: self.generation,
+            revision: self.revision,
+            merges: self.merges,
+            ..Tracks::default()
+        };
+        for (d, s) in t.events.iter_mut().zip(&self.events) {
+            d.extend_from_slice(s);
+        }
+        t
+    }
+}
+
 /// The UI side.
 pub struct Player {
     commands: rtrb::Producer<Command>,
     garbage: rtrb::Consumer<Garbage>,
     snapshot: triple_buffer::Output<Snapshot>,
+    tracks: triple_buffer::Output<Tracks>,
     tables: Arc<Tables>,
     process: ProcessState,
 }
@@ -287,6 +348,9 @@ pub struct Audio {
     commands: rtrb::Consumer<Command>,
     garbage: rtrb::Producer<Garbage>,
     snapshot: triple_buffer::Input<Snapshot>,
+    tracks: triple_buffer::Input<Tracks>,
+    /// The generation and revision of the last tracks published.
+    tracks_published: Option<(u32, u64)>,
     /// The int16 output of the last engine call.
     buf: Box<[i16; 2 * CALL_FRAMES]>,
     /// The frames of `buf` already handed out.
@@ -309,12 +373,15 @@ impl Player {
         let (cp, cc) = rtrb::RingBuffer::new(COMMANDS);
         let (gp, gc) = rtrb::RingBuffer::new(GARBAGE);
         let (si, so) = triple_buffer::triple_buffer(&Snapshot::default());
+        let (ti, to) = triple_buffer::triple_buffer(&Tracks::default());
         let mut audio = Audio {
             current,
             pending: None,
             commands: cc,
             garbage: gp,
             snapshot: si,
+            tracks: ti,
+            tracks_published: None,
             buf: Box::new([0; 2 * CALL_FRAMES]),
             pos: CALL_FRAMES,
             frames: 0,
@@ -326,6 +393,7 @@ impl Player {
             commands: cp,
             garbage: gc,
             snapshot: so,
+            tracks: to,
             tables,
             process,
         };
@@ -399,6 +467,11 @@ impl Player {
     /// The latest snapshot.
     pub fn snapshot(&mut self) -> &Snapshot {
         self.snapshot.read()
+    }
+
+    /// The current song's tracks as the callback last copied them ([`Tracks`]).
+    pub fn tracks(&mut self) -> &Tracks {
+        self.tracks.read()
     }
 }
 
@@ -486,6 +559,7 @@ impl Audio {
             Command::Stop => self.target().stop(),
             Command::Locate(t) => self.target().locate(t),
             Command::SongMode(on) => self.target().set_song_mode(on as u8),
+            Command::Record(on) => self.target().set_record(on as u8),
             Command::LoopOn(on) => self.target().set_loop_on(on as u8),
             Command::LoopStart(t) => self.target().set_loop_start(t),
             Command::LoopEnd(t) => self.target().set_loop_end(t),
@@ -612,6 +686,7 @@ impl Audio {
         s.pending = self.pending.is_some();
         s.tick = f.seq.tick_pos();
         s.playing = g.play != 0;
+        s.recording = g.byte2 != 0;
         s.song_mode = g.song_mode != 0;
         s.loop_on = g.loop_on != 0;
         s.loop_start = g.loop_start;
@@ -639,6 +714,20 @@ impl Audio {
         s.faulted_calls = e.fault().map_or(0, |f| f.calls);
         s.output_errors = self.output_errors;
         self.snapshot.publish();
+        // the tracks, when they changed: copied into lists that have the room
+        let now = (self.generation, f.seq.revision);
+        if self.tracks_published != Some(now) {
+            let t = self.tracks.input_buffer_mut();
+            t.generation = now.0;
+            t.revision = now.1;
+            t.merges = f.seq.merges;
+            for (d, tr) in t.events.iter_mut().zip(&f.seq.tracks) {
+                d.clear();
+                d.extend_from_slice(tr.events());
+            }
+            self.tracks.publish();
+            self.tracks_published = Some(now);
+        }
     }
 
     /// The current song (for tests and diagnostics; the UI reads the [`Snapshot`]).

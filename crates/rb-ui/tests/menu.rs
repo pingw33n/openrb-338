@@ -174,6 +174,106 @@ fn read_rbs(path: &Path) -> rbs::Song {
     rbs::Song::parse(&std::fs::read(path).unwrap()).unwrap()
 }
 
+/// Each track's events as (tick, controller, value), sorted: a save and a reopen keep the
+/// events but reverse the order of a tick's events, as the original does (the load inserts
+/// each event before those of its tick, `docs/initial_investigation.md` section 5).
+fn track_sets(h: &mut Harness) -> Vec<Vec<(i32, u8, u8)>> {
+    h.audio
+        .current_mut()
+        .frame
+        .seq
+        .tracks
+        .iter()
+        .map(|t| {
+            let mut v: Vec<_> = t
+                .events()
+                .iter()
+                .map(|e| (e.tick, e.ctrl, e.value))
+                .collect();
+            v.sort_unstable();
+            v
+        })
+        .collect()
+}
+
+/// task-057: a song recorded in song mode (knob moves while playing, then record off, which
+/// merges them into the tracks) is modified, saves the engine's tracks, reopens with them, saves
+/// back unchanged, and renders as the recorded engine state does.
+#[test]
+fn a_recorded_song_saves_its_tracks() {
+    let src = root().join("tests/songs/diag/songs/303_saw_lowcut.rbs");
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("recorded.rbs");
+    let mut h = Harness::new();
+    h.open(&src);
+    if !h.app.panel.transport.song_mode {
+        h.app.panel.press("transport.mode", 0.0);
+    }
+    h.app.panel.press("transport.record", 0.0);
+    h.app.panel.press("transport.play", 0.0);
+    h.frame(vec![]);
+    h.calls(20);
+    assert!(h.app.panel.transport.recording);
+    for (k, v) in [200, 700, 450].into_iter().enumerate() {
+        h.app.panel.set_knob("tb303_1.cutoff", v);
+        h.app.panel.set_knob("tb303_1.resonance", 1000 - v);
+        h.frame(vec![]);
+        h.calls(10 + k);
+    }
+    assert!(h.app.link.as_ref().unwrap().recorded_tracks().is_none());
+    h.app.panel.press("transport.record", 0.0);
+    h.frame(vec![]);
+    h.calls(2);
+    assert!(!h.app.panel.transport.recording);
+    let link = h.app.link.as_ref().unwrap();
+    let recorded = link.recorded_tracks().expect("the merge's tracks");
+    assert!(recorded[1].iter().any(|e| e.tick > 0 && e.ctrl == 3));
+    assert!(h.app.doc.modified, "recording is an edit");
+    h.app.save_to(&out);
+    let saved = read_rbs(&out);
+    let a = read_rbs(&src);
+    assert_ne!(saved.tracks, a.tracks);
+    let live = track_sets(&mut h);
+
+    let mut h2 = Harness::new();
+    h2.open(&out);
+    assert_eq!(track_sets(&mut h2), live, "the reopened tracks");
+    let again = dir.path().join("again.rbs");
+    h2.app.save_to(&again);
+    assert_eq!(std::fs::read(&again).unwrap(), std::fs::read(&out).unwrap());
+
+    // the saved song renders as the source song with the recorded tracks (in the engine's
+    // list order) does
+    let Some(std_mod) = standard_mod() else {
+        return;
+    };
+    let mut want = load_song(&src).unwrap_or_else(|_| panic!("source"));
+    for (t, tr) in h.audio.current_mut().frame.seq.tracks.iter().enumerate() {
+        want.tracks[t] = tr
+            .events()
+            .iter()
+            .map(|e| rb_engine::song::TrackEvent {
+                tick: e.tick as u32,
+                ctrl: e.ctrl,
+                value: e.value,
+            })
+            .collect();
+    }
+    let got = load_song(&out).unwrap_or_else(|_| panic!("saved"));
+    let mut r = Renderer::new(Some(&std_mod), ModOpts::default());
+    let render = |r: &mut Renderer, s| {
+        r.render("x", s, DEFAULT_IDLE_BLOCKS)
+            .unwrap_or_else(|rb_cli::Fail(_, m)| panic!("{m}"))
+    };
+    let (g, w) = (render(&mut r, &got), render(&mut r, &want));
+    assert!(g == w, "the saved song renders otherwise");
+    let plain = render(
+        &mut r,
+        &load_song(&src).unwrap_or_else(|_| panic!("source")),
+    );
+    assert!(g != plain, "the recording is not heard in the export");
+}
+
 #[test]
 fn every_controller_has_a_panel_value() {
     let panel = Panel::new();

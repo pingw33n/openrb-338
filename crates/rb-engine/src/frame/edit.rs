@@ -5,10 +5,11 @@
 //! pattern devices) and does what the DLL's handler does: byte stores into the live parameter
 //! block or into the device's pattern array. None of them computes anything.
 //!
-//! **Record.** Every controller message calls the record hook `sub_10012BC0` → `sub_10021340`
-//! after its store, which inserts the change into the device's track only in song mode with
-//! record on (globals bytes 0 and 2). Recording is task-057; these entry points model the
-//! messages with record off.
+//! **Record.** The controller messages call the record hook `sub_10012BC0` → `sub_10021340`
+//! after their store, with the message's controller and value as they are; it records the
+//! change into the device's track only in song mode with record on (globals bytes 0 and 2,
+//! [`crate::seq::Sequencer::record_hook`], task-057). Which controllers reach the hook is
+//! [`hooks`]'s.
 //!
 //! **Bounds.** The DLL checks the field of a 303 step (0..5) and of a pattern header (0, 1) and
 //! nothing else: a pattern above 31, a step above 15 or a drum instrument above 11 computes an
@@ -71,7 +72,28 @@ fn field_ok(d: Device, field: u8) -> bool {
     }
 }
 
+/// Whether the `{ctrl, v}` message of device `d` calls the record hook for `ctrl`: the 303's sub
+/// 40 for controllers 0..8 only (the cases of the switch at 0x10025D27 that call
+/// `sub_10012BC0`, 0x10025D5A..0x10025EF4; 9, 10 and above 10 do not), the 808's 57 for 0..28
+/// (0x10028923..0x10028E9C; 29, 30 and above do not), the 909's 74 for 0..29 (0x1002BF70..
+/// 0x1002C51D), and the effects' subs 84, 92, 102 and 114 for every controller, the ones their
+/// switch does not store included (0x1000FD6C, 0x10010F66, 0x1000F1CE, 0x10016E8A).
+pub fn hooks(d: Device, ctrl: u8) -> bool {
+    match d {
+        Device::Tb303_1 | Device::Tb303_2 => ctrl as usize <= crate::tb303::WAVEFORM,
+        Device::Tr808 => ctrl as usize <= crate::tr808::LAST_CTRL,
+        Device::Tr909 => ctrl as usize <= crate::tr909::LAST_CTRL,
+        Device::Mixer => false,
+        Device::Delay | Device::Distortion | Device::Compressor | Device::Pcf => true,
+    }
+}
+
 impl Engine {
+    /// The record hook for device `d` ([`crate::seq::Sequencer::record_hook`]).
+    fn record_hook(&mut self, d: Device, ctrl: u8, value: u8) {
+        self.frame.seq.record_hook(d, ctrl, value);
+    }
+
     /// The pattern array of device `d` and its shape, if `d` is an implemented pattern device.
     fn patterns_of(&mut self, d: Device) -> Option<(&mut [u8], PatternShape)> {
         let shape = PatternShape::of(d)?;
@@ -95,22 +117,29 @@ impl Engine {
     /// (0x10010EF1), compressor 102 (0x1000F178), PCF 114 (0x10016DFB). For the controllers the
     /// device's slot 11 accepts it is slot 11's store ([`super::SongDevice::param_message`]);
     /// the pattern devices also store one byte beyond their last step byte (303 controller 10,
-    /// 808 30, 909 31). Then the record hook (module doc). The mixer has no such message (its
-    /// are [`Engine::mixer_global`] and [`Engine::mixer_channel`]).
+    /// 808 30, 909 31). Then the record hook for the controllers [`hooks`] names. The mixer has
+    /// no such message (its are [`Engine::mixer_global`] and [`Engine::mixer_channel`]).
     pub fn device_param(&mut self, d: Device, ctrl: u8, value: u8) {
         if d != Device::Mixer {
             self.frame.devices.device_mut(d).param_message(ctrl, value);
+        }
+        if hooks(d, ctrl) {
+            self.record_hook(d, ctrl, value);
         }
     }
 
     /// Mixer msg 145 `{id, v}` (0x10015900, sender `sub_4131BC`): id 0 the live master
     /// (0x1001592C, no record hook), 1 the compressor id and 2 the PCF id (0x10015947,
-    /// 0x10015989: slot 11's controllers 1 and 2, then the record hook), 3 and 4 nothing.
+    /// 0x10015989: slot 11's controllers 1 and 2, then the record hook with that controller,
+    /// 0x1001596C, 0x100159AE), 3 and 4 nothing.
     pub fn mixer_global(&mut self, id: u8, value: u8) {
         let m = &mut self.frame.devices.mixer;
         match id {
             0 => m.set_master(value),
-            1 | 2 => super::SongDevice::set_param(m, id, value),
+            1 | 2 => {
+                super::SongDevice::set_param(m, id, value);
+                self.record_hook(Device::Mixer, id, value);
+            }
             _ => {}
         }
     }
@@ -118,8 +147,9 @@ impl Engine {
     /// Mixer msg 147 `{c, k, v}` (0x100159DB, sender `sub_413206`): field 0 channel c's live
     /// enabled byte (0x10015A1F, the mute, no record hook); fields 1..4 its level, pan, delay send
     /// and dist switch (`+0x41..+0x44 + 6c`: slot 11's controller `5 + 6c + k`, then the record
-    /// hook); field 5 nothing. The DLL does not bound c; a channel above 3 is dropped (it would
-    /// write past the channel blocks; the panel sends 0..3).
+    /// hook with that controller, 0x10015A75..); field 5 nothing. The DLL does not bound c; a
+    /// channel above 3 is dropped (it would write past the channel blocks; the panel sends
+    /// 0..3).
     pub fn mixer_channel(&mut self, c: u8, k: u8, value: u8) {
         if c > 3 {
             return;
@@ -127,7 +157,11 @@ impl Engine {
         let m = &mut self.frame.devices.mixer;
         match k {
             0 => m.set_enabled(c as usize, value),
-            1..=4 => super::SongDevice::set_param(m, 5 + 6 * c + k, value),
+            1..=4 => {
+                let ctrl = 5 + 6 * c + k;
+                super::SongDevice::set_param(m, ctrl, value);
+                self.record_hook(Device::Mixer, ctrl, value);
+            }
             _ => {}
         }
     }

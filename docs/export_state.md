@@ -273,6 +273,15 @@ call when the second dispatch starts no later than `t0 + 15 ms` (§2.3); a locat
 less, so this fails only if the millisecond clock steps past the deadline between them [G: rare]. If
 it does, play is applied one chunk late and the export starts with 2048 frames rendered stopped.
 
+**Record.** [C] (task-057) The export sends no msg 35 `{2,v}` (the messages of `sub_427988` are
+the table's): its stop at 0x427A02 is the message, not the transport's Stop button (which sends
+`{2,0}` first, `docs/ui_spec.md` §3), so global byte 2 stays as the transport had it. With record
+on, the locate to the loop start applies the events forward instead of chasing when the loop
+start is after the stopped position, the hold mask of controllers recorded since the last merge
+still skips their events, and the loop end merges the recording (`docs/initial_investigation.md`
+§5.3) [G: the effect on an export not captured; every reference capture and rb's export run
+with record off, which the load leaves at 0].
+
 **No realtime callback runs during the export**: the channel is stopped first. [G] The MME worker is
 deleted in `sub_4A5E38` after the buffers are back; a refill already running at that moment could
 overlap the first export call (both try-lock the engine mutex; the loser outputs silence or skips).

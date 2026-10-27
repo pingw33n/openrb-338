@@ -224,7 +224,11 @@ Behavior (all [C], `sub_42A058` and its callees, ticks: 768 per bar):
   [G]), loop start = `start / 768 + 1`, loop length =
   `(end - start) / 768`. In pattern mode the three are disabled.
 - **Record** toggles global byte 2 (msg 35 id 2); the recording itself is the engine's
-  (`docs/initial_investigation.md` section 5, "record"). It has no function in pattern mode.
+  (`docs/initial_investigation.md` section 5.3). It has no function in pattern mode: its press
+  is tested inside the song-mode block of `sub_42A058` (0x42A1C7), with Rewind, Fast forward and
+  the bar and loop arrows. The mode switch sends `{0, m}` and, for pattern mode, `{2, 0}` after
+  it whatever record was (0x42A49B, 0x42A4CC). The song end turns record off in the engine
+  (`{2, 0}` to the host), and the LED follows.
 - **LEDs:** Play lit while playing (`+45`), Record lit while recording (`+46`), the mode switch
   shows song mode (`+44`), the Loop switch the loop flag (`+47`).
 - **Logo click** (`sub_42A799`) sends top-level msg 58 with the current mod: the mod's startup
@@ -836,8 +840,17 @@ read, and what it leaves out.
   and transport button against them, and against the engine's live block and pattern arrays).
   The Clear button sends the whole pattern (sub 44, 98 bytes) with the pattern's own shuffle and
   length bytes [G, section 5]. Loop start up/down sends `{12, start}` then `{16, end}`, loop length
-  `{16, end}`. Stop while stopped sends the locate `{8, t}`. Record sends `{2, v}` in the log but
-  the player has no Record command (task-057): it has no effect yet.
+  `{16, end}`. Stop while stopped sends the locate `{8, t}`. Record sends `{2, v}`
+  (`rb_player::Command::Record`, task-057), in song mode only; the switch to pattern mode sends
+  `{2, 0}` after `{0, 0}`. The Record LED follows the engine's byte (`Snapshot::recording`).
+- **Saving a recorded song** (task-057). Once a merge has put recorded events into the song's
+  tracks (the loop wrap, record off, the song end), the song is modified and Save writes the
+  engine's tracks (`rb_player::Player::tracks`, copied by the callback whenever they change;
+  `Link::recorded_tracks`), as the original's save writes what it reads back from the DLL
+  (`sub_437CFF`, song msg 22). A song that was not recorded keeps the tracks of its file, so an
+  unedited save gives back the file; the original would write the DLL's tracks there too (with
+  the stop prune's removals and the ctor's tick-0 events, which shipped songs already have):
+  task-080 decides whether rb should always do so.
 - **The panel follows the engine** after each engine call: position, play, mode, loop, tempo, every
   controller's live value (the knobs follow the song's automation), the mixer, the pattern each
   section selects (the bank follows it [G]), the drum running lights, the meters. The values of a
