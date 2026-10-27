@@ -14,6 +14,11 @@ their titles ("Open Song:", "Export audio as:").
 
 Permits: it takes all the permits of the locky semaphore `redc-win-run` (owner: --owner, default
 the git branch), refreshes them while it works and releases them at the end, also on failure.
+The user's preferences file is checked and restored: before the permits, the saved copy
+C:\\re\\rb\\prf_before.prf must exist with its documented hash (else nothing starts); no prefs
+file is written while a Rebirth.exe runs; if this run wrote the file or started the app, then, after
+the app it started has exited (waited for up to 30 s, never killed) and before the permits are
+released, the saved copy is copied back and the hash checked (a mismatch fails the run).
 It stops only the Rebirth.exe it started (found by PID), never another one; if a Rebirth.exe is
 already running it refuses to start.
 
@@ -186,6 +191,9 @@ class Machine:
     def __init__(self, client, permits):
         self.c = client
         self.permits = permits
+        self.prf_touched = False   # this run wrote the user's prefs file or started the app
+        self.started_pids = []
+        self.restore_wait = 30.0   # seconds to wait for the app we started to exit before the restore
 
     # ---- processes
     def run(self, program, args=(), timeout=60, cwd=""):
@@ -226,16 +234,58 @@ class Machine:
             raise Failure("tasklist printed nothing")
         return pids
 
-    def start_app(self):
+    def check_saved_prf(self):
+        """Fails unless the saved preferences copy is on the machine with the documented hash."""
+        try:
+            got = self.c.hash(PRF_SAVED)["hash"]
+        except Exception as e:
+            raise Failure("the saved preferences copy %s is missing or unreadable (%s); not starting the app"
+                          % (PRF_SAVED, e))
+        if got != PRF_SAVED_SHA256:
+            raise Failure("the machine's %s has sha256 %s, not the documented %s (docs/test_machine.md 5)"
+                          % (PRF_SAVED, got, PRF_SAVED_SHA256))
+
+    def restore_saved_prf(self):
+        """After the app has exited: puts the saved copy back as the user's preferences and checks the hash.
+
+        The app rewrites its preferences at exit, so every run changes the user's file."""
+        t0 = now()
+        while True:
+            left = self.rebirth_pids()
+            # wait only for the app this run started (all of them if its PID is unknown), never kill
+            mine = [p for p in left if p in self.started_pids] if self.started_pids else left
+            if not mine or now() - t0 >= self.restore_wait:
+                break
+            time.sleep(0.2)
+        if left:
+            raise Failure("%s is still running (PIDs %s): the preferences cannot be restored until it exits"
+                          % (APP_EXE, left))
+        if self.c.hash(PRF_REMOTE)["hash"] != PRF_SAVED_SHA256:
+            self.check_saved_prf()
+            rc, out = self.run("cmd.exe", ["/c", "copy", "/Y", win_path(PRF_SAVED), win_path(PRF_REMOTE)])
+            if rc != 0:
+                raise Failure("copying the saved preferences back failed (exit %s): %s" % (rc, out.strip()))
+        got = self.c.hash(PRF_REMOTE)["hash"]
+        if got != PRF_SAVED_SHA256:
+            raise Failure("the preferences file has sha256 %s after the restore, not %s" % (got, PRF_SAVED_SHA256))
+        log("user preferences restored (sha256 %s)" % got[:12])
+
+    def check_no_app(self):
+        """Fails when a Rebirth.exe runs: nothing of the user's state may be touched then."""
         before = self.rebirth_pids()
         if before:
             raise Failure("a %s is already running (PIDs %s): not started by this run, not touching it"
                           % (APP_EXE, before))
+
+    def start_app(self):
+        self.check_no_app()
+        self.prf_touched = True   # from here on the app may rewrite the user's preferences
         self.run("cmd.exe", ["/c", "start", "", "/D", win_path(APP_DIR), win_path(APP_DIR + "/" + APP_EXE)])
         t0 = now()
         while now() - t0 < 30:
             pids = self.rebirth_pids()
             if pids:
+                self.started_pids = list(pids)
                 return pids[0]
             time.sleep(0.1)
         raise Failure("%s did not start" % APP_EXE)
@@ -366,7 +416,9 @@ class Session:
         m = self.m
         self.t_start = now()
         self.timeline = []
+        m.check_no_app()   # before any write to the prefs file
         if prf_local:
+            m.prf_touched = True
             m.c.upload(prf_local, PRF_REMOTE)
             got = m.c.hash(PRF_REMOTE)["hash"]
             if got != prf_sha:
@@ -617,13 +669,29 @@ def main(argv):
     client = rcs_client.Client.from_config()
     permits = Permits(owner)
     m = Machine(client, permits)
+    return run_guarded(args, client, m, permits, outdir, owner)
+
+
+def run_guarded(args, client, m, permits, outdir, owner):
+    """The saved prefs copy is checked before the app starts; the user's prefs are restored after every
+    run (normal, Failure, timeout, KeyboardInterrupt) before the permits are released."""
     rc = 1
     try:
+        m.check_saved_prf()
         permits.acquire()
-        res = export_songs(args, client, m, outdir, owner)
-        rc = 0 if res is not None else 1
+        try:
+            res = export_songs(args, client, m, outdir, owner)
+            rc = 0 if res is not None else 1
+        finally:
+            if m.prf_touched:
+                try:
+                    m.restore_saved_prf()
+                except Exception as e:
+                    log("FAILED: preferences restore: %s" % e)
+                    rc = 1
     except Failure as e:
         log("FAILED: %s" % e)
+        rc = 1
     finally:
         permits.release()
     return rc

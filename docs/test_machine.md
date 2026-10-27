@@ -184,6 +184,23 @@ in the user's profile and is rewritten at exit, it is part of the machine state,
 experiment that needs a fixed state should copy `prf_before.prf` back
 (`cmd /c copy`) with the app closed.
 
+**The user's file is restored after every run (task-062).** `tools/rb_export.py`:
+
+1. Before it takes the permits it checks that `C:\re\rb\prf_before.prf` exists on the machine with the
+   SHA-256 above; else it fails and starts nothing.
+2. Before it writes the prefs file (`--restore-prf` / `--startup-sound`) or starts the app, it checks that no
+   Rebirth.exe runs; if the user's instance runs, it fails without touching the file (the app would
+   overwrite it at exit anyway).
+3. Once it has written the file or started the app, on every exit path (normal end, Failure, other
+   exception, timeout, KeyboardInterrupt), after the app it started has exited (it waits up to 30 s,
+   polling, and never kills a process it did not start) and before the permits are released, it copies the
+   saved file back over the VirtualStore file (`cmd /c copy /Y`) and checks the hash. A mismatch, a failed
+   copy, or a Rebirth.exe still running after the wait fails the run (exit 1, logged `FAILED: preferences
+   restore`).
+
+The saved copy is never written. `tools/rbhost` does not start the app. Real session 2026-10-27:
+`--startup-sound off` changed the file to `dc34d28e7903...` during the run and it was `6309526e...` after.
+
 ## 6. Permits
 
 Applied to this app (doc-001): `locky acquire redc-win-run N --owner <branch> --acquire-timeout 3600
