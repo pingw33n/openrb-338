@@ -184,10 +184,13 @@ status is a judgment call.
   [4*ebx+0x10054550]` (T), and the grid index at 0x100109DC `fld [4*edx+0x10151AB8]` from a
   `fistp`; no `cmp` guards either [C]. Block 0x10010A50.
 - **Trigger.** A shape or amount byte above 127. A TRAK event cannot (the exe's range is 0..127);
-  whether an RBS file's pattern-mode bytes can is [G].
+  an RBS file's DIST bytes can: the parse `sub_4345A6` (called at 0x435B28) and the packer
+  `sub_423048` copy them unchanged [C for the parse and the packer, task-055; no file tried]. The
+  panel's sub 92 sends 0..127 only.
 - **Effect.** The DLL reads adjacent memory (the next tables).
 - **Corpus.** None.
-- **rb.** `dist.rs:117` clamps to 127 (`x.min(127)`), a deliberate deviation: the original's
+- **rb.** `dist.rs:117` clamps to 127 (`x.min(127)`; whether to keep it for song files is
+  task-071), a deliberate deviation: the original's
   adjacent memory is not modelled.
 - **Home.** `docs/initial_investigation.md` section 8.1.
 
@@ -197,10 +200,13 @@ status is a judgment call.
   pan byte, unchecked.
 - **Where.** Delay update 0x1000F754 (targets `+0x54`, `+0x58`): 0x1000F8A5 `mov al,[ebx+38h]`
   then 0x1000F8B1 `fadd [8*eax+0x10054150]` (= `PAN[127][0]`); no `cmp`.
-- **Trigger.** A delay pan byte above 127 (an RBS pattern-mode byte, not a TRAK event) [G].
+- **Trigger.** A delay pan byte above 127 (an RBS pattern-mode byte, not a TRAK event): the DELY
+  parse `sub_43465C` (called at 0x43589A) and the packer `sub_422EB7` copy it unchanged [C for
+  the parse and the packer, task-055; no file tried]. The panel's sub 84 sends 0..127 only.
 - **Effect.** Reads past the row, into the next table.
 - **Corpus.** None.
-- **rb.** `delay.rs:75` clamps to 127.
+- **rb.** `delay.rs:75` clamps to 127 (slot 11, the data block and so the panel's sub 84);
+  whether to keep the clamp for song files is task-071.
 - **Home.** `docs/initial_investigation.md` section 8.4.
 
 ### OB-11: PCF decay and resonance bytes past their tables [C: no check; G: reachable from a file]
@@ -233,6 +239,29 @@ status is a judgment call.
 - **Corpus.** Every song with an enabled delay.
 - **rb.** `delay.rs` follows the tempo directly.
 - **Home.** `docs/initial_investigation.md` section 8.4.
+
+### OB-17: the panel's pattern and mixer-channel messages store with no bound on the pattern, step, instrument or channel [C: no check; G: the effect]
+
+- **What.** The live device messages (msg 41 with a device's own sub) compute their store
+  address from the message bytes and check only the 303's step field (0..5) and the header field
+  (0, 1). A pattern above 31, a step above 15, a drum instrument above 11 or a mixer channel
+  above 3 writes into another step or pattern or past the pattern array or the channel blocks,
+  into the rest of the device object.
+- **Where.** 303 sub 42 0x10025F25 (`+0x3C`/`+0x3D + 98p`: pattern 32's header lands on the live
+  enabled byte `+0xC7C`); 303 sub 45 0x10025FC4 (`+0x3E + 98p + 6s + field`: a step above 15
+  writes into the next pattern); 808 subs 59 0x10028EFE (`+0x50`/`+0x51 + 194p`) and 62
+  0x10028F9D (`+0x52 + 194p + 12s + inst`); 909 subs 76 0x1002C57F and 79 0x1002C61E (the same
+  from `+0x51`); mixer sub 147 0x100159DB (`+0x40 + 6c + k`: channel 4 writes at `+0x58`, the
+  pattern-mode copy). Also the unsent subs 43, 46, 60, 63, 77, 80 and 148.
+- **Trigger.** Only a message the exe never sends: the panel addresses its current pattern
+  (0..31), steps 0..15, instruments 0..11 and channels 0..3 (`docs/song_load.md` section 4.10).
+- **Effect.** A store into another pattern, the live parameters or other device state [G: not
+  run].
+- **Corpus.** None.
+- **rb.** `crates/rb-engine/src/frame/edit.rs` (module doc, lines 13-19): within the pattern
+  array rb stores at the same flat address (another step or pattern); a store past the array is
+  dropped, and `Engine::mixer_channel` drops a channel above 3.
+- **Home.** `docs/song_load.md` section 4.10 ("Bounds").
 
 ## 3. Export (Rebirth.exe)
 

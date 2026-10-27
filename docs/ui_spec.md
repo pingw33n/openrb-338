@@ -273,6 +273,9 @@ Behavior [C]:
 - **Shuffle** toggles the current pattern's shuffle flag (pattern data, `vt+112`).
 - **Steps** change the current pattern's length, clamped to 1..16 (`vt+108`); the change is
   immediate (manual page 36). The display shows the length.
+- Both are sent as the pattern-header message `{pattern, field, v}`, field 0 shuffle, 1 length
+  (msg 41 sub 42 / 59 / 76, senders `sub_43ECCA`, `sub_441CC9`, `sub_445C88`;
+  `docs/song_load.md` section 4.10, which lists every device message of the panel).
 
 ## 5. TB-303 (two)
 
@@ -358,7 +361,8 @@ Every step change is sent at once as msg 41 sub 45 `{pattern, step, field, value
   "rest".
 - **Clear** (`sub_43F5F5` -> `sub_43CB97`) empties the current pattern: every step note 0 (low C),
   rest on, accent, slide, up and down off (manual page 153). The length and the shuffle flag are
-  not changed [G].
+  not changed [G]. The cleared pattern goes to the engine whole: msg 41 sub 44 `{pattern,
+  98 bytes}` (`sub_43F617`, called by `sub_43F5F5`).
 - **LEDs.** The note LEDs light the edit step's note; in pitch mode the lit note is shown only
   while a counter `+54` is positive, so it flashes after a key press [G: the writer of `+54` was
   not traced]. Down, Up, Accent and Slide LEDs show their fields of the edit step; the Note LED
@@ -430,7 +434,8 @@ song, so it changes what the slot plays for every pattern.
 **Step buttons [C]** (`CTR808PatternView`, mouse 0x4411AB, draw 0x440FC3).
 - Step `(x - 16) / 16`, 16 cells of 16 px (`sub_44111F`).
 - Mouse down on a step sets it to the opposite of its current state for the selected instrument
-  (`0` <-> `1`, `sub_44305C`); dragging with the button held sets every step crossed to that same
+  (`0` <-> `1`, `sub_44305C`, which sends msg 41 sub 62 `{pattern, step, instrument, v}` through
+  `sub_441D1C`); dragging with the button held sets every step crossed to that same
   new state (paint on from an empty step, erase from a lit one; manual page 29). Observed: a drag
   across steps 1-4 from an empty step lit all four.
 - Display: each cell has an LED of 11 x 5 at its top-left (`x = 16 + 16 i`, y 91 of the 808
@@ -481,7 +486,8 @@ mouse `sub_44740D` [C].
 | Name-label row (select instrument) | 26 | 70 | 340 | 15 | 0.1859 | 0.9118 | 0.5449 | 0.0294 | area | UI: selected instrument |
 | AC area (select AC) | 4 | 44 | 22 | 18 | 0.1506 | 0.8608 | 0.0353 | 0.0353 | area | UI: selects AC |
 
-The knobs send the 909's set-parameter message `{ctrl, value}` (`sub_445C41`) with the RBS
+The knobs send the 909's set-parameter message `{ctrl, value}` (msg 41 sub 74, `sub_445C41`;
+the step buttons sub 79 `{pattern, step, instrument, v}`, `sub_445CDB` from `sub_447153`) with the RBS
 controller numbers (the DLL's own permutation of 20..22 is internal, `docs/song_load.md`
 section 4.8).
 
@@ -547,7 +553,11 @@ Behavior [C]:
 
 Layouts `sub_412D6B` (master), `sub_41BC80` (PCF), `sub_407BBC` (delay), `sub_408A5F` (dist),
 `sub_4040CE` (comp); polls `sub_412DC7`, `sub_41B914`, `sub_407F7A`, `sub_408AF5`, `sub_404396`
-[C]. Controller numbers are those of the effect's track (`docs/song_load.md` section 5).
+[C]. Controller numbers are those of the effect's track (`docs/song_load.md` section 5). The
+effects' controls send msg 41 `{ctrl, v}`: delay sub 84 (`sub_407AD3`), dist 92 (`sub_408976`),
+compressor 102 (`sub_403FE5`), PCF 114 (`sub_41B82B`); the master fader and the Comp/PCF
+switches mixer sub 145 `{id, v}` (`sub_4131BC`: 0 master, 1 compressor id, 2 PCF id), the
+channel controls sub 147 `{c, k, v}` (`sub_413206`) (`docs/song_load.md` section 4.10).
 
 **Master** (526, 50, 82, 98):
 

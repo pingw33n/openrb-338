@@ -16,6 +16,7 @@
 //! Every computation follows the crate's numerics rules: f64 arithmetic in the original's operand
 //! order, an f32 rounding at every `fstp dword`/`fst dword`, no FMA.
 
+pub mod edit;
 pub mod export;
 
 #[cfg(test)]
@@ -165,6 +166,12 @@ pub trait SongDevice: Send {
     fn data(&mut self, _payload: &[u8], _song_mode: bool) {}
     /// Slot 11: set controller `ctrl` (a track event, the chase).
     fn set_param(&mut self, _ctrl: u8, _value: u8) {}
+    /// Slot 10 with the device's `{ctrl, v}` sub, the panel's knobs and switches
+    /// ([`Engine::device_param`], `docs/song_load.md` section 4.10): for every controller slot 11
+    /// accepts, the same store. The 303, 808 and 909 override it for their one extra byte.
+    fn param_message(&mut self, ctrl: u8, value: u8) {
+        self.set_param(ctrl, value);
+    }
     /// Not a slot: the song's sound-model byte (`song+0x16D`, msg 36 byte 21) changed. The 303
     /// reads the byte at note-on, note-off and in its audio (`sub_10013DA0()+0x15`).
     fn set_sound_model(&mut self, _vintage: bool) {}
@@ -188,6 +195,12 @@ pub trait ChannelDevice: SongDevice {
     /// Not a slot: the pattern the device plays (the 303's `+0xC94`, the 808's `+0x18D0`, the
     /// 909's `+0x18D3`), latched from controller 1 at a bar line. `None` for a placeholder.
     fn playing_pattern(&self) -> Option<u8> {
+        None
+    }
+    /// Not a slot: the 32 patterns as the data block holds them (the 303's `+0x3C`, the 808's
+    /// `+0x50`, the 909's `+0x51`), which the panel's pattern messages write
+    /// ([`edit::PatternShape`]). `None` for a placeholder.
+    fn patterns_mut(&mut self) -> Option<&mut [u8]> {
         None
     }
 }
@@ -518,6 +531,10 @@ impl SongDevice for MixerDevice {
             }
         }
     }
+
+    /// The mixer has no `{ctrl, v}` message: its live messages are 145 and 147
+    /// ([`Engine::mixer_global`], [`Engine::mixer_channel`]).
+    fn param_message(&mut self, _ctrl: u8, _value: u8) {}
 }
 
 impl MixerDevice {

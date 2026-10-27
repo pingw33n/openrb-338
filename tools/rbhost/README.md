@@ -51,6 +51,16 @@ the RIFF check of `tools/rb_export.py` (the frame count must equal the export le
 f32 left/right pairs per frame, read from `sub_100139E0`'s buffers `unk_100E012C`/`unk_100F012C`
 after each chunk; it does not change the render.
 
+**Live sessions** (task-055): `rbhost.exe --live SESSION.rblv SONG.rbhm OUT.wav` renders, after the
+load, the activation and `--idle-blocks`, a number of 1024-frame realtime calls instead of the export,
+with song messages written to the port before given calls and dispatched there (as the app's
+`SafeSoundCallback` drains the panel's messages before it renders); OUT.wav holds the calls. The
+`.rblv` file ("RBLV", u32 version 1, u32 calls, u32 count, then per message u32 call, u32 length and
+the message `{78, slot, msg, ...}`, slot filled in by rbhost, sorted by call) is written by rb-player's
+test `crates/rb-player/tests/live_messages.rs` with `RB_LIVE_OUT=DIR`, which compares the player's
+output of the same session with rbhost's hash. run.py has no option for it: upload `rbhost.exe`, the
+`.rbhm` and the `.rblv` and run it with `rcs_client.py exec` under one permit.
+
 On the machine, `rbhost.exe [options] SONG.rbhm OUT.wav` (`rbsmsg.py SONG.rbs SONG.rbhm` makes the
 message file). rbhost does not write to the installation; it loads the DLL from `C:\ReBirth RB-338\ReBirth.dll` unless `--dll`
 names another copy.

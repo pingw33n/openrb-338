@@ -780,6 +780,206 @@ fn the_live_message_entry_points() {
     assert_eq!(e.frame.seq.tick_pos(), t);
 }
 
+/// An engine with every device implemented (silent drum samples are enough: no audio is read).
+fn edit_engine() -> Engine {
+    use crate::samples::{COUNT, Sample, SampleSet};
+    let s = Arc::new(SampleSet::from_samples(
+        (0..COUNT).map(|_| Sample::from_audio(&[0; 16])).collect(),
+    ));
+    Engine::new(tables(), Devices::implemented(Some(s)))
+}
+
+fn patterns(e: &mut Engine, d: song::Device) -> Vec<u8> {
+    let c = d as usize - 1;
+    e.frame.devices.channels[c].patterns_mut().unwrap().to_vec()
+}
+
+#[test]
+fn device_param_messages() {
+    use song::Device as D;
+    let mut e = edit_engine();
+    // 303 msg 40: controllers 0..8 as slot 11, 9 nothing, 10 the unused byte 10
+    for c in 0..=8 {
+        e.device_param(D::Tb303_1, c, 100 + c);
+    }
+    e.device_param(D::Tb303_1, 9, 55);
+    e.device_param(D::Tb303_1, 10, 66);
+    e.device_param(D::Tb303_1, 11, 77);
+    let live = e.frame.devices.channels[0].live().to_vec();
+    assert_eq!(&live[..9], &[100, 101, 102, 103, 104, 105, 106, 107, 108]);
+    assert_eq!(&live[9..], &[0, 66, 0]);
+    // 808 msg 57: 0..28, 29 nothing, 30 the unused byte
+    e.device_param(D::Tr808, 28, 9);
+    e.device_param(D::Tr808, 29, 9);
+    e.device_param(D::Tr808, 30, 9);
+    e.device_param(D::Tr808, 31, 9);
+    let l = e.frame.devices.channels[2].live();
+    assert_eq!((l[28], l[29], l[30], l[31]), (9, 0, 9, 0));
+    // 909 msg 74: 20..22 permuted as slot 11, 29 flam, 30 nothing, 31 the unused byte
+    e.device_param(D::Tr909, 20, 1);
+    e.device_param(D::Tr909, 21, 2);
+    e.device_param(D::Tr909, 22, 3);
+    e.device_param(D::Tr909, 29, 4);
+    e.device_param(D::Tr909, 30, 5);
+    e.device_param(D::Tr909, 31, 6);
+    e.device_param(D::Tr909, 32, 7);
+    let l = e.frame.devices.channels[3].live();
+    assert_eq!(&l[20..], &[3, 1, 2, 32, 127, 100, 64, 100, 64, 4, 0, 6, 0]);
+    // the effects: slot 11's controllers, nothing beyond
+    for (d, n) in [
+        (D::Delay, 5),
+        (D::Distortion, 3),
+        (D::Pcf, 7),
+        (D::Compressor, 3),
+    ] {
+        let before = e.frame.devices.device_mut(d).live().to_vec();
+        for c in 0..=n {
+            e.device_param(d, c, 11 + c);
+        }
+        let after = e.frame.devices.device_mut(d).live().to_vec();
+        for (c, (&b, &a)) in before.iter().zip(&after).enumerate() {
+            let want = if c < n as usize { 11 + c as u8 } else { b };
+            assert_eq!(a, want, "{d:?} byte {c}");
+        }
+    }
+    // the mixer has no {ctrl, v} message
+    let m = e.frame.devices.mixer;
+    e.device_param(D::Mixer, 7, 1);
+    assert_eq!(e.frame.devices.mixer, m);
+}
+
+#[test]
+fn mixer_messages() {
+    let mut e = edit_engine();
+    let pattern = e.frame.devices.mixer.pattern;
+    e.mixer_global(0, 90);
+    e.mixer_global(1, 3);
+    e.mixer_global(2, 4);
+    e.mixer_global(3, 9);
+    e.mixer_global(4, 9);
+    let l = e.frame.devices.mixer.live;
+    assert_eq!((l.master, l.comp_id, l.pcf_id), (90, 3, 4));
+    for k in 0..=5 {
+        e.mixer_channel(2, k, 10 + k);
+    }
+    e.mixer_channel(4, 1, 1);
+    let ch = e.frame.devices.mixer.live.channels;
+    assert_eq!(
+        (
+            ch[2].enabled,
+            ch[2].level,
+            ch[2].pan,
+            ch[2].send,
+            ch[2].dist
+        ),
+        (10, 11, 12, 13, 14)
+    );
+    assert_eq!(ch[0], MixerParams::default().channels[0]);
+    assert_eq!(ch[3], MixerParams::default().channels[3]);
+    // live only
+    assert_eq!(e.frame.devices.mixer.pattern, pattern);
+}
+
+#[test]
+fn pattern_messages_303() {
+    use song::Device as D;
+    let mut e = edit_engine();
+    let base = patterns(&mut e, D::Tb303_2);
+    let mut want = base.clone();
+    // msg 42: field 0 shuffle, 1 length, other fields nothing
+    e.pattern_field(D::Tb303_2, 3, 0, 1);
+    e.pattern_field(D::Tb303_2, 3, 1, 7);
+    e.pattern_field(D::Tb303_2, 3, 2, 9);
+    want[98 * 3] = 1;
+    want[98 * 3 + 1] = 7;
+    // msg 43: both header bytes
+    e.pattern_header(D::Tb303_2, 4, [1, 5]);
+    want[98 * 4] = 1;
+    want[98 * 4 + 1] = 5;
+    // msg 45: fields 0..5 of a step; field 6 nothing
+    for f in 0..=6 {
+        e.step_field(D::Tb303_2, 5, 15, f, 20 + f);
+    }
+    for f in 0..6 {
+        want[98 * 5 + 2 + 6 * 15 + f] = 20 + f as u8;
+    }
+    // msg 46: a whole step; a wrong length is ignored
+    e.step(D::Tb303_2, 6, 0, &[1, 2, 3, 4, 5, 6]);
+    e.step(D::Tb303_2, 6, 1, &[1, 2, 3]);
+    want[98 * 6 + 2..98 * 6 + 8].copy_from_slice(&[1, 2, 3, 4, 5, 6]);
+    // msg 44: a whole pattern
+    let pat: Vec<u8> = (0..98).map(|i| i as u8).collect();
+    e.pattern(D::Tb303_2, 31, &pat);
+    e.pattern(D::Tb303_2, 30, &pat[..97]);
+    want[98 * 31..].copy_from_slice(&pat);
+    // unbounded steps land in the next pattern, beyond the array nothing
+    e.step_field(D::Tb303_2, 7, 16, 0, 99);
+    want[98 * 7 + 2 + 96] = 99;
+    e.step_field(D::Tb303_2, 31, 16, 0, 99);
+    e.pattern_field(D::Tb303_2, 32, 0, 99);
+    e.pattern(D::Tb303_2, 32, &pat);
+    assert_eq!(patterns(&mut e, D::Tb303_2), want);
+    // the other 303 is untouched
+    assert_eq!(patterns(&mut e, D::Tb303_1), base);
+}
+
+#[test]
+fn pattern_messages_drums() {
+    use song::Device as D;
+    let mut e = edit_engine();
+    for d in [D::Tr808, D::Tr909] {
+        let mut want = patterns(&mut e, d);
+        e.pattern_field(d, 2, 1, 12);
+        want[194 * 2 + 1] = 12;
+        e.pattern_header(d, 1, [1, 3]);
+        want[194] = 1;
+        want[195] = 3;
+        // msgs 62 / 79: any instrument byte (12 is the next step's accent)
+        e.step_field(d, 0, 3, 11, 3);
+        e.step_field(d, 0, 3, 12, 2);
+        want[2 + 12 * 3 + 11] = 3;
+        want[2 + 12 * 4] = 2;
+        // msgs 63 / 80
+        let st: Vec<u8> = (1..=12).collect();
+        e.step(d, 9, 15, &st);
+        e.step(d, 9, 14, &st[..6]);
+        want[194 * 9 + 2 + 12 * 15..194 * 10].copy_from_slice(&st);
+        // msgs 61 / 78
+        let pat = vec![1u8; 194];
+        e.pattern(d, 0, &pat);
+        e.pattern(d, 5, &pat[..98]);
+        want[..194].copy_from_slice(&pat);
+        assert_eq!(patterns(&mut e, d), want, "{d:?}");
+    }
+    // the mixer and the effects have no patterns
+    let before = e.frame.devices.delay.live().to_vec();
+    e.pattern_field(D::Delay, 0, 0, 1);
+    e.step_field(D::Mixer, 0, 0, 0, 1);
+    assert_eq!(e.frame.devices.delay.live(), &before[..]);
+}
+
+/// A pattern edit is heard the next time the step plays: the 303 plays the edited note.
+#[test]
+fn a_step_edit_is_heard() {
+    use song::Device as D;
+    let render = |edit: bool| {
+        let mut e = edit_engine();
+        e.set_song_mode(0);
+        // pattern 0, step 0: a note (rest off) at note 0 or 12
+        e.step_field(D::Tb303_1, 0, 0, 5, 0);
+        if edit {
+            e.step_field(D::Tb303_1, 0, 0, 0, 12);
+        }
+        e.play();
+        let mut buf = vec![0i16; 2 * 4096];
+        e.render(&mut buf, 4096);
+        buf
+    };
+    let (a, b) = (render(false), render(true));
+    assert!(a.iter().any(|&x| x != 0));
+    assert_ne!(a, b);
+}
+
 #[test]
 fn songs_built_on_one_process_state_share_it() {
     let a = Devices::implemented(None);

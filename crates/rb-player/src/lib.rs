@@ -44,13 +44,18 @@
 //! original's panel addresses its own song. A mod is the sample set a song is built with (how
 //! the original changes the mod of an open song is task-056).
 //!
-//! Not modelled yet: the panel's own device edit messages (task-055; a pattern edit goes as a
-//! whole data block meanwhile) and recording (task-057; there is no Record command).
+//! The panel's own device messages (task-055, `docs/song_load.md` section 4.10) have their
+//! commands: the knobs and switches ([`Command::DeviceParam`], [`Command::MixerGlobal`],
+//! [`Command::MixerChannel`]) and the pattern edits ([`Command::PatternField`],
+//! [`Command::PatternHeader`], [`Command::Pattern`], [`Command::StepField`], [`Command::Step`]).
+//! Not modelled yet: recording (task-057; there is no Record command, and the messages act as
+//! with record off).
 
 pub mod output;
 
 use std::sync::Arc;
 
+use rb_engine::frame::edit::PatternShape;
 use rb_engine::frame::export::REALTIME_FRAMES;
 use rb_engine::frame::{Devices, Engine, MixerParams};
 use rb_engine::process::ProcessState;
@@ -94,18 +99,70 @@ pub enum Command {
     Shuffle(u8),
     /// Song msg 35 `{21,v}`: the Vintage sound model.
     Vintage(bool),
-    /// A device controller, as the panel's knobs, switches and pattern buttons set it (slot 11;
-    /// [`Engine::set_param`]). The pattern (controller 1) and the on/off switch (0) of a 303,
-    /// 808 or 909 are latched by the device at the next bar line.
+    /// A device controller as a track event sets it (slot 11; [`Engine::set_param`]); for the
+    /// controllers it takes, the same store as the panel's messages ([`Command::DeviceParam`],
+    /// [`Command::MixerGlobal`] ids 1 and 2, [`Command::MixerChannel`] fields 1..4). The pattern
+    /// (controller 1) and the on/off switch (0) of a 303, 808 or 909 are latched by the device
+    /// at the next bar line.
     Param { device: Device, ctrl: u8, value: u8 },
     /// The mixer's master level (msg 145 `{0,v}`), not a controller.
     Master(u8),
     /// A mixer channel's on/off (mute) switch (msg 147 `{c,0,v}`), not a controller.
     ChannelEnabled { channel: u8, on: bool },
     /// A device's whole data block (song msg 41, [`Song::device_payload`]): the parameters and
-    /// the patterns. It goes into the pattern-mode copy, and live only in pattern mode. Pattern
-    /// edits can be sent this way until the panel's own edit messages are modelled (task-055).
+    /// the patterns. It goes into the pattern-mode copy, and live only in pattern mode (so in
+    /// pattern mode it also resets the live parameters to the block's: a pattern edit goes as
+    /// one of the pattern commands below).
     DeviceData { device: Device, payload: Box<[u8]> },
+    /// The panel's knob or switch message `{ctrl, v}` of a 303, 808, 909 or effect
+    /// ([`Engine::device_param`]: 303 msg 41 sub 40, 808 57, 909 74, delay 84, dist 92,
+    /// compressor 102, PCF 114). The same as [`Command::Param`] for the controllers slot 11
+    /// takes, plus the device's one extra live byte. Ignored for the mixer.
+    DeviceParam { device: Device, ctrl: u8, value: u8 },
+    /// Mixer msg 145 `{id, v}` ([`Engine::mixer_global`]): 0 the master, 1 the compressor id,
+    /// 2 the PCF id.
+    MixerGlobal { id: u8, value: u8 },
+    /// Mixer msg 147 `{c, k, v}` ([`Engine::mixer_channel`]): channel c's field k, 0 enabled,
+    /// 1 level, 2 pan, 3 delay send, 4 dist.
+    MixerChannel { channel: u8, field: u8, value: u8 },
+    /// A pattern's shuffle flag (field 0) or length (1) ([`Engine::pattern_field`]: 303 sub 42,
+    /// 808 59, 909 76).
+    PatternField {
+        device: Device,
+        pattern: u8,
+        field: u8,
+        value: u8,
+    },
+    /// Both header bytes of a pattern ([`Engine::pattern_header`]: 303 sub 43, 808 60, 909 77).
+    PatternHeader {
+        device: Device,
+        pattern: u8,
+        header: [u8; 2],
+    },
+    /// A whole pattern, 98 bytes for a 303, 194 for a drum machine ([`Engine::pattern`]: 303
+    /// sub 44, 808 61, 909 78). The box goes back through the garbage queue.
+    Pattern {
+        device: Device,
+        pattern: u8,
+        bytes: Box<[u8]>,
+    },
+    /// One byte of a step ([`Engine::step_field`]: 303 sub 45, field 0 note .. 5 rest; 808 62
+    /// and 909 79, field = instrument).
+    StepField {
+        device: Device,
+        pattern: u8,
+        step: u8,
+        field: u8,
+        value: u8,
+    },
+    /// A whole step ([`Engine::step`]: 303 sub 46, the first 6 bytes; 808 63 and 909 80, all
+    /// 12).
+    Step {
+        device: Device,
+        pattern: u8,
+        step: u8,
+        bytes: [u8; 12],
+    },
     /// Make a song built by [`Player::build`] current (top-level msg 53).
     Load(Box<Engine>),
 }
@@ -279,6 +336,11 @@ impl Player {
         {
             return Err(c);
         }
+        if let Command::Pattern { device, bytes, .. } = &c
+            && PatternShape::of(*device).map(|s| s.len) != Some(bytes.len())
+        {
+            return Err(c);
+        }
         if let Command::Load(e) = &c {
             assert!(
                 e.process_state().same(&self.process),
@@ -411,6 +473,55 @@ impl Audio {
                     self.target().device_data(device, &payload);
                 }
                 self.throw(Garbage::Bytes(payload));
+            }
+            Command::DeviceParam {
+                device,
+                ctrl,
+                value,
+            } => self.target().device_param(device, ctrl, value),
+            Command::MixerGlobal { id, value } => self.target().mixer_global(id, value),
+            Command::MixerChannel {
+                channel,
+                field,
+                value,
+            } => self.target().mixer_channel(channel, field, value),
+            Command::PatternField {
+                device,
+                pattern,
+                field,
+                value,
+            } => self.target().pattern_field(device, pattern, field, value),
+            Command::PatternHeader {
+                device,
+                pattern,
+                header,
+            } => self.target().pattern_header(device, pattern, header),
+            Command::Pattern {
+                device,
+                pattern,
+                bytes,
+            } => {
+                self.target().pattern(device, pattern, &bytes);
+                self.throw(Garbage::Bytes(bytes));
+            }
+            Command::StepField {
+                device,
+                pattern,
+                step,
+                field,
+                value,
+            } => self
+                .target()
+                .step_field(device, pattern, step, field, value),
+            Command::Step {
+                device,
+                pattern,
+                step,
+                bytes,
+            } => {
+                if let Some(s) = PatternShape::of(device) {
+                    self.target().step(device, pattern, step, &bytes[..s.step]);
+                }
             }
             Command::Load(new) => self.activate(new),
         }

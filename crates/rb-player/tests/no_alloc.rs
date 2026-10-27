@@ -4,7 +4,8 @@
 //! a thread while that thread is "armed"; the test arms itself only around the callback's work
 //! ([`Audio::render_i16`] and [`Output::fill`]) and sends every kind of command from the
 //! unarmed UI side in between: transport, song and pattern mode, loop, tempo, shuffle, Vintage,
-//! device controllers, the mixer's master and mutes, a data block, songs loaded over a stopped
+//! device controllers, the mixer's master and mutes, a data block, the panel's device and
+//! pattern messages (task-055, a whole pattern's box included), songs loaded over a stopped
 //! song, over a playing one (pending) and switched to by Play, through the direct 44.1 kHz path
 //! and the resampled one, with stereo, mono and six-channel devices. The callback's songs play
 //! the drum machines, the 303s and every effect (the corpus song `full_mix`).
@@ -141,6 +142,53 @@ fn the_callback_does_not_allocate() {
             device: Device::Tb303_2,
             payload: other.device_payload(Device::Tb303_2).into_boxed_slice(),
         },
+        // the panel's device messages (task-055)
+        Command::DeviceParam {
+            device: Device::Tb303_1,
+            ctrl: 4,
+            value: 30,
+        },
+        Command::DeviceParam {
+            device: Device::Pcf,
+            ctrl: 1,
+            value: 50,
+        },
+        Command::MixerGlobal { id: 0, value: 80 },
+        Command::MixerGlobal { id: 2, value: 1 },
+        Command::MixerChannel {
+            channel: 1,
+            field: 2,
+            value: 20,
+        },
+        Command::PatternField {
+            device: Device::Tr909,
+            pattern: 0,
+            field: 1,
+            value: 8,
+        },
+        Command::PatternHeader {
+            device: Device::Tb303_2,
+            pattern: 1,
+            header: [1, 12],
+        },
+        Command::Pattern {
+            device: Device::Tr808,
+            pattern: 0,
+            bytes: vec![1u8; 194].into_boxed_slice(),
+        },
+        Command::StepField {
+            device: Device::Tb303_1,
+            pattern: 0,
+            step: 2,
+            field: 0,
+            value: 7,
+        },
+        Command::Step {
+            device: Device::Tr909,
+            pattern: 0,
+            step: 3,
+            bytes: [2; 12],
+        },
         Command::Locate(2 * 768),
     ];
     for c in cmds {
@@ -165,7 +213,8 @@ fn the_callback_does_not_allocate() {
     events += render(&mut a, &mut buf, 20);
     assert_eq!(p.snapshot().generation, 3);
     assert_eq!(events, 0, "the callback allocated or freed {events} times");
-    // what it handed back (the last replaced song) is dropped here
+    // what it handed back (the last replaced song) is dropped here; the boxes of the data block
+    // and the pattern went back while the commands were sent
     assert_eq!(p.collect_garbage(), 1);
 
     // the device paths: resampled to 48 kHz and direct, odd sizes, other formats and layouts

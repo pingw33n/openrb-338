@@ -570,6 +570,18 @@ impl SongDevice for Tr909 {
         }
     }
 
+    /// Msg 74 `{ctrl, v}` (0x1002BF12, sender `sub_445C41`): controllers 0..29 as slot 11, with
+    /// the same permutation of 20..22 (0x1002C359, 0x1002C38D, 0x1002C3C1 store `+0x18A6`,
+    /// `+0x18A7`, `+0x18A5`), 30 nothing (0x1002C555: the last-step byte stays), 31 the unused
+    /// live byte 31 (`+0x18B0`, 0x1002C557); then the changed flag `+0x18B2 + ctrl` is cleared
+    /// (not modelled).
+    fn param_message(&mut self, ctrl: u8, value: u8) {
+        match ctrl {
+            31 => self.live[31] = value,
+            _ => self.set_param(ctrl, value),
+        }
+    }
+
     /// Slots 7 (0x10026C40, the 303's) and 8 (0x1002D480) from the song ctor: controllers 0 and
     /// 1 of the track are quantised to a bar, and a tick-0 event of every controller 0..29 with
     /// the pattern-mode copy's value in RBS order (`sub_10019624`) is inserted (`sub_1001F900`).
@@ -586,6 +598,10 @@ impl SongDevice for Tr909 {
 impl ChannelDevice for Tr909 {
     fn playing_pattern(&self) -> Option<u8> {
         Some(self.cur_pattern)
+    }
+
+    fn patterns_mut(&mut self) -> Option<&mut [u8]> {
+        Some(&mut self.patterns[..])
     }
 
     /// Slot 14, 0x1002B6F0: the bus is zeroed, then the voices add in this order: BD A, BD B,

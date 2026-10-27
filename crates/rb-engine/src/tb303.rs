@@ -690,6 +690,17 @@ impl SongDevice for Tb303 {
         }
     }
 
+    /// Msg 40 `{ctrl, v}` (0x10025CFC, sender `sub_43EC83`): controllers 0..8 as slot 11
+    /// (0x10025D33..0x10025ECD), 9 nothing (0x10025EFB: the last-step byte stays), 10 the unused
+    /// live byte 10 (`+0xC86`, 0x10025EFD); then the changed flag `+0xC88 + ctrl` is cleared
+    /// (not modelled).
+    fn param_message(&mut self, ctrl: u8, value: u8) {
+        match ctrl {
+            10 => self.live[10] = value,
+            _ => self.set_param(ctrl, value),
+        }
+    }
+
     fn set_sound_model(&mut self, vintage: bool) {
         self.vintage = vintage;
     }
@@ -710,6 +721,10 @@ impl SongDevice for Tb303 {
 impl ChannelDevice for Tb303 {
     fn playing_pattern(&self) -> Option<u8> {
         Some(self.cur_pattern)
+    }
+
+    fn patterns_mut(&mut self) -> Option<&mut [u8]> {
+        Some(&mut self.patterns[..])
     }
 
     /// Slot 14, 0x10023F10.

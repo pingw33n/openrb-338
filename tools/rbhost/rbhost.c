@@ -40,6 +40,12 @@
  *   --dump-samples DIR      write the mod's 46 loaded samples from the DLL's sample table
  *                           (sub_1001A030, list dword_10118280) as DIR/slotNN.bin (i16 LE), with
  *                           DIR/manifest.json
+ *   --live FILE             instead of the export, a live session (task-055): FILE ("RBLV", made
+ *                           by rb-player's live_messages test) holds a call count K and song
+ *                           messages, each with the 1024-frame call it precedes; rbhost writes the
+ *                           messages of call i into the port, dispatches them (pump()), renders
+ *                           call i, and writes the K calls to OUT.wav, as the app's realtime path
+ *                           drains the panel's messages at the start of a SafeSoundCallback
  *   -v                      log every reply
  */
 #define WIN32_LEAN_AND_MEAN
@@ -528,6 +534,70 @@ static void dump_samples(const char *dir, unsigned mod) {
     fprintf(stderr, "rbhost: samples of mod %u written to %s\n", mod, dir);
 }
 
+/* ------------------------------------------------------------------ live session */
+
+static void write_wav(FILE *wav, uint32_t frames) {
+    unsigned char header[44];
+    memset(header, 0, sizeof header);
+    memcpy(header, "RIFF", 4);
+    put_le32(header + 4, 36 + frames * 4);
+    memcpy(header + 8, "WAVEfmt ", 8);
+    put_le32(header + 16, 16);
+    header[20] = 1;  /* PCM */
+    header[22] = 2;  /* channels */
+    put_le32(header + 24, 44100);
+    put_le32(header + 28, 44100 * 4);
+    header[32] = 4;
+    header[34] = 16;
+    memcpy(header + 36, "data", 4);
+    put_le32(header + 40, frames * 4);
+    fseek(wav, 0, SEEK_SET);
+    fwrite(header, 1, sizeof header, wav);
+}
+
+/* --live: "RBLV", u32 version 1, u32 calls K, u32 count, then count records of u32 call, u32 len,
+ * len bytes of a song message ({78, slot, msg, ...}; the slot byte is replaced), sorted by call. */
+static void live_session(const char *path, const char *wav_path) {
+    long size;
+    unsigned char *data = read_file(path, &size);
+    uint32_t calls, count, call, k = 0, p = 16;
+    FILE *wav;
+    if (size < 16 || memcmp(data, "RBLV", 4) || le32(data + 4) != 1) die("%s is not a live file", path);
+    calls = le32(data + 8);
+    count = le32(data + 12);
+    wav = fopen(wav_path, "wb");
+    if (!wav) die("cannot write %s", wav_path);
+    write_wav(wav, 0);
+    for (call = 0; call < calls; call++) {
+        int sent = 0;
+        while (k < count) {
+            uint32_t len;
+            unsigned char *msg;
+            if ((uint64_t)p + 8 > (uint64_t)size) die("live message %u past the end of %s", k, path);
+            if (le32(data + p) != call) break;
+            len = le32(data + p + 4);
+            msg = data + p + 8;
+            if ((uint64_t)p + 8 + len > (uint64_t)size || len < 3 || msg[0] != 78) die("bad live message %u", k);
+            msg[1] = (unsigned char)slot;
+            port_write(&to_dll, msg, (int)len);
+            p += 8 + len;
+            k++;
+            sent = 1;
+        }
+        if (k < count && le32(data + p) < call) die("live messages not sorted by call");
+        if (sent) pump();
+        call_safe(chunk_buf, REALTIME_FRAMES);
+        fwrite(chunk_buf, 4, REALTIME_FRAMES, wav);
+    }
+    if (k != count) die("live messages after the last call");
+    write_wav(wav, calls * REALTIME_FRAMES);
+    fclose(wav);
+    fprintf(stderr, "rbhost: live session: %u messages, %u calls of %d frames written to %s\n", count, calls,
+            REALTIME_FRAMES, wav_path);
+    fflush(stderr);
+    ExitProcess(0);
+}
+
 /* ------------------------------------------------------------------ main */
 
 static void usage(void) {
@@ -535,7 +605,7 @@ static void usage(void) {
             "usage: rbhost [--dll PATH] [--idle-blocks N] [--post-stop-blocks M] [--drum-counters A,B,C,D]\n"
             "              [--startup-sound] [--first-chunk-drain] [--no-untitled] [--private-port] [--idle-fpu-cw HEX]\n"
             "              [--dump-tables DIR] [--dump-state DIR] [--dump-float DIR]\n"
-            "              [--mod-msg FILE] [--dump-samples DIR] [-v]\n"
+            "              [--mod-msg FILE] [--dump-samples DIR] [--live FILE] [-v]\n"
             "              SONG.rbhm OUT.wav\n");
     exit(2);
 }
@@ -543,7 +613,7 @@ static void usage(void) {
 int main(int argc, char **argv) {
     const char *dll_path = "C:\\ReBirth RB-338\\ReBirth.dll";
     const char *msg_path = NULL, *wav_path = NULL, *tables_dir = NULL, *state_dir = NULL, *float_dir = NULL;
-    const char *mod_msg_path = NULL, *samples_dir = NULL;
+    const char *mod_msg_path = NULL, *samples_dir = NULL, *live_path = NULL;
     FILE *float_out = NULL;
     long idle_blocks = 0, post_stop_blocks = 0;
     int drum[4], drum_set = 0, startup_sound = 0, first_chunk_drain = 0, untitled = 1, i;
@@ -576,6 +646,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--dump-float") && i + 1 < argc) float_dir = argv[++i];
         else if (!strcmp(a, "--mod-msg") && i + 1 < argc) mod_msg_path = argv[++i];
         else if (!strcmp(a, "--dump-samples") && i + 1 < argc) samples_dir = argv[++i];
+        else if (!strcmp(a, "--live") && i + 1 < argc) live_path = argv[++i];
         else if (!strcmp(a, "-v")) verbose = 1;
         else if (a[0] == '-') usage();
         else if (!msg_path) msg_path = a;
@@ -691,6 +762,7 @@ int main(int argc, char **argv) {
     send_msg(m, 2);
 
     render_idle(idle_blocks);
+    if (live_path) live_session(live_path, wav_path);
 
     /* The export, docs/export_state.md section 4 (sub_427988). */
     m[0] = 35, m[1] = 1, m[2] = 0;

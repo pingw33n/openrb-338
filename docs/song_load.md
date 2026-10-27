@@ -381,34 +381,125 @@ hold these values, and every device's `SongDevice::init_track` models its slot 8
 (0x100160F0) was missing until task-034 (`frame::tests::constructor_tracks_hold_the_defaults`,
 `song_mode_chase_restores_the_mixer_ctor_values`).
 
-### 4.10 The panel's live device messages, as far as read (task-043)
+### 4.10 The panel's live device messages [C] (task-043, task-055)
 
 Besides the data block, each device's host-message handler (slot 10) takes the panel's live
-changes. Read so far (the rest, and the exe's senders: task-055):
+changes, all as msg 41 with the device's own sub id.
 
-- **TB-303**, `sub_100256E0`, jump table `flt_10153BD8 + 4*sub` (subs 31..46, entries from
-  0x10153C54) [C]. Sub 39 (0x10025CB0) is the data block. Sub 40 `{ctrl, v}` (0x10025CFC): for
-  ctrl 0..8 it stores the live byte `+0xC7C + ctrl` and calls `sub_10012BC0` → `sub_10021340`,
-  the record hook, which acts only with globals byte 0 (song mode) and byte 2 (record) set: it
-  sets the track's hold byte `+4 + ctrl` and inserts the event (`sub_10014750`); ctrl 9 stores
-  nothing, ctrl 10 stores `+0xC86`; every ctrl then clears its changed flag `+0xC88 + ctrl`. So
-  with record off, sub 40 is slot 11 (0x10026180) for ctrls 0..8. Sub 45 `{pattern, step, field,
-  v}` (0x10025FC4, field 0..5): the byte `+0x3E + 98*pattern + 6*step + field`, i.e. a step byte
-  of the pattern block of §4.6. Sub 42 `{pattern, 0|1, v}` (0x10025F25): the pattern's byte
-  `+0x3C` or `+0x3D + 98*pattern`. Subs 43, 44 and 46 (`sub_100191E0`, `sub_10018DC0`,
-  `sub_10019B00`) not read.
-- **Mixer**, `sub_10015520`, table at `0x10151ECC + 4*sub` (subs 137..148, entries from
-  0x101520F0) [C]. Sub 143 (0x1001588F) is the data block; sub 144 (0x100158E7) puts a block
-  into the pattern copy `+0x58` only; sub 145 `{id, v}` (0x10015900): id 0 the live master
-  `+0x30` (0x1001592C, no record hook), 1 the compressor id `+0x34` and 2 the PCF id `+0x38`
-  (each clears a changed flag, `+0x81` or `+0x82`, and calls the record hook with controller 1
-  or 2), 3 and 4 nothing; sub 147 `{c, k, v}` (0x100159DB): k 0 the live enabled byte
-  `+0x40 + 6c` (0x10015A1F, no record hook: the mute is not automatable), k 1..4 the live level,
-  pan, send and dist `+0x41..+0x44 + 6c` with the record hook on controller `5 + 6c + k`.
+**The exe side.** Every edit goes through `sub_40B28C(song, dev, sub, data, n)` →
+`sub_423C98`, which builds `[78, song, 41, dev, sub, data…]` (§1); a query through
+`sub_40B23A(song, dev, sub)` → `sub_423C51` (no payload), whose reply the caller reads with
+`sub_40ABE5`. The pattern edits address the view's current pattern (the 303's `+1277`, the
+808's `+1617`, the 909's `+1726`). The senders (callers of `sub_40B28C`; the load's own
+`sub_431747`, `sub_438D43` … `sub_43A637` excluded). The "Called from" column is the xrefs; the
+polls are the ones `docs/ui_spec.md` read, the other callers' roles (the pattern section's
+buttons, Clear, the Edit menu, the tap keys) are from their place and are [G] where not read
+in `docs/ui_spec.md`; the ones marked [G: not read] are probably MIDI remote control:
 
-rb: `Engine::set_param` (slot 11) stands for the controller messages with record off,
-`MixerDevice::set_master` and `MixerDevice::set_enabled` for sub 145 id 0 and sub 147 field 0;
-`rb_player::Command` sends them.
+| Device | Sub | Payload | Exe sender | Called from |
+|---|---|---|---|---|
+| TB-303 | 40 | `{ctrl, v}` | `sub_43EC83` | the poll `sub_43ED76` (the six knobs, the waveform), the pattern section's on/off and pattern buttons (`sub_43D3C0`, `sub_43D3F3`, `sub_43D48F`), `sub_4405B5` [G: not read] |
+| TB-303 | 42 | `{p, field, v}` | `sub_43ECCA` | `sub_43D426`, `sub_43D45B` (the pattern section's Shuffle, Steps) |
+| TB-303 | 44 | `{p, 98 bytes}` | `sub_43F617` | Clear (`sub_43F5F5`), the Edit menu's pattern functions `sub_42B319`, `sub_42B928`, `sub_42C204` |
+| TB-303 | 45 | `{p, step, field, v}` | `sub_43ED1D` | the step editor (`sub_43ED76`, the keys `sub_43F590`), the tap keys `sub_440213` |
+| TR-808 | 57 | `{ctrl, v}` | `sub_441C82` | the poll `sub_441E79`, the pattern section (`sub_440C3C`, `sub_440C6F`, `sub_440D0B`), `sub_443C92` [G] |
+| TR-808 | 59 | `{p, field, v}` | `sub_441CC9` | `sub_440CA2`, `sub_440CD7` |
+| TR-808 | 61 | `{p, 194 bytes}` | `sub_443257` | `sub_42B319`, `sub_42B928`, `sub_42C204` |
+| TR-808 | 62 | `{p, step, inst, v}` | `sub_441D1C` | `sub_44305C` (the step buttons, the tap keys) |
+| TR-909 | 74 | `{ctrl, v}` | `sub_445C41` | the poll `sub_445FB0`, the pattern section (`sub_4447C2`, `sub_4447F5`, `sub_444B43`), `sub_447D9D` [G] |
+| TR-909 | 76 | `{p, field, v}` | `sub_445C88` | `sub_444ADA`, `sub_444B0F` |
+| TR-909 | 78 | `{p, 194 bytes}` | `sub_4471C5` | `sub_42B319`, `sub_42B928`, `sub_42C204` |
+| TR-909 | 79 | `{p, step, inst, v}` | `sub_445CDB` | `sub_447153` (the step buttons; it also clears the other hi-hat) |
+| Delay | 84 | `{ctrl, v}` | `sub_407AD3` | the poll `sub_407F7A`, `sub_40821A`, `sub_40827C` |
+| Distortion | 92 | `{ctrl, v}` | `sub_408976` | the poll `sub_408AF5`, `sub_408C36`, `sub_408C98` |
+| Compressor | 102 | `{ctrl, v}` | `sub_403FE5` | the poll `sub_404396`, `sub_404736`, `sub_404798` |
+| PCF | 114 | `{ctrl, v}` | `sub_41B82B` | the poll `sub_41B914`, `sub_41BE32`, `sub_41BE94` |
+| Mixer | 145 | `{id, v}` | `sub_4131BC` | the master poll `sub_412DC7`, the channel poll `sub_413F47`, `sub_413256`, `sub_4137E2` |
+| Mixer | 147 | `{c, k, v}` | `sub_413206` | `sub_413F47`, `sub_413256`, `sub_4137E2` |
+
+Queries the panel sends (`sub_40B23A`): the 303's 31 (`sub_43EAC5`) and 33 (`sub_43EA26`), the
+808's and 909's counterparts (`sub_442978`, `sub_4428D9`, `sub_446AD7`, `sub_446A38`), from
+`sub_42D92C` / `sub_42D9CF`; the effect and mixer views' reads (`sub_403DC1`, `sub_407944`,
+`sub_408736`, `sub_41B6AA`, `sub_412F04` with the mixer's 137); and the save path
+(`sub_43920E`: 303 31, `sub_438EAA`: delay 83, and their siblings `sub_438BCE`…`sub_43A1F4`).
+
+**The DLL side.** The handlers and their tables (`jmp [table + 4*sub]`, the raw sub byte):
+303 `sub_100256E0` (table 0x10153BD8, subs 31..46), 808 `sub_100282B0` (0x10153F74, 48..63),
+909 `sub_1002B8E0` (0x101542F0, 65..80), delay `sub_1000FB40` (0x101516A8, 81..86), distortion
+`sub_10010D60` (0x10151A34, 89..94), compressor `sub_1000EFD0` (0x1015151C, 99..104), PCF
+`sub_10016C50` (0x101520F4, 111..116), mixer `sub_10015520` (0x10151ECC, 137..148). What each
+sub that changes state does (`p` pattern, `s` step; offsets in the device object):
+
+| Device: sub (address) | Effect |
+|---|---|
+| 303: 40 (0x10025CFC) | ctrl 0..8 the live byte `+0xC7C + ctrl`, then the record hook; 9 nothing; 10 the unused live byte `+0xC86`; every ctrl then clears its changed flag `+0xC88 + ctrl` |
+| 808: 57 (0x100288C5) | ctrl 0..28 `+0x1890 + ctrl` and the hook; 29 nothing (the last-step byte); 30 `+0x18AE`; clears `+0x18B0 + ctrl` |
+| 909: 74 (0x1002BF12) | ctrl 0..29 `+0x1891 + ctrl` with 20, 21, 22 at `+0x18A6`, `+0x18A7`, `+0x18A5` (the permutation of §4.8), and the hook; 30 nothing (the last-step byte); 31 `+0x18B0`; clears `+0x18B2 + ctrl` |
+| Delay: 84 (0x1000FCE5) | k 0..4 `+0x34 + k`, raw (rb clamps the pan to 127, below); 5 (the meter) nothing; clears `+0x40 + k`; the hook for every k |
+| Distortion: 92 (0x10010EF1) | k 0..2 `+0x39 + k`, raw (rb clamps amount and shape to 127, below); clears `+0x4C + k`; the hook |
+| PCF: 114 (0x10016DFB) | k 0..6 `+0x38 + k`; the hook; clears `+0x48 + k` |
+| Compressor: 102 (0x1000F178) | k 0..2 `+0x38 + k`; 3, 4 nothing; clears `+0x42 + k`; the hook |
+| Mixer: 145 (0x10015900) | id 0 the live master `+0x30` (no hook); 1 the compressor id, dword `+0x34`, and 2 the PCF id, dword `+0x38` (each clears `+0x81` / `+0x82`, then the hook with controller 1 / 2); 3, 4 nothing |
+| Mixer: 147 (0x100159DB) | k 0 the live enabled byte `+0x40 + 6c` (no hook: the mute is not automatable); k 1..4 the level, pan, send, dist `+0x41..+0x44 + 6c`, then the hook with controller `5 + 6c + k`; k 5 nothing; c unchecked (OB-17; rb drops c above 3) |
+| 303: 42 (0x10025F25); 808: 59 (0x10028EFE); 909: 76 (0x1002C57F) | `{p, field, v}`: field 0 the pattern's shuffle flag, 1 its length (303 `+0x3C`/`+0x3D + 98p`, 808 `+0x50`/`+0x51 + 194p`, 909 `+0x51`/`+0x52 + 194p`); another field nothing |
+| 303: 43 (0x10025F62); 808: 60 (0x10028F3B); 909: 77 (0x1002C5BC) | `{p, shuffle, length}`: both header bytes (`sub_100191E0`) [not sent by the exe] |
+| 303: 44 (0x10025F93); 808: 61 (0x10028F6C); 909: 78 (0x1002C5ED) | `{p, bytes}`: the whole pattern, 98 bytes (`sub_10018DC0`) or 194 (`sub_100192C0`), as the data block holds it |
+| 303: 45 (0x10025FC4) | `{p, s, field, v}`: field 0..5 (note, slide, accent, up, down, rest; the switch's `ja` drops a larger field) at `+0x3E + 98p + 6s + field` |
+| 808: 62 (0x10028F9D); 909: 79 (0x1002C61E) | `{p, s, inst, v}`: `+0x52 + 194p + 12s + inst` (808) or `+0x53 + …` (909), inst unchecked |
+| 303: 46 (0x10026112); 808: 63 (0x10028FE2); 909: 80 (0x1002C663) | `{p, s, bytes}`: a whole step, 6 bytes (`sub_10019B00`) or 12 (`sub_10019840`) [not sent by the exe] |
+| Mixer: 146 (0x100159C2), 148 (0x10015B8B) | the header (`sub_10019D10`) or one 6-byte channel `{c, bytes}` (`sub_10019B00`) into the **live** set [not sent by the exe] |
+
+Notes:
+- **The record hook** `sub_10012BC0` → `sub_10021340` acts only with globals byte 0 (song
+  mode) and byte 2 (record) set: it sets the track's hold byte `+4 + ctrl` and inserts the event
+  (`sub_10014750`). With record off, a `{ctrl, v}` message is slot 11's store for every
+  controller slot 11 takes (303 0x10026180, 808 0x10029050, 909 0x1002C6D0, delay 0x1000FDC0,
+  dist 0x10010FB0, PCF 0x10016EF0, compressor 0x1000F220, mixer 0x10015C00), plus the one extra
+  live byte of the pattern devices, which no audio reads. The changed flags are the panel
+  update's (slot 11 sets them, the message clears them).
+- **The patterns are read live.** The step functions read the pattern array in both modes, so a
+  pattern edit is heard the next time the step plays, and it does not touch the live parameters
+  (a data block in pattern mode resets them to the block's).
+- **Bounds.** Only the 303's step field and the header field are checked. A pattern above 31, a
+  step above 15 or an instrument above 11 addresses another step, another pattern or, past the
+  array, the live block and the rest of the object (303 pattern 32's header is the live
+  enabled byte). The panel sends only its current pattern (0..31), steps 0..15 and instruments
+  0..11, so this never happens from the panel. A defect of the original:
+  [OB-17](original_bugs.md).
+- **The queries** reply only, except the whole-block query of each device (303 31 at
+  0x10025751, 808 48 at 0x10028321, 909 65 at 0x1002B951, delay 83 at 0x1000FC66, dist 91 at
+  0x10010E7C, PCF 113 at 0x10016D80, compressor 101 at 0x1000F0FD), which in pattern mode first
+  copies the live parameter block into the pattern-mode copy. That copy is not observable: in
+  pattern mode nothing reads the copy's parameters (slot 9 overwrites it from the live block on
+  entering song mode, msg 41 overwrites it), so the queries need no model. The mixer's 137
+  replies the live set without copying.
+
+rb: `Engine::device_param` (the `{ctrl, v}` subs; `SongDevice::param_message`),
+`Engine::mixer_global` (145), `Engine::mixer_channel` (147), `Engine::pattern_field`,
+`Engine::pattern_header`, `Engine::pattern`, `Engine::step_field`, `Engine::step`
+(`crates/rb-engine/src/frame/edit.rs`), sent by the `rb_player::Command` variants
+`DeviceParam`, `MixerGlobal`, `MixerChannel`, `PatternField`, `PatternHeader`, `Pattern`,
+`StepField`, `Step`. They model record off (recording: task-057). Where rb differs from the
+DLL's stores:
+- **Delay pan and distortion amount/shape above 127.** The DLL's subs 84 and 92 store the byte
+  raw; rb's slot 11, which `Engine::device_param` uses, clamps the delay's pan
+  (`delay.rs:74-76`) and the distortion's amount and shape (`dist.rs:116-118`) to 127, because
+  the DLL's updates then index past their tables (OB-9, OB-10). The panel sends 0..127 only, so
+  the messages render alike. The same clamp is on the load path (msg 86 and 94,
+  `Delay::data`, `Distortion::data`), and there a song file can carry such a byte: the exe's DELY
+  and DIST parses (`sub_43465C` at 0x43589A, `sub_4345A6` at 0x435B28) and their packers
+  (`sub_422EB7`, `sub_423048`) copy the chunk bytes unchanged [C]; a TRAK event cannot (the
+  track load's range is 0..127). A hand-made file with such a byte therefore renders
+  differently in rb; no shipped or corpus song has one. Whether to keep the clamp is task-071.
+- **Mixer channel above 3.** Sub 147 does not bound c (OB-17); `Engine::mixer_channel` drops a
+  channel above 3 (`edit.rs`), and so do the pattern messages past the pattern array.
+
+Checked against the DLL: a
+600-call session over `full_mix` with 135 of these messages, in pattern mode and in song mode
+while playing, rendered by rbhost (`--live`, `tools/rbhost/README.md`) and by rb-player, is
+byte-identical (`crates/rb-player/tests/live_messages.rs`). The one difference that session
+work found is not a message: rb's PCF step after a return to pattern mode while playing
+(task-069).
 
 ## 5. Msg 37: track events [C]
 
