@@ -29,6 +29,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
 - `m-0`: deterministic reference renders from the original, and the tools around them.
 - `m-1`: the Rust engine and the `rb` CLI (`.rbs` to FLAC, Ogg or WAV).
 - `m-2`: RBM mods.
+- `m-3`: the desktop UI (egui, scalable SVG panel): play and edit songs live.
 
 **Knowledge documents.** These are files edited like source: `docs/*.md`.
 - `docs/initial_investigation.md` is the engine survey; its [C] items are confirmed and its [G] items are guessed.

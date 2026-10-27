@@ -1,6 +1,6 @@
 ---
 id: m-3
-title: "m-3: Bundled UI (scalable SVG, original layout)"
+title: "m-3: Desktop UI: play and edit songs live (egui, scalable SVG panel)"
 ---
 
 ## Description
