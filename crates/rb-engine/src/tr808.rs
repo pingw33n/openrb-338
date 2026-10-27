@@ -20,7 +20,7 @@ use crate::drums::{Dual, Filter, Pitched, Simple};
 use crate::frame::{Block, BlockContext, ChannelDevice, SongDevice};
 use crate::process::ProcessState;
 use crate::samples::{Retired, Sample, SampleSet};
-use crate::seq::Track;
+use crate::seq::TrackMut;
 use crate::tables::data::{
     TR808_DECAY, TR808_SD_NOISE_SAMPLE, TR808_SD_NOISE_SEQ, TR808_SD_SAMPLE, TR808_TONE,
 };
@@ -489,7 +489,7 @@ impl SongDevice for Tr808 {
     /// Slots 7 (0x10026C40, the 303's) and 8 (0x10029DA0) from the song ctor: controllers 0 and
     /// 1 of the track are quantised to a bar, and a tick-0 event of every controller 0..28 with
     /// the pattern-mode copy's value is inserted (`sub_1001F900`).
-    fn init_track(&mut self, track: &mut Track) {
+    fn init_track(&mut self, track: &mut TrackMut) {
         track.set_quant(ENABLED as u8, 32);
         track.set_quant(PATTERN as u8, 32);
         for c in 0..=LAST_CTRL {

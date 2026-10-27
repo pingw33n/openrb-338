@@ -63,8 +63,9 @@
 //! mode with record on, the panel's controller messages above record into the song's tracks
 //! (the record hook, [`rb_engine::seq::Sequencer::record_hook`]), and the loop wrap, record off
 //! and the song end merge the recording into them. The recorded events go into lists whose
-//! capacity is reserved when the song is built (`rb_engine::seq`'s module doc: a whole node
-//! pool per list, as many nodes as the original's pool has), so the callback never grows them;
+//! capacity is reserved when the song is built (`rb_engine::seq`'s module doc: one node pool
+//! per song, shared by its lists, as many nodes as the original's pool has), so the callback
+//! never grows them;
 //! [`Snapshot::recording`] follows the record byte, which the song end clears, and
 //! [`Player::tracks`] gives the UI the current song's tracks ([`Tracks`], copied by the callback
 //! into a second triple buffer whenever they change), which is what a save of a recorded song
@@ -79,7 +80,7 @@ use rb_engine::frame::export::REALTIME_FRAMES;
 use rb_engine::frame::{Devices, Engine, MixerParams};
 use rb_engine::process::ProcessState;
 use rb_engine::samples::{Retired, SampleSet};
-use rb_engine::seq::{Event, POOL_NODES};
+use rb_engine::seq::Pool;
 use rb_engine::song::{Device, Song};
 use rb_engine::tables::Tables;
 
@@ -290,9 +291,10 @@ pub struct Snapshot {
 /// The current song's track events (task-057), as the callback last copied them: after a song
 /// becomes current and whenever its lists change ([`rb_engine::seq::Sequencer::revision`]: a
 /// merge of the recording, a stop's prune). This is what the original's save reads from the DLL
-/// (the exe's TRAK writer `sub_437CFF` asks with song msg 22, 0x437DE6). Each list has the
-/// capacity of a whole node pool, so the copy never allocates in the callback.
-#[derive(Debug, PartialEq)]
+/// (the exe's TRAK writer `sub_437CFF` asks with song msg 22, 0x437DE6). The lists are in a
+/// node pool of their own, whose capacity holds every node a song can have, so the copy never
+/// allocates in the callback.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tracks {
     /// The [`Snapshot::generation`] of the song copied.
     pub generation: u32,
@@ -300,35 +302,10 @@ pub struct Tracks {
     pub revision: u64,
     /// Its [`rb_engine::seq::Sequencer::merges`]: non-zero when recording changed the tracks.
     pub merges: u64,
-    /// Tracks 0..8 (by device id), in list order.
-    pub events: [Vec<Event>; 9],
-}
-
-impl Default for Tracks {
-    fn default() -> Self {
-        Tracks {
-            generation: 0,
-            revision: 0,
-            merges: 0,
-            events: std::array::from_fn(|_| Vec::with_capacity(POOL_NODES)),
-        }
-    }
-}
-
-impl Clone for Tracks {
-    /// A copy with the capacity reserved again (the triple buffer's three copies).
-    fn clone(&self) -> Self {
-        let mut t = Tracks {
-            generation: self.generation,
-            revision: self.revision,
-            merges: self.merges,
-            ..Tracks::default()
-        };
-        for (d, s) in t.events.iter_mut().zip(&self.events) {
-            d.extend_from_slice(s);
-        }
-        t
-    }
+    /// Tracks 0..8 (by device id), in list order: `events[i]` is track i's list (the recording
+    /// lists, 9..17, are empty). Its clone reserves the pool again (the triple buffer's three
+    /// copies).
+    pub events: Pool,
 }
 
 /// The UI side.
@@ -721,10 +698,7 @@ impl Audio {
             t.generation = now.0;
             t.revision = now.1;
             t.merges = f.seq.merges;
-            for (d, tr) in t.events.iter_mut().zip(&f.seq.tracks) {
-                d.clear();
-                d.extend_from_slice(tr.events());
-            }
+            t.events.copy_tracks_from(&f.seq.pool);
             self.tracks.publish();
             self.tracks_published = Some(now);
         }

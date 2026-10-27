@@ -309,7 +309,7 @@ use crate::song::Mixer;
 
 #[test]
 fn insert_rules() {
-    let mut t = Track::new(Device::Tb303_1);
+    let mut t = Solo::new(Device::Tb303_1);
     assert!(t.insert(48, 2, 1));
     assert!(t.insert(0, 2, 0));
     assert!(t.insert(48, 3, 5));
@@ -363,7 +363,7 @@ fn insert_rules() {
 
 #[test]
 fn prune_drops_repeated_values() {
-    let mut t = Track::new(Device::Tb303_1);
+    let mut t = Solo::new(Device::Tb303_1);
     for (tick, v) in [(0, 5), (48, 5), (96, 6), (144, 6), (192, 5)] {
         t.insert(tick, 2, v);
     }
@@ -380,7 +380,7 @@ fn prune_drops_repeated_values() {
 
 #[test]
 fn chase_and_advance() {
-    let mut t = Track::new(Device::Tb303_1);
+    let mut t = Solo::new(Device::Tb303_1);
     for (tick, c, v) in [(0, 2, 1), (0, 3, 1), (96, 2, 2), (192, 3, 3), (288, 2, 4)] {
         t.insert(tick, c, v);
     }
@@ -622,20 +622,17 @@ fn record_hook_rounds_and_holds() {
     let mut r = Rig::new(120_000);
     r.seq.set_record(1, &mut r.dev);
     r.seq.record_hook(D::Tb303_1, 3, 50);
-    assert!(r.seq.tracks[1].recorded().is_empty(), "pattern mode");
+    assert!(r.seq.recorded(1).is_empty(), "pattern mode");
     let mut r = Rig::song_mode(120_000);
     r.seq.tracks[1].set_quant(1, 32);
     r.locate(100);
     r.seq.record_hook(D::Tb303_1, 3, 50);
-    assert!(r.seq.tracks[1].recorded().is_empty(), "record off");
+    assert!(r.seq.recorded(1).is_empty(), "record off");
     r.seq.set_record(1, &mut r.dev);
     // stopped: down (100 → 96; controller 1's unit is a bar: 0)
     r.seq.record_hook(D::Tb303_1, 3, 50);
     r.seq.record_hook(D::Tb303_1, 1, 2);
-    assert_eq!(
-        triples(r.seq.tracks[1].recorded()),
-        [(0, 1, 2), (96, 3, 50)]
-    );
+    assert_eq!(triples(r.seq.recorded(1)), [(0, 1, 2), (96, 3, 50)]);
     let hold = r.seq.tracks[1].hold;
     assert!(hold[1] && hold[3] && !hold[2]);
     // playing: up (100 → 120, 768); the same tick and controller takes the value
@@ -649,23 +646,23 @@ fn record_hook_rounds_and_holds() {
     r.seq.set_loop_end(768);
     r.seq.record_hook(D::Tb303_1, 1, 4);
     assert_eq!(
-        triples(r.seq.tracks[1].recorded()),
+        triples(r.seq.recorded(1)),
         [(0, 1, 4), (96, 3, 50), (120, 3, 52), (768, 1, 3)]
     );
     // each device records into its own track; nothing was applied or merged
     r.seq.record_hook(D::Mixer, 7, 9);
-    assert_eq!(triples(r.seq.tracks[0].recorded()), [(120, 7, 9)]);
-    assert!(r.seq.tracks[1].events().is_empty());
+    assert_eq!(triples(r.seq.recorded(0)), [(120, 7, 9)]);
+    assert!(r.seq.events(1).is_empty());
     r.take();
     // a controller above 127 is not recorded
     r.seq.record_hook(D::Delay, 200, 1);
-    assert!(r.seq.tracks[D::Delay as usize].recorded().is_empty());
+    assert!(r.seq.recorded(D::Delay as usize).is_empty());
 }
 
 /// The merge `sub_1001F520` over a track with automation on controllers 2 and 3.
 #[test]
 fn merge_replaces_the_recorded_span() {
-    let mut t = Track::new(Device::Tb303_1);
+    let mut t = Solo::new(Device::Tb303_1);
     for (tick, c, v) in [
         (0, 2, 10),
         (0, 3, 20),
@@ -676,15 +673,15 @@ fn merge_replaces_the_recorded_span() {
     ] {
         t.insert(tick, c, v);
     }
-    let mut free = 1000;
+    let free = t.free();
     // controller 2 at 144 and 240, controller 4 (no automation) at 48, one above the merge
-    t.record(144, false, None, 2, 50, &mut free);
-    t.record(240, false, None, 2, 51, &mut free);
-    t.record(48, false, None, 4, 7, &mut free);
-    t.record(300, true, None, 2, 60, &mut free);
-    assert_eq!(free, 996);
+    t.record(144, false, None, 2, 50);
+    t.record(240, false, None, 2, 51);
+    t.record(48, false, None, 4, 7);
+    t.record(300, true, None, 2, 60);
+    assert_eq!(t.free(), free - 4);
     t.chase(250);
-    t.merge(250, &mut free);
+    t.merge(250);
     // controller 2: the node at 192 goes (a recorded node at or before it), 96 stays (before
     // the first recorded one), 288 is after the merge; it returns to 12, its value at 250, at
     // the next 24-tick unit 264. Controller 4 returns to 0xFF there (no node up to 250). The
@@ -707,7 +704,7 @@ fn merge_replaces_the_recorded_span() {
     assert!(t.recorded().is_empty());
     assert_eq!(t.hold, [false; 128]);
     // 4 recorded, 1 removed, 2 returns, 3 copies, 4 freed
-    assert_eq!(free, 996 + 1 - 2 - 3 + 4);
+    assert_eq!(t.free(), free - 4 + 1 - 2 - 3 + 4);
     // the applied node (192, 2) was removed: rb moves to the one before it (OB-19)
     assert_eq!(t.next(), 6);
 }
@@ -716,16 +713,15 @@ fn merge_replaces_the_recorded_span() {
 /// tick leaves it; the unit is the controller's (a bar for the 303's pattern).
 #[test]
 fn merge_keeps_tick_zero_and_existing_returns() {
-    let mut t = Track::new(Device::Tb303_1);
+    let mut t = Solo::new(Device::Tb303_1);
     t.set_quant(1, 32);
     t.insert(0, 1, 5);
     t.insert(768, 1, 6);
     t.insert(48, 2, 1);
     t.insert(72, 2, 3);
-    let mut free = 100;
-    t.record(0, false, None, 1, 9, &mut free);
-    t.record(30, false, None, 2, 2, &mut free);
-    t.merge(50, &mut free);
+    t.record(0, false, None, 1, 9);
+    t.record(30, false, None, 2, 2);
+    t.merge(50);
     // controller 1: tick 0 kept and given the recorded value, 768 (the return's tick) kept as
     // it is; controller 2: 48 removed, its return at 72 finds a node there, which keeps 3
     assert_eq!(
@@ -756,7 +752,7 @@ fn recording_while_playing_and_record_off() {
     // merged at 557 and chased there: 50
     assert_eq!(r.take(), ["303a p2=50"]);
     assert_eq!(
-        triples(r.seq.tracks[1].events()),
+        triples(r.seq.events(1)),
         [(0, 2, 1), (144, 2, 50), (576, 2, 2), (768, 2, 3)]
     );
     let log = r.run(200);
@@ -796,7 +792,7 @@ fn the_loop_wrap_merges() {
     // return at 768, the loop end, never fires in the loop (OB-4)
     assert_eq!(p, ["303a p2=1", "303a p2=50"]);
     assert_eq!(
-        triples(r.seq.tracks[1].events()),
+        triples(r.seq.events(1)),
         [(0, 2, 1), (144, 2, 50), (768, 2, 2)]
     );
     assert_eq!(r.seq.tracks[1].hold, [false; 128]);
@@ -814,7 +810,7 @@ fn song_end_merges_the_recording() {
     r.take();
     r.run(200);
     assert_eq!(r.seq.globals.byte2, 0);
-    assert_eq!(triples(r.seq.tracks[1].events()), [(767_016, 3, 9)]);
+    assert_eq!(triples(r.seq.events(1)), [(767_016, 3, 9)]);
 }
 
 /// The pool refuses a new node when one is free (`sub_10014434`); a replacement takes none,
@@ -831,7 +827,7 @@ fn the_pool_refuses_the_last_node() {
         })
         .collect();
     s.add_events(1, &events);
-    assert_eq!(s.tracks[1].events().len(), POOL_NODES - 1);
+    assert_eq!(s.events(1).len(), POOL_NODES - 1);
     assert_eq!(s.free_nodes(), 1);
     s.add_events(
         1,
@@ -842,19 +838,109 @@ fn the_pool_refuses_the_last_node() {
         }],
     );
     assert_eq!(
-        s.tracks[1].events()[127],
+        s.events(1)[127],
         Event {
             tick: 0,
             ctrl: 0,
             value: 7
         }
     );
-    assert_eq!(s.tracks[1].events.capacity(), POOL_NODES);
+    assert_eq!(s.pool.nodes.capacity(), POOL_NODES);
     // recording is refused too, the hold byte set all the same
     let mut d = probes(&Log::default());
     s.set_song_mode(1, &mut d);
     s.set_record(1, &mut d);
     s.record_hook(Device::Tb303_2, 3, 1);
-    assert!(s.tracks[2].recorded().is_empty());
+    assert!(s.recorded(2).is_empty());
     assert!(s.tracks[2].hold[3]);
+}
+
+/// The lists of a song share one pool (task-082, `dword_10100230`): each list keeps its own
+/// order while the others move around it, a node one list takes is one less for all the
+/// others, and a node a list frees is one more for them.
+#[test]
+fn the_lists_share_one_pool() {
+    let ev = |tick, ctrl| song::TrackEvent {
+        tick,
+        ctrl,
+        value: 1,
+    };
+    let mut s = Sequencer::default();
+    s.add_events(4, &[ev(48, 1), ev(0, 1)]);
+    s.add_events(0, &[ev(24, 2)]);
+    s.add_events(8, &[ev(96, 3)]);
+    s.add_events(4, &[ev(24, 1)]);
+    assert_eq!(triples(s.events(0)), [(24, 2, 1)]);
+    assert_eq!(triples(s.events(4)), [(0, 1, 1), (24, 1, 1), (48, 1, 1)]);
+    assert_eq!(triples(s.events(8)), [(96, 3, 1)]);
+    assert!(
+        (1..9)
+            .filter(|&t| t != 4 && t != 8)
+            .all(|t| s.events(t).is_empty())
+    );
+    assert_eq!(s.free_nodes(), POOL_NODES - 5);
+    // track 1 takes all but one free node: track 2's load and track 3's recording are refused
+    let fill: Vec<_> = (0..(POOL_NODES - 6) as u32)
+        .map(|i| ev(i / 128 * 24, (i % 128) as u8))
+        .collect();
+    s.add_events(1, &fill);
+    assert_eq!(s.free_nodes(), 1);
+    s.add_events(2, &[ev(0, 0)]);
+    assert!(s.events(2).is_empty());
+    let mut d = probes(&Log::default());
+    s.set_song_mode(1, &mut d);
+    s.set_record(1, &mut d);
+    s.record_hook(Device::Tr808, 5, 1);
+    assert!(s.recorded(3).is_empty());
+    // a stop prunes the repeated values (all but tick 0's, on tracks 1 and 4): the others get
+    // the nodes
+    s.halt(&mut d);
+    assert_eq!(s.events(1).len(), 128);
+    assert_eq!(triples(s.events(4)), [(0, 1, 1)]);
+    assert_eq!(s.free_nodes(), POOL_NODES - 3 - 128);
+    s.record_hook(Device::Tr808, 5, 9);
+    assert_eq!(triples(s.recorded(3)), [(0, 5, 9)]);
+    s.add_events(2, &[ev(0, 0)]);
+    assert_eq!(triples(s.events(2)), [(0, 0, 1)]);
+    assert_eq!(s.free_nodes(), POOL_NODES - 5 - 128);
+    assert_eq!(triples(s.events(0)), [(24, 2, 1)]);
+    assert_eq!(triples(s.events(8)), [(96, 3, 1)]);
+    // the merge moves the recorded node into its track and frees the recording's
+    s.set_record(0, &mut d);
+    assert!(s.recorded(3).is_empty());
+    assert!(s.events(3).contains(&Event {
+        tick: 0,
+        ctrl: 5,
+        value: 9
+    }));
+}
+
+/// A pool's clone and the callback's copy of the track lists keep the whole pool's capacity,
+/// so neither grows in the callback.
+#[test]
+fn a_pool_copy_keeps_the_capacity() {
+    let mut s = Sequencer::default();
+    s.add_events(
+        2,
+        &[song::TrackEvent {
+            tick: 0,
+            ctrl: 1,
+            value: 2,
+        }],
+    );
+    let c = s.clone();
+    assert_eq!(c.pool.nodes.capacity(), POOL_NODES);
+    assert_eq!(c, s);
+    let mut copy = Pool::new();
+    let mut d = probes(&Log::default());
+    s.set_song_mode(1, &mut d);
+    s.set_record(1, &mut d);
+    s.record_hook(Device::Tr909, 3, 4);
+    copy.copy_tracks_from(&s.pool);
+    assert_eq!(copy.nodes.capacity(), POOL_NODES);
+    for t in 0..TRACKS {
+        assert_eq!(&copy[t], s.events(t));
+        assert!(copy[TRACKS + t].is_empty());
+    }
+    assert_eq!(s.recorded(4).len(), 1);
 }

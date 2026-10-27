@@ -20,7 +20,7 @@
 mod tests;
 
 use crate::frame::{Block, BlockContext, ChannelDevice, SongDevice};
-use crate::seq::Track;
+use crate::seq::TrackMut;
 use crate::tables::Tables;
 
 /// The parameter block (`+0x30` pattern-mode copy, `+0xC7C` live): controllers 0..8, then the
@@ -709,7 +709,7 @@ impl SongDevice for Tb303 {
     /// track are quantised to 32 * 24 ticks (a bar, `sub_10021560` → `sub_10014600`), and a
     /// tick-0 event of every controller 0..8 with the ctor's value is inserted
     /// (`sub_1001F900` → `sub_10014750`).
-    fn init_track(&mut self, track: &mut Track) {
+    fn init_track(&mut self, track: &mut TrackMut) {
         track.set_quant(ENABLED as u8, 32);
         track.set_quant(PATTERN as u8, 32);
         for c in 0..=WAVEFORM {

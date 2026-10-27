@@ -14,7 +14,7 @@
 //! set-param; 15 (0x10010A50) the block; 16 (0x10010D40) the mixer update's meter check.
 
 use crate::frame::{BLOCK, Block, BlockContext, InsertEffect, SongDevice};
-use crate::seq::Track;
+use crate::seq::TrackMut;
 use crate::tables::Tables;
 
 /// The controllers: enabled, amount, shape.
@@ -287,7 +287,7 @@ impl SongDevice for Distortion {
 
     /// Slot 8, 0x10010FE0, with tick 0 from the song ctor: controllers 0..2 of the pattern copy
     /// inserted into the distortion's track (`sub_1001F900`; controller 3 is skipped).
-    fn init_track(&mut self, track: &mut Track) {
+    fn init_track(&mut self, track: &mut TrackMut) {
         for c in 0..=SHAPE {
             track.insert(0, c as u8, self.pattern[c]);
         }

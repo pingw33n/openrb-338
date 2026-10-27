@@ -184,7 +184,7 @@ pub trait SongDevice: Send {
     /// Slots 7 and 8, called once on every device by the song ctor (0x10011941, 0x10011985,
     /// slot 8 with tick 0) with the device's own track: the 303's set the track's quantisation
     /// and insert its initial events.
-    fn init_track(&mut self, _track: &mut crate::seq::Track) {}
+    fn init_track(&mut self, _track: &mut crate::seq::TrackMut) {}
     /// Not a slot: the live parameter block, the bytes the audio reads and the panel polls
     /// (controllers by number, plus the bytes the device writes itself: the 303's, 808's and
     /// 909's last step at 9, 29 and 30, the delay's meter at 5). Empty for a placeholder; the
@@ -524,7 +524,7 @@ impl SongDevice for MixerDevice {
     /// for each channel c its level, pan, send and dist (`6..9 + 6c`, `+0x69..+0x6C + 6c`)
     /// inserted into the mixer's track (`sub_1001F900`). The master and the enables have no
     /// controller.
-    fn init_track(&mut self, track: &mut crate::seq::Track) {
+    fn init_track(&mut self, track: &mut crate::seq::TrackMut) {
         let p = self.pattern;
         track.insert(0, 1, p.comp_id);
         track.insert(0, 2, p.pcf_id);
@@ -1006,7 +1006,7 @@ impl Engine {
         for d in song::Device::ALL {
             f.devices
                 .device_mut(d)
-                .init_track(&mut f.seq.tracks[d.id() as usize]);
+                .init_track(&mut f.seq.track_mut(d.id() as usize));
         }
         f.seq.set_tempo(140_000);
         f.seq.locate(0, &mut f.devices);

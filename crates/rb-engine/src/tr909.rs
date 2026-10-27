@@ -25,7 +25,7 @@ use crate::drums::{Dual, Filter, Pitched, Simple};
 use crate::frame::{Block, BlockContext, ChannelDevice, SongDevice};
 use crate::process::ProcessState;
 use crate::samples::{Retired, Sample, SampleSet};
-use crate::seq::Track;
+use crate::seq::TrackMut;
 use crate::tables::data::{
     TR909_BD_ATTACK, TR909_SD_NOISE_SAMPLE, TR909_SD_NOISE_SEQ, TR909_SD_SAMPLE,
 };
@@ -585,7 +585,7 @@ impl SongDevice for Tr909 {
     /// Slots 7 (0x10026C40, the 303's) and 8 (0x1002D480) from the song ctor: controllers 0 and
     /// 1 of the track are quantised to a bar, and a tick-0 event of every controller 0..29 with
     /// the pattern-mode copy's value in RBS order (`sub_10019624`) is inserted (`sub_1001F900`).
-    fn init_track(&mut self, track: &mut Track) {
+    fn init_track(&mut self, track: &mut TrackMut) {
         track.set_quant(ENABLED as u8, 32);
         track.set_quant(PATTERN as u8, 32);
         let p = self.params_rbs_order();

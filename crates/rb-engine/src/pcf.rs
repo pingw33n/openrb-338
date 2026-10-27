@@ -23,7 +23,7 @@
 //! meter check.
 
 use crate::frame::{BLOCK, Block, BlockContext, Fault, InsertEffect, SongDevice};
-use crate::seq::Track;
+use crate::seq::TrackMut;
 use crate::tables::data::{PCF_DATA, PCF_DECAY};
 use crate::tables::{PcfFilter, Smoother};
 
@@ -400,7 +400,7 @@ impl SongDevice for Pcf {
 
     /// Slot 8, 0x10017200, with tick 0 from the song ctor: controllers 0..6 of the pattern copy
     /// inserted into the PCF's track (`sub_1001F900`; controller 7 is skipped).
-    fn init_track(&mut self, track: &mut Track) {
+    fn init_track(&mut self, track: &mut TrackMut) {
         for c in 0..=MODE {
             track.insert(0, c as u8, self.pattern[c]);
         }

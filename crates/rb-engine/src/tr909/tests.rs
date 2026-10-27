@@ -106,8 +106,8 @@ fn msg_73_permutes_bytes_20_to_22_and_set_param_follows() {
     );
     assert_eq!(d.live[LAST_STEP], 0);
     // slot 8: the tick-0 events of controllers 0..29, in RBS order
-    let mut t = Track::new(crate::song::Device::Tr909);
-    d.init_track(&mut t);
+    let mut t = crate::seq::Solo::new(crate::song::Device::Tr909);
+    d.init_track(&mut t.track_mut());
     let ev = t.events();
     assert_eq!(ev.len(), 30);
     let v = |c: u8| ev.iter().find(|e| e.ctrl == c).unwrap().value;
@@ -296,8 +296,8 @@ fn toms_and_cymbals_use_their_kv_and_t909() {
 #[test]
 fn init_track_holds_the_ctor_defaults() {
     let mut d = Tr909::new(set(), ProcessState::new());
-    let mut t = Track::new(crate::song::Device::Tr909);
-    d.init_track(&mut t);
+    let mut t = crate::seq::Solo::new(crate::song::Device::Tr909);
+    d.init_track(&mut t.track_mut());
     assert!(t.events().iter().all(|e| e.tick == 0));
     let mut vals = [0xFFu8; 30];
     for e in t.events() {

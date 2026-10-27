@@ -180,15 +180,11 @@ fn read_rbs(path: &Path) -> rbs::Song {
 /// events but reverse the order of a tick's events, as the original does (the load inserts
 /// each event before those of its tick, `docs/initial_investigation.md` section 5).
 fn track_sets(h: &mut Harness) -> Vec<Vec<(i32, u8, u8)>> {
-    h.audio
-        .current_mut()
-        .frame
-        .seq
-        .tracks
-        .iter()
+    let seq = &h.audio.current_mut().frame.seq;
+    (0..seq.tracks.len())
         .map(|t| {
-            let mut v: Vec<_> = t
-                .events()
+            let mut v: Vec<_> = seq
+                .events(t)
                 .iter()
                 .map(|e| (e.tick, e.ctrl, e.value))
                 .collect();
@@ -250,9 +246,10 @@ fn a_recorded_song_saves_its_tracks() {
         return;
     };
     let mut want = load_song(&src).unwrap_or_else(|_| panic!("source"));
-    for (t, tr) in h.audio.current_mut().frame.seq.tracks.iter().enumerate() {
+    let seq = &h.audio.current_mut().frame.seq;
+    for (t, tr) in seq.tracks.iter().enumerate() {
         want.tracks[t] = tr
-            .events()
+            .events(&seq.pool)
             .iter()
             .map(|e| rb_engine::song::TrackEvent {
                 tick: e.tick as u32,

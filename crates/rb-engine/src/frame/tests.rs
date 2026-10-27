@@ -160,9 +160,9 @@ fn constructor_state() {
 
 /// The tick-0 events of track `t` after the song ctor, as `(ctrl, value)` in controller order.
 fn ctor_events(e: &Engine, t: usize) -> Vec<(u8, u8)> {
-    let tr = &e.frame.seq.tracks[t];
-    assert!(tr.events().iter().all(|ev| ev.tick == 0));
-    let mut v: Vec<_> = tr.events().iter().map(|ev| (ev.ctrl, ev.value)).collect();
+    let events = e.frame.seq.events(t);
+    assert!(events.iter().all(|ev| ev.tick == 0));
+    let mut v: Vec<_> = events.iter().map(|ev| (ev.ctrl, ev.value)).collect();
     v.sort();
     v
 }
@@ -1104,8 +1104,9 @@ fn panel_messages_record() {
     use song::Device as D;
     let mut e = edit_engine();
     let recorded = |e: &Engine, d: D| -> Vec<(i32, u8, u8)> {
-        e.frame.seq.tracks[d.id() as usize]
-            .recorded()
+        e.frame
+            .seq
+            .recorded(d.id() as usize)
             .iter()
             .map(|x| (x.tick, x.ctrl, x.value))
             .collect()
@@ -1141,9 +1142,10 @@ fn panel_messages_record() {
     // record off: merged into the tracks, and chased (the 303's controller 3 is 73 live)
     e.set_record(0);
     assert!(D::ALL.iter().all(|&d| recorded(&e, d).is_empty()));
-    let tr = &e.frame.seq.tracks[D::Tb303_1.id() as usize];
     assert!(
-        tr.events()
+        e.frame
+            .seq
+            .events(D::Tb303_1.id() as usize)
             .iter()
             .any(|x| (x.tick, x.ctrl, x.value) == (984, 3, 73))
     );

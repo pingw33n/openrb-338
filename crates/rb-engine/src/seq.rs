@@ -13,19 +13,25 @@
 //! A track (ctor `sub_1001EDA0`, 0x22C bytes) is a sorted circular list (list ctor `sub_100144B0`
 //! at `track+0x108`: the head node is the list itself, with tick `0x7FFFFFFF`), a pointer to the
 //! last applied node (`+0x228`), the chase state (`+0x84`, 128 bytes), a per-controller hold mask
-//! (`+4`, 128 bytes) and the device id (`+0x104`). [`Track`] keeps the list in a `Vec` in list
-//! order; `next` is the index of the node after the last applied one. A second list at
-//! `track+0x198` holds what is being recorded (task-057, [`Sequencer::record_hook`]) until the
-//! merge `sub_1001F520` moves it into the first.
+//! (`+4`, 128 bytes) and the device id (`+0x104`). [`Track`]'s list is a slice of the song's
+//! [`Pool`] in list order; `next` is the index of the node after the last applied one. A
+//! second list at `track+0x198` holds what is being recorded (task-057,
+//! [`Sequencer::record_hook`]) until the merge `sub_1001F520` moves it into the first.
 //!
 //! **The node pool.** The DLL takes every list node from one pool of [`POOL_NODES`] nodes
-//! (`dword_10100230`, built by `sub_100142C0`), shared by every song of the process, and
-//! `sub_10014434` refuses a node when one or none is free: the insert then stores nothing. rb
-//! gives each song its own pool of that size ([`Sequencer::free_nodes`]) and reserves the
-//! capacity of a whole pool for each of a track's two lists up front ([`Track::new`]), so that
-//! recording, which inserts in the audio callback, never grows a `Vec` there: a list can hold
-//! no more nodes than the pool has. The reservation is address space; the pages are touched
-//! only as the list grows.
+//! (`dword_10100230`, built once by `EngineOpen` → `sub_1001C7B0` → `sub_10021A10` →
+//! `sub_100142C0`, freed by `sub_1001EC00`), shared by every list of the process: the song
+//! ctor's inserts (`sub_1001F900`), msg 37 (`sub_10021010`), the record hook and the merge all
+//! go through `sub_10014750`, and `sub_10014434` refuses a node when one or none is free: the
+//! insert then stores nothing (task-082). rb gives each song one pool of that size, [`Pool`]:
+//! one buffer of `POOL_NODES` nodes reserved when the song is built, holding the song's 18
+//! lists back to back, so that recording, which inserts in the audio callback, never grows a
+//! `Vec` there. A [`Track`] holds its lists' place in the pool, not the nodes.
+//!
+//! Where rb differs: rb-player keeps a `pending` song beside the `current` one while a loaded
+//! song waits for Play, and each has its own pool, so two pools are live then; in the DLL the
+//! one pool of the instance would serve both songs. The two agree unless the two songs together
+//! hold more than [`POOL_NODES`] nodes (then the DLL refuses nodes rb still gives).
 
 #[cfg(test)]
 mod tests;
@@ -35,6 +41,122 @@ use crate::song::{self, Device, Globals};
 
 /// `0x186A0` at 0x1001431B: the nodes of the DLL's event pool.
 pub const POOL_NODES: usize = 100_000;
+/// The tracks of a song, one per device.
+pub const TRACKS: usize = 9;
+/// The lists of a song's [`Pool`]: list `k < 9` is track k's (`+0x108`), list `9 + k` its
+/// recording (`+0x198`).
+pub const LISTS: usize = 2 * TRACKS;
+
+/// A song's node pool (the module doc): its [`LISTS`] lists, each in list order, back to back
+/// in one buffer whose capacity of [`POOL_NODES`] nodes is reserved when the pool is made. An
+/// insert or a removal moves the nodes after it within that capacity, so a pooled insert, which
+/// takes a node only while more than one is free, never allocates. `pool[k]` is list k.
+///
+/// The tracks' lists come first, so a recorded node moves only the recording lists after it;
+/// a merge's insert into a track list moves the nodes of the lists after it (up to the pool's
+/// 800 KB, of the order of the DLL's walk of a full list).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Pool {
+    /// The nodes of every list.
+    nodes: Vec<Event>,
+    /// The end of each list in `nodes`; list k starts where list k-1 ends.
+    ends: [usize; LISTS],
+}
+
+impl Default for Pool {
+    fn default() -> Self {
+        Pool::new()
+    }
+}
+
+impl Clone for Pool {
+    /// A copy with the whole pool's capacity reserved again (a derived clone would keep only
+    /// the length).
+    fn clone(&self) -> Self {
+        let mut p = Pool::new();
+        p.nodes.extend_from_slice(&self.nodes);
+        p.ends = self.ends;
+        p
+    }
+}
+
+impl std::ops::Index<usize> for Pool {
+    type Output = [Event];
+    fn index(&self, k: usize) -> &[Event] {
+        self.list(k)
+    }
+}
+
+impl Pool {
+    /// An empty pool with the capacity of [`POOL_NODES`] nodes.
+    pub fn new() -> Self {
+        Pool {
+            nodes: Vec::with_capacity(POOL_NODES),
+            ends: [0; LISTS],
+        }
+    }
+
+    fn start(&self, k: usize) -> usize {
+        if k == 0 { 0 } else { self.ends[k - 1] }
+    }
+
+    /// List k.
+    pub fn list(&self, k: usize) -> &[Event] {
+        &self.nodes[self.start(k)..self.ends[k]]
+    }
+
+    fn list_mut(&mut self, k: usize) -> &mut [Event] {
+        let s = self.start(k);
+        &mut self.nodes[s..self.ends[k]]
+    }
+
+    /// The nodes of all lists.
+    pub fn used(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// The nodes free (`[pool+4]`, what `sub_10014434` reads).
+    pub fn free(&self) -> usize {
+        POOL_NODES.saturating_sub(self.nodes.len())
+    }
+
+    /// Node `e` at index `at` of list k.
+    fn insert(&mut self, k: usize, at: usize, e: Event) {
+        let g = self.start(k) + at;
+        self.nodes.insert(g, e);
+        for end in &mut self.ends[k..] {
+            *end += 1;
+        }
+    }
+
+    /// Removes the node at index `at` of list k.
+    fn remove(&mut self, k: usize, at: usize) {
+        let g = self.start(k) + at;
+        self.nodes.remove(g);
+        for end in &mut self.ends[k..] {
+            *end -= 1;
+        }
+    }
+
+    /// Empties list k.
+    fn clear(&mut self, k: usize) {
+        let (s, e) = (self.start(k), self.ends[k]);
+        self.nodes.drain(s..e);
+        for end in &mut self.ends[k..] {
+            *end -= e - s;
+        }
+    }
+
+    /// This pool becomes a copy of `src`'s track lists (0..9), with empty recording lists,
+    /// within its capacity (the callback's copy for the UI, `rb_player::Tracks`).
+    pub fn copy_tracks_from(&mut self, src: &Pool) {
+        let n = src.ends[TRACKS - 1];
+        self.nodes.clear();
+        self.nodes.extend_from_slice(&src.nodes[..n]);
+        self.ends[..TRACKS].copy_from_slice(&src.ends[..TRACKS]);
+        self.ends[TRACKS..].fill(n);
+    }
+}
 
 /// `dbl_10153808`: the position step per block per BPM*1000, `64*192 / (60*44100*1000)`.
 pub const TEMPO_STEP: f64 = f64::from_bits(0x3ED3_7A72_81B2_2126); // 4.6439909297052154e-06
@@ -71,13 +193,15 @@ pub struct Event {
     pub value: u8,
 }
 
-/// One track: the events of one device.
-#[derive(Debug, PartialEq, Eq)]
+/// One track: the events of one device. Its two lists are in the song's [`Pool`]: list
+/// `device.id()` and its recording, list `9 + device.id()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
     /// `+0x104`: the device whose set-param (slot 11) the events go to.
     pub device: Device,
-    /// The list after its head, in list order.
-    events: Vec<Event>,
+    /// Its list in the pool (after the head, in list order); the recording list is
+    /// `TRACKS + list`.
+    list: usize,
     /// The index of the node after the one `+0x228` points at (0 when it points at the head).
     next: usize,
     /// `+4`: a controller whose byte is set is skipped by the clock's apply loops (not by the
@@ -85,11 +209,34 @@ pub struct Track {
     /// records and cleared for all by the merge (`sub_1001F520`, 0x1001F767), so a controller
     /// moved by hand while recording keeps its value against the track until the next merge.
     pub hold: [bool; 128],
-    /// List `+0xD`: each controller's quantisation in 24-tick units, 1 from the list ctor.
+    /// List `+0xD`: each controller's quantisation in 24-tick units, 1 from the list ctor. The
+    /// recording list's (`+0x198`) stays 1 (the 303's slot 7, `sub_10021560`, sets only the
+    /// first list's).
     quant: [u8; 128],
-    /// `+0x198`: the recording list, in list order. Its own quantisation stays 1 (the 303's
-    /// slot 7, `sub_10021560`, sets only the first list's).
-    recorded: Vec<Event>,
+}
+
+/// A track with the song's pool: what a device's slots 7 and 8 get from the song ctor
+/// ([`crate::frame::SongDevice::init_track`]).
+pub struct TrackMut<'a> {
+    pub track: &'a mut Track,
+    pub pool: &'a mut Pool,
+}
+
+impl TrackMut<'_> {
+    /// [`Track::insert`].
+    pub fn insert(&mut self, tick: i32, ctrl: u8, value: u8) -> bool {
+        self.track.insert(self.pool, tick, ctrl, value)
+    }
+
+    /// [`Track::set_quant`].
+    pub fn set_quant(&mut self, ctrl: u8, q: u8) {
+        self.track.set_quant(ctrl, q);
+    }
+
+    /// [`Track::events`].
+    pub fn events(&self) -> &[Event] {
+        self.track.events(self.pool)
+    }
 }
 
 /// What [`insert_into`] did.
@@ -103,22 +250,24 @@ enum Inserted {
     Dropped,
 }
 
-/// `sub_10014750` on a list of quantisation `quant`, with `free` nodes in the pool: the tick
-/// rounded up to a multiple of `24*q` (`sub_100146E4`), dropped above [`LAST_EVENT_TICK`]; a
-/// node of the same tick and controller takes the value, else a new node (when the pool has
-/// more than one free, `sub_10014434`) goes before the first node whose tick is not below it.
+/// `sub_10014750` on list `k` of the pool, of quantisation `quant`: the tick rounded up to a
+/// multiple of `24*q` (`sub_100146E4`), dropped above [`LAST_EVENT_TICK`]; a node of the same
+/// tick and controller takes the value, else a new node (`pooled`: when the pool has more than
+/// one free, `sub_10014434`) goes before the first node whose tick is not below it.
 fn insert_into(
-    list: &mut Vec<Event>,
+    pool: &mut Pool,
+    k: usize,
     quant: &[u8; 128],
     tick: i32,
     ctrl: u8,
     value: u8,
-    free: &mut usize,
+    pooled: bool,
 ) -> Inserted {
     let t = round_up(tick, quant_of(quant, ctrl));
     if t > LAST_EVENT_TICK {
         return Inserted::Dropped;
     }
+    let list = pool.list_mut(k);
     let at = list.partition_point(|e| t > e.tick);
     if let Some(e) = list[at..]
         .iter_mut()
@@ -129,11 +278,11 @@ fn insert_into(
         return Inserted::Replaced;
     }
     // 0x1001443A: cmp [pool+4], 1; jle (no node)
-    if *free <= 1 {
+    if pooled && pool.free() <= 1 {
         return Inserted::Dropped;
     }
-    *free -= 1;
-    list.insert(
+    pool.insert(
+        k,
         at,
         Event {
             tick: t,
@@ -161,46 +310,32 @@ fn round_down(tick: i32, unit: i32) -> i32 {
     tick / unit * unit
 }
 
-impl Clone for Track {
-    /// A copy with the whole pool's capacity reserved again (a derived clone would keep only the
-    /// length, and a recording in the callback would then grow the lists).
-    fn clone(&self) -> Self {
-        let mut t = Track::new(self.device);
-        t.events.extend_from_slice(&self.events);
-        t.recorded.extend_from_slice(&self.recorded);
-        t.next = self.next;
-        t.hold = self.hold;
-        t.quant = self.quant;
-        t
-    }
-}
-
 impl Track {
-    /// A track with both lists empty and the capacity of a whole node pool reserved for each
-    /// (the module doc).
+    /// The track of `device`, whose lists are lists `device.id()` and `9 + device.id()` of the
+    /// song's pool.
     pub fn new(device: Device) -> Self {
         Track {
             device,
-            events: Vec::with_capacity(POOL_NODES),
+            list: device.id() as usize,
             next: 0,
             hold: [false; 128],
             quant: [1; 128],
-            recorded: Vec::with_capacity(POOL_NODES),
         }
     }
 
-    pub fn events(&self) -> &[Event] {
-        &self.events
+    /// The track's list in `pool`.
+    pub fn events<'p>(&self, pool: &'p Pool) -> &'p [Event] {
+        pool.list(self.list)
     }
 
-    /// The recording list (`+0x198`): what the record hook took since the last merge.
-    pub fn recorded(&self) -> &[Event] {
-        &self.recorded
+    /// The recording list (`+0x198`) in `pool`: what the record hook took since the last merge.
+    pub fn recorded<'p>(&self, pool: &'p Pool) -> &'p [Event] {
+        pool.list(self.rec())
     }
 
-    /// The nodes of both lists.
-    fn nodes(&self) -> usize {
-        self.events.len() + self.recorded.len()
+    /// The recording list's index in the pool.
+    fn rec(&self) -> usize {
+        TRACKS + self.list
     }
 
     /// The index of the next event the clock applies.
@@ -225,16 +360,22 @@ impl Track {
     /// event above [`LAST_EVENT_TICK`] is dropped. The new node goes before the first node whose
     /// tick is not below it, unless a node of the same tick has the same controller, whose value
     /// is then replaced. So events of one tick end up in reverse arrival order. Returns whether
-    /// the event was kept. The node pool is not consulted (the song ctor's and the tests'
-    /// inserts; [`Sequencer::add_events`] is the pooled one).
-    pub fn insert(&mut self, tick: i32, ctrl: u8, value: u8) -> bool {
-        let mut unlimited = usize::MAX;
-        self.insert_pooled(tick, ctrl, value, &mut unlimited)
+    /// the event was kept. The node is taken from `pool` without the free check (the song
+    /// ctor's and the tests' inserts, at most 128 per track on an empty pool, where the DLL's
+    /// check at 0x1001F967 → `sub_10014434` always passes; [`Sequencer::add_events`] is the
+    /// checked one). Being unchecked, it can grow the pool past [`POOL_NODES`] (the pool's
+    /// `Vec` then reallocates); only the song ctor and the tests call it, never the callback.
+    pub fn insert(&mut self, pool: &mut Pool, tick: i32, ctrl: u8, value: u8) -> bool {
+        self.insert_to(pool, tick, ctrl, value, false)
     }
 
-    /// [`Track::insert`] with `free` nodes left in the pool.
-    fn insert_pooled(&mut self, tick: i32, ctrl: u8, value: u8, free: &mut usize) -> bool {
-        match insert_into(&mut self.events, &self.quant, tick, ctrl, value, free) {
+    /// [`Track::insert`] taking a node only while the pool has more than one free.
+    fn insert_pooled(&mut self, pool: &mut Pool, tick: i32, ctrl: u8, value: u8) -> bool {
+        self.insert_to(pool, tick, ctrl, value, true)
+    }
+
+    fn insert_to(&mut self, pool: &mut Pool, tick: i32, ctrl: u8, value: u8, pooled: bool) -> bool {
+        match insert_into(pool, self.list, &self.quant, tick, ctrl, value, pooled) {
             Inserted::At(at) => {
                 // a node inserted before the applied one moves it; one right after it becomes
                 // its next
@@ -256,12 +397,12 @@ impl Track {
     /// the recording list (`sub_10014750` on `+0x198`, whose own quantisation is 1).
     fn record(
         &mut self,
+        pool: &mut Pool,
         now: i32,
         playing: bool,
         wrap: Option<(i32, i32)>,
         ctrl: u8,
         value: u8,
-        free: &mut usize,
     ) {
         self.hold[ctrl as usize & 127] = true;
         let unit = quant_of(&self.quant, ctrl);
@@ -276,7 +417,7 @@ impl Track {
         {
             t = start;
         }
-        insert_into(&mut self.recorded, &[1; 128], t, ctrl, value, free);
+        insert_into(pool, self.rec(), &[1; 128], t, ctrl, value, true);
     }
 
     /// `sub_1001F520(track, t)`, the merge of the recording into the track:
@@ -297,22 +438,24 @@ impl Track {
     /// The applied pointer `+0x228` is not touched: when its own node is removed it dangles in
     /// the DLL (OB-19); here it moves to the node before. Every caller but record off in
     /// pattern mode chases right after, which sets it again.
-    fn merge(&mut self, t: i32, free: &mut usize) {
+    fn merge(&mut self, pool: &mut Pool, t: i32) {
+        let (ev, rec) = (self.list, self.rec());
         let mut marked = [false; 128];
         let mut value = [0xFFu8; 128];
         let mut r = 0;
         let mut i = 0;
-        while i < self.events.len() && t >= self.events[i].tick {
-            let m = self.events[i];
-            while r < self.recorded.len() && self.recorded[r].tick <= m.tick {
-                marked[self.recorded[r].ctrl as usize & 127] = true;
+        while i < pool.list(ev).len() && t >= pool.list(ev)[i].tick {
+            let m = pool.list(ev)[i];
+            let recorded = pool.list(rec);
+            while r < recorded.len() && recorded[r].tick <= m.tick {
+                marked[recorded[r].ctrl as usize & 127] = true;
                 r += 1;
             }
             let c = m.ctrl as usize & 127;
             value[c] = m.value;
             if marked[c] && m.tick != 0 {
-                self.events.remove(i);
-                *free += 1;
+                // the node goes back to the pool
+                pool.remove(ev, i);
                 if i < self.next {
                     self.next -= 1;
                 }
@@ -320,8 +463,9 @@ impl Track {
                 i += 1;
             }
         }
-        while r < self.recorded.len() && t >= self.recorded[r].tick {
-            marked[self.recorded[r].ctrl as usize & 127] = true;
+        let recorded = pool.list(rec);
+        while r < recorded.len() && t >= recorded[r].tick {
+            marked[recorded[r].ctrl as usize & 127] = true;
             r += 1;
         }
         // 0x1001F675: the return to the automation, controllers ascending
@@ -330,27 +474,28 @@ impl Track {
                 continue;
             }
             let back = self.quantise(t.wrapping_add(1), c);
-            if !self.events.iter().any(|e| e.tick == back && e.ctrl == c) {
-                self.insert_pooled(back, c, value[c as usize], free);
+            if !pool.list(ev).iter().any(|e| e.tick == back && e.ctrl == c) {
+                self.insert_pooled(pool, back, c, value[c as usize]);
             }
         }
-        // 0x1001F722: the recorded nodes up to t, in list order
+        // 0x1001F722: the recorded nodes up to t, in list order; their nodes stay taken until
+        // the whole recording list is freed after them
         for k in 0..r {
-            let e = self.recorded[k];
-            self.insert_pooled(e.tick, e.ctrl, e.value, free);
+            let e = pool.list(rec)[k];
+            self.insert_pooled(pool, e.tick, e.ctrl, e.value);
         }
-        *free += self.recorded.len();
-        self.recorded.clear();
+        pool.clear(rec);
         self.hold = [false; 128];
     }
 
     /// The chase `sub_100151F0(list, state, p)`: the value of the last event at or before `p` for
     /// each controller (0xFF for none), and the applied pointer moved to that event.
-    pub fn chase(&mut self, p: i32) -> [u8; 128] {
+    pub fn chase(&mut self, pool: &Pool, p: i32) -> [u8; 128] {
+        let events = self.events(pool);
         let mut state = [0xFF; 128];
         let mut i = 0;
-        while i < self.events.len() && p >= self.events[i].tick {
-            let e = self.events[i];
+        while i < events.len() && p >= events[i].tick {
+            let e = events[i];
             state[e.ctrl as usize & 127] = e.value;
             i += 1;
         }
@@ -360,9 +505,10 @@ impl Track {
 
     /// The clock's apply loop (0x1001F2C6, 0x1001F032, 0x1001FADB): every event after the applied
     /// one with `tick <= t`, in list order, skipping held controllers.
-    pub fn advance(&mut self, t: i32, mut apply: impl FnMut(Event)) {
-        while self.next < self.events.len() && t >= self.events[self.next].tick {
-            let e = self.events[self.next];
+    pub fn advance(&mut self, pool: &Pool, t: i32, mut apply: impl FnMut(Event)) {
+        let events = pool.list(self.list);
+        while self.next < events.len() && t >= events[self.next].tick {
+            let e = events[self.next];
             if !self.hold[e.ctrl as usize & 127] {
                 apply(e);
             }
@@ -372,17 +518,17 @@ impl Track {
 
     /// `sub_100149F0`, run on every track by stop: an event whose value equals the previous
     /// value of its controller (0xFF before the first) is removed, unless it is at tick 0.
-    pub fn prune(&mut self) {
+    pub fn prune(&mut self, pool: &mut Pool) {
         let mut last = [0xFFu8; 128];
         let mut i = 0;
-        while i < self.events.len() {
-            let e = self.events[i];
+        while i < pool.list(self.list).len() {
+            let e = pool.list(self.list)[i];
             let c = e.ctrl as usize & 127;
             if e.value != last[c] {
                 last[c] = e.value;
                 i += 1;
             } else if e.tick != 0 {
-                self.events.remove(i);
+                pool.remove(self.list, i);
                 // the DLL frees the node; the applied pointer then moves back to its predecessor
                 if i < self.next {
                     self.next -= 1;
@@ -404,7 +550,9 @@ pub struct Sequencer {
     /// `seq+0x10`: the song-mode tick saved when pattern mode was entered.
     pub saved_tick: i32,
     /// The tracks of devices 0..8 (`sub_1001EEF0(i, i, n)` in the song ctor).
-    pub tracks: [Track; 9],
+    pub tracks: [Track; TRACKS],
+    /// The nodes of the tracks' lists (`dword_10100230`, the module doc).
+    pub pool: Pool,
     /// `song+0x158`: song mode, play, record, loop, tempo, loop points, shuffle. The sound-model
     /// byte (`+0x16D`) is the frame's `vintage`.
     pub globals: Globals,
@@ -424,6 +572,7 @@ impl Default for Sequencer {
             last_tick: 0,
             saved_tick: 0,
             tracks: Device::ALL.map(Track::new),
+            pool: Pool::new(),
             globals: Globals {
                 song_mode: 0,
                 play: 0,
@@ -457,11 +606,29 @@ impl Sequencer {
         trunc(self.pos)
     }
 
+    /// Track `i`'s list.
+    pub fn events(&self, i: usize) -> &[Event] {
+        self.tracks[i].events(&self.pool)
+    }
+
+    /// Track `i`'s recording list.
+    pub fn recorded(&self, i: usize) -> &[Event] {
+        self.tracks[i].recorded(&self.pool)
+    }
+
+    /// Track `i` with the pool, to insert into.
+    pub fn track_mut(&mut self, i: usize) -> TrackMut<'_> {
+        TrackMut {
+            track: &mut self.tracks[i],
+            pool: &mut self.pool,
+        }
+    }
+
     /// Chases every track to `p` and applies each controller that has a value, ascending, to
     /// its device (the loop at 0x1001FA2C; `sub_10012B40` finds the device by id).
     fn chase_all(&mut self, p: i32, devices: &mut Devices) {
         for tr in &mut self.tracks {
-            let state = tr.chase(p);
+            let state = tr.chase(&self.pool, p);
             let d = devices.device_mut(tr.device);
             for (c, &v) in state.iter().enumerate() {
                 if v != 0xFF {
@@ -475,7 +642,7 @@ impl Sequencer {
     fn advance_all(&mut self, t: i32, devices: &mut Devices) {
         for tr in &mut self.tracks {
             let d = devices.device_mut(tr.device);
-            tr.advance(t, |e| d.set_param(e.ctrl, e.value));
+            tr.advance(&self.pool, t, |e| d.set_param(e.ctrl, e.value));
         }
     }
 
@@ -577,7 +744,7 @@ impl Sequencer {
             devices.for_each(|d| d.stop());
         }
         for tr in &mut self.tracks {
-            tr.prune();
+            tr.prune(&mut self.pool);
         }
         self.revision += 1;
         if self.song_mode() {
@@ -638,18 +805,16 @@ impl Sequencer {
 
     /// The nodes this song's pool has free (the module doc).
     pub fn free_nodes(&self) -> usize {
-        let used: usize = self.tracks.iter().map(Track::nodes).sum();
-        POOL_NODES.saturating_sub(used)
+        self.pool.free()
     }
 
     /// `sub_1001F520` on every track, in track order.
     fn merge_all(&mut self, t: i32) {
-        let mut free = self.free_nodes();
-        if self.tracks.iter().any(|tr| !tr.recorded.is_empty()) {
+        if (0..TRACKS).any(|i| !self.recorded(i).is_empty()) {
             self.merges += 1;
         }
         for tr in &mut self.tracks {
-            tr.merge(t, &mut free);
+            tr.merge(&mut self.pool, t);
         }
         self.revision += 1;
     }
@@ -668,14 +833,13 @@ impl Sequencer {
         if !self.song_mode() || self.globals.byte2 == 0 || ctrl > 127 {
             return;
         }
-        let mut free = self.free_nodes();
         let now = self.tick_pos();
         let playing = self.playing();
         let g = &self.globals;
         let wrap = (g.loop_on != 0).then_some((g.loop_start as i32, g.loop_end as i32));
         // 0x100213BF: the track whose device id (+0x104) is d's
         if let Some(tr) = self.tracks.iter_mut().find(|t| t.device == d) {
-            tr.record(now, playing, wrap, ctrl, value, &mut free);
+            tr.record(&mut self.pool, now, playing, wrap, ctrl, value);
         }
     }
 
@@ -706,12 +870,98 @@ impl Sequencer {
 
     /// Song msg 37 (`sub_10021010`): each event of a batch is inserted into its track, from the
     /// node pool.
+    ///
+    /// Not modelled: the DLL refuses a whole batch whose event count is above the pool's free
+    /// count (`cmp ebx, eax; ja` at 0x1002105B, replying with `sub_1001DE00(22)` instead of
+    /// `sub_1001DF80(73)`); rb inserts such a batch until the pool refuses a node (task-083).
     pub fn add_events(&mut self, track: usize, events: &[song::TrackEvent]) {
-        let mut free = self.free_nodes();
         let tr = &mut self.tracks[track];
         for e in events {
-            tr.insert_pooled(e.tick as i32, e.ctrl, e.value, &mut free);
+            tr.insert_pooled(&mut self.pool, e.tick as i32, e.ctrl, e.value);
         }
         self.revision += 1;
+    }
+}
+
+/// The unit tests' track: one track with a pool of its own.
+#[cfg(test)]
+pub(crate) struct Solo {
+    pub track: Track,
+    pub pool: Pool,
+}
+
+#[cfg(test)]
+impl std::ops::Deref for Solo {
+    type Target = Track;
+    fn deref(&self) -> &Track {
+        &self.track
+    }
+}
+
+#[cfg(test)]
+impl std::ops::DerefMut for Solo {
+    fn deref_mut(&mut self) -> &mut Track {
+        &mut self.track
+    }
+}
+
+#[cfg(test)]
+impl Solo {
+    pub fn new(device: Device) -> Self {
+        Solo {
+            track: Track::new(device),
+            pool: Pool::new(),
+        }
+    }
+
+    pub fn track_mut(&mut self) -> TrackMut<'_> {
+        TrackMut {
+            track: &mut self.track,
+            pool: &mut self.pool,
+        }
+    }
+
+    pub fn insert(&mut self, tick: i32, ctrl: u8, value: u8) -> bool {
+        self.track.insert(&mut self.pool, tick, ctrl, value)
+    }
+
+    pub fn events(&self) -> &[Event] {
+        self.track.events(&self.pool)
+    }
+
+    pub fn recorded(&self) -> &[Event] {
+        self.track.recorded(&self.pool)
+    }
+
+    pub fn chase(&mut self, p: i32) -> [u8; 128] {
+        self.track.chase(&self.pool, p)
+    }
+
+    pub fn advance(&mut self, t: i32, apply: impl FnMut(Event)) {
+        self.track.advance(&self.pool, t, apply)
+    }
+
+    pub fn prune(&mut self) {
+        self.track.prune(&mut self.pool)
+    }
+
+    pub fn record(
+        &mut self,
+        now: i32,
+        playing: bool,
+        wrap: Option<(i32, i32)>,
+        ctrl: u8,
+        value: u8,
+    ) {
+        self.track
+            .record(&mut self.pool, now, playing, wrap, ctrl, value)
+    }
+
+    pub fn merge(&mut self, t: i32) {
+        self.track.merge(&mut self.pool, t)
+    }
+
+    pub fn free(&self) -> usize {
+        self.pool.free()
     }
 }

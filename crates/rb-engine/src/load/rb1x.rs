@@ -579,9 +579,10 @@ mod tests {
         // song mode: the track's tick-0 event (0, 0, 0) replaced the ctor's, so the chase at
         // msg 32 keeps it at 0
         assert_eq!(s.globals.song_mode, 1);
-        let t = &e.frame.seq.tracks[4];
         assert!(
-            t.events()
+            e.frame
+                .seq
+                .events(4)
                 .iter()
                 .any(|x| x.tick == 0 && x.ctrl == 0 && x.value == 0)
         );

@@ -332,6 +332,26 @@ recording (§5.3); its quantisation stays 1 (`sub_10021560` sets only `+0x108`'s
   count at `+4` and a free list at `+8`). `sub_10014434` takes a node only while the free count is
   above 1, else the insert stores nothing; freed nodes go back (`sub_10014484`, `sub_100149A0`,
   `sub_10014550`).
+  - [C] (task-082) It is built once per engine instance, not per song: `EngineOpen` (0x1001B0E0)
+    → `sub_1001C7B0` → `sub_10021A10` (0x1001C889), which also builds `dword_101245F0` (0x84
+    bytes, `sub_100215F0`: 32 more lists from the same pool, used by `sub_10020440`,
+    `sub_100208F0` and `sub_10020BC0`, whose messages are not traced); `sub_1001EC00` (from
+    `sub_1001DCE4`) frees both. `sub_10014434` is called by `sub_10014750` (0x1001480F) and by
+    `sub_10014B90`, `sub_10014CC0`, `sub_10014DD0` and `sub_10015240`, whose callers were not
+    traced; the song ctor's tick-0 events (slot 8 → `sub_1001F900` →
+    `sub_10014750`, 0x1001F967), msg 37's events, the recording and the merge's inserts all draw
+    from it. `sub_1000DEE0` reads the free count (`mov eax, [ecx+4]`): the record hook's warning
+    (0x10021378) and msg 37's batch check.
+  - [C] (task-082) Msg 37 (`sub_10021010`) refuses a whole batch whose count (`last - first` of
+    its header, 0x10021042) is above the free count (`cmp ebx, eax; ja` at 0x1002105B): nothing is
+    inserted and the reply is `sub_1001DE00(22)` (0x100210ED) instead of `sub_1001DF80(73)`
+    (0x100210CA). rb does not model it yet (task-083).
+  - rb: one pool of 100000 nodes per song (`seq::Pool`), the song's 18 lists back to back in one
+    reserved buffer; the DLL's pool equals it while one song holds nodes and the 32 lists of
+    `dword_101245F0` are empty. While rb-player holds a pending song beside the current one
+    (a load during play, until Play switches), two pools are live where the DLL's one pool
+    would serve both songs; this matters only when the two songs together hold more than
+    100000 nodes.
 - **Insert** (`sub_10014750`, from msg 37's `sub_10021010`): the tick is rounded up to a multiple of
   `24q` (`sub_100146E4`, no change for loaded ticks with q = 1), an event above 767231 after that is dropped,
   and the node is linked before the first node whose tick is not below it, unless a node of the same

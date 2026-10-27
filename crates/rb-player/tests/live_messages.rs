@@ -712,8 +712,8 @@ fn render_with_tracks(
                 Ev::Mod(_, m) => assert!(p.set_mod(m).is_ok(), "the command queue is full"),
                 Ev::Tracks(t) => {
                     assert!(!sent, "a track query in a call with commands");
-                    let tr = &a.current().frame.seq.tracks[t as usize];
-                    replies.push(track_reply(t, tr.events()));
+                    let seq = &a.current().frame.seq;
+                    replies.push(track_reply(t, seq.events(t as usize)));
                     continue;
                 }
             }

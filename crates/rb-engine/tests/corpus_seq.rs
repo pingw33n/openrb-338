@@ -90,7 +90,11 @@ fn load_state_over_the_corpus() {
         // every event was accepted by the insert (all ticks are below 767232 and distinct per
         // tick and controller), and in song mode the pointer is past the tick-0 events
         for (i, tr) in q.tracks.iter().enumerate() {
-            assert_eq!(tr.events().len(), s.tracks[i].len(), "{name} track {i}");
+            assert_eq!(
+                tr.events(&q.pool).len(),
+                s.tracks[i].len(),
+                "{name} track {i}"
+            );
             let at0 = s.tracks[i].iter().filter(|e| e.tick == 0).count();
             let want = if s.globals.song_mode != 0 { at0 } else { 0 };
             assert_eq!(tr.next(), want, "{name} track {i}");

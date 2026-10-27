@@ -199,8 +199,8 @@ fn reset_keeps_the_coefficients() {
 #[test]
 fn init_track_quantises_the_pattern_controllers() {
     let mut d = Tb303::new();
-    let mut tr = Track::new(Device::Tb303_1);
-    d.init_track(&mut tr);
+    let mut tr = crate::seq::Solo::new(Device::Tb303_1);
+    d.init_track(&mut tr.track_mut());
     let ev: Vec<_> = tr
         .events()
         .iter()

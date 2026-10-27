@@ -203,7 +203,7 @@ fn the_callback_does_not_allocate() {
     send(&mut p, Command::Record(true));
     events += render(&mut a, &mut buf, 1);
     assert!(p.snapshot().recording);
-    let before = a.current().frame.seq.tracks[1].events().len();
+    let before = a.current().frame.seq.events(1).len();
     for k in 0..300u32 {
         let v = (k % 128) as u8;
         send(
@@ -235,14 +235,14 @@ fn the_callback_does_not_allocate() {
     send(&mut p, Command::Record(false));
     events += render(&mut a, &mut buf, 1);
     assert!(!p.snapshot().recording);
-    let tracks = &a.current().frame.seq.tracks;
-    assert!(tracks[1].events().len() > before, "nothing was recorded");
-    assert!(tracks.iter().all(|t| t.recorded().is_empty()));
+    let seq = &a.current().frame.seq;
+    assert!(seq.events(1).len() > before, "nothing was recorded");
+    assert!((0..9).all(|t| seq.recorded(t).is_empty()));
     // the callback copied the recorded tracks for the UI (`Player::tracks`)
     let copy = p.tracks();
     assert!(copy.merges > 0);
-    for (c, t) in copy.events.iter().zip(tracks) {
-        assert_eq!(c.as_slice(), t.events());
+    for t in 0..9 {
+        assert_eq!(&copy.events[t], seq.events(t));
     }
     // the Mods menu's change on the playing song (task-056), twice: the second lets go of a
     // kit only the song held (its table and the samples its voices played), which would be

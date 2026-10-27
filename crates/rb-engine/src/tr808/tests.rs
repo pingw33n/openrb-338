@@ -249,8 +249,8 @@ fn audio_zeroes_the_bus_and_sums_in_order() {
 fn init_track_inserts_the_29_controllers() {
     let d = Tr808::new(set(), ProcessState::new());
     let mut d = d;
-    let mut tr = Track::new(Device::Tr808);
-    d.init_track(&mut tr);
+    let mut tr = crate::seq::Solo::new(Device::Tr808);
+    d.init_track(&mut tr.track_mut());
     assert_eq!(tr.events().len(), 29);
     assert!(tr.events().iter().all(|e| e.tick == 0));
     let mut vals = [0u8; 29];
@@ -286,8 +286,8 @@ fn song_mode_and_data_copy_all_32_bytes() {
 #[test]
 fn init_track_holds_the_ctor_defaults() {
     let mut d = Tr808::new(set(), ProcessState::new());
-    let mut tr = Track::new(Device::Tr808);
-    d.init_track(&mut tr);
+    let mut tr = crate::seq::Solo::new(Device::Tr808);
+    d.init_track(&mut tr.track_mut());
     let mut vals = [0xFFu8; 29];
     for e in tr.events() {
         vals[e.ctrl as usize] = e.value;
