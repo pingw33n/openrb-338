@@ -354,8 +354,10 @@ def write_md(m):
          " loaded (message 55, key table from RB20FUL.DAT), hash only. modapp: the original app's exports"
          " of mod songs with their fitted N (hash only: sha256, frames, N; the fit.json files are in tests/refs/modapp/). The .rbm"
          " files and RB20FUL.DAT are Propellerhead material and are NOT committed: each entry records the"
-         " mod's name, file, size and sha256; capture and re-capture read them from `--mod-dir` /"
-         " `$RB_MOD_DIR` and `--rb20ful` / `$RB_RB20FUL`.",
+         " mod's name, file, size and sha256; capture and re-capture read the ORIGINAL mods from"
+         " `--mod-dir` / `$RB_MOD_DIR` and `--rb20ful` / `$RB_RB20FUL`; the recorded size and sha256 are"
+         " the originals'. `rb compare` and the cargo tests (since task-063) read recrypted copies"
+         " (`rb recrypt`) from `$RB_MOD_DIR`: the original plus 1032 bytes.",
          "- `tool_commit` of the `mod` and `modapp` entries is the last commit that touched the tool before"
          " task-031; the tool they were captured with includes the change of task-031 itself (mod loading"
          " in rbsmsg/run/fit, in the commit that adds these entries, `Task: task-031`), which is why"

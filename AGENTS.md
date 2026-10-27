@@ -123,4 +123,5 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, 
 - Format: `cargo fmt --all`
 - Run: `cargo run --release -p rb-cli -- <args>`
 - Golden test: `cargo test --release -p rb-engine --test corpus_golden` renders every corpus entry (diag, app at its fitted N, shipped) and prints each failing song's first difference. A debug `cargo test` skips the shipped songs (24 s in debug).
+- Mods: rb loads only recrypted mods (`rb recrypt --rb20ful RB20FUL.DAT IN.rbm -o OUT.rbm`, the one command that reads `RB20FUL.DAT`; docs/rbm.md 12.4). `render`, `compare`, `play` and the mod tests take a folder of recrypted mods (`--mod-dir` / `RB_MOD_DIR`) and no `--rb20ful`.
 - Corpus summary: `cargo run --release -p rb-cli -- compare --manifest tests/refs/manifest.json --rebirth-dll original/ReBirth.dll [--set diag,app,shipped] [NAME...]` prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `rb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.

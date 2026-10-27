@@ -664,7 +664,8 @@ fn real_mods_recrypt() {
 }
 
 /// The user's third-party collection (`RB_THIRDPARTY_DIR`, docs/rbm.md section 11), read in
-/// place: every mod recrypts and keeps every file and sample.
+/// place: every ORIGINAL mod (`Mods.orig/`; `Mods/` holds the recrypted ones since task-063)
+/// recrypts and keeps every file and sample.
 #[test]
 fn thirdparty_mods_recrypt() {
     let (Some(dat), Some(dir)) = (
@@ -674,7 +675,7 @@ fn thirdparty_mods_recrypt() {
         eprintln!("skipped: RB_RB20FUL and RB_THIRDPARTY_DIR are not both set");
         return;
     };
-    let dir = Path::new(&dir).join("Mods");
+    let dir = Path::new(&dir).join("Mods.orig");
     let mut mods: Vec<PathBuf> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
         .map(|e| e.unwrap().path())

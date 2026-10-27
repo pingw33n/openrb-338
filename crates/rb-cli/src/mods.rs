@@ -5,8 +5,10 @@
 //! each mod's INFO menu name (`sub_4155D1`, 0x4155D1: the C string at the mod object's +1011,
 //! which is INFO offset 1003); a name not in the list gets a dialog, Download / Standard /
 //! Cancel. rb does the same: the INFO name, exact; as a convenience a file name (`PBE2.rbm`, or
-//! `PBE2`, any case) also matches when no INFO name does. Descrambling a mod needs the user's
-//! `RB20FUL.DAT` (task-053), unless `rb recrypt` rewrote it (task-059).
+//! `PBE2`, any case) also matches when no INFO name does. rb loads only recrypted mods
+//! (`rb recrypt`, task-059; task-063): a mod that is not recrypted is found like any other (its
+//! INFO is in the clear and it keeps its place in the folder order) and fails when its samples
+//! are loaded, with an error that names `rb recrypt`. Only `rb recrypt` reads `RB20FUL.DAT`.
 
 use std::path::{Path, PathBuf};
 
@@ -24,8 +26,6 @@ pub struct ModOpts {
     pub mod_file: Option<PathBuf>,
     /// `--mod-dir DIR`: where the song's mod is looked up.
     pub mod_dir: Option<PathBuf>,
-    /// `--rb20ful PATH`.
-    pub rb20ful: Option<PathBuf>,
     /// `--standard-kit`: a mod that is not found is replaced by the built-in kit.
     pub standard_kit: bool,
 }
@@ -73,45 +73,44 @@ impl ModOpts {
             || env_path("RB_MOD_DIR").is_some()
             || env_path("RB_RBM_DIR").is_some()
     }
+}
 
-    /// The `RB20FUL.DAT`: `--rb20ful`, the `RB_RB20FUL` environment variable, then an
-    /// `RB20FUL.DAT` in the mod folder, next to the rb binary, or in the original's install
-    /// locations on Windows.
-    pub fn rb20ful(&self) -> Result<PathBuf, Fail> {
-        let explicit = self
-            .rb20ful
-            .clone()
-            .map(|p| ("--rb20ful", p))
-            .or_else(|| env_path("RB_RB20FUL").map(|p| ("RB_RB20FUL", p)));
-        if let Some((what, p)) = explicit {
-            return if p.is_file() {
-                Ok(p)
-            } else {
-                Err(fail(1, format!("{what} {}: no such file", p.display())))
-            };
-        }
-        let mut dirs = Vec::new();
-        if let Ok(Some(d)) = self.mod_dir() {
-            dirs.push(d.clone());
-            if let Some(parent) = d.parent() {
-                dirs.push(parent.to_path_buf());
-            }
-        }
-        dirs.extend(implicit_dirs(""));
-        for d in dirs {
-            for name in ["RB20FUL.DAT", "rb20ful.dat", "Rb20ful.dat"] {
-                let p = d.join(name);
-                if p.is_file() {
-                    return Ok(p);
-                }
-            }
-        }
-        Err(fail(
-            1,
-            "no RB20FUL.DAT found. Pass --rb20ful PATH, set RB_RB20FUL, or put it in the mod \
-             folder or next to the rb binary",
-        ))
+/// The `RB20FUL.DAT` for `rb recrypt` of the mod `input` (the only command that reads it):
+/// `explicit` (`--rb20ful`), the `RB_RB20FUL` environment variable, then an `RB20FUL.DAT` in the
+/// input's folder or its parent, next to the rb binary, or in the original's install locations
+/// on Windows.
+pub fn find_rb20ful(explicit: Option<&Path>, input: &Path) -> Result<PathBuf, Fail> {
+    let explicit = explicit
+        .map(|p| ("--rb20ful", p.to_path_buf()))
+        .or_else(|| env_path("RB_RB20FUL").map(|p| ("RB_RB20FUL", p)));
+    if let Some((what, p)) = explicit {
+        return if p.is_file() {
+            Ok(p)
+        } else {
+            Err(fail(1, format!("{what} {}: no such file", p.display())))
+        };
     }
+    let mut dirs = Vec::new();
+    if let Some(d) = input.parent() {
+        dirs.push(d.to_path_buf());
+        if let Some(parent) = d.parent() {
+            dirs.push(parent.to_path_buf());
+        }
+    }
+    dirs.extend(implicit_dirs(""));
+    for d in dirs {
+        for name in ["RB20FUL.DAT", "rb20ful.dat", "Rb20ful.dat"] {
+            let p = d.join(name);
+            if p.is_file() {
+                return Ok(p);
+            }
+        }
+    }
+    Err(fail(
+        1,
+        "no RB20FUL.DAT found. Pass --rb20ful PATH, set RB_RB20FUL, or put it next to the mod \
+         or the rb binary",
+    ))
 }
 
 /// `sub` (or the folder itself when empty) next to the rb binary and in the Windows install

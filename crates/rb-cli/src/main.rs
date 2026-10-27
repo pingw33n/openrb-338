@@ -65,17 +65,13 @@ enum Cmd {
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
         /// deprecated alias), then a Mods folder next to the rb
         /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
+        /// Only recrypted mods (rb recrypt) load; a mod that is not is still found by name and
+        /// fails with an error that says to run rb recrypt on it.
         #[arg(long, value_name = "DIR")]
         mod_dir: Option<PathBuf>,
         /// Use this .rbm mod whatever mod the song names.
         #[arg(long = "mod", value_name = "FILE")]
         mod_file: Option<PathBuf>,
-        /// The CD's RB20FUL.DAT, whose key material descrambles a mod's samples. Search order:
-        /// this option, the RB_RB20FUL environment variable, then an RB20FUL.DAT in the mod
-        /// folder (or its parent), next to the rb binary, or in the usual install locations on
-        /// Windows.
-        #[arg(long, value_name = "PATH")]
-        rb20ful: Option<PathBuf>,
         /// When the song's mod is not found, render with the built-in kit (with a warning)
         /// instead of failing; the original offers the same as "Standard".
         #[arg(long)]
@@ -102,9 +98,6 @@ enum Cmd {
         /// Use this .rbm mod whatever mod the song names.
         #[arg(long = "mod", value_name = "FILE")]
         mod_file: Option<PathBuf>,
-        /// The CD's RB20FUL.DAT, as in render.
-        #[arg(long, value_name = "PATH")]
-        rb20ful: Option<PathBuf>,
         /// When the song's mod is not found, play with the built-in kit, as in render.
         #[arg(long)]
         standard_kit: bool,
@@ -138,17 +131,13 @@ enum Cmd {
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
         /// deprecated alias), then a Mods folder next to the rb
         /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
+        /// Only recrypted mods (rb recrypt) load; a mod that is not is still found by name and
+        /// fails with an error that says to run rb recrypt on it.
         #[arg(long, value_name = "DIR")]
         mod_dir: Option<PathBuf>,
         /// Use this .rbm mod whatever mod the song names.
         #[arg(long = "mod", value_name = "FILE")]
         mod_file: Option<PathBuf>,
-        /// The CD's RB20FUL.DAT, whose key material descrambles a mod's samples. Search order:
-        /// this option, the RB_RB20FUL environment variable, then an RB20FUL.DAT in the mod
-        /// folder (or its parent), next to the rb binary, or in the usual install locations on
-        /// Windows.
-        #[arg(long, value_name = "PATH")]
-        rb20ful: Option<PathBuf>,
         /// When the song's mod is not found, render with the built-in kit (with a warning)
         /// instead of failing; the original offers the same as "Standard".
         #[arg(long)]
@@ -156,7 +145,9 @@ enum Cmd {
     },
     /// Rewrite a .rbm mod so that it needs no RB20FUL.DAT: rb then loads it with the 2047 key
     /// bytes it embeds, and the original ReBirth loads it unchanged (it reads the same bytes of
-    /// its own RB20FUL.DAT). Needs the key file once, unless the mod is already recrypted.
+    /// its own RB20FUL.DAT). Needs the key file once, unless the mod is already recrypted. This
+    /// is the only rb command that reads RB20FUL.DAT: render, compare and play load recrypted
+    /// mods only.
     Recrypt {
         /// The mod, an .rbm file.
         input: PathBuf,
@@ -164,8 +155,8 @@ enum Cmd {
         #[arg(short, long)]
         output: PathBuf,
         /// The CD's RB20FUL.DAT. Search order: this option, the RB_RB20FUL environment
-        /// variable, then an RB20FUL.DAT in the mod folder (RB_MOD_DIR, or its parent), next to
-        /// the rb binary, or in the usual install locations on Windows.
+        /// variable, then an RB20FUL.DAT in the folder of the input mod (or its parent), next
+        /// to the rb binary, or in the usual install locations on Windows.
         #[arg(long, value_name = "PATH")]
         rb20ful: Option<PathBuf>,
     },
@@ -190,7 +181,6 @@ fn main() -> ExitCode {
             rebirth_dll,
             mod_dir,
             mod_file,
-            rb20ful,
             standard_kit,
         } => render(
             &input,
@@ -202,7 +192,6 @@ fn main() -> ExitCode {
             ModOpts {
                 mod_file,
                 mod_dir,
-                rb20ful,
                 standard_kit,
             },
         ),
@@ -213,7 +202,6 @@ fn main() -> ExitCode {
             rebirth_dll,
             mod_dir,
             mod_file,
-            rb20ful,
             standard_kit,
         } => play(
             &input,
@@ -223,7 +211,6 @@ fn main() -> ExitCode {
             ModOpts {
                 mod_file,
                 mod_dir,
-                rb20ful,
                 standard_kit,
             },
         ),
@@ -236,7 +223,6 @@ fn main() -> ExitCode {
             rebirth_dll,
             mod_dir,
             mod_file,
-            rb20ful,
             standard_kit,
         } => compare::run(&compare::Args {
             names,
@@ -248,7 +234,6 @@ fn main() -> ExitCode {
             mods: ModOpts {
                 mod_file,
                 mod_dir,
-                rb20ful,
                 standard_kit,
             },
         })
@@ -584,19 +569,16 @@ fn recrypt(input: &Path, output: &Path, rb20ful: Option<PathBuf>) -> Result<(), 
     let table = match rbm::KeyTable::embedded(&rbm).filter(|t| rbm.all_covered(t)) {
         Some(t) => t,
         None => {
-            let opts = ModOpts {
-                rb20ful,
-                ..ModOpts::default()
-            };
-            let key_file = opts.rb20ful().map_err(|Fail(c, m)| {
-                fail(
-                    c,
-                    format!(
-                        "{}: recrypting needs the key file once; {m}",
-                        input.display()
-                    ),
-                )
-            })?;
+            let key_file =
+                mods::find_rb20ful(rb20ful.as_deref(), input).map_err(|Fail(c, m)| {
+                    fail(
+                        c,
+                        format!(
+                            "{}: recrypting needs the key file once; {m}",
+                            input.display()
+                        ),
+                    )
+                })?;
             read_key_table(&rbm, &key_file)?
         }
     };
@@ -629,25 +611,20 @@ fn recrypt(input: &Path, output: &Path, rb20ful: Option<PathBuf>) -> Result<(), 
     Ok(())
 }
 
-/// A recrypted mod (`rb recrypt`) loads with the key bytes rb embeds; any other needs the key
-/// file, found by `mods`.
-fn load_mod(path: &Path, mods: &ModOpts, builtin: &SampleSet) -> Result<SampleSet, Fail> {
+/// Only a recrypted mod (`rb recrypt`) loads: with the key bytes rb embeds. Any other mod is an
+/// error that names the fix; rb render, compare and play never read RB20FUL.DAT (task-063).
+fn load_mod(path: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
     let rbm = read_mod(path)?;
-    let table = match rbm::KeyTable::embedded(&rbm).filter(|t| rbm.slots_covered(t)) {
-        Some(t) => t,
-        None => {
-            let key_file = mods.rb20ful().map_err(|Fail(c, m)| {
-                fail(
-                    c,
-                    format!(
-                        "the song plays a drum machine with the mod {}, which needs the key \
-                         file (or `rb recrypt` it once); {m}",
-                        path.display()
-                    ),
-                )
-            })?;
-            read_key_table(&rbm, &key_file)?
-        }
+    let Some(table) = rbm::KeyTable::embedded(&rbm).filter(|t| rbm.slots_covered(t)) else {
+        return Err(fail(
+            1,
+            format!(
+                "{}: the song plays a drum machine with this mod, which is not recrypted. \
+                 Run `rb recrypt --rb20ful RB20FUL.DAT {} -o OUT.rbm` once and use OUT.rbm",
+                path.display(),
+                path.display()
+            ),
+        ));
     };
     let loaded = rbm
         .load_samples(&table, builtin)
@@ -706,7 +683,7 @@ impl Renderer {
                 Kit::Standard => Some(builtin),
                 Kit::Mod(path) => {
                     if !self.mod_sets.contains_key(&path) {
-                        let set = load_mod(&path, &self.mods, &builtin)?;
+                        let set = load_mod(&path, &builtin)?;
                         self.mod_sets.insert(path.clone(), Arc::new(set));
                     }
                     Some(self.mod_sets[&path].clone())

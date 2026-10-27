@@ -1,17 +1,19 @@
 //! The check of a third-party collection of mods and songs (task-058): the user's own files,
 //! read in place and never in the repository. Set `RB_THIRDPARTY_DIR` to a folder with `Mods/`
-//! (`.rbm` files) and `songs/` (`.rbs` files, any name), and `RB_RB20FUL` to the CD's
-//! RB20FUL.DAT; each test skips with a message when they are unset. Run it in release, with the
-//! summary shown:
+//! (the RECRYPTED `.rbm` files, `rb recrypt`; task-063) and `songs/` (`.rbs` files, any name);
+//! the `mods` test also needs `Mods.orig/` (the originals, same file names) and `RB_RB20FUL`
+//! (the CD's RB20FUL.DAT) for its reference. Each test skips with a message when its inputs are
+//! unset. Run it in release, with the summary shown:
 //!
 //! ```text
 //! RB_THIRDPARTY_DIR=~/rb_stuff RB_RB20FUL=.../RB20FUL.DAT \
 //!     cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1
 //! ```
 //!
-//! - `mods`: every `.rbm` through `crates/rbm` (parse, key pages, every embedded file, the 46
-//!   slots with the built-in fallback), compared with `tools/rbm.py check-dir --json`: the same
-//!   SHA-256 for every embedded file and the same channel-0 PCM for every slot.
+//! - `mods`: every recrypted `.rbm` through `crates/rbm` (parse, the embedded key bytes, every
+//!   embedded file, the 46 slots with the built-in fallback), compared with `tools/rbm.py
+//!   check-dir --json` over the ORIGINALS and the DAT: the same SHA-256 for every embedded file
+//!   and the same channel-0 PCM for every slot.
 //! - `songs`: every distinct song (by SHA-256): an RBS 4.2 song is read and written back
 //!   (byte-identical) and rendered with `rb render --mod-dir DIR/Mods --standard-kit`, its mod
 //!   resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`) must be refused
@@ -31,24 +33,27 @@ fn root() -> PathBuf {
 }
 
 struct Env {
+    /// The recrypted mods (`Mods/`): what rb loads.
     mods: PathBuf,
+    /// The originals (`Mods.orig/`), with `dat`: the reference of the `mods` test only.
+    orig: PathBuf,
     songs: PathBuf,
-    dat: PathBuf,
+    dat: Option<PathBuf>,
 }
 
 fn env() -> Option<Env> {
-    let (Some(dir), Some(dat)) = (
-        std::env::var_os("RB_THIRDPARTY_DIR").filter(|v| !v.is_empty()),
-        std::env::var_os("RB_RB20FUL").filter(|v| !v.is_empty()),
-    ) else {
-        eprintln!("skipped: RB_THIRDPARTY_DIR and RB_RB20FUL are not both set");
+    let Some(dir) = std::env::var_os("RB_THIRDPARTY_DIR").filter(|v| !v.is_empty()) else {
+        eprintln!("skipped: RB_THIRDPARTY_DIR is not set");
         return None;
     };
     let dir = PathBuf::from(dir);
     Some(Env {
         mods: dir.join("Mods"),
+        orig: dir.join("Mods.orig"),
         songs: dir.join("songs"),
-        dat: PathBuf::from(dat),
+        dat: std::env::var_os("RB_RB20FUL")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from),
     })
 }
 
@@ -71,12 +76,16 @@ fn builtin() -> SampleSet {
 #[test]
 fn mods() {
     let Some(e) = env() else { return };
+    let Some(dat) = e.dat.clone().filter(|_| e.orig.is_dir()) else {
+        eprintln!("skipped: RB_RB20FUL is not set or RB_THIRDPARTY_DIR/Mods.orig is missing");
+        return;
+    };
     let out = Command::new("/usr/bin/python3")
         .arg("-I")
         .arg(root().join("tools/rbm.py"))
         .arg("check-dir")
-        .arg(&e.mods)
-        .arg(&e.dat)
+        .arg(&e.orig)
+        .arg(&dat)
         .arg("--json")
         .output()
         .expect("cannot run /usr/bin/python3 for tools/rbm.py");
@@ -115,12 +124,18 @@ fn mods() {
             continue;
         }
         assert_eq!(name.as_deref(), m["name"].as_str(), "{file}: INFO name");
-        let table = rbm::KeyTable::read(&rbm, &mut std::fs::File::open(&e.dat).unwrap())
-            .unwrap_or_else(|err| panic!("{file}: {err}"));
+        // the recrypted mod loads with the embedded key bytes alone
+        let table = rbm::KeyTable::embedded(&rbm)
+            .filter(|t| rbm.all_covered(t))
+            .unwrap_or_else(|| panic!("{file}: not recrypted"));
 
-        // Every embedded file, in file order.
+        // Every embedded file, in file order (the recrypted mod has one more: the pad).
         let py_files = m["files"].as_array().unwrap();
-        let ours: Vec<_> = rbm.embedded().cloned().collect();
+        let ours: Vec<_> = rbm
+            .embedded()
+            .filter(|c| c.name.as_deref() != Some(rbm::PAD_NAME))
+            .cloned()
+            .collect();
         assert_eq!(ours.len(), py_files.len(), "{file}: EMBF count");
         for (c, p) in ours.iter().zip(py_files) {
             let b = rbm.file(c, &table).unwrap();
@@ -343,8 +358,6 @@ fn check_song(
         .arg(out)
         .arg("--mod-dir")
         .arg(&e.mods)
-        .arg("--rb20ful")
-        .arg(&e.dat)
         .arg("--rebirth-dll")
         .arg(root().join("original/ReBirth.dll"))
         .arg("--standard-kit")

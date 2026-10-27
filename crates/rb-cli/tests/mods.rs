@@ -1,9 +1,11 @@
 //! Mods in `rb render` (task-033), with a synthetic mod and key file (the real ones are not in
 //! the repository): the song's mod found by name in `--mod-dir`, `--mod` overriding it, a
-//! missing mod as an error, `--standard-kit` as the fallback, and the key file's search.
+//! missing mod as an error, `--standard-kit` as the fallback, and (task-063) that rb render
+//! loads only mods recrypted by `rb recrypt`, which is the only command that takes the key file.
 //!
 //! The synthetic key file is the right size with the right magic and zeros after it, so its
-//! key table is zeros and the scrambling is the identity: the mod is built in the clear.
+//! key table is zeros and the scrambling is the identity: the mod is built in the clear. The
+//! setup recrypts it with `rb recrypt --rb20ful` into `mods/`; `raw/` keeps the original.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -64,15 +66,28 @@ fn synthetic_mod(name: &str) -> Vec<u8> {
 struct Setup {
     dir: tempfile::TempDir,
     dat: PathBuf,
+    /// The recrypted mods (and a junk file).
     mods: PathBuf,
+    /// The same mod, not recrypted.
+    raw: PathBuf,
     dll: PathBuf,
+}
+
+fn rb() -> Command {
+    let mut c = Command::new(env!("CARGO_BIN_EXE_rb"));
+    c.env_remove("RB_MOD_DIR")
+        .env_remove("RB_RBM_DIR")
+        .env_remove("RB_RB20FUL");
+    c
 }
 
 fn setup() -> Setup {
     let dir = tempfile::tempdir().unwrap();
     let mods = dir.path().join("mods");
+    let raw = dir.path().join("raw");
     std::fs::create_dir(&mods).unwrap();
-    std::fs::write(mods.join("tm.rbm"), synthetic_mod("Test Mod")).unwrap();
+    std::fs::create_dir(&raw).unwrap();
+    std::fs::write(raw.join("tm.rbm"), synthetic_mod("Test Mod")).unwrap();
     std::fs::write(mods.join("junk.rbm"), b"not a mod").unwrap();
     // not in the mod folder's parent either, where the search would find it
     std::fs::create_dir(dir.path().join("keys")).unwrap();
@@ -85,10 +100,21 @@ fn setup() -> Setup {
     f.seek(std::io::SeekFrom::Start(0)).unwrap();
     f.write_all(&rbm::DAT_MAGIC.to_be_bytes()).unwrap();
     drop(f);
+    let o = rb()
+        .arg("recrypt")
+        .arg(raw.join("tm.rbm"))
+        .arg("-o")
+        .arg(mods.join("tm.rbm"))
+        .arg("--rb20ful")
+        .arg(&dat)
+        .output()
+        .unwrap();
+    ok(&o);
     Setup {
         dir,
         dat,
         mods,
+        raw,
         dll: root().join("original/ReBirth.dll"),
     }
 }
@@ -106,16 +132,13 @@ fn song(s: &Setup, file: &str, mod_name: &str) -> PathBuf {
 /// `rb render song -o out extra...` with the mod environment cleared and the DLL set.
 fn render(s: &Setup, song: &Path, name: &str, extra: &[&OsStr]) -> (Output, PathBuf) {
     let out = s.dir.path().join(name);
-    let o = Command::new(env!("CARGO_BIN_EXE_rb"))
+    let o = rb()
         .arg("render")
         .arg(song)
         .arg("-o")
         .arg(&out)
         .args(extra)
         .env("RB_REBIRTH_DLL", &s.dll)
-        .env_remove("RB_MOD_DIR")
-        .env_remove("RB_RBM_DIR")
-        .env_remove("RB_RB20FUL")
         .output()
         .unwrap();
     (o, out)
@@ -135,12 +158,7 @@ fn the_songs_mod_is_found_by_name_in_the_mod_dir() {
     let standard = song(&s, "std.rbs", "Standard ReBirth");
     let named = song(&s, "named.rbs", "Test Mod");
     let by_file = song(&s, "byfile.rbs", "TM"); // the file name, any case, without .rbm
-    let dirs = [
-        os("--mod-dir"),
-        s.mods.as_os_str(),
-        os("--rb20ful"),
-        s.dat.as_os_str(),
-    ];
+    let dirs = [os("--mod-dir"), s.mods.as_os_str()];
 
     let (o, std_out) = render(&s, &standard, "std.wav", &[]);
     ok(&o);
@@ -159,12 +177,7 @@ fn the_info_name_match_is_case_sensitive_and_mod_warns_on_a_mismatch() {
     let s = setup();
     let standard = song(&s, "std.rbs", "Standard ReBirth");
     let lower = song(&s, "lower.rbs", "test mod"); // not the INFO name "Test Mod", no file "test mod"
-    let dirs = [
-        os("--mod-dir"),
-        s.mods.as_os_str(),
-        os("--rb20ful"),
-        s.dat.as_os_str(),
-    ];
+    let dirs = [os("--mod-dir"), s.mods.as_os_str()];
     let (o, _) = render(&s, &lower, "l.wav", &dirs);
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
@@ -172,33 +185,13 @@ fn the_info_name_match_is_case_sensitive_and_mod_warns_on_a_mismatch() {
 
     // --mod with an INFO name other than the song's: renders, with a warning
     let modfile = s.mods.join("tm.rbm");
-    let (o, _) = render(
-        &s,
-        &standard,
-        "w.wav",
-        &[
-            os("--mod"),
-            modfile.as_os_str(),
-            os("--rb20ful"),
-            s.dat.as_os_str(),
-        ],
-    );
+    let (o, _) = render(&s, &standard, "w.wav", &[os("--mod"), modfile.as_os_str()]);
     ok(&o);
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("not the mod the song names"), "{err}");
     // and none when they agree
     let named = song(&s, "named.rbs", "Test Mod");
-    let (o, _) = render(
-        &s,
-        &named,
-        "w2.wav",
-        &[
-            os("--mod"),
-            modfile.as_os_str(),
-            os("--rb20ful"),
-            s.dat.as_os_str(),
-        ],
-    );
+    let (o, _) = render(&s, &named, "w2.wav", &[os("--mod"), modfile.as_os_str()]);
     ok(&o);
     assert!(!String::from_utf8_lossy(&o.stderr).contains("warning"));
 }
@@ -209,58 +202,27 @@ fn mod_overrides_the_song_and_the_environment_gives_the_folders() {
     let standard = song(&s, "std.rbs", "Standard ReBirth");
     let named = song(&s, "named.rbs", "Test Mod");
     let modfile = s.mods.join("tm.rbm");
-    let (o, a) = render(
-        &s,
-        &standard,
-        "a.wav",
-        &[
-            os("--mod"),
-            modfile.as_os_str(),
-            os("--rb20ful"),
-            s.dat.as_os_str(),
-        ],
-    );
+    let (o, a) = render(&s, &standard, "a.wav", &[os("--mod"), modfile.as_os_str()]);
     ok(&o);
-    let (o, b) = render(
-        &s,
-        &named,
-        "b.wav",
-        &[
-            os("--mod-dir"),
-            s.mods.as_os_str(),
-            os("--rb20ful"),
-            s.dat.as_os_str(),
-        ],
-    );
+    let (o, b) = render(&s, &named, "b.wav", &[os("--mod-dir"), s.mods.as_os_str()]);
     ok(&o);
     assert_eq!(std::fs::read(&a).unwrap(), std::fs::read(&b).unwrap());
 
     // --mod wins over what the song names, even a mod that does not exist
     let ghost = song(&s, "ghost.rbs", "No Such Mod");
-    let (o, c) = render(
-        &s,
-        &ghost,
-        "c.wav",
-        &[
-            os("--mod"),
-            modfile.as_os_str(),
-            os("--rb20ful"),
-            s.dat.as_os_str(),
-        ],
-    );
+    let (o, c) = render(&s, &ghost, "c.wav", &[os("--mod"), modfile.as_os_str()]);
     ok(&o);
     assert_eq!(std::fs::read(&a).unwrap(), std::fs::read(&c).unwrap());
 
-    // RB_MOD_DIR and RB_RB20FUL stand in for the options
+    // RB_MOD_DIR stands in for the option
     let out = s.dir.path().join("d.wav");
-    let o = Command::new(env!("CARGO_BIN_EXE_rb"))
+    let o = rb()
         .arg("render")
         .arg(&named)
         .arg("-o")
         .arg(&out)
         .env("RB_REBIRTH_DLL", &s.dll)
         .env("RB_MOD_DIR", &s.mods)
-        .env("RB_RB20FUL", &s.dat)
         .output()
         .unwrap();
     ok(&o);
@@ -271,12 +233,7 @@ fn mod_overrides_the_song_and_the_environment_gives_the_folders() {
 fn a_missing_mod_is_an_error_unless_standard_kit() {
     let s = setup();
     let ghost = song(&s, "ghost.rbs", "No Such Mod");
-    let dirs = [
-        os("--mod-dir"),
-        s.mods.as_os_str(),
-        os("--rb20ful"),
-        s.dat.as_os_str(),
-    ];
+    let dirs = [os("--mod-dir"), s.mods.as_os_str()];
 
     let (o, out) = render(&s, &ghost, "g.wav", &dirs);
     let err = String::from_utf8_lossy(&o.stderr);
@@ -310,65 +267,78 @@ fn a_missing_mod_is_an_error_unless_standard_kit() {
     assert_eq!(std::fs::read(a).unwrap(), std::fs::read(b).unwrap());
 }
 
+/// rb render takes no key file and reads none (task-063): a mod that is not recrypted is an
+/// error that names `rb recrypt`, however a key file is offered.
 #[test]
-fn a_mod_without_a_key_file_is_an_error() {
+fn a_mod_that_is_not_recrypted_is_an_error_naming_rb_recrypt() {
     let s = setup();
     let named = song(&s, "named.rbs", "Test Mod");
-    let (o, out) = render(&s, &named, "n.wav", &[os("--mod-dir"), s.mods.as_os_str()]);
+    let dirs = [os("--mod-dir"), s.raw.as_os_str()];
+    let (o, out) = render(&s, &named, "n.wav", &dirs);
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
     assert!(
-        err.contains("RB20FUL.DAT") && err.contains("--rb20ful") && err.contains("RB_RB20FUL"),
+        err.contains("tm.rbm") && err.contains("not recrypted") && err.contains("rb recrypt"),
         "{err}"
     );
     assert!(!out.exists());
 
-    // a key file that is not one
-    let junk = s.dir.path().join("junk.dat");
-    std::fs::write(&junk, vec![0u8; 5000]).unwrap();
-    let (o, _) = render(
-        &s,
-        &named,
-        "n.wav",
-        &[
-            os("--mod-dir"),
-            s.mods.as_os_str(),
-            os("--rb20ful"),
-            junk.as_os_str(),
-        ],
-    );
+    // --mod names the file the same way
+    let raw_file = s.raw.join("tm.rbm");
+    let (o, out) = render(&s, &named, "n.wav", &[os("--mod"), raw_file.as_os_str()]);
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
-    assert!(err.contains("bad magic"), "{err}");
+    assert!(err.contains("rb recrypt"), "{err}");
+    assert!(!out.exists());
 
-    // the key file next to the mods is found without an option
-    std::fs::rename(&s.dat, s.mods.join("RB20FUL.DAT")).unwrap();
-    let (o, _) = render(&s, &named, "n.wav", &[os("--mod-dir"), s.mods.as_os_str()]);
-    ok(&o);
+    // a key file in the mod folder or in RB_RB20FUL is not read
+    std::fs::copy(&s.dat, s.raw.join("RB20FUL.DAT")).unwrap();
+    let o = rb()
+        .arg("render")
+        .arg(&named)
+        .arg("-o")
+        .arg(s.dir.path().join("m.wav"))
+        .args(dirs)
+        .env("RB_REBIRTH_DLL", &s.dll)
+        .env("RB_RB20FUL", &s.dat)
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("rb recrypt"), "{err}");
+
+    // and the option is gone from render, compare and play
+    for cmd in ["render", "compare", "play"] {
+        let o = rb()
+            .arg(cmd)
+            .arg(&named)
+            .arg("--rb20ful")
+            .arg(&s.dat)
+            .output()
+            .unwrap();
+        assert_eq!(o.status.code(), Some(2), "{cmd}");
+        assert!(String::from_utf8_lossy(&o.stderr).contains("--rb20ful"));
+    }
 }
 
 #[test]
-fn a_recrypted_mod_renders_without_the_key_file() {
+fn rb_recrypt_is_the_one_command_that_needs_the_key_file() {
     let s = setup();
     let named = song(&s, "named.rbs", "Test Mod");
-    let src = s.mods.join("tm.rbm");
+    let src = s.raw.join("tm.rbm");
     let re_dir = s.dir.path().join("re");
     std::fs::create_dir(&re_dir).unwrap();
     let re = re_dir.join("tm.rbm");
     let recrypt = |extra: &[&OsStr]| {
-        Command::new(env!("CARGO_BIN_EXE_rb"))
-            .arg("recrypt")
+        rb().arg("recrypt")
             .arg(&src)
             .arg("-o")
             .arg(&re)
             .args(extra)
-            .env_remove("RB_MOD_DIR")
-            .env_remove("RB_RBM_DIR")
-            .env_remove("RB_RB20FUL")
             .output()
             .unwrap()
     };
-    // the first recrypt needs the key file
+    // without the key file it fails, naming it
     let o = recrypt(&[]);
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
@@ -377,26 +347,37 @@ fn a_recrypted_mod_renders_without_the_key_file() {
     ok(&recrypt(&[os("--rb20ful"), s.dat.as_os_str()]));
     let back = rbm::Rbm::parse(std::fs::read(&re).unwrap()).unwrap();
     assert!(rbm::KeyTable::embedded(&back).is_some_and(|t| back.all_covered(&t)));
-
-    // the recrypted mod renders with no key file anywhere, as the original does with it
-    let (o, a) = render(&s, &named, "a.wav", &[os("--mod"), re.as_os_str()]);
-    ok(&o);
-    let (o, b) = render(
-        &s,
-        &named,
-        "b.wav",
-        &[
-            os("--mod-dir"),
-            s.mods.as_os_str(),
-            os("--rb20ful"),
-            s.dat.as_os_str(),
-        ],
+    // the same bytes as the setup's
+    assert_eq!(
+        std::fs::read(&re).unwrap(),
+        std::fs::read(s.mods.join("tm.rbm")).unwrap()
     );
+
+    // a key file that is not one
+    let junk = s.dir.path().join("junk.dat");
+    std::fs::write(&junk, vec![0u8; 5000]).unwrap();
+    let o = recrypt(&[os("--rb20ful"), junk.as_os_str()]);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(err.contains("bad magic"), "{err}");
+
+    // the RB_RB20FUL variable and the key file next to the mod are found
+    let o = rb()
+        .arg("recrypt")
+        .arg(&src)
+        .arg("-o")
+        .arg(&re)
+        .env("RB_RB20FUL", &s.dat)
+        .output()
+        .unwrap();
     ok(&o);
-    let want = std::fs::read(b).unwrap();
-    assert_eq!(std::fs::read(a).unwrap(), want);
-    // and the mod folder lookup finds it by its INFO name
+    std::fs::copy(&s.dat, s.raw.join("RB20FUL.DAT")).unwrap();
+    ok(&recrypt(&[]));
+
+    // the recrypted mod renders with no key file anywhere, found by its INFO name
     let (o, c) = render(&s, &named, "c.wav", &[os("--mod-dir"), re_dir.as_os_str()]);
     ok(&o);
-    assert_eq!(std::fs::read(c).unwrap(), want);
+    let (o, a) = render(&s, &named, "a.wav", &[os("--mod"), re.as_os_str()]);
+    ok(&o);
+    assert_eq!(std::fs::read(a).unwrap(), std::fs::read(c).unwrap());
 }

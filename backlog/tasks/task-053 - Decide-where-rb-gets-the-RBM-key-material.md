@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-27 04:58'
-updated_date: '2026-10-27 07:44'
+updated_date: '2026-10-27 10:18'
 labels:
   - decision
   - rbm
@@ -36,6 +36,8 @@ Recommendation: option 1.
 
 <!-- SECTION:NOTES:BEGIN -->
 Supervisor 2026-10-27: per the user, task-059 embeds the minimum RB20FUL.DAT key data in rb and adds `rb recrypt`, so recrypted mods load without the CD; this supersedes this decision's "nothing bundled" for that embedded minimum only. Other mods still read the user's RB20FUL.DAT at run time.
+
+task-063 (2026-10-27): rb render, compare and play no longer take --rb20ful or RB_RB20FUL; only rb recrypt does (docs/rbm.md 12.4).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

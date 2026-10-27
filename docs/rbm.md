@@ -7,7 +7,9 @@ files; [G] marks an inference. The reference implementation is `tools/rbm.py` (t
 `tools/rbm_test.py`); `tools/rbhost` loads a mod into the original DLL (`run.py --mod`).
 
 RB20FUL.DAT, its pages, any key table and the mods themselves are Propellerhead material: they stay
-on the user's machine and are never committed. Tests read them from `RB_RB20FUL` and `RB_RBM_DIR`.
+on the user's machine and are never committed. The `rbm` crate's and `rbm.py`'s tests read them from
+`RB_RB20FUL` and `RB_RBM_DIR`; the rb CLI and its tests read only recrypted mods (`RB_MOD_DIR`,
+section 12.4).
 The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte window of section
 12 is embedded in rb (`crates/rbm/src/rb20ful_window.bin`, `embedded.rs`).
 
@@ -301,13 +303,12 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   46-slot `SampleSet` (a slot the mod lacks keeps the built-in sample). Confirmed by output: with
   only the samples modeled, all 8 `mod` and 3 `modapp` references render byte-exact.
 - **CLI**: `rb render` / `rb compare` take `--mod-dir DIR` (`RB_MOD_DIR`; `RB_RBM_DIR` is a
-  deprecated alias), `--mod FILE` (overrides the song's mod), `--rb20ful PATH` (`RB_RB20FUL`, then
-  an `RB20FUL.DAT` in the mod folder or its parent or next to the binary, or the Windows install
-  folders) and `--standard-kit` (a missing mod renders with the built-in kit and a warning).
-  Without it a song naming a mod that is not found is an error. A mod needs the key file only
-  when a drum machine plays (the mod holds nothing else), and a recrypted mod never does
-  (section 12). `rb compare --manifest` includes the
-  sets `mod` and `modapp` by default only when a mod folder is given.
+  deprecated alias), `--mod FILE` (overrides the song's mod) and `--standard-kit` (a missing mod
+  renders with the built-in kit and a warning). Without it a song naming a mod that is not found
+  is an error. A mod is read only when a drum machine plays (the mod holds nothing else).
+  `rb compare --manifest` includes the sets `mod` and `modapp` by default only when a mod folder
+  is given. Since task-063 these commands take no `--rb20ful` and read no `RB20FUL.DAT`: they
+  load recrypted mods only (section 12.4). Task-033 had `--rb20ful PATH` / `RB_RB20FUL` here.
 - **AIFF rate** [C]: `sub_10001674` (0x100016B2..0x100016DE) converts the 80-bit rate with `fistp`
   under a control word with rounding set to truncate (`| 0xC00`) into a 64-bit slot and keeps the low
   dword; `sub_100016F4` rejects 0. The engine's reader now does the same (a rate below 1 Hz, or
@@ -324,7 +325,8 @@ is in the repository. Mod names and counts only below.
 **The check.** `tools/rbm.py check-dir DIR RB20FUL.DAT [--json]` (the reference: every mod's
 parse, key pages, every embedded file descrambled, the 46 slots' AIFFs, JPEG end markers,
 duplicate INFO names in the original's folder order) and the env-gated cargo test
-`crates/rb-cli/tests/thirdparty.rs` (`RB_THIRDPARTY_DIR`, `RB_RB20FUL`; run it with
+`crates/rb-cli/tests/thirdparty.rs` (`RB_THIRDPARTY_DIR` with `Mods/` recrypted, `Mods.orig/` and
+`RB_RB20FUL` for the reference since task-063; run it with
 `cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1`), which compares
 `crates/rbm` with `check-dir --json` (the SHA-256 of every embedded file, the channel-0 PCM of every
 slot) and reads, writes back and renders every distinct song.
@@ -436,7 +438,8 @@ embeds a minimum of `RB20FUL.DAT` that lets a mod load without the CD, and that
 trade-off of 12.2 (123 bytes with 113663-chunk mods against 2 KB with compact ones), the user
 chose, the same day, **one 2 KB window and compact mods**: rb embeds `RB20FUL.DAT[W .. W + 2047]`,
 and a recrypted mod keeps its chunk count and size (plus one 1024-byte chunk). A mod that is not
-recrypted still needs the user's `RB20FUL.DAT`.
+recrypted is not loaded by rb at all (section 12.4); `rb recrypt` is the one place `RB20FUL.DAT`
+is read.
 
 ### 12.1 Facts the scheme rests on [C]
 
@@ -534,3 +537,33 @@ All 172 third-party mods of section 11 and the four shipped ones recrypt, and ev
 sample of the result equals the original's (`crates/rbm/tests/rbm.rs`, `thirdparty_mods_recrypt`
 and `real_mods_recrypt`); the corpus mod songs render byte-exact with recrypted mods loaded without
 the DAT (`crates/rb-cli/tests/corpus_mods.rs`). `tools/rbm.py` decodes with each reader's key.
+
+### 12.4 rb reads only recrypted mods (task-063, 2026-10-27)
+
+At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `rb recrypt` alone:
+
+- `rb render`, `rb compare` and `rb play` have no `--rb20ful` and do not read `RB_RB20FUL`; only
+  `rb recrypt` has them (it searches: the option, `RB_RB20FUL`, an `RB20FUL.DAT` in the input mod's
+  folder or its parent, next to the binary, the Windows install folders). `crates/rbm` keeps the
+  general descrambler (`KeyTable::read`) for recrypt's own use.
+- A mod that is not recrypted is found like any other by `--mod-dir` / `RB_MOD_DIR` (its INFO is in
+  the clear, it keeps its place in the original's folder order, so the duplicate-name rule of
+  task-058 is unchanged) and `--mod FILE` takes it; the error comes when its samples are loaded
+  (only when a drum machine plays): `FILE: the song plays a drum machine with this mod, which is
+  not recrypted. Run rb recrypt --rb20ful RB20FUL.DAT FILE -o OUT.rbm once and use OUT.rbm`
+  (exit 1). The decision is "found, fails at load", not "skipped": a skipped mod would turn into
+  "mod not found" and hide the fix. The future UI (m-3, task-047's mod chooser) lists such mods the
+  same way, marked "needs rb recrypt".
+- The env-gated tests take recrypted mods: `corpus_mods.rs` and `rb compare` read `RB_MOD_DIR`
+  (recrypted); `thirdparty.rs` reads `RB_THIRDPARTY_DIR/Mods` (recrypted) with `Mods.orig` and
+  `RB_RB20FUL` as the reference; `corpus_mods.rs`'s `recrypt_of_the_originals_matches_the_references`
+  still runs the recrypt (`RB_MOD_ORIG_DIR`, `RB_RB20FUL`), requires its bytes to equal the files of
+  `RB_MOD_DIR` and renders the 8 songs from them.
+
+**Done on 2026-10-27.** The user's 172 third-party mods: `~/rb_stuff/Mods.orig` holds the originals,
+`~/rb_stuff/Mods` the recrypted ones under the same names; all 172 recrypted (0 failures), and
+`thirdparty.rs` `mods` found 16680 embedded files and 7285 slots equal to `rbm.py check-dir` of the
+originals. The four shipped mods on the test machine: the originals are backed up in
+`C:\re\rb\mods_orig`, `C:\ReBirth RB-338\Mods` holds the recrypted ones (hashes in
+docs/test_machine.md section 7), and an app export of Fonda Workout from the installation equals
+`rb compare` with the recrypted MSM2 at one N of 3400..3707 (3600).

@@ -245,6 +245,26 @@ Mods (`C:\ReBirth RB-338\Mods`, not committed; the rcs copies are in `C:\re\rb\i
 | Orbit2.rbm | 5,063,584 | `852e9f9ba207337a781eda7ac609b6bf0fe2040889aabb3be6453d95f510b8fa` |
 | PBE2.rbm | 3,623,024 | `797ea0f74d6fd2ee7d8e70ff0baf375a6d89686c64dfda47bc435006990ad951` |
 
+**The installation's Mods are recrypted (task-063, 2026-10-27).** At the user's explicit request (the one
+exception to "never write into the installation", for these four files only) the files in
+`C:\ReBirth RB-338\Mods` were replaced by their `rb recrypt` form (docs/rbm.md section 12), after the
+originals were copied to **`C:\re\rb\mods_orig`** (`robocopy`, hashes equal to the table above; never
+delete it). The table above is the ORIGINALS' (also the committed manifest's); the installation now has:
+
+| File | Bytes | SHA-256 |
+|---|---|---|
+| Metallicon.rbm | 3,533,130 | `12fbe6982b664abd42d03a9a329e7f0597ecddc89b674581ee5c4c7914f2bbd4` |
+| MSM2.rbm | 2,184,548 | `28cb40e0ae02a49a05c866d480ba982da84d5dba5cf3a6605e05f1f4418aa604` |
+| Orbit2.rbm | 5,064,616 | `eb1843b685514f22b379720733dbea4cf58111107eb353d53ea6634829f2114c` |
+| PBE2.rbm | 3,624,056 | `62789353966b7ca7d4c0bd55b14981fdb49b94371c535224bb1f581eb15ccb97` |
+
+The app loaded them with no extra box; one export of Fonda Workout (MSM2) from the installation
+(`rb_export.py --restore-prf`, the wav `548cece4...fff15`) equals `rb compare ... --idle-blocks 3600`
+with the recrypted MSM2 (one EQUAL among N 3400..3707). After the export `rb_export.py` restored the user's preferences file
+(sha256 `6309526e1574...`, checked) and released the permits. `C:\re\rb\install\Mods` still holds the
+original copies. To go back: copy `C:\re\rb\mods_orig\*.rbm` over the installation's Mods (only with
+no Rebirth.exe running, under all permits).
+
 The installation's `Rebirth.exe` and `ReBirth.dll` hashes are in task-001's notes.
 
 ## 8. The export runner `tools/rb_export.py` (task-008)
