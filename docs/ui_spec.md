@@ -732,8 +732,12 @@ Select Patterns mode. This is a trade-off forced by egui 0.37 (no numpad identit
 **PgUp / PgDn are not wired.** rb's panel is a fixed, letterboxed 624 x 510 image with no
 scrolling rack, so there is nothing to scroll (the open [G] in section 15 stays open).
 
-Numpad 1 / 2 locate to the loop start / end [G: the handler was not read; position clamped to
-the last bar start, record untouched]. Tab / Shift+Tab set the focused 303's playing step (live
+Numpad 1 / 2 locate to the loop start / end [C] task-081: `sub_42D1D3` maps key codes 100 / 101
+(byte table 0x42D6B4, jump table 0x42D694) to case 5 (0x42D24C) and case 6 (0x42D269), which call
+0x429DBF with `this+0x106C` / `this+0x1070` (clamped via 0x467EBB, bound 0xBB200) and send msg 8
+(0x429D77). Only `this+5` (0x42D1F9) and the key-down type (0x42D206) are tested, not the
+song-mode byte `this+0x2C`, so locate also works in pattern mode and is not gated. Record is
+untouched [G]. Tab / Shift+Tab set the focused 303's playing step (live
 byte 9) to note / rest; a drum tap key sets that instrument on the playing step (909 value 1, AC
 row 2) without selecting it [G]; the drums' Shift+Tab deletion is not done (which instrument it
 clears is unknown, section 15).
@@ -742,7 +746,13 @@ clears is unknown, section 15).
 
 - **Pattern mode** (global byte 0 = 0): the selected patterns loop, every control stays where it
   is put, the bar and loop displays are disabled, Rewind/Fast forward and Record have no effect
-  (manual page 144). Pattern editing (sections 5-7) is meant for this mode.
+  (manual page 144). Pattern editing (sections 5-7) is meant for this mode. [C] task-081: the
+  exe's transport poll `sub_42A058` tests the song-mode byte `this+0x2C` at 0x42A074 (`je
+  0x42A2B5`), and Rewind (0x42A091), Fast forward (0x42A0E8), Bar up/down (0x42A13E, 0x42A171),
+  Record (0x42A1C7), Loop start up/down (0x42A1FC, 0x42A22F) and Loop length up/down (0x42A261,
+  0x42A294) are all inside that block; the loop switch (0x42A2B5 on) and the tempo arrows are
+  outside it. rb-ui's `Panel::arrow` (mouse and numpad keys) does nothing for them in pattern
+  mode.
 - **Song mode** (byte 0 = 1): the song plays from the song position; the transport shows the bar
   (1..999), the loop start and the loop length in bars; the loop (when on) repeats bars
   `start .. end-1`. The panel follows the engine's live values (pattern changes and knob

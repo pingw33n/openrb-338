@@ -228,6 +228,10 @@ fn repeat_button_steps_once_then_repeats_while_held() {
 #[test]
 fn bar_arrows_and_wind_move_the_song_position() {
     let mut h = Harness::new();
+    // pattern mode: no effect (the song-mode block of `sub_42A058`, 0x42A074)
+    h.click("transport.ff");
+    assert_eq!(h.app.panel.transport.position, 0);
+    h.click("transport.mode");
     h.click("transport.ff");
     assert_eq!(h.app.panel.transport.position, 10 * BAR);
     h.click("transport.bar_up");

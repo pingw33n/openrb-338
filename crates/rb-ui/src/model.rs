@@ -822,6 +822,17 @@ impl Panel {
     /// One step of a repeat or wind button: `id` is the arrow's layout id (`..._up` or
     /// `..._down`).
     pub fn arrow(&mut self, id: &str) {
+        // Rewind, Fast forward, Bar, Loop start and Loop length are tested inside the
+        // song-mode block of `sub_42A058` (`this+44` at 0x42A074, `je 0x42A2B5` skips it to the
+        // loop switch and the tempo arrows): in pattern mode they do nothing at all.
+        if !self.transport.song_mode
+            && (matches!(id, "transport.rewind" | "transport.ff")
+                || id.starts_with("transport.bar_")
+                || id.starts_with("transport.loop_start_")
+                || id.starts_with("transport.loop_length_"))
+        {
+            return;
+        }
         if id == "transport.rewind" || id == "transport.ff" {
             // record goes off with the move: `{2, 0}` first
             if self.transport.recording {
@@ -947,7 +958,9 @@ impl Panel {
     // ---- the computer keyboard's own actions (docs/ui_spec.md section 10) ---------------------
 
     /// Numpad 1 / 2: locates to the loop start / the loop end (clamped to the last bar start)
-    /// [G: the details; the program's handler was not read].
+    /// [C] (task-081): `sub_42D1D3` cases 5 / 6 (0x42D24C, 0x42D269) call 0x429DBF with
+    /// `this+0x106C` / `this+0x1070` and send msg 8 (0x429D77); the song-mode byte is not
+    /// tested, so it works in pattern mode too.
     pub fn locate_loop(&mut self, end: bool) {
         let t = &mut self.transport;
         t.position = (if end { t.loop_end } else { t.loop_start }).clamp(0, MAX_POS);

@@ -1150,3 +1150,40 @@ fn the_knobs_follow_the_songs_automation() {
     }
     assert!(seen.len() > 3, "the cutoff moved: {seen:?}");
 }
+
+#[test]
+fn the_wind_bar_and_loop_arrows_send_nothing_in_pattern_mode() {
+    // `sub_42A058` tests them inside the song-mode block (0x42A074); tempo and the loop switch
+    // are outside it
+    let mut h = Harness::new();
+    for id in [
+        "transport.rewind",
+        "transport.ff",
+        "transport.bar_up",
+        "transport.bar_down",
+        "transport.loop_start_up",
+        "transport.loop_start_down",
+        "transport.loop_length_up",
+        "transport.loop_length_down",
+    ] {
+        h.click(id);
+    }
+    assert_eq!(h.take_log(), vec![]);
+    let t = &h.app.panel.transport;
+    assert_eq!((t.position, t.loop_start, t.loop_end), (0, 0, BAR));
+    h.click("transport.tempo_up");
+    h.click("transport.loop");
+    assert_eq!(h.take_log(), vec![global(4, 141_000), global(3, 1)]);
+    // song mode: they send their messages
+    h.click("transport.mode");
+    h.click("transport.ff");
+    h.click("transport.loop_length_up");
+    assert_eq!(
+        h.take_log(),
+        vec![
+            global(0, 1),
+            global(8, 10 * BAR as u32),
+            global(16, 2 * BAR as u32)
+        ]
+    );
+}

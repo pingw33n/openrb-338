@@ -389,6 +389,8 @@ fn ctrl_f_and_ctrl_g_switch_the_mode_and_the_patterns_mode_selects_patterns() {
 fn the_wind_buttons_repeat_while_the_key_is_held() {
     let mut h = Harness::new();
     h.focus(2);
+    h.app.panel.set_switch("transport.mode", 1);
+    h.events();
     h.frame(
         vec![Harness::ev(
             Key::Num5,
@@ -488,4 +490,26 @@ fn a_held_key_shows_its_button_pressed_and_shift_equals_is_tempo_up() {
     h.focus(0);
     h.key_with(Key::Equals, Some(Key::Equals), Modifiers::SHIFT);
     assert_eq!(h.events(), vec![set("transport.tempo", 141_000)]);
+}
+
+#[test]
+fn the_wind_bar_keys_do_nothing_in_pattern_mode() {
+    // `sub_42A058` tests them inside the song-mode block (0x42A074); tempo is outside it
+    let mut h = Harness::new();
+    h.focus(2);
+    assert!(!h.app.panel.transport.song_mode);
+    for k in [Key::Num4, Key::Num5, Key::Num7, Key::Num8] {
+        h.key(k);
+        assert_eq!(h.events(), vec![], "{k:?}");
+    }
+    assert_eq!(h.app.panel.transport.position, 0);
+    h.key(Key::Plus);
+    assert_eq!(h.events(), vec![set("transport.tempo", 141_000)]);
+    // song mode: they work
+    h.app.panel.set_switch("transport.mode", 1);
+    h.events();
+    h.key(Key::Num5);
+    assert_eq!(h.events(), vec![set("transport.position", 10 * BAR)]);
+    h.key(Key::Num7);
+    assert_eq!(h.events(), vec![set("transport.bar", 9 * BAR)]);
 }
