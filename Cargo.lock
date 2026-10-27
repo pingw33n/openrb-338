@@ -423,6 +423,7 @@ dependencies = [
  "claxon",
  "flacenc",
  "rb-engine",
+ "rbm",
  "rbs",
  "serde_json",
  "sha2",

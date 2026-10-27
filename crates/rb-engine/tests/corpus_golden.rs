@@ -12,12 +12,13 @@
 //!   the longest song, TGV's KiloMix '98 at 15 minutes, runs on one thread), so the test is
 //!   ignored in debug builds: `cargo test --release` runs it, as does `cargo test -- --ignored`.
 //!
-//! Out of scope: the 8 shipped songs that use another mod than "Standard ReBirth" need the RBM
-//! work of m-2 (task-033): their references are in the manifest's `mod` set (rbhost with the mod)
-//! and `modapp` set (3 app exports) since task-031, and this test skips both sets until the
-//! engine loads mods. The two pattern-mode Default Songs cannot be exported
-//! (`docs/test_machine.md` section 8). `shipped_songs_out_of_the_corpus_are_mod_or_pattern_mode`
-//! checks that these are the only songs left out of `shipped`, and that each modded one is in `mod`.
+//! Out of this file: the 8 shipped songs that use another mod than "Standard ReBirth" (the sets
+//! `mod`, rbhost with the mod, and `modapp`, 3 app exports; task-031) are checked by
+//! `crates/rb-cli/tests/corpus_mods.rs` (task-033), which needs the `rbm` crate and the user's
+//! `.rbm` files and `RB20FUL.DAT` (`RB_MOD_DIR`, `RB_RB20FUL`). The two pattern-mode Default Songs
+//! cannot be exported (`docs/test_machine.md` section 8).
+//! `shipped_songs_out_of_the_corpus_are_mod_or_pattern_mode` checks that these are the only songs
+//! left out of `shipped`, and that each modded one is in `mod`.
 //!
 //! Every song renders in a fresh engine with every device the engine has
 //! ([`Devices::implemented`]) and the built-in samples of `original/ReBirth.dll`, as rbhost
@@ -177,7 +178,11 @@ fn shipped_songs_out_of_the_corpus_are_mod_or_pattern_mode() {
         let exportable = s.globals.song_mode != 0;
         assert_eq!(in_corpus, standard && exportable, "{name}");
         // task-031: the mod songs have rbhost references of their own, in the set `mod`
-        assert_eq!(m["mod"].as_object().unwrap().contains_key(&name), !standard, "{name}");
+        assert_eq!(
+            m["mod"].as_object().unwrap().contains_key(&name),
+            !standard,
+            "{name}"
+        );
         if !standard {
             modded.push(name);
         } else if !exportable {

@@ -7,13 +7,16 @@
 
 mod compare;
 mod encode;
+mod mods;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use encode::Format;
+use mods::{Kit, ModOpts};
 use rb_engine::frame::export;
 use rb_engine::frame::{Devices, Engine};
 use rb_engine::samples::SampleSet;
@@ -56,6 +59,26 @@ enum Cmd {
         /// locations on Windows.
         #[arg(long, value_name = "PATH")]
         rebirth_dll: Option<PathBuf>,
+        /// The song's mod is looked up in this folder of .rbm files, by the name in the song
+        /// (the mod's INFO name, as the original's Mods menu; a file name also matches).
+        /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
+        /// deprecated alias), then a Mods folder next to the rb
+        /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
+        #[arg(long, value_name = "DIR")]
+        mod_dir: Option<PathBuf>,
+        /// Use this .rbm mod whatever mod the song names.
+        #[arg(long = "mod", value_name = "FILE")]
+        mod_file: Option<PathBuf>,
+        /// The CD's RB20FUL.DAT, whose key material descrambles a mod's samples. Search order:
+        /// this option, the RB_RB20FUL environment variable, then an RB20FUL.DAT in the mod
+        /// folder (or its parent), next to the rb binary, or in the usual install locations on
+        /// Windows.
+        #[arg(long, value_name = "PATH")]
+        rb20ful: Option<PathBuf>,
+        /// When the song's mod is not found, render with the built-in kit (with a warning)
+        /// instead of failing; the original offers the same as "Standard".
+        #[arg(long)]
+        standard_kit: bool,
     },
     /// Render songs and compare each with its reference, byte for byte as a WAV: prints EQUAL
     /// or the first difference (frame, time, bar, channel, both values) per song, and exits 1
@@ -70,7 +93,8 @@ enum Cmd {
         /// A corpus manifest, e.g. tests/refs/manifest.json.
         #[arg(long, value_name = "PATH")]
         manifest: Option<PathBuf>,
-        /// With --manifest: the sets to compare, comma-separated (default diag,app,shipped).
+        /// With --manifest: the sets to compare, comma-separated (default diag,app,shipped,
+        /// plus mod,modapp when a mod folder is given with --mod-dir or RB_MOD_DIR).
         #[arg(long = "set", value_name = "SET", value_delimiter = ',')]
         sets: Vec<String>,
         /// The idle 64-frame blocks before the export, as in render. Default: each manifest
@@ -80,6 +104,26 @@ enum Cmd {
         /// The ReBirth.dll with the built-in drum samples, as in render.
         #[arg(long, value_name = "PATH")]
         rebirth_dll: Option<PathBuf>,
+        /// As in render: the song's mod is looked up in this folder of .rbm files, by the name
+        /// in the song (the mod's INFO name, as the original's Mods menu; a file name also matches).
+        /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
+        /// deprecated alias), then a Mods folder next to the rb
+        /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
+        #[arg(long, value_name = "DIR")]
+        mod_dir: Option<PathBuf>,
+        /// Use this .rbm mod whatever mod the song names.
+        #[arg(long = "mod", value_name = "FILE")]
+        mod_file: Option<PathBuf>,
+        /// The CD's RB20FUL.DAT, whose key material descrambles a mod's samples. Search order:
+        /// this option, the RB_RB20FUL environment variable, then an RB20FUL.DAT in the mod
+        /// folder (or its parent), next to the rb binary, or in the usual install locations on
+        /// Windows.
+        #[arg(long, value_name = "PATH")]
+        rb20ful: Option<PathBuf>,
+        /// When the song's mod is not found, render with the built-in kit (with a warning)
+        /// instead of failing; the original offers the same as "Standard".
+        #[arg(long)]
+        standard_kit: bool,
     },
 }
 
@@ -100,6 +144,10 @@ fn main() -> ExitCode {
             range,
             idle_blocks,
             rebirth_dll,
+            mod_dir,
+            mod_file,
+            rb20ful,
+            standard_kit,
         } => render(
             &input,
             &output,
@@ -107,6 +155,12 @@ fn main() -> ExitCode {
             range.as_deref(),
             idle_blocks,
             rebirth_dll.as_deref(),
+            ModOpts {
+                mod_file,
+                mod_dir,
+                rb20ful,
+                standard_kit,
+            },
         ),
         Cmd::Compare {
             names,
@@ -115,6 +169,10 @@ fn main() -> ExitCode {
             sets,
             idle_blocks,
             rebirth_dll,
+            mod_dir,
+            mod_file,
+            rb20ful,
+            standard_kit,
         } => compare::run(&compare::Args {
             names,
             reference,
@@ -122,6 +180,12 @@ fn main() -> ExitCode {
             sets,
             idle_blocks,
             rebirth_dll,
+            mods: ModOpts {
+                mod_file,
+                mod_dir,
+                rb20ful,
+                standard_kit,
+            },
         })
         .and_then(|equal| {
             if equal {
@@ -285,6 +349,7 @@ fn render(
     range: Option<&str>,
     idle_blocks: u32,
     rebirth_dll: Option<&Path>,
+    mods: ModOpts,
 ) -> Result<(), Fail> {
     let format =
         Format::from_extension(output.extension().and_then(|e| e.to_str())).ok_or_else(|| {
@@ -311,7 +376,7 @@ fn render(
     }
     warn_unsupported(&song);
     let label = input.display().to_string();
-    let samples = Renderer::new(rebirth_dll).render(&label, &song, idle_blocks)?;
+    let samples = Renderer::new(rebirth_dll, mods).render(&label, &song, idle_blocks)?;
     let bytes = encode::encode(format, &samples, quality)
         .map_err(|e| fail(1, format!("encoding failed: {e}")))?;
     std::fs::write(output, bytes)
@@ -337,15 +402,8 @@ fn load_song(input: &Path) -> Result<Song, Fail> {
     })
 }
 
-/// Warns of what the render cannot do as the original would: a mod, pattern mode.
+/// Warns of what the render cannot do as the original would: pattern mode.
 fn warn_unsupported(song: &Song) {
-    if song.mod_name != "Standard ReBirth" {
-        eprintln!(
-            "rb: warning: the song uses the mod {:?}; mods are not supported yet (m-2), \
-             rendering with the built-in kit",
-            song.mod_name
-        );
-    }
     if song.globals.song_mode == 0 {
         eprintln!(
             "rb: warning: the song is in pattern mode; the original cannot export it, the \
@@ -354,26 +412,49 @@ fn warn_unsupported(song: &Song) {
     }
 }
 
-/// Renders songs, each in a new engine with every device, sharing the tables and the drum
-/// samples (loaded from the ReBirth.dll the first time a song plays a drum machine).
+/// Renders songs, each in a new engine with every device, sharing the tables and the sample
+/// sets: the built-in drum samples (loaded from the ReBirth.dll the first time a song plays a
+/// drum machine) and one set per mod file used.
 struct Renderer {
     tables: Arc<Tables>,
     rebirth_dll: Option<PathBuf>,
-    samples: Option<Arc<SampleSet>>,
+    mods: ModOpts,
+    builtin: Option<Arc<SampleSet>>,
+    mod_sets: HashMap<PathBuf, Arc<SampleSet>>,
+}
+
+/// The mod's samples on top of the built-in ones: a slot the mod lacks stays built in.
+fn load_mod(path: &Path, key_file: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| fail(1, format!("{}: cannot read the mod: {e}", path.display())))?;
+    let rbm = rbm::Rbm::parse(bytes).map_err(|e| fail(1, format!("{}: {e}", path.display())))?;
+    let mut dat = std::fs::File::open(key_file)
+        .map_err(|e| fail(1, format!("{}: cannot read: {e}", key_file.display())))?;
+    let table = rbm::KeyTable::read(&rbm, &mut dat)
+        .map_err(|e| fail(1, format!("{}: {e}", key_file.display())))?;
+    let loaded = rbm
+        .load_samples(&table, builtin)
+        .map_err(|e| fail(1, format!("{}: {e}", path.display())))?;
+    Ok(loaded.set)
 }
 
 impl Renderer {
-    fn new(rebirth_dll: Option<&Path>) -> Self {
+    fn new(rebirth_dll: Option<&Path>, mods: ModOpts) -> Self {
         Renderer {
             tables: Arc::new(Tables::new()),
             rebirth_dll: rebirth_dll.map(Path::to_path_buf),
-            samples: None,
+            mods,
+            builtin: None,
+            mod_sets: HashMap::new(),
         }
     }
 
     /// The export of `song` after `idle_blocks` idle blocks: interleaved int16 stereo.
     /// `label` names the song in a warning.
     fn render(&mut self, label: &str, song: &Song, idle_blocks: u32) -> Result<Vec<i16>, Fail> {
+        // The mod is resolved for every song, so that a missing one is an error even when no
+        // drum machine plays (and then needs no key file: nothing of it is read).
+        let kit = mods::resolve(&self.mods, label, &song.mod_name)?;
         // The drum samples are loaded only for a song that plays a drum machine; a 303-only
         // song renders without a ReBirth.dll (its drum machines play no step, so the silent
         // placeholders the engine uses without samples are exact).
@@ -381,11 +462,31 @@ impl Renderer {
         let samples = if drums.is_empty() {
             None
         } else {
-            if self.samples.is_none() {
+            if self.builtin.is_none() {
                 let set = load_samples(self.rebirth_dll.as_deref(), &drums)?;
-                self.samples = Some(Arc::new(set));
+                self.builtin = Some(Arc::new(set));
             }
-            self.samples.clone()
+            let builtin = self.builtin.clone().unwrap();
+            match kit {
+                Kit::Standard => Some(builtin),
+                Kit::Mod(path) => {
+                    if !self.mod_sets.contains_key(&path) {
+                        let key_file = self.mods.rb20ful().map_err(|Fail(c, m)| {
+                            fail(
+                                c,
+                                format!(
+                                    "the song plays a drum machine with the mod {}, which \
+                                     needs the key file; {m}",
+                                    path.display()
+                                ),
+                            )
+                        })?;
+                        let set = load_mod(&path, &key_file, &builtin)?;
+                        self.mod_sets.insert(path.clone(), Arc::new(set));
+                    }
+                    Some(self.mod_sets[&path].clone())
+                }
+            }
         };
         let mut engine = Engine::new(self.tables.clone(), Devices::implemented(samples));
         let samples = export::export_song(&mut engine, song, idle_blocks);

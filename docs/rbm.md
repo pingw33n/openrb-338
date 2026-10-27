@@ -272,3 +272,33 @@ the 8-byte chunk header fits (0x100050CD..0x100050D6); `sub_100016F4` then valid
 (non-zero channels, frames and rate, bits 8..32). So the rate is read through the chunk end into
 the SSND header. `rbm.py` does the same, and the engine's AIFF reader (`samples/aiff.rs`) takes
 COMM from the chunk start to the end of the file rather than rejecting a chunk under 18 bytes.
+
+## 10. Mods in the engine and the CLI (task-033, 2026-10-27)
+
+- **Name lookup** [C]: `sub_4155D1` (0x4155D1), called with the GLOB mod name, walks the mod list
+  and returns the first mod whose C string at +1011 equals the name under plain `strcmp`. +1011 is the
+  INFO menu name (INFO offset 1003, the object copies INFO at +8): the match is on the INFO
+  name, exact and case-sensitive, not on the file name. A name that is not in the list gets the
+  Download / Standard / Cancel dialog (docs/song_load.md section 2). `rb` matches the INFO name
+  the same way and, as a convenience the original lacks, a file name (`PBE2` or `pbe2.rbm`, case-
+  insensitive) when no INFO name matches. `--mod FILE` whose INFO name is not the song's name
+  warns, as the original would not load it for that song. [G: the value `strcmp`'s result is
+  compared with comes from the anti-tamper pages and is 0; not traced.]
+- **Message 55 and rendering**: of the 9542 bytes, only the 46 sample records (and the key table
+  and file spec that locate and descramble them) reach the sample table; the mod id only selects
+  the mod for message 52 (and 58, the preview player). So the engine's input from a mod is its
+  46-slot `SampleSet` (a slot the mod lacks keeps the built-in sample). Confirmed by output: with
+  only the samples modeled, all 8 `mod` and 3 `modapp` references render byte-exact.
+- **CLI**: `rb render` / `rb compare` take `--mod-dir DIR` (`RB_MOD_DIR`; `RB_RBM_DIR` is a
+  deprecated alias), `--mod FILE` (overrides the song's mod), `--rb20ful PATH` (`RB_RB20FUL`, then
+  an `RB20FUL.DAT` in the mod folder or its parent or next to the binary, or the Windows install
+  folders) and `--standard-kit` (a missing mod renders with the built-in kit and a warning).
+  Without it a song naming a mod that is not found is an error. A mod needs the key file only
+  when a drum machine plays (the mod holds nothing else). `rb compare --manifest` includes the
+  sets `mod` and `modapp` by default only when a mod folder is given.
+- **AIFF rate** [C]: `sub_10001674` (0x100016B2..0x100016DE) converts the 80-bit rate with `fistp`
+  under a control word with rounding set to truncate (`| 0xC00`) into a 64-bit slot and keeps the low
+  dword; `sub_100016F4` rejects 0. The engine's reader now does the same (a rate below 1 Hz, or
+  with zero low 32 bits, such as 2^32, or one that does not fit in 63 bits, is rejected).
+  [G: the slot is a qword, from the 8-byte stack variable; a dword `fistp` would differ only for
+  rates of 2^31 and up, which no mod has.]

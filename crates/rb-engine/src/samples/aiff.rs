@@ -17,6 +17,24 @@ fn bad(msg: impl Into<String>) -> SampleError {
 /// and zeroes them, so 512 zero samples follow the data.
 pub const PADDING: usize = 512;
 
+/// Whether the DLL sees the sample rate as zero. `sub_10001674` (0x100016B2..0x100016DE) converts
+/// the 80-bit rate with `fistp` under a truncating control word (|0xC00) into a 64-bit slot and
+/// keeps the low 32 bits; `sub_100016F4` rejects 0. So a rate below 1 Hz (it truncates to 0) is
+/// rejected too, and so is one whose integer has zero low 32 bits (2^32), or one that does not
+/// fit 63 bits (the integer indefinite 0x8000000000000000, an infinity or a NaN).
+fn rate_is_zero(r: &[u8]) -> bool {
+    let exp = i32::from(u16::from_be_bytes([r[0], r[1]]) & 0x7FFF);
+    let mant = u64::from_be_bytes(r[2..10].try_into().unwrap());
+    let e = exp - 16383;
+    if e < 0 {
+        return true; // |value| < 1 (or the mantissa is zero with a small exponent)
+    }
+    if e >= 63 {
+        return true; // overflow of the 64-bit integer: the indefinite, low dword 0
+    }
+    (mant >> (63 - e)) as u32 == 0
+}
+
 /// Parses an AIFF file into its channel 0 samples, `frames` of them, then [`PADDING`] zeros.
 pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
     if d.len() < 12 || &d[..4] != b"FORM" {
@@ -66,13 +84,9 @@ pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
     let frames = u32::from_be_bytes(comm[2..6].try_into().unwrap()) as usize;
     let bits = u16::from_be_bytes([comm[6], comm[7]]);
     // sub_100016F4 rejects a zero channel count, frame count or sample rate, and a depth
-    // outside 8..=32. The rate (an 80-bit extended float) is otherwise ignored, so it is not
-    // decoded: only its zero-ness (exponent and mantissa) is checked.
-    if channels == 0
-        || frames == 0
-        || !(8..=32).contains(&bits)
-        || comm[8..18].iter().all(|&b| b == 0)
-    {
+    // outside 8..=32. The rate (an 80-bit extended float) is otherwise ignored; it is tested
+    // as the integer sub_10001674 makes of it (see `rate_is_zero`).
+    if channels == 0 || frames == 0 || !(8..=32).contains(&bits) || rate_is_zero(&comm[8..18]) {
         return Err(bad(
             "the COMM chunk is invalid (zero channels, frames or rate, or a bad depth)",
         ));
@@ -109,4 +123,33 @@ pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
     );
     out.resize(frames + PADDING, 0);
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rate_is_zero;
+
+    fn ext(exp: u16, mant: u64) -> [u8; 10] {
+        let mut r = [0u8; 10];
+        r[..2].copy_from_slice(&exp.to_be_bytes());
+        r[2..].copy_from_slice(&mant.to_be_bytes());
+        r
+    }
+
+    #[test]
+    fn rates_the_dll_sees_as_zero() {
+        assert!(rate_is_zero(&[0; 10]));
+        // 44100 Hz
+        assert!(!rate_is_zero(&[0x40, 0x0E, 0xAC, 0x44, 0, 0, 0, 0, 0, 0]));
+        // 1 Hz is the smallest accepted
+        assert!(!rate_is_zero(&ext(0x3FFF, 1 << 63)));
+        // 0.5 Hz: non-zero bytes, truncates to 0 (the DLL rejects it)
+        assert!(rate_is_zero(&ext(0x3FFE, 1 << 63)));
+        // 1.999 Hz truncates to 1
+        assert!(!rate_is_zero(&ext(0x3FFF, 0xFFC0_0000_0000_0000)));
+        // 2^32 has zero low 32 bits
+        assert!(rate_is_zero(&ext(0x3FFF + 32, 1 << 63)));
+        // infinity: the integer indefinite
+        assert!(rate_is_zero(&ext(0x7FFF, 1 << 63)));
+    }
 }

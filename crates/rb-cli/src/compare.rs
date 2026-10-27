@@ -20,13 +20,21 @@ use rb_engine::song::Song;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::mods::ModOpts;
 use crate::{Fail, Renderer, fail, load_song, warn_unsupported};
 
 /// The default idle-block count of the single-song form, the corpus' capture protocol.
 const DEFAULT_IDLE: u32 = 9088;
 
 /// The manifest's sets, in the order they are compared.
-const SETS: &[&str] = &["diag", "app", "shipped"];
+const SETS: &[&str] = &["diag", "app", "shipped", "mod", "modapp"];
+
+/// The sets compared when `--set` is not given: the last two (the mod songs) only when a mod
+/// folder was asked for with `--mod-dir` or `RB_MOD_DIR`, as they need the .rbm files.
+fn default_sets(mods: &ModOpts) -> Vec<&'static str> {
+    let n = if mods.mod_dir_given() { SETS.len() } else { 3 };
+    SETS[..n].to_vec()
+}
 
 pub struct Args {
     pub names: Vec<String>,
@@ -35,11 +43,12 @@ pub struct Args {
     pub sets: Vec<String>,
     pub idle_blocks: Option<u32>,
     pub rebirth_dll: Option<PathBuf>,
+    pub mods: ModOpts,
 }
 
 /// Runs the comparison: `Ok(true)` when every song is equal to its reference.
 pub fn run(a: &Args) -> Result<bool, Fail> {
-    let mut r = Renderer::new(a.rebirth_dll.as_deref());
+    let mut r = Renderer::new(a.rebirth_dll.as_deref(), a.mods.clone());
     match (&a.manifest, &a.reference) {
         (Some(m), None) => manifest(a, m, &mut r),
         (None, Some(reference)) => {
@@ -170,7 +179,7 @@ fn manifest(a: &Args, path: &Path, r: &mut Renderer) -> Result<bool, Fail> {
     let refs = path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let root = refs.join("../..");
     let sets: Vec<&str> = if a.sets.is_empty() {
-        SETS.to_vec()
+        default_sets(&a.mods)
     } else {
         for s in &a.sets {
             if !SETS.contains(&s.as_str()) {
