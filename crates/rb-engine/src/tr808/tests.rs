@@ -279,3 +279,23 @@ fn song_mode_and_data_copy_all_32_bytes() {
     d.set_param(29, 9);
     assert_eq!((d.live[28], d.live[29]), (9, 7));
 }
+
+/// The ctor's tick-0 events are the defaults of `sub_10018FB0` as read in the disassembly
+/// (`docs/song_load.md` section 4.9, task-034), controllers 0..28.
+#[test]
+fn init_track_holds_the_ctor_defaults() {
+    let mut d = Tr808::new(set(), ProcessState::new());
+    let mut tr = Track::new(Device::Tr808);
+    d.init_track(&mut tr);
+    let mut vals = [0xFFu8; 29];
+    for e in tr.events() {
+        vals[e.ctrl as usize] = e.value;
+    }
+    assert_eq!(
+        vals,
+        [
+            1, 0, 40, 100, 64, 64, 100, 64, 64, 100, 64, 0, 100, 64, 0, 100, 64, 0, 100, 0, 100, 0,
+            100, 100, 0, 100, 100, 100, 100,
+        ]
+    );
+}

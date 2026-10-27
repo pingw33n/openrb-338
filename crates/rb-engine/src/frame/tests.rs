@@ -159,6 +159,69 @@ fn constructor_state() {
     assert_eq!(e.output.leftover_pos, 0);
 }
 
+/// The tick-0 events of track `t` after the song ctor, as `(ctrl, value)` in controller order.
+fn ctor_events(e: &Engine, t: usize) -> Vec<(u8, u8)> {
+    let tr = &e.frame.seq.tracks[t];
+    assert!(tr.events().iter().all(|ev| ev.tick == 0));
+    let mut v: Vec<_> = tr.events().iter().map(|ev| (ev.ctrl, ev.value)).collect();
+    v.sort();
+    v
+}
+
+/// The ctor default of every automatable controller, as the song ctor's slot 8 calls put them
+/// into the tracks (`docs/song_load.md` section 4.9): the parameter-default functions
+/// `sub_10019CC0` / `sub_10019D50` (mixer), `sub_10018C20` (303), `sub_10019AB0` (delay),
+/// `sub_10019B30` (distortion), `sub_10019C10` (PCF) and `sub_10019B90` (compressor), read in
+/// the disassembly (task-034). The drum machines need samples; their default tables are pinned
+/// by `init_track_holds_the_ctor_defaults` in `tr808::tests` and `tr909::tests`.
+#[test]
+fn constructor_tracks_hold_the_defaults() {
+    let e = Engine::new(tables(), Devices::implemented(None));
+    let mut mixer = vec![(1, 0), (2, 0)];
+    for c in 0..4u8 {
+        mixer.extend([
+            (6 + 6 * c, 100),
+            (7 + 6 * c, 64),
+            (8 + 6 * c, 0),
+            (9 + 6 * c, 0),
+        ]);
+    }
+    let seq = |v: &[u8]| {
+        v.iter()
+            .enumerate()
+            .map(|(c, &x)| (c as u8, x))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ctor_events(&e, 0), mixer);
+    for t in [1, 2] {
+        assert_eq!(ctor_events(&e, t), seq(&[1, 0, 64, 20, 90, 20, 100, 64, 0]));
+    }
+    assert_eq!(ctor_events(&e, 5), seq(&[1, 3, 1, 80, 64]));
+    assert_eq!(ctor_events(&e, 6), seq(&[1, 70, 0]));
+    assert_eq!(ctor_events(&e, 7), seq(&[1, 70, 64, 40, 24, 90, 1]));
+    assert_eq!(ctor_events(&e, 8), seq(&[1, 70, 64]));
+}
+
+/// In song mode a mixer controller with no tick-0 event in the song returns to its ctor value
+/// when the position goes back before its first event: the mixer's slot 8 (0x100160F0) put
+/// that value at tick 0 of the track, and the chase finds it.
+#[test]
+fn song_mode_chase_restores_the_mixer_ctor_values() {
+    let mut e = Engine::new(tables(), Devices::placeholders());
+    let f = &mut e.frame;
+    f.seq.set_song_mode(1, &mut f.devices);
+    let events = [song::TrackEvent {
+        tick: 768,
+        ctrl: 6,
+        value: 50,
+    }];
+    f.seq.add_events(0, &events);
+    f.seq.locate(768, &mut f.devices);
+    assert_eq!(f.devices.mixer.live.channels[0].level, 50);
+    f.seq.locate(0, &mut f.devices);
+    assert_eq!(f.devices.mixer.live.channels[0].level, 100);
+}
+
 #[test]
 fn pan_law_and_sends() {
     let mut e = engine_with(Devices::placeholders(), EngineState::default());

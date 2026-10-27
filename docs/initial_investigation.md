@@ -608,8 +608,12 @@ sets the quantisation of controllers 0 and 1 of its track to 32 units of 24 tick
 to the next bar line; slot 8 (0x10025650) inserts a tick-0 event of each controller 0..8 with the
 ctor's value (`sub_1001F900` → `sub_10014750`), which a song's own tick-0 event then replaces.
 [C] task-024: the 808's slot 7 is the same function 0x10026C40; its slot 8 (0x10029DA0) inserts
-tick-0 events of controllers 0..28 from its pattern-mode copy `+0x30` (§7.2). The 909's were not
-read (task-025).
+tick-0 events of controllers 0..28 from its pattern-mode copy `+0x30` (§7.2). [C] task-034: every
+other device's slot 7 is the no-op 0x1000F4E0, and every device's slot 8 inserts tick-0 events
+from its pattern copy: the 909 (0x1002D480, 0..29 in RBS order), the delay (0x10010020, 0..4),
+the distortion (0x10010FE0, 0..2), the PCF (0x10017200, 0..6), the compressor (0x1000F420, 0..2)
+and the mixer (0x100160F0: 1, 2 and `6..9 + 6c`). The defaults they insert are tabled in
+`docs/song_load.md` §4.9.
 
 ---
 

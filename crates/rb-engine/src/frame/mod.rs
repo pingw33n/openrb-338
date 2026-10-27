@@ -453,10 +453,29 @@ impl SongDevice for MixerDevice {
         }
     }
 
+    /// Slot 8, 0x100160F0, with tick 0 from the song ctor (slot 7 is the no-op 0x1000F4E0):
+    /// the pattern copy's compressor id (controller 1, `+0x5C`) and PCF id (2, `+0x60`), then
+    /// for each channel c its level, pan, send and dist (`6..9 + 6c`, `+0x69..+0x6C + 6c`)
+    /// inserted into the mixer's track (`sub_1001F900`). The master and the enables have no
+    /// controller.
+    fn init_track(&mut self, track: &mut crate::seq::Track) {
+        let p = self.pattern;
+        track.insert(0, 1, p.comp_id);
+        track.insert(0, 2, p.pcf_id);
+        for (c, ch) in p.channels.iter().enumerate() {
+            let base = 5 + 6 * c as u8;
+            track.insert(0, base + 1, ch.level);
+            track.insert(0, base + 2, ch.pan);
+            track.insert(0, base + 3, ch.send);
+            track.insert(0, base + 4, ch.dist);
+        }
+    }
+
     /// Slot 11, 0x10015C00: controller 1 is the compressor id, 2 the PCF id, and `5 + 6c + k`
     /// sets channel c's field k (1 level, 2 pan, 3 send, 4 dist); field 0 (enabled) and the
-    /// controllers below 5 are not set. Track 0 accepts only 1, 2 and 6..27 at load, so c is at
-    /// most 3 (a larger c would write past the channel blocks in the original).
+    /// controllers below 5 are not set. The exe accepts only 1, 2 and `6..9 + 6c` (c = 0..3) on
+    /// track 0 at load (`sub_42F8F0`, `docs/song_load.md` section 5; `load::control_range`), so
+    /// c is at most 3 (a larger c would write past the channel blocks in the original).
     fn set_param(&mut self, ctrl: u8, value: u8) {
         match ctrl {
             1 => self.live.comp_id = value,

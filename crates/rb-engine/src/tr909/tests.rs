@@ -290,3 +290,24 @@ fn toms_and_cymbals_use_their_kv_and_t909() {
     assert_eq!(slot_of(&d.pitched[0].v.sample), slot::LT as i16);
     assert_eq!(slot_of(&d.pitched[3].v.sample), slot::CC as i16);
 }
+
+/// The ctor's tick-0 events are the defaults of `sub_100195A0` as read in the disassembly, in
+/// RBS order (`docs/song_load.md` section 4.9, task-034), controllers 0..29.
+#[test]
+fn init_track_holds_the_ctor_defaults() {
+    let mut d = Tr909::new(set(), ProcessState::new());
+    let mut t = Track::new(crate::song::Device::Tr909);
+    d.init_track(&mut t);
+    assert!(t.events().iter().all(|e| e.tick == 0));
+    let mut vals = [0xFFu8; 30];
+    for e in t.events() {
+        vals[e.ctrl as usize] = e.value;
+    }
+    assert_eq!(
+        vals,
+        [
+            1, 0, 32, 100, 64, 64, 127, 100, 64, 64, 64, 100, 64, 127, 100, 64, 127, 100, 64, 127,
+            100, 100, 100, 32, 127, 100, 64, 100, 64, 64,
+        ]
+    );
+}

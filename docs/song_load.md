@@ -144,10 +144,20 @@ and applies each field (0x100126B2).
 | 16..19 | GLOB[10..13] | loop end in ticks | `sub_1001C050` (id 16) |
 | 20 | GLOB[14] | shuffle 0..127 | `sub_10021170` (id 20) |
 | 21 | GLOB[482] (0 before 4.2) | sound model, stored at `song+0x16D` | (id 21) |
-| 22 | — | 1 | stored at `song+0x16E`; no reader found in the DLL |
+| 22 | — | 1 | stored at `song+0x16E`; no effect in the DLL (below) |
 
 Msg 35 is `{id, value}`: one value byte, except ids 4, 8, 12 and 16, which carry a u32
 (`{8, start}` is 5 bytes).
+
+**Byte 22 (`song+0x16E`) [C] (task-034).** It has no effect on the engine. The globals ctor
+`sub_10018AC0` sets it to 1 (0x10018AEA); it is written only by msg 35 id 22 (0x100126A7, the
+switch's case 22 at 0x100126A1) and msg 36 (0x100127E0); the only read is the msg 21 reply's
+pack `sub_10018B00` (0x10018B8B), which echoes it to the exe. A scan of the whole DLL
+(`llvm-objdump` of `original/ReBirth.dll`) finds no other `+0x16E` displacement and no other
+byte access at `+0x16` outside the globals struct's own functions (`sub_10018AC0`,
+`sub_10018B00`, `sub_10018BA0`) and the parameter-block functions of other structs; msg 20's
+query answers only ids 0..2 (switch at 0x10011FC2). The exe always sends 1. What the exe means by
+it is not traced [G]; for rb it is a stored byte (`Globals::byte22`).
 
 **The sound-model byte (`song+0x16D`, "+21" of the global struct).** It is GLOB[482] unchanged; the
 exe never inverts it. The menu item "Vintage ReBirth Synth Sound" (command 323, handler 0x42C32E)
@@ -170,7 +180,7 @@ The exe parses each DEVL chunk into an intermediate struct, then copies that int
 `unk_4DB948` with a per-device packer. The packers use obfuscated indices (§9); the layouts below are
 the intended ones, which are also the ones the DLL unpackers read.
 
-**Pattern mode versus song mode in the DLL [C for the mixer and the 303].** Each device keeps the
+**Pattern mode versus song mode in the DLL [C for every device].** Each device keeps the
 received block as its pattern-mode copy. The live values are replaced from it only when the song is
 in pattern mode (`sub_1001FCB0` returns global byte 0):
 - 303 (msg 39, 0x10025CB0): patterns always go live (the step function reads them at `+0x3C`); the
@@ -192,6 +202,10 @@ in pattern mode (`sub_1001FCB0` returns global byte 0):
   (0x10016C50: msgs 111..116; 0x1000EFD0: 99..104) index the jump table with the raw byte too.
   Neither checks a byte: the PCF's wave reaches the pattern lookup unchanged (§4.3 and
   `docs/initial_investigation.md` §8.2).
+
+So in song mode no msg-41 byte that a controller can reach goes live, for any of the nine
+devices; such a controller takes its value from the track, whose tick-0 event is the song's or,
+when the song has none, the constructor's (§4.9).
 
 ### 4.1 Mixer, `0/143`, 29 bytes
 
@@ -313,6 +327,58 @@ Parse `sub_43348D` + `sub_43363E` + `sub_43375D` (via `sub_43392A`), pack `sub_4
 - The AC column holds 0 or 2 in the shipped songs; `base = AC*acc*0.03125 + 1` (0x1002ACD1), so a 909
   accent step weighs twice an 808 one.
 
+### 4.9 Constructor defaults of the automatable parameters [C] (task-034)
+
+Msg 52 builds a new song with new device objects (§2 step 3; `docs/export_state.md` §3). Each
+device ctor fills **both** parameter blocks, the live one and the pattern-mode copy, with one
+default function; then the song ctor (`sub_10011350`) calls slot 7 on every device (0x10011941;
+a no-op `0x1000F4E0` except the 303/808/909's `0x10026C40`, which quantises controllers 0 and 1
+to a bar) and slot 8 with tick 0 (0x10011985), which inserts a **tick-0 event of every
+automatable controller with the pattern copy's value** into the device's own track
+(`sub_1001F900` → `sub_10014750`). A song's own tick-0 event of the same controller replaces it
+(§6). So in song mode every automatable controller (for the mixer 1, 2 and `6..9 + 6c`) always
+has a tick-0 event, and the chase
+(§6) sets it to the song's last event at or before the position or, when the song has none
+there, to the default below.
+
+| Device (track) | Default function: call, block | Slot 8: controllers, from |
+|---|---|---|
+| Mixer (0) | `sub_10019CC0` header + `sub_10019D50` ×4 channels: 0x10015457 / 0x10015466 live `+0x30` / `+0x40`; 0x10015477 / 0x10015489 pattern `+0x58` / `+0x68` | `0x100160F0`: 1, 2, then `6..9 + 6c`, pattern copy |
+| TB-303 (1, 2) | `sub_10018C20`: 0x10023977 pattern `+0x30`; 0x100239B8 live `+0xC7C` | `0x10025650`: 0..8 |
+| TR-808 (3) | `sub_10018FB0`: 0x10026FD3 pattern `+0x30`; 0x1002701A live `+0x1890` | `0x10029DA0`: 0..28, pattern copy |
+| TR-909 (4) | `sub_100195A0`: 0x1002A3E3 pattern `+0x30`; 0x1002A42A live `+0x1891` | `0x1002D480`: 0..29, pattern copy in RBS order (`sub_10019620`) |
+| Delay (5) | `sub_10019AB0`: 0x1000F5FD live `+0x34`; 0x1000F608 pattern `+0x3A` | `0x10010020`: 0..4, pattern copy |
+| Distortion (6) | `sub_10019B30`: 0x1001075D live `+0x39`; 0x10010768 pattern `+0x3D` | `0x10010FE0`: 0..2, pattern copy |
+| PCF (7) | `sub_10019C10`: 0x100164ED live `+0x38`; 0x100164F8 pattern `+0x40` | `0x10017200`: 0..6, pattern copy |
+| Compressor (8) | `sub_10019B90`: 0x1000E9ED live `+0x38`; 0x1000E9F8 pattern `+0x3D` | `0x1000F420`: 0..2, pattern copy |
+
+Both blocks get the same values, so which one slot 8 reads does not matter at the ctor.
+
+The defaults, by controller (= RBS chunk byte, §5), from the stores of the default functions:
+
+| Device | Controller = default |
+|---|---|
+| Mixer | 1 compressor id = 0, 2 PCF id = 0; per channel c: `6+6c` level = 100, `7+6c` pan = 64, `8+6c` delay send = 0, `9+6c` dist = 0. Not automatable: master = 100, enabled = 1 |
+| TB-303 | 0 enabled = 1, 1 pattern = 0, 2 tune = 64, 3 cutoff = 20, 4 resonance = 90, 5 envmod = 20, 6 decay = 100, 7 accent = 64, 8 waveform = 0 (saw); bytes 9..11 = 0 |
+| TR-808 | 0 enabled = 1, 1 pattern = 0, 2 accent = 40, 3 BD level = 100, 4 BD tone = 64, 5 BD decay = 64, 6 SD level = 100, 7 SD tone = 64, 8 SD snappy = 64, 9 LT level = 100, 10 LT tuning = 64, 11 LT selector = 0, 12 MT level = 100, 13 MT tuning = 64, 14 MT selector = 0, 15 HT level = 100, 16 HT tuning = 64, 17 HT selector = 0, 18 RS level = 100, 19 RS selector = 0, 20 CP level = 100, 21 CP selector = 0, 22 CB level = 100, 23 CY level = 100, 24 CY tone = 0, 25 CY decay = 100, 26 OH level = 100, 27 OH decay = 100, 28 CH level = 100; bytes 29..31 = 0 |
+| TR-909 | 0 enabled = 1, 1 pattern = 0, 2 accent = 32, 3 BD level = 100, 4 BD tune = 64, 5 BD attack = 64, 6 BD decay = 127, 7 SD level = 100, 8 SD tune = 64, 9 SD tone = 64, 10 SD snappy = 64, 11 LT level = 100, 12 LT tune = 64, 13 LT decay = 127, 14 MT level = 100, 15 MT tune = 64, 16 MT decay = 127, 17 HT level = 100, 18 HT tune = 64, 19 HT decay = 127, 20 RS level = 100, 21 CP level = 100, 22 HH level = 100, 23 CH decay = 32, 24 OH decay = 127, 25 crash level = 100, 26 crash tune = 64, 27 ride level = 100, 28 ride tune = 64, 29 flam interval = 64; bytes 30..32 = 0 (the DLL's byte permutation of 20..22, §4.8, does not matter: all three are 100) |
+| Delay | 0 enabled = 1, 1 steps = 3, 2 mode = 1 (sixteenths), 3 feedback = 80, 4 pan = 64; byte 5 (meter) = 0 |
+| Distortion | 0 enabled = 1, 1 amount = 70, 2 shape = 0; byte 3 (meter) = 0 |
+| PCF | 0 enabled = 1, 1 frequency = 70, 2 resonance = 64, 3 amount = 40, 4 wave = 24, 5 decay = 90, 6 mode = 1 (low-pass); byte 7 (meter) = 0 |
+| Compressor | 0 enabled = 1, 1 amount = 70, 2 threshold = 64; bytes 3, 4 (meters) = 127, 0 |
+
+The mixer's struct is not the message layout: `sub_10019CC0` stores the master byte at `+0`, the
+compressor id and the PCF id as dwords at `+4` and `+8` (bytes `+1..+3` are not written),
+bytes `+0xC`, `+0xD` 0; the channels follow at `+0x10 + 6c`
+(enabled, level, pan, send, dist, 0). The msg-41 unpack `sub_10019D14` / `sub_10019DE0` fills the
+same fields. The defaults equal the exe's own chunk defaults (§4.2 to §4.5) for the four effects.
+
+rb: `MixerParams::default`, `tb303::DEFAULT_PARAMS`, `tr808::DEFAULT_PARAMS`,
+`tr909::DEFAULT_PARAMS`, `delay::DEFAULTS`, `dist::DEFAULTS`, `pcf::DEFAULTS`, `comp::DEFAULTS`
+hold these values, and every device's `SongDevice::init_track` models its slot 8; the mixer's
+(0x100160F0) was missing until task-034 (`frame::tests::constructor_tracks_hold_the_defaults`,
+`song_mode_chase_restores_the_mixer_ctor_values`).
+
 ## 5. Msg 37: track events [C]
 
 `sub_436B6F(…, song, track, rangeTable)` reads one TRAK chunk: a u32 event count, then per event a
@@ -392,11 +458,17 @@ The song's global byte 0 (song mode) decides:
 - **Pattern mode:** the device chunks (msg 41) are the live values; tracks are not chased.
 - **Song mode:** locate (`0x1001F984`) chases every track: `sub_100151F0` fills a 128-entry state
   with 0xFF, then sets each controller to the value of its last event with `tick <= P`; every entry
-  that is not 0xFF is applied through `sub_10012B40` (device setParam). Controllers without such an
-  event keep their live value, which in song mode is **not** taken from the device chunk (§4), except
-  the mixer master and channel enables. Song mode therefore takes every automatable value from TRAK.
+  that is not 0xFF is applied through `sub_10012B40` (device setParam). No automatable controller
+  (§4.9; for the mixer 1, 2 and `6..9 + 6c`) is left at 0xFF: the song ctor put a tick-0 event
+  of each into its track (§4.9), so a controller the song never sets before `P` gets its
+  constructor default, not the device chunk (§4), and
+  this also holds after the position moved past a later event and came back (loop wrap, locate).
+  Only the mixer master and channel enables, which have no controller, come from the chunk. Song
+  mode therefore takes every automatable value from TRAK or the constructor.
 
-Every shipped song has an event at tick 0 for every accepted controller of every track, so for them
+Every shipped song has an event at tick 0 for every automatable controller of every track (for the
+mixer 1, 2 and `6..9 + 6c`; controllers 10, 11, 16, 17, 22 and 23, a channel's unused byte and
+enable, get no ctor insert, and setParam ignores them, §5), so for them
 the TRAK values at the loop start are the whole automatable state; the chunks still provide the
 patterns, the mixer master and enables, and the bytes no controller reaches. The export's locate to
 the loop start (msg 35 `{8, start}`) runs this chase.
@@ -499,14 +571,24 @@ and its packets have the intended layout. rbhost and the Rust engine use the int
 
 Follow-up: task-034.
 
-- [C] Top-level msg 52/58 handling inside the DLL: a new song creates new device objects, and 58
-  starts the startup-sound preview (task-004, `docs/export_state.md` §3, §8).
-- [G] The constructor values of the controllers that a song-mode song never sets.
-- [C] The msg-41 song-mode rule for PCF and compressor (task-027, §4; 808, 909, delay and
-  distortion before it).
-- [C] The 4.0 mixer-track converter `sub_437380` (§5.1, task-018). No 4.0 song is available to test
-  it against the app.
+Every engine-side point of task-003 is now answered:
+
+- [C] Top-level msg 52/58 handling inside the DLL: msg 52 is queued (`sub_1001D694`) and run by
+  `EngineIdle` (`sub_1001D840`), which builds a new song with new device objects; 58 starts the
+  startup-sound preview (task-004, `docs/export_state.md` §3, §8).
+- [C] The constructor default of every automatable controller, and the ctor's tick-0 track
+  events that make it the song-mode value of a controller the song does not set (§4.9,
+  task-034).
+- [C] The msg-41 song-mode rule for all nine devices (§4: the mixer and the 303 task-003/022, the
+  808 task-024, the 909 task-025, the delay and the distortion task-026, the PCF and the
+  compressor task-027).
+- [C] The 4.0 mixer-track converter `sub_437380` (§5.1, task-018).
 - [C] Global byte 2 (msg 35 id 2, `0x10021194`) is record: it makes the loop wrap merge the
   recorded events (`sub_1001F520`) and locate apply events forward instead of chasing (task-022,
   investigation §5). Nothing in the load or the export sets it.
-- [G] Byte 22 (`+0x16E`).
+- [C] Byte 22 (`+0x16E`) has no effect on the engine (§3, task-034).
+
+Still open:
+- [G] No 4.0 song is available to test `sub_437380` against the app.
+- [G] What the exe uses byte 22 for (it always sends 1, and the load sends no msg 21 that would
+  read it back, §2).
