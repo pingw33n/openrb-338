@@ -1,45 +1,46 @@
 ---
 id: TASK-036
-title: Seed rb's data from a ReBirth CD image
+title: 'rb standard-rbm: a standard RBM built from the user''s ReBirth.dll'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-complex'
 created_date: '2026-10-26 14:02'
-updated_date: '2026-10-27 07:44'
+updated_date: '2026-10-27 08:06'
 labels:
-  - tools
   - rbm
-  - ui
   - cli
-dependencies: []
+  - re
+milestone: m-2
+dependencies:
+  - TASK-059
 references:
-  - docs/initial_investigation.md
-  - docs/song_load.md
+  - docs/rbm.md
 priority: medium
 type: feature
-ordinal: 35000
+ordinal: 33800
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Let a user seed rb from their own ReBirth RB-338 CD: give the app (CLI first, later the UI) an ISO image of the CD, or a mounted CD, and it copies out everything it needs to run into its data folder, so nothing of Propellerhead's is redistributed with rb:
-- the built-in drum samples (the "AIFF" resources 1000..1045 of ReBirth.dll; task-016 decision: read from the user's ReBirth.dll);
-- the shipped standard skin graphics for the future UI (in the program's resources; where exactly is to be found);
-- the shipped mods (.rbm) and songs.
+Rescoped by the user on 2026-10-27: this task is only about building a standard RBM from the user's own ReBirth installation. The earlier scope (seeding rb from a CD/ISO image: ISO reader, Wise installer carving, CAB/LZX extraction, RB20FUL.DAT copy) is dropped; the CD facts it collected are in this task's history (git log of this file).
 
-What is known about the CD (the 2001 reissue on the test machine, drive E:, examined 2026-10-26):
-- Root: Autorun.inf, "Install ReBirth RB-338.exe" (20,151,808 bytes), "Install ModPacker.exe", RB20FUL.DAT, RB20UPD.DAT, rebirth.ico, ReadMe.wri, and the folders Acrobat Reader 5.0/, DirectX/, HLD/, "Sounds Good promo/".
-- RB20FUL.DAT: 134,217,984 bytes = 256-byte header + 2^27 bytes of key material. Header: magic 03 E1 F1 1E (0x03E1F11E, big-endian), then BC 01 01 00 00 (meaning not established), then "(c)1997 Propellerhead Software, all rights reserved." zero-padded. The body is read in 2048-byte pages (copy protection, docs/song_load.md section 9; the RBM key derivation reads at 256 + sum % (0x8000000 - 2048), docs/initial_investigation.md section 7.4).
-- RB20UPD.DAT: 128 bytes, magic 07 F1 E1 3B, then BC 01 and zeros; role not traced.
-- "Install ReBirth RB-338.exe" is a Wise for Windows Installer package: its PE section .WISE (file offset 0x3400, 0x1333A00 bytes) holds an MSI database (OLE header at file offset 0x2DD26C) and three Microsoft CAB archives (MSCF at 0x12BE4, 0x17E4E8, 0x30266C). The first two carry the Windows Installer runtime. The third (offset 0x30266C, 16,773,032 bytes, header reserve 0x1000 bytes, one folder, compression 0x1503 = LZX window 21, 32 files) carries the program: Product_Registration.pdf, ReadMe.wri, ReBirth.cnt, Rebirth.exe, ReBirth.hlp, ReBirth_Manual.pdf, ReBirth_1.0_Default_Song.rbs, ReWire.dll, MSVCRT.DLL, ReBirth.dll and more. Extracted with Windows expand.exe: ReBirth.dll SHA-256 4c3a6441a2cd50f797d99b1c5b6cf0aaf198c7ad8ca2648196b530c2e3e58b12 (identical to original/ReBirth.dll); ReWire.dll 760ea386... (identical to the installed ReWire.dll_); Rebirth.exe e69fef4153856f4ad985797a3f312a0027633c00f835c3348415b031bbd87004 (1,606,656 bytes; the installed one in original/ differs because it is a build patched to run on Windows 11).
-- So seeding needs: an ISO 9660 reader, the Wise .WISE section carving (or a scan for MSCF), a CAB reader with LZX decompression (pure Rust; or the MSI's file table to map names), a PE resource reader for the samples (and the skins), and plain copies of the mods. Other editions of the CD (the 1998 original) may lay this out differently: find out what to support (Decide task if needed).
+`rb standard-rbm --rebirth-dll PATH [-o FILE]` writes a .rbm that holds the original's built-in kit as a mod, with the usual components of a mod (docs/rbm.md sections 2-4):
+- the IFF CAT/PRBM container with HEAD, INFO (1280 bytes: a non-empty menu name, the version whose major the app checks at 0x415178, the text, ftp and web fields as the shipped mods carry them) and the EMBF chunks;
+- the 46 built-in samples from ReBirth.dll's "AIFF" resources 1000..1045 (crates/rb-engine/src/samples.rs reads them; embed them under the 46 names the lookup uses, docs/rbm.md section 3), unchanged byte for byte;
+- the standard UI skin: the panel graphics a mod carries (the shipped mods embed `12017.JPG` ... and `splash.jpg`, 59 JPEGs; docs/rbm.md section 2). Find where the original keeps its standard skin (ReBirth.dll or Rebirth.exe resources: bitmaps by id), how the ids map to the mods' JPEG names, and convert them to the format and names mods use; if the skin is in Rebirth.exe, the command also takes `--rebirth-exe PATH`;
+- a Demo.rbs if the shipped mods' layout calls for one (e.g. the ReBirth 1.0 Default Song), or say why not.
+The mod is scrambled the same way as the mods task-059 produces (the embedded minimum key window and its padding chunk), so rb reads it without RB20FUL.DAT and the original app can load it too.
 
-The RBM key material (RB20FUL.DAT) is out of scope here (split out 2026-10-27, per the user): a user's RB20FUL.DAT is read at run time (task-053), and task-059 embeds the minimum key data and adds `rb recrypt` so recrypted mods need no CD. The CD facts about RB20FUL.DAT above stay as reference.
+The menu name: "Standard ReBirth" is the name the app and rb treat as the built-in kit (sub_4166E5; crates/rb-cli/src/mods.rs). Pick a distinct name (e.g. "ReBirth Standard Kit") so the mod is never confused with the built-in kit; say what you chose.
+
+Nothing of Propellerhead's is committed: the command builds the mod from the user's files at run time; tests read ReBirth.dll from original/ (and Rebirth.exe from original/ if needed) and write the mod to a temporary directory.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Given an ISO (or a mounted CD) of the ReBirth 2.01 CD, a command copies into rb's data folder ReBirth.dll's drum samples, the shipped mods and songs, and the standard skin graphics, without running Windows code
-- [ ] #2 The extracted ReBirth.dll matches SHA-256 4c3a6441...e58b12 and the samples equal those loaded from original/ReBirth.dll (test)
-- [ ] #3 The supported CD editions and what happens with an unknown image are documented
+- [ ] #1 rb standard-rbm --rebirth-dll PATH writes a .rbm with HEAD, INFO, the 46 built-in samples (byte-identical to ReBirth.dll's AIFF resources) and the standard UI skin in the mods' format and names, scrambled as task-059's mods are
+- [ ] #2 rb loads the produced mod without RB20FUL.DAT, and the corpus songs rendered with it equal their renders with the built-in kit
+- [ ] #3 The produced mod loads in the original app on the test machine (it appears under its menu name, shows its skin) and an export with it equals the export with the built-in kit for at least two songs
+- [ ] #4 docs/rbm.md documents the standard skin's source (resource ids and the mapping to the JPEG names) and the mod's layout
 <!-- AC:END -->
