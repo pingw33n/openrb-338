@@ -974,8 +974,64 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   task-074) when the preference "Play Mod Startup Sound" is on: `Settings::startup_sound`, on by
   default as the original's (the preferences' constructor `sub_41CAA4` sets prefs `+536` = 1 at
   0x41CB13, the app's constructor `sub_40D1D2` app `+0x533` = 1 at 0x40D338), stored in the
-  settings file as `startup_sound=0|1`. rb has no switch for it in its menu yet (task-086). The startup sound
-  of a song's open (`sub_425C4D` and `sub_426CA8` also call `sub_426C67`) is not done (task-087).
+  settings file as `startup_sound=0|1`. rb has no switch for it in its menu yet (task-086).
+- **The startup sound of an open and of the start** (task-087). Below.
+
+### 18.1 When the original plays the mod's startup sound (task-087) [C unless marked]
+
+`sub_426C67(open mod, mod object)` sends top-level msg 58 (through `sub_40ABB5`, 0x426C9F) when
+the mod object's word `+1088` is 1 (`movsx ecx, word ptr [eax+440h]` at 0x426C6E, `jne` at
+0x426C78) and "Play Mod Startup Sound" is on (`sub_4098C3`, called at 0x426C85). Every caller
+calls it right after `sub_416300` has opened the mod for the song, which increments `+1088`
+(0x416452): 1 means that no other open song uses the mod. Its five callers, read in the
+disassembly (IDA's cross references, each re-read with llvm-objdump on `original/Rebirth.exe`):
+
+| Call | Caller | Path |
+|---|---|---|
+| 0x41A180 | `sub_41A0C5` | the Mod Selector, an entry selected (docs/rbm.md 14.1) |
+| 0x427030 | `sub_426FB3` | the mod change (Mods menu, Mod Selector OK) |
+| 0x425FAB | `sub_425C4D` | a song opened from a file, the 1.x format |
+| 0x426400 | `sub_425C4D` | a song opened from a file, RBS |
+| 0x426D48 | `sub_426CA8` | the new Untitled song |
+
+- **Opening a file.** `sub_425C4D` is the song document built from a file; its one caller is
+  `sub_40B575` (0x40B6B7), which first looks for a window that shows the file and, when there
+  is one, only activates it (`sub_496354` at 0x40B66C): no new document, no sound. `sub_40B575`
+  is reached from File Open (`sub_40A2A3` at 0x40A310; command 101, 0x40C282), the recent-files
+  items (0x40C3F4) and the app's vtable 0x4BA65C slot 13 `sub_40A49E` (0x40A4C9), the
+  framework's open of a document file. For a 1.x song (`sub_43037D` true, loaded by
+  `sub_430BA0`) the mod is "Standard ReBirth" (`dword_4DA784`, opened at 0x425E24). For an RBS
+  song it is the mod of the song's name (`sub_4155D1`, called at 0x426190); one that is not found goes
+  through the missing-mod dialog `sub_425B0B` (rescan and retry; use "Standard ReBirth", which
+  marks the song modified at 0x4263EA; cancel, which throws `XSongLoadCancelled`), and the mod
+  is opened at 0x42627B. The sound is sent before the song's load (`sub_430BA0` at 0x425FCE,
+  `sub_434D05` at 0x426423). [G: what a load that throws after it does to the sound was not
+  traced.]
+- **A new song.** `sub_426CA8` (from `sub_40A581` only, 0x40A653) opens `dword_4DA788`
+  (0x426D2F), the mod new songs get: "Standard ReBirth" from the start (`sub_40DDFB` sets
+  `dword_4DA784` and `dword_4DA788` to it, 0x40DEBA, 0x40DEC3), changed only by the Mods menu
+  (0x40C489) and the Mod Selector's OK (0x41A2FD). `sub_40A581` is File New (command 100,
+  0x40C275) and `sub_40A50D` (0x40A56B), the app's vtable slot 14.
+- **The start.** The frame's run `sub_480AA0` opens the files of the command line
+  (`sub_481050` at 0x480E40) and, when it opened none (`je` at 0x480E4C), calls the app's slot
+  14 (`call [edx+38h]`, 0x480E5E): `sub_40A50D` -> `sub_40A581` -> `sub_426CA8`, the Untitled
+  song on "Standard ReBirth", whose startup sound plays when the preference is on. [G: that
+  `sub_481050` opens a file through `sub_49381B` and slot 13 was not traced past `sub_49381B`.]
+- The Benchmark song (`sub_4269CE`) opens `dword_4DA788` (0x426B1D) and sends no msg 58.
+
+rb (`App::adopt`, `App::start`, crates/rb-ui/src/menu.rs): rb-ui has one song, and its Open
+asks the unsaved prompt that is the original's close, so the open song is closed and the new
+one is its mod's only user: every song that opens plays its mod's startup sound when
+`Settings::startup_sound` is on (`Link::startup_sound` after `Link::load`; the built-in kit's
+for "Standard ReBirth" and for a mod that does not load). At the start, the song named on the
+command line is opened that way; without one the new empty song plays the built-in kit's sound.
+rb has no File New; the start's empty song is the original's start, not File New. Where rb
+differs: the original plays nothing when another window has the same mod open (count 2), or
+when the file is already open (the window is activated); rb has no second window, and reopening
+the open file reloads it and plays the sound. Tests (crates/rb-ui/tests/menu.rs):
+`a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on` (the built-in kit's and a
+mod's sound, mixed as the player mixes it, none with the preference off) and
+`the_start_plays_the_startup_sound_when_the_preference_is_on` (with and without a song, once).
 - **The Vintage flag** is song message 35 id 21 (`Command::Vintage`); the menu item shows the
   engine's byte and a change marks the song modified.
 - **Unsaved changes.** The song is modified by any edit of the panel that the save writes (not by

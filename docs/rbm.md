@@ -772,7 +772,8 @@ without the change, the drums go silent at once with a silent kit and sound agai
 built-in one); `no_alloc.rs` (the change twice while playing, the first kit freed on the UI side
 before the voices retrigger). The startup sound after the change (msg 58, the preview player)
 is `Player::startup_sound` / `Command::Preview` (task-074, docs/export_state.md section 8),
-which rb-ui sends after `Player::set_mod` when its preference is on. The check against the DLL
+which rb-ui sends after `Player::set_mod` when its preference is on, and after a song's open
+and at the start (docs/ui_spec.md section 18.1, task-087). The check against the DLL
 itself is section 14.4.
 
 ### 14.4 Against the DLL (task-076, 2026-10-27) [C]

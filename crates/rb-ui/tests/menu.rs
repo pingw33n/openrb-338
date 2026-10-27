@@ -739,7 +739,8 @@ fn a_mod_changes_the_kit_and_is_saved() {
     assert!(std_out.iter().any(|&s| s != 0), "the song is silent");
 
     let mut mod_h = Harness::new();
-    // without the startup sound, which a song opened with the mod does not play
+    // without the startup sounds of the open and the change (the song opened with the mod
+    // below has it off too)
     mod_h.app.settings.startup_sound = false;
     mod_h.open(&src);
     mod_h.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
@@ -760,6 +761,7 @@ fn a_mod_changes_the_kit_and_is_saved() {
     assert_eq!(s.glob.mod_name, name);
     let mut open_h = Harness::new();
     open_h.app.settings.mods_dir = Some(pbe2.parent().unwrap().to_path_buf());
+    open_h.app.settings.startup_sound = false;
     open_h.open(&saved);
     assert_eq!(open_h.app.doc.kit, Kit::Mod(pbe2.clone()));
     assert_eq!(play(&mut open_h), mod_out, "opened with its own mod");
@@ -839,6 +841,82 @@ fn a_mod_change_plays_the_startup_sound_when_the_preference_is_on() {
     assert_eq!((pos_off, pos_on), (None, None), "the sound ended");
     assert_ne!(on, off);
     assert_eq!(on, with_preview(&off, audio));
+}
+
+/// task-087: opening a song plays its mod's startup sound when the preference is on
+/// (`sub_425C4D` -> `sub_426C67`, 0x426400), not when it is off: the built-in kit's for a song
+/// on "Standard ReBirth", the mod's for a song on a mod of the Mods folder.
+#[test]
+fn a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on() {
+    let src = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let run = |path: &Path, mods_dir: Option<&Path>, on: bool, calls: usize| {
+        let mut h = Harness::new();
+        h.app.settings.mods_dir = mods_dir.map(Path::to_path_buf);
+        h.app.settings.startup_sound = on;
+        h.app.open_song(path);
+        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        let out = h.calls(calls);
+        (out, h.audio.preview_position())
+    };
+    let standard = samples();
+    let audio = standard.get(rb_engine::samples::STARTUP_ID).audio();
+    let calls = audio.len().div_ceil(CALL_FRAMES) + 2;
+    let (off, pos_off) = run(&src, None, false, calls);
+    let (on, pos_on) = run(&src, None, true, calls);
+    assert_eq!((pos_off, pos_on), (None, None), "the sound ended");
+    assert_ne!(on, off);
+    assert_eq!(on, with_preview(&off, audio));
+
+    // a song on a mod plays that mod's sound
+    let (Some(_), Some(pbe2)) = (standard_mod(), mod_file("PBE2.rbm")) else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let saved = dir.path().join("pbe2.rbs");
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.open(&src);
+    h.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
+    h.app.save_to(&saved);
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    let kit = rb_cli::render::load_mod(&pbe2, &standard).unwrap_or_else(|e| panic!("{}", e.1));
+    let audio = kit.get(rb_engine::samples::STARTUP_ID).audio();
+    assert_ne!(audio, standard.get(rb_engine::samples::STARTUP_ID).audio());
+    let calls = audio.len().div_ceil(CALL_FRAMES) + 2;
+    let folder = pbe2.parent().unwrap();
+    let (off, _) = run(&saved, Some(folder), false, calls);
+    let (on, pos_on) = run(&saved, Some(folder), true, calls);
+    assert_eq!(pos_on, None, "the sound ended");
+    assert_eq!(on, with_preview(&off, audio));
+}
+
+/// task-087: the start plays the startup sound once when the preference is on: of the new
+/// empty song on "Standard ReBirth" without a song (`sub_40A50D` -> `sub_426CA8`, 0x426D48),
+/// of the song's mod with one (the open); never when it is off.
+#[test]
+fn the_start_plays_the_startup_sound_when_the_preference_is_on() {
+    let src = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let standard = samples();
+    let audio = standard.get(rb_engine::samples::STARTUP_ID).audio();
+    let calls = audio.len().div_ceil(CALL_FRAMES) + 2;
+    let run = |song: bool, on: bool| {
+        let mut h = Harness::new();
+        h.app.settings.startup_sound = on;
+        let opened = song.then(|| (src.clone(), session::open_song(&src).unwrap()));
+        h.app.start(opened);
+        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        assert_eq!(h.app.doc.path.as_deref(), song.then_some(src.as_path()));
+        let out = h.calls(calls);
+        (out, h.audio.preview_position())
+    };
+    for song in [false, true] {
+        let (off, pos_off) = run(song, false);
+        let (on, pos_on) = run(song, true);
+        assert_eq!((pos_off, pos_on), (None, None), "the sound ended");
+        assert_ne!(on, off, "song {song}");
+        // once: a second preview would restart it
+        assert_eq!(on, with_preview(&off, audio), "song {song}");
+    }
 }
 
 /// task-074: a click on the logo plays the song's mod's startup sound, whatever the

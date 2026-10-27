@@ -140,9 +140,9 @@ fn main() -> eframe::Result {
             app.standard_path = standard;
             app.menu = true;
             app.settings = Settings::load();
-            if let Some((path, opened)) = startup {
-                app.adopt(&path, opened);
-            }
+            // the song (or the new empty song) and its mod's startup sound; nothing in the demo,
+            // which has no player
+            app.start(startup);
             if let Some(mode) = browse {
                 app.open_browser(mode);
             }

@@ -481,8 +481,9 @@ It is started by top-level 58 `{u16 mod}` (`sub_1001DC14`: sample = mod record `
 `sub_1001A860(mod)`, position 0) and cleared by 57. The exe sends 58 through `sub_426C67` when the mod
 record's word `+1088` is 1 (0x426C6E) and app byte `+0x533` ("Play Mod Startup Sound") is set: the
 byte is tested by `sub_4098C3` (called at 0x426C85) and written by `sub_4098AA` (0x4098B7), which
-`sub_40DEF2` calls with prefs `+536` (0x40E2F8). Senders: from the song load `sub_425C4D` (0x425FAB, 0x426400), `sub_426CA8`,
-`sub_426FB3`, `sub_41A0C5`; and through `sub_40ABB5` from `sub_42A799` / `sub_42A80E` (`sub_42A799` is
+`sub_40DEF2` calls with prefs `+536` (0x40E2F8). Senders: from the song load `sub_425C4D` (0x425FAB, 0x426400), the new
+song `sub_426CA8` (0x426D48; also the app's start without a song), `sub_426FB3`, `sub_41A0C5`
+(the paths: docs/ui_spec.md section 18.1, task-087); and through `sub_40ABB5` from `sub_42A799` / `sub_42A80E` (`sub_42A799` is
 the logo click, docs/ui_spec.md section 3; `sub_42A80E` [G: not traced]). The Mods menu's senders are `sub_41A0C5` (the Mod Selector dialog, when an
 entry is selected, 0x41A180) and `sub_426FB3` (the mod change itself, from both the dialog's OK and
 the per-mod items), docs/rbm.md section 14.1 [C, task-056]. [G] Whether the built-in "Standard ReBirth" record has `+1088 = 1`, and the sample's length,

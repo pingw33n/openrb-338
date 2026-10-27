@@ -10,7 +10,8 @@
 //!   browser. A choice is the original's `sub_42D80D` -> `sub_426FB3`: the song is marked
 //!   modified, the new kit goes to the player as song msg 19 ([`Link::set_mod`]) and a save
 //!   writes the new name. With the preference "Play Mod Startup Sound" on
-//!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays.
+//!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays, as it
+//!   does when a song is opened and at the start ([`App::start`]).
 //! - **Options**: the Vintage ReBirth Synth Sound flag (GLOB byte 482; Edit menu item 323 of the
 //!   original) and the keyboard mode (Ctrl+F, Ctrl+G; docs/ui_spec.md section 10).
 
@@ -206,6 +207,10 @@ impl App {
             return;
         };
         link.load(&opened.engine, samples, &mut self.panel);
+        // the song document's constructor `sub_425C4D` opens the mod, then `sub_426C67`
+        // (0x425FAB for a 1.x song, 0x426400 for an RBS song): the old song was closed first
+        // (the unsaved prompt is the close's), so this song is its mod's only user
+        self.mod_opened();
         self.doc = Document {
             source: opened.source,
             path: Some(path.to_path_buf()),
@@ -215,6 +220,30 @@ impl App {
         };
         self.events_seen = 0;
         self.mod_list = None;
+    }
+
+    /// The app's start (`sub_480AA0`, docs/ui_spec.md section 18): the song named on the
+    /// command line is opened ([`App::adopt`]); without one the new empty song stays, and its
+    /// mod's startup sound plays as the original's Untitled song's on "Standard ReBirth"
+    /// (`sub_40A50D` -> `sub_40A581` -> `sub_426CA8`, `sub_426C67` at 0x426D48) when the
+    /// preference is on.
+    pub fn start(&mut self, song: Option<(PathBuf, session::Opened)>) {
+        match song {
+            Some((path, opened)) => self.adopt(&path, opened),
+            None => self.mod_opened(),
+        }
+    }
+
+    /// `sub_426C67` after a song's mod was opened by its only user (word +1088 is 1,
+    /// 0x426C6E): top-level msg 58, the mod's startup sound, when "Play Mod Startup Sound" is
+    /// on (`sub_4098C3` at 0x426C85).
+    fn mod_opened(&mut self) {
+        if !self.settings.startup_sound {
+            return;
+        }
+        if let Some(link) = &mut self.link {
+            link.startup_sound();
+        }
     }
 
     // ---- saving -------------------------------------------------------------------------
@@ -394,12 +423,9 @@ impl App {
         };
         if let Some(samples) = samples {
             link.set_mod(samples, &mut self.panel);
-            // `sub_426C67` after the change (0x427030): msg 58 when the mod has just been
-            // opened (its user count, word +1088, is 1: rb has one song, the only user of its
-            // mod) and the preference is on (0x426C85)
-            if self.settings.startup_sound {
-                link.startup_sound();
-            }
+            // `sub_426C67` after the change (0x427030): rb has one song, the only user of
+            // its mod
+            self.mod_opened();
         }
         // the save writes the mod's INFO URLs with its name (`sub_4270F7`, docs/rbm.md 14.1)
         let (ftp, web) = match &kit {
