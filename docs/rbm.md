@@ -769,8 +769,10 @@ every 808 and 909 trigger passes a sample). Tests: the engine's
 set on a stopped new song equals building the song with it; on a playing song the tick runs on as
 without the change, the drums go silent at once with a silent kit and sound again with the
 built-in one); `no_alloc.rs` (the change twice while playing, the first kit freed on the UI side
-before the voices retrigger). The startup sound (msg 58, the preview player) is not modelled by
-rb-player (task-074). The check against the DLL itself is section 14.4.
+before the voices retrigger). The startup sound after the change (msg 58, the preview player)
+is `Player::startup_sound` / `Command::Preview` (task-074, docs/export_state.md section 8),
+which rb-ui sends after `Player::set_mod` when its preference is on. The check against the DLL
+itself is section 14.4.
 
 ### 14.4 Against the DLL (task-076, 2026-10-27) [C]
 

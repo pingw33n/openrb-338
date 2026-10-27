@@ -1,8 +1,8 @@
 //! The UI's small settings file: the songs folder, the mods folder and the recent folders of
-//! the file browser (task-046).
+//! the file browser (task-046), and the startup sound preference (task-074).
 //!
 //! It is a plain text file of `key=value` lines (`songs=`, `mods=`, `recent=` once per folder,
-//! newest first), so it needs no extra crate and can be edited by hand. Where it lives:
+//! newest first, `startup_sound=0|1`), so it needs no extra crate and can be edited by hand. Where it lives:
 //! `$RB_UI_CONFIG` if set; else `rb/ui.conf` in the platform's configuration folder
 //! (`$XDG_CONFIG_HOME`, or `~/.config` on Linux, `~/Library/Application Support` on macOS,
 //! `%APPDATA%` on Windows). Reading never fails (a missing or damaged file gives the defaults);
@@ -13,8 +13,12 @@ use std::path::{Path, PathBuf};
 /// How many recent folders are kept.
 pub const MAX_RECENT: usize = 8;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
+    /// The original's preference "Play Mod Startup Sound" (on by default: the preferences'
+    /// constructor `sub_41CAA4` sets it, 0x41CB13): a mod change plays the mod's startup
+    /// sound. Stored as `startup_sound=0` or `1`.
+    pub startup_sound: bool,
     /// Where songs are opened from and saved to by default (`None`: the documents folder).
     pub songs_dir: Option<PathBuf>,
     /// Where mods are looked for by default (`None`: the documents folder).
@@ -23,6 +27,18 @@ pub struct Settings {
     pub recent: Vec<PathBuf>,
     /// Where this was read from and is written to (`None`: never persisted, as in tests).
     pub file: Option<PathBuf>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            startup_sound: true,
+            songs_dir: None,
+            mods_dir: None,
+            recent: Vec::new(),
+            file: None,
+        }
+    }
 }
 
 fn home() -> Option<PathBuf> {
@@ -91,8 +107,17 @@ impl Settings {
             if v.is_empty() {
                 continue;
             }
+            let k = k.trim();
+            if k == "startup_sound" {
+                match v.trim() {
+                    "0" => s.startup_sound = false,
+                    "1" => s.startup_sound = true,
+                    _ => {}
+                }
+                continue;
+            }
             let v = PathBuf::from(v);
-            match k.trim() {
+            match k {
                 "songs" => s.songs_dir = Some(v),
                 "mods" => s.mods_dir = Some(v),
                 "recent" if s.recent.len() < MAX_RECENT && !s.recent.contains(&v) => {
@@ -126,6 +151,7 @@ impl Settings {
         for p in &self.recent {
             line("recent", p);
         }
+        text.push_str(&format!("startup_sound={}\n", self.startup_sound as u8));
         if let Some(dir) = file.parent() {
             std::fs::create_dir_all(dir)
                 .map_err(|e| format!("{}: cannot create: {e}", dir.display()))?;

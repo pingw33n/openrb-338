@@ -6,7 +6,7 @@
 //! unarmed UI side in between: transport, song and pattern mode, loop, tempo, shuffle, Vintage,
 //! device controllers, the mixer's master and mutes, a data block, the panel's device and
 //! pattern messages (task-055, a whole pattern's box included), the mod change (task-056),
-//! songs loaded over a stopped
+//! the preview player's startup sound, its replacement, stop and end (task-074), songs loaded over a stopped
 //! song, over a playing one (pending) and switched to by Play, through the direct 44.1 kHz path
 //! and the resampled one, with stereo, mono and six-channel devices. The callback's songs play
 //! the drum machines, the 303s and every effect (the corpus song `full_mix`).
@@ -27,9 +27,10 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use common::{kit, manifest, samples, send, song, tables};
+use rb_engine::samples::Sample;
 use rb_engine::song::Device;
 use rb_player::output::Output;
-use rb_player::{Audio, CALL_FRAMES, Command, Player};
+use rb_player::{Audio, CALL_FRAMES, Command, Player, Preview};
 
 struct Counting;
 
@@ -255,6 +256,24 @@ fn the_callback_does_not_allocate() {
     // when the next renders retrigger them
     assert_eq!(p.collect_garbage(), 1);
     events += render(&mut a, &mut buf, 40);
+    // the preview player (task-074): the startup sound over the playing song, then another one
+    // replacing it (its box goes back), msg 57's stop, and one played to its end
+    let short = Sample::from_audio(&[1000; 3000]);
+    assert!(p.startup_sound(&samples()).is_ok());
+    events += render(&mut a, &mut buf, 2);
+    assert!(a.preview_position().is_some());
+    assert!(p.startup_sound(&kit(|x| x / 2)).is_ok());
+    events += render(&mut a, &mut buf, 2);
+    assert_eq!(p.collect_garbage(), 1);
+    send(&mut p, Command::PreviewStop);
+    events += render(&mut a, &mut buf, 1);
+    assert!(a.preview_position().is_none());
+    send(
+        &mut p,
+        Command::Preview(Box::new(Preview::new(std::sync::Arc::new(short)))),
+    );
+    events += render(&mut a, &mut buf, 4);
+    assert!(a.preview_position().is_none());
     // a song over the playing one: pending, then Play switches
     assert!(p.load(&other, Some(samples())).is_ok());
     events += render(&mut a, &mut buf, 3);

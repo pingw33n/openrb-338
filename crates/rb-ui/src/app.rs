@@ -442,6 +442,13 @@ impl App {
             if let Some(r) = layout::row_at(p.x, p.y) {
                 self.panel.focus = r;
             }
+            // the logo (`sub_42A799`) plays the mod's startup sound, whatever the preference
+            // (it sends msg 58 without testing it, 0x42A7D3..0x42A7F1)
+            if layout::on_logo(p.x, p.y)
+                && let Some(link) = &mut self.link
+            {
+                link.startup_sound();
+            }
         }
     }
 

@@ -99,6 +99,13 @@ pub fn row_at(x: f32, y: f32) -> Option<usize> {
     Some(((y - 50.0) / 115.0) as usize)
 }
 
+/// Whether a panel point is on the logo, the hit rectangle of `sub_42A799`
+/// (`sub_479B06(458, 1, 608, 49)` in transport coordinates, clipped to the transport: panel x
+/// 474..607, y 1..48; docs/ui_spec.md section 3).
+pub fn on_logo(x: f32, y: f32) -> bool {
+    (474.0..608.0).contains(&x) && (1.0..49.0).contains(&y)
+}
+
 /// The origins of the drum machine sections (panel pixels), for pointer math.
 pub const TR808_ORIGIN: (f32, f32) = (90.0, 280.0);
 pub const TR909_ORIGIN: (f32, f32) = (90.0, 395.0);
@@ -142,5 +149,12 @@ mod tests {
         assert_eq!(row_at(100.0, 509.0), Some(3));
         assert_eq!(row_at(10.0, 60.0), None);
         assert_eq!(row_at(100.0, 20.0), None);
+    }
+
+    #[test]
+    fn the_logo() {
+        assert!(on_logo(474.0, 1.0) && on_logo(607.9, 48.9));
+        assert!(!on_logo(473.9, 10.0) && !on_logo(608.0, 10.0));
+        assert!(!on_logo(500.0, 0.9) && !on_logo(500.0, 49.0));
     }
 }

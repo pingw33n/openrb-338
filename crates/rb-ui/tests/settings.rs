@@ -21,6 +21,14 @@ fn a_corrupt_settings_file_gives_the_defaults() {
     // Saving leaves no temporary file behind.
     s.save().unwrap();
     assert_eq!(fs::read_dir(d.path()).unwrap().count(), 1);
+    // the startup sound preference (task-074): on by default, and kept when turned off
+    assert!(s.startup_sound);
+    let mut s = Settings::load_from(&file);
+    s.startup_sound = false;
+    s.save().unwrap();
+    assert!(!Settings::load_from(&file).startup_sound);
+    fs::write(&file, "startup_sound=x\n").unwrap();
+    assert!(Settings::load_from(&file).startup_sound);
 }
 
 #[test]

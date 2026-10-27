@@ -34,12 +34,12 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use rb_engine::samples::SampleSet;
+use rb_engine::samples::{STARTUP_ID, SampleSet};
 use rb_engine::seq::Event as TrackEvent;
 use rb_engine::song::{Device, Song};
 use rb_engine::tables::Tables;
 use rb_engine::tr909;
-use rb_player::{Audio, CALL_FRAMES, Command, Player};
+use rb_player::{Audio, CALL_FRAMES, Command, Player, Preview};
 
 use crate::model::{Event, Panel, Step303};
 
@@ -287,6 +287,9 @@ pub struct Link {
     mark: u64,
     /// The messages sent so far, when turned on (`Some`).
     pub log: Option<Vec<Msg>>,
+    /// The drum samples of the newest song (its mod's), whose startup sound
+    /// [`Link::startup_sound`] plays.
+    kit: Option<Arc<SampleSet>>,
     /// The open song's tracks once recording has changed them (task-057), as the player last
     /// copied them ([`rb_player::Tracks`]); what Save writes then.
     recorded: Option<[Vec<TrackEvent>; 9]>,
@@ -301,6 +304,7 @@ impl Link {
     /// A link to a new player with the drum samples `samples` and the audio half to run in the
     /// callback.
     pub fn new(tables: Arc<Tables>, samples: Option<Arc<SampleSet>>) -> (Link, Audio) {
+        let kit = samples.clone();
         let (player, mut audio) = Player::new(tables, samples);
         // the new empty song's patterns, as its constructor made them
         let patterns = std::array::from_fn(|c| {
@@ -318,6 +322,7 @@ impl Link {
             backlog: VecDeque::new(),
             mark: 0,
             log: None,
+            kit,
             recorded: None,
             recorded_at: None,
             tracks_from: 0,
@@ -362,6 +367,7 @@ impl Link {
     pub fn load(&mut self, song: &Song, samples: Option<Arc<SampleSet>>, panel: &mut Panel) {
         // what the panel did before is sent first (the panel is replaced below)
         self.forward(panel);
+        self.kit = samples.clone();
         let engine = self.player.build(song, samples);
         self.backlog.push_back(Command::Load(engine));
         self.recorded = None;
@@ -416,11 +422,26 @@ impl Link {
     /// ([`Player::set_mod`], docs/rbm.md section 14).
     pub fn set_mod(&mut self, samples: Arc<SampleSet>, panel: &mut Panel) {
         self.forward(panel);
+        self.kit = Some(samples.clone());
         if let Err(c) = self.player.set_mod(samples) {
             // a full queue: the change waits in the backlog, behind what is queued
             self.backlog.push_back(c);
         }
         self.flush_marked();
+    }
+
+    /// Top-level msg 58 with the newest song's mod: the preview player plays its startup
+    /// sound (slot 46, [`Command::Preview`]; docs/export_state.md section 8). Nothing without
+    /// drum samples.
+    pub fn startup_sound(&mut self) {
+        let Some(kit) = &self.kit else {
+            return;
+        };
+        // behind what waits in the backlog
+        let sample = kit.shared(STARTUP_ID);
+        self.backlog
+            .push_back(Command::Preview(Box::new(Preview::new(sample))));
+        self.flush();
     }
 
     /// Fills the model's pattern views from the pattern arrays: the 303s' steps, the lengths and

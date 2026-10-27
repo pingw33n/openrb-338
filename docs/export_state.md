@@ -489,6 +489,33 @@ are not known. Task-010 measured that with the preference on, an export started 
 open returned (about 1.5 s after the load) is identical to one with it off (§11.4, one run per
 variant): in those runs the startup sound did not reach the export. Nothing else is mixed into the output.
 
+Details (task-074, read in the disassembly) [C]:
+- The frames mixed are `sub_10004630(len - pos, n)`, a signed min (0x10004638); `len` is the
+  `CWaveSample`'s `+0x4C` (`sub_1000AA80`), which its constructor `sub_1000A9C0` sets to the frame
+  count (0x1000A9DC) while the buffer holds `2*len + 0x400` bytes: the 512 padding samples are
+  not played. The new position is stored at 0x1001B037; `pos == len` clears `+0x428`
+  (0x1001B011..0x1001B022), whether or not the song rendered (the mix follows the try-lock's
+  zeroed buffer too).
+- Msg 58 with a mod id that is not loaded does nothing (`sub_1001DC14`, 0x1001DC35); otherwise
+  the position is 0 (0x1001DC3C) and the sample the record's `+184` (0x1001DC48), replacing a
+  preview that plays. `+184` is slot 46 of the record built by `sub_1001A030`: resource 1024 for
+  411 (0x1001A178), and for a file mod its own `Startup.aif` when it has one (flag at
+  `+732`, 0x1001A2CC), else resource 1024 (0x1001A2EB).
+- Msg 57 clears `+0x428` whatever mod it frees (`sub_1001DB60`, 0x1001DBA4).
+- The preference's default is on: the preferences' constructor `sub_41CAA4` sets `+536` = 1
+  (0x41CB13), the byte `sub_40DEF2` passes to `sub_4098AA`, and the app's constructor
+  `sub_40D1D2` sets app `+0x533` = 1 (0x40D338). The logo click `sub_42A799` sends 58 without
+  testing the preference or the user count (docs/ui_spec.md section 3).
+
+rb (task-074): `rb_player::Command::Preview` (built by `Player::startup_sound`, the slot-46
+sample of a `SampleSet`) and `Command::PreviewStop` (msg 57's clear); the callback mixes it into
+each 1024-frame call's int16 output after the song (`rb_player::mix_preview`) and keeps the
+sample's box until a new preview replaces it, which goes back through the garbage queue, so the
+callback frees nothing. rb's offline renders (`rb render`, the export) send no msg 58, as the
+capture protocol's renders have the startup sound off. Tests: the unit tests of `mix_preview`
+(every int16 value against the add/adc/sar sequence, the saturation of L and R), the player's
+`preview.rs` (over the empty and a playing song, the end, a restart, the stop), `no_alloc.rs`.
+
 ## 9. Proposed capture protocol
 
 The aim: every state of §7 fixed except `N`, which is then recovered.

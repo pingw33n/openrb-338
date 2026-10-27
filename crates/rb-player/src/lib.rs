@@ -52,6 +52,15 @@
 //! playing from where it is, and nothing else changes. The old tables and the samples the
 //! voices held come back to the UI thread in the command's own box.
 //!
+//! # The preview player
+//!
+//! The DLL mixes one mono sample after the song, its preview player (`docs/export_state.md`
+//! section 8): the exe starts it with top-level msg 58 to play a mod's startup sound (slot 46,
+//! `Startup.aif`) when a mod is opened and the logo is clicked, and msg 57 clears it.
+//! [`Player::startup_sound`] sends [`Command::Preview`] with the startup sample of a sample set;
+//! [`Command::PreviewStop`] is the clear. The callback mixes it into each call's int16 output
+//! after the song ([`mix_preview`]), so it does not touch the engine's state.
+//!
 //! The panel's own device messages (task-055, `docs/song_load.md` section 4.10) have their
 //! commands: the knobs and switches ([`Command::DeviceParam`], [`Command::MixerGlobal`],
 //! [`Command::MixerChannel`]) and the pattern edits ([`Command::PatternField`],
@@ -79,7 +88,7 @@ use rb_engine::frame::edit::PatternShape;
 use rb_engine::frame::export::REALTIME_FRAMES;
 use rb_engine::frame::{Devices, Engine, MixerParams};
 use rb_engine::process::ProcessState;
-use rb_engine::samples::{Retired, SampleSet};
+use rb_engine::samples::{Retired, STARTUP_ID, Sample, SampleSet};
 use rb_engine::seq::Pool;
 use rb_engine::song::{Device, Song};
 use rb_engine::tables::Tables;
@@ -192,6 +201,45 @@ pub enum Command {
     /// [`Engine::set_samples`]). Built by [`Player::set_mod`]; the box goes back through the
     /// garbage queue with what the change let go of.
     Mod(Box<ModSwap>),
+    /// Top-level msg 58 `{u16 mod}` (`sub_1001DC14`): the preview player plays `sample` from
+    /// its start, replacing what it played. Built by [`Player::startup_sound`]; the box it
+    /// replaces goes back through the garbage queue.
+    Preview(Box<Preview>),
+    /// Top-level msg 57's clear of the preview player (`sub_1001DB60`, 0x1001DBA4: whatever
+    /// mod it frees).
+    PreviewStop,
+}
+
+/// A sample for the preview player ([`Command::Preview`]).
+pub struct Preview {
+    sample: Arc<Sample>,
+}
+
+impl Preview {
+    pub fn new(sample: Arc<Sample>) -> Self {
+        Preview { sample }
+    }
+
+    pub fn sample(&self) -> &Sample {
+        &self.sample
+    }
+}
+
+/// Mixes the preview `audio` from frame `pos` into the interleaved stereo int16 `buf`, as
+/// `SafeSoundCallback` does after the song (0x1001AF15..0x1001B037): `min(len - pos, frames)`
+/// frames, each sample halved toward zero (`add 80000000h; adc 80000000h; sar 1`, 0x1001AF7E)
+/// and added to L and R, each saturated to int16. Returns the new position; the preview ends
+/// when it equals `audio.len()`.
+pub fn mix_preview(buf: &mut [i16], audio: &[i16], pos: usize) -> usize {
+    let n = audio.len().saturating_sub(pos).min(buf.len() / 2);
+    for (k, &s) in audio[pos..pos + n].iter().enumerate() {
+        // Rust's division truncates toward zero, as the add/adc/sar sequence
+        let h = s as i32 / 2;
+        for c in &mut buf[2 * k..2 * k + 2] {
+            *c = (*c as i32 + h).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        }
+    }
+    pos + n
 }
 
 /// A mod change, built on the UI thread ([`Player::set_mod`]): the new sample set and the room
@@ -214,6 +262,7 @@ pub enum Garbage {
     Engine(Box<Engine>),
     Bytes(Box<[u8]>),
     Mod(Box<ModSwap>),
+    Preview(Box<Preview>),
 }
 
 /// One device's live parameter block ([`rb_engine::frame::SongDevice::live`]), inline.
@@ -335,6 +384,13 @@ pub struct Audio {
     frames: u64,
     generation: u32,
     output_errors: u64,
+    /// The preview player's sample (engine `+0x428`), kept after it ends or is stopped until a
+    /// new one replaces it (the callback frees nothing).
+    preview: Option<Box<Preview>>,
+    /// Its position (engine `+0x42C`), frames.
+    preview_pos: usize,
+    /// It plays (engine `+0x428` not null).
+    preview_on: bool,
 }
 
 impl Player {
@@ -364,6 +420,9 @@ impl Player {
             frames: 0,
             generation: 0,
             output_errors: 0,
+            preview: None,
+            preview_pos: 0,
+            preview_on: false,
         };
         audio.publish();
         let player = Player {
@@ -405,6 +464,14 @@ impl Player {
             samples,
             retired: Retired::default(),
         })))
+    }
+
+    /// [`Command::Preview`] with the startup sound of `samples` (slot 46, resource ID 1024, the
+    /// mod record's `+184` that msg 58 plays: `sub_1001A030`, 0x1001A178 and 0x1001A2EB).
+    pub fn startup_sound(&mut self, samples: &SampleSet) -> Result<(), Command> {
+        self.send(Command::Preview(Box::new(Preview::new(
+            samples.shared(STARTUP_ID),
+        ))))
     }
 
     /// Queues a command (after dropping what the callback handed back). A full queue returns
@@ -498,6 +565,16 @@ impl Audio {
         self.current.render(&mut self.buf[..], CALL_FRAMES);
         if self.faults() != faults {
             self.buf.fill(0);
+        }
+        // the preview player, after the song (`SafeSoundCallback` step 4)
+        if self.preview_on
+            && let Some(p) = &self.preview
+        {
+            let audio = p.sample.audio();
+            self.preview_pos = mix_preview(&mut self.buf[..], audio, self.preview_pos);
+            if self.preview_pos == audio.len() {
+                self.preview_on = false;
+            }
         }
         self.pos = 0;
         self.frames += CALL_FRAMES as u64;
@@ -616,6 +693,14 @@ impl Audio {
                 self.target().set_samples(samples, retired);
                 self.throw(Garbage::Mod(m));
             }
+            Command::Preview(p) => {
+                if let Some(old) = self.preview.replace(p) {
+                    self.throw(Garbage::Preview(old));
+                }
+                self.preview_pos = 0;
+                self.preview_on = true;
+            }
+            Command::PreviewStop => self.preview_on = false,
         }
     }
 
@@ -716,8 +801,64 @@ impl Audio {
         &mut self.current
     }
 
+    /// The preview player's state: its position in frames while it plays, `None` when it does
+    /// not (for tests and diagnostics).
+    pub fn preview_position(&self) -> Option<usize> {
+        self.preview_on.then_some(self.preview_pos)
+    }
+
     /// A device callback output silence because the resampler failed.
     pub(crate) fn output_error(&mut self) {
         self.output_errors += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mix_preview;
+
+    /// `add esi, 80000000h; adc esi, 80000000h; sar esi, 1` (0x1001AF7E) for one 32-bit value.
+    fn original_half(s: i32) -> i32 {
+        let (a, c1) = (s as u32).overflowing_add(0x8000_0000);
+        let b = a.wrapping_add(0x8000_0000).wrapping_add(c1 as u32);
+        (b as i32) >> 1
+    }
+
+    #[test]
+    fn the_half_rounds_toward_zero_as_the_original() {
+        for s in i16::MIN..=i16::MAX {
+            let mut buf = [0i16; 2];
+            mix_preview(&mut buf, &[s], 0);
+            assert_eq!(buf[0] as i32, original_half(s as i32), "s = {s}");
+            assert_eq!(buf[0], buf[1]);
+        }
+        let mut buf = [0i16; 8];
+        mix_preview(&mut buf, &[-3, -1, 1, 3], 0);
+        assert_eq!(buf, [-1, -1, 0, 0, 0, 0, 1, 1]);
+    }
+
+    #[test]
+    fn left_and_right_saturate_each() {
+        let mut buf = [32_000, -32_000, -32_000, 32_000, 100, -100];
+        let end = mix_preview(&mut buf, &[32_767, -32_768, 5], 0);
+        assert_eq!(end, 3);
+        // +16383: L saturates, R does not; -16384: L saturates, R does not; +2 on both
+        assert_eq!(buf, [32_767, -15_617, -32_768, 15_616, 102, -98]);
+    }
+
+    #[test]
+    fn it_mixes_what_is_left_and_no_more() {
+        let audio = [2i16, 4, 6, 8, 10];
+        // a two-frame buffer from position 1: frames 1 and 2
+        let mut buf = [0i16; 4];
+        assert_eq!(mix_preview(&mut buf, &audio, 1), 3);
+        assert_eq!(buf, [2, 2, 3, 3]);
+        // the last two frames into a longer buffer: the rest of it untouched
+        let mut buf = [7i16; 8];
+        assert_eq!(mix_preview(&mut buf, &audio, 3), 5);
+        assert_eq!(buf, [11, 11, 12, 12, 7, 7, 7, 7]);
+        // at the end: nothing
+        assert_eq!(mix_preview(&mut buf, &audio, 5), 5);
+        assert_eq!(mix_preview(&mut buf, &[], 0), 0);
     }
 }

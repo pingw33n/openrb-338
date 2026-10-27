@@ -739,6 +739,8 @@ fn a_mod_changes_the_kit_and_is_saved() {
     assert!(std_out.iter().any(|&s| s != 0), "the song is silent");
 
     let mut mod_h = Harness::new();
+    // without the startup sound, which a song opened with the mod does not play
+    mod_h.app.settings.startup_sound = false;
     mod_h.open(&src);
     mod_h.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
     assert!(mod_h.app.notice.is_none(), "{:?}", mod_h.app.notice);
@@ -796,6 +798,72 @@ fn a_mod_changes_the_kit_and_is_saved() {
         )
         .unwrap_or_else(|rb_cli::Fail(_, m)| panic!("{m}"));
     assert!(std::fs::read(&wav).unwrap() == std::fs::read(&want).unwrap());
+}
+
+/// `base` with the preview `audio` mixed into its calls from the start, as the player does.
+fn with_preview(base: &[i16], audio: &[i16]) -> Vec<i16> {
+    let mut out = base.to_vec();
+    let mut pos = 0;
+    for c in out.chunks_mut(2 * CALL_FRAMES) {
+        pos = rb_player::mix_preview(c, audio, pos);
+    }
+    out
+}
+
+/// task-074: with "Play Mod Startup Sound" on (the default), a mod change plays the new mod's
+/// startup sound after the song; off, it does not.
+#[test]
+fn a_mod_change_plays_the_startup_sound_when_the_preference_is_on() {
+    let (Some(_), Some(pbe2)) = (standard_mod(), mod_file("PBE2.rbm")) else {
+        return;
+    };
+    let src = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let kit = rb_cli::render::load_mod(&pbe2, &samples()).unwrap_or_else(|e| panic!("{}", e.1));
+    let audio = kit.get(rb_engine::samples::STARTUP_ID).audio();
+    let calls = audio.len().div_ceil(CALL_FRAMES) + 2;
+    let run = |on: bool| {
+        let mut h = Harness::new();
+        assert!(h.app.settings.startup_sound, "on by default");
+        h.app.settings.startup_sound = on;
+        h.open(&src);
+        h.app.panel.press("transport.play", 0.0);
+        h.frame(vec![]);
+        h.calls(3);
+        h.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
+        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        let out = h.calls(calls);
+        (out, h.audio.preview_position())
+    };
+    let (off, pos_off) = run(false);
+    let (on, pos_on) = run(true);
+    assert_eq!((pos_off, pos_on), (None, None), "the sound ended");
+    assert_ne!(on, off);
+    assert_eq!(on, with_preview(&off, audio));
+}
+
+/// task-074: a click on the logo plays the song's mod's startup sound, whatever the
+/// preference (`sub_42A799` does not test it); elsewhere in the transport it does not.
+#[test]
+fn the_logo_plays_the_startup_sound() {
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.click(Pos2::new(440.0, 25.0));
+    h.calls(1);
+    assert_eq!(h.audio.preview_position(), None);
+    let before = h.calls(4);
+    h.click(Pos2::new(540.0, 25.0));
+    let out = h.calls(4);
+    assert_eq!(h.audio.preview_position(), Some(4 * CALL_FRAMES));
+    let audio = samples()
+        .get(rb_engine::samples::STARTUP_ID)
+        .audio()
+        .to_vec();
+    // the new empty song renders the same in every call while stopped
+    assert_eq!(
+        before[..2 * CALL_FRAMES],
+        before[2 * CALL_FRAMES..4 * CALL_FRAMES]
+    );
+    assert_eq!(out, with_preview(&before, &audio));
 }
 
 #[test]

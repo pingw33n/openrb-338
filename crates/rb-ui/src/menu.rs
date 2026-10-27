@@ -9,7 +9,8 @@
 //!   the original's Mods menu: `sub_40C163`, docs/rbm.md section 14), and a file picked in the
 //!   browser. A choice is the original's `sub_42D80D` -> `sub_426FB3`: the song is marked
 //!   modified, the new kit goes to the player as song msg 19 ([`Link::set_mod`]) and a save
-//!   writes the new name.
+//!   writes the new name. With the preference "Play Mod Startup Sound" on
+//!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays.
 //! - **Options**: the Vintage ReBirth Synth Sound flag (GLOB byte 482; Edit menu item 323 of the
 //!   original) and the keyboard mode (Ctrl+F, Ctrl+G; docs/ui_spec.md section 10).
 
@@ -393,6 +394,12 @@ impl App {
         };
         if let Some(samples) = samples {
             link.set_mod(samples, &mut self.panel);
+            // `sub_426C67` after the change (0x427030): msg 58 when the mod has just been
+            // opened (its user count, word +1088, is 1: rb has one song, the only user of its
+            // mod) and the preference is on (0x426C85)
+            if self.settings.startup_sound {
+                link.startup_sound();
+            }
         }
         // the save writes the mod's INFO URLs with its name (`sub_4270F7`, docs/rbm.md 14.1)
         let (ftp, web) = match &kit {

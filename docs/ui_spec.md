@@ -232,7 +232,10 @@ Behavior (all [C], `sub_42A058` and its callees, ticks: 768 per bar):
 - **LEDs:** Play lit while playing (`+45`), Record lit while recording (`+46`), the mode switch
   shows song mode (`+44`), the Loop switch the loop flag (`+47`).
 - **Logo click** (`sub_42A799`) sends top-level msg 58 with the current mod: the mod's startup
-  sound plays. The code's hit rectangle is `sub_479B06(458, 1, 608, 49)` = left 458, top 1,
+  sound plays. It does not test the preference "Play Mod Startup Sound" nor the mod's user count
+  (0x42A7D3..0x42A7F1: `sub_40CB32`, the document's mod id `sub_4166D0`, `sub_40ABB5`), so a
+  click plays the sound with the preference off [C, task-074]. rb: `layout::on_logo` and
+  `Link::startup_sound` (`App::focus_click`). The code's hit rectangle is `sub_479B06(458, 1, 608, 49)` = left 458, top 1,
   right 608, bottom 49, all four in transport coordinates; its right edge lies 16 px beyond the
   transport's own right edge (592 in transport coordinates), so the effective area is clipped to
   x 458..591, y 1..48 in transport coordinates, i.e. panel x 474..607 (the table row: x 458,
@@ -966,8 +969,13 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   the kit; the save writes the name. The entries are the INFO names of the folder in the original's
   folder order, the first file of a duplicated name owning it. The mod's panel art is not
   drawn: the original redraws the window with the mod's bitmaps (`sub_42D80D`), and the user
-  decided (task-078, 2026-10-27) that rb keeps its SVG art and a mod changes the sound only. Not
-  done: the startup sound (task-074).
+  decided (task-078, 2026-10-27) that rb keeps its SVG art and a mod changes the sound only.
+  After the change the new mod's startup sound plays (`sub_426C67`, `Link::startup_sound`,
+  task-074) when the preference "Play Mod Startup Sound" is on: `Settings::startup_sound`, on by
+  default as the original's (the preferences' constructor `sub_41CAA4` sets prefs `+536` = 1 at
+  0x41CB13, the app's constructor `sub_40D1D2` app `+0x533` = 1 at 0x40D338), stored in the
+  settings file as `startup_sound=0|1`. rb has no switch for it in its menu yet (task-086). The startup sound
+  of a song's open (`sub_425C4D` and `sub_426CA8` also call `sub_426C67`) is not done (task-087).
 - **The Vintage flag** is song message 35 id 21 (`Command::Vintage`); the menu item shows the
   engine's byte and a change marks the song modified.
 - **Unsaved changes.** The song is modified by any edit of the panel that the save writes (not by
