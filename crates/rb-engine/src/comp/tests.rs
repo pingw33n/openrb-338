@@ -182,3 +182,11 @@ fn messages_and_controllers() {
     c.set_param(GAIN_METER as u8, 9);
     assert_eq!(c.live, [1, 100, 5, 127, 0]);
 }
+
+#[test]
+fn the_mono_block_leaves_the_release_factor() {
+    let mut c = Compressor::new();
+    assert_eq!(c.stack_word(Some(5)), Some(0x3F7F_9724));
+    c.set_param(ENABLED as u8, 0);
+    assert_eq!(c.stack_word(Some(5)), Some(5));
+}

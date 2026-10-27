@@ -85,11 +85,11 @@ pub struct BlockContext<'a> {
     /// The tick of the song's position (`sub_1001F870`), already advanced by this block's
     /// sequencer step; the PCF's pattern step follows it (0x10016756).
     pub tick: i32,
-    /// The dword the current channel's audio slot leaves on the stack at its entry `esp - 0x1C`
-    /// ([`ChannelDevice::stack_word`]), set per channel by the mixer block: the inserts after it
-    /// are called from the same `esp` (0x100135C3), so it is what the PCF's uninitialised slot
-    /// `var_1C` holds ([`crate::pcf::Pcf::quotient`]). `None` outside a channel's inserts, or
-    /// where it is not known.
+    /// The dword at an insert's entry `esp - 0x1C` when it is called ([`Frame::stack_word`]):
+    /// the inserts are called from the same `esp` as the channel's audio slot (0x10013580,
+    /// 0x100135C3), so it is what the PCF's uninitialised slot `var_1C` holds
+    /// ([`crate::pcf::Pcf::quotient`]). `None` outside a channel's inserts, or where it is not
+    /// known.
     pub stack_word: Option<i32>,
 }
 
@@ -211,8 +211,9 @@ pub trait ChannelDevice: SongDevice {
     }
     /// Not a slot: the dword slot 14 leaves at its entry `esp - 0x1C` in every block, whatever
     /// the device's state (the return address of its last call, which is made from
-    /// `esp0 - 0x18`), or `None` when the audio slot does not write that stack address.
-    /// [`BlockContext::stack_word`] passes it to the channel's inserts.
+    /// `esp0 - 0x18`), or `None` when the audio slot does not write that stack address: the
+    /// 303s' 0x10023F10 (locals at most at `esp0 - 0x64`, calls from `esp0 - 0x1AC`, the vintage
+    /// 0x100248C4 called from `esp0 - 0x1B0`; task-072). [`Frame::stack_word`] takes it.
     fn stack_word(&self) -> Option<i32> {
         None
     }
@@ -236,6 +237,11 @@ pub trait InsertEffect: SongDevice {
     fn faulted(&mut self) -> Option<Fault> {
         None
     }
+    /// Not a slot: the dword the last [`InsertEffect::process`] left at its entry `esp - 0x1C`
+    /// ([`Frame::stack_word`]), `prev` when it did not write there.
+    fn stack_word(&self, prev: Option<i32>) -> Option<i32> {
+        prev
+    }
 }
 
 /// The send effect (the delay).
@@ -243,6 +249,12 @@ pub trait SendEffect: SongDevice {
     /// Slot 14 (0x10013865): read the send bus, add into the master and refill the send bus with
     /// [`GUARD`] (the delay does that in both its enabled and disabled paths, 0x1000F940).
     fn process(&mut self, send: &mut Block, l: &mut Block, r: &mut Block, ctx: &BlockContext);
+    /// Not a slot: the dword the last [`SendEffect::process`] left at the channel slots'
+    /// `esp - 0x1C` ([`Frame::stack_word`]), `prev` when it did not write there; `out_end` is
+    /// [`Frame::out_end`].
+    fn stack_word(&self, _out_end: Option<i32>, prev: Option<i32>) -> Option<i32> {
+        prev
+    }
 }
 
 /// The song's devices, in the roles the mixer gives them.
@@ -698,7 +710,30 @@ pub struct Frame {
     bus: Block,
     /// Not in the original: the blocks started so far, for [`FaultRecord::block`].
     pub blocks: u64,
+    /// The dword at the mixer block's `esp - 0x24`, which is the entry `esp - 0x1C` of the
+    /// channel devices' and inserts' slots and so the PCF's uninitialised `var_1C`
+    /// ([`BlockContext::stack_word`], [`crate::pcf::Pcf::quotient`]); `None` where the original
+    /// leaves a heap address or something else the engine cannot know. Every code that writes
+    /// that address sets it, in the original's order ([`Frame::block`], [`Engine::render`]).
+    pub stack_word: Option<i32>,
+    /// The address of the last right-channel sample the current block renders into, at the
+    /// preferred base: `unk_100F012C + 4*(pos + 63)` for a whole block at frame `pos` of the
+    /// call, `None` for the partial block, which renders into the leftover block in the song
+    /// object (`song+0x30C`, a heap address). Set by [`Engine::render`]; the delay leaves it on
+    /// the stack ([`SendEffect::stack_word`]).
+    pub out_end: Option<i32>,
 }
+
+/// `unk_100F012C`: the right channel's float output of a render call (0x10013A3A), at the
+/// preferred base 0x10000000.
+pub const OUT_RIGHT: i32 = 0x100F_012C;
+
+/// What the render call's try-lock (`sub_10009450` at 0x10013A5E: `WaitForSingleObject(h, 0)`
+/// through `[0x1002F00C]`) leaves at [`Frame::stack_word`]'s address: the system DLLs' code
+/// below it writes there, last a 0 (ntdll; measured with a write watchpoint on the test
+/// machine's Windows 11 in every render call, task-072). It is the slot's value at the start of
+/// every call's first block.
+pub const LOCK_WORD: i32 = 0;
 
 fn st(x: f64) -> f32 {
     x as f32
@@ -729,6 +764,8 @@ impl Frame {
             tables,
             bus: [0.0; BLOCK],
             blocks: 0,
+            stack_word: None,
+            out_end: None,
         }
     }
 
@@ -803,9 +840,15 @@ impl Frame {
         self.blocks += 1;
         if self.state.counter & (UPDATE_PERIOD - 1) == 0 {
             self.mixer_update();
+            // 0x10012C3A: the compressor id (the dword at the mixer data's +4) into its local at
+            // the slot's address
+            self.stack_word = Some(self.devices.mixer.live.comp_id as i32);
         }
         self.state.counter = self.state.counter.wrapping_add(1);
-        self.seq.tick(&mut self.devices);
+        if self.seq.tick(&mut self.devices) {
+            // 0x1001F3B3: the tempo (globals +4) the step loop passes, into its local there
+            self.stack_word = Some(self.seq.globals.tempo as i32);
+        }
         let mi = (self.state.meter_index + METER_STEP) & 63;
         self.state.meter_index = mi;
         let mi = mi as usize;
@@ -820,11 +863,13 @@ impl Frame {
         };
         let bus = &mut self.bus;
         for (c, ch) in self.state.channels.iter_mut().enumerate() {
-            ctx.stack_word = None;
             self.devices.channels[c].process(bus, &ctx);
-            // the word the audio slot leaves at its esp0 - 0x1C; the distortion (0x10010A50: no
-            // local there, calls only below its esp) leaves it for the PCF after it
-            ctx.stack_word = self.devices.channels[c].stack_word();
+            // the word the audio slot leaves at its esp0 - 0x1C (the 303s leave the slot as it
+            // was); the distortion (0x10010A50: no local there, calls only below its esp) leaves
+            // it for the PCF after it
+            if let Some(w) = self.devices.channels[c].stack_word() {
+                self.stack_word = Some(w);
+            }
             let inserts = [
                 (ch.routing.dist, &mut self.devices.dist),
                 (ch.routing.pcf, &mut self.devices.pcf),
@@ -832,10 +877,12 @@ impl Frame {
             ];
             for (routed, ins) in inserts {
                 if routed {
+                    ctx.stack_word = self.stack_word;
                     ins.process(bus, &ctx);
                     if let Some(f) = ins.faulted() {
                         return Err(f);
                     }
+                    self.stack_word = ins.stack_word(self.stack_word);
                 }
             }
             // 0x100135FA: the channel's peak meter
@@ -871,7 +918,9 @@ impl Frame {
             }
         }
         // 0x10013844: the send effect
+        ctx.stack_word = None;
         self.devices.delay.process(&mut self.state.send, l, r, &ctx);
+        self.stack_word = self.devices.delay.stack_word(self.out_end, self.stack_word);
         // 0x10013883: the compressor on the master
         if self.state.master_comp {
             self.devices.comp.process_stereo(l, r, &ctx);
@@ -1087,6 +1136,8 @@ impl Engine {
     /// but drops a pending leftover (`L` becomes `L - 64`).
     pub fn render(&mut self, buf: &mut [i16], n: usize) {
         let n = n.min(MAX_FRAMES);
+        // 0x10013A5E: the song's try-lock, before the leftover and the first block
+        self.frame.stack_word = Some(LOCK_WORD);
         let [ol, or] = &mut self.out;
         let lp = self.output.leftover_pos;
         let mut pos = 0usize;
@@ -1107,10 +1158,12 @@ impl Engine {
         while rem > 0 {
             let whole = rem > 63;
             let done = if whole {
+                self.frame.out_end = Some(OUT_RIGHT + 4 * (pos + BLOCK - 1) as i32);
                 self.frame
                     .block(block_mut(&mut ol[..], pos), block_mut(&mut or[..], pos))
             } else {
                 // 0x10013BAA: the partial block is rendered whole into the leftover block
+                self.frame.out_end = None;
                 let [ll, lr] = &mut self.output.leftover;
                 self.frame.block(ll, lr)
             };

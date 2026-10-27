@@ -40,6 +40,12 @@ const RBHOST: &str = "960e1218589577b8841ac65e77764d4950ad6614b4ce692c3cf04e3925
 /// The sha256 of rbhost's WAV of [`pcf_session`] (2026-10-27).
 const RBHOST_PCF: &str = "4a50f82aacd9b7eaf98965197b93ad0a86437362e919484ae1c7f0a2a256172c";
 
+/// The sha256 of rbhost's WAV of [`pcf_303_session`] (task-072, 2026-10-27).
+const RBHOST_PCF_303: &str = "7e57e65c1cf82e28d1a47ac00d57607c5b440a2ee8423ed19382e1018dca4913";
+
+/// The engine calls of [`pcf_303_session`].
+const PCF_303_CALLS: u32 = 460;
+
 /// The engine calls of the session.
 const CALLS: u32 = 600;
 
@@ -374,6 +380,41 @@ fn pcf_session() -> Vec<(u32, Command)> {
     ]
 }
 
+/// task-072: the PCF on the 303 channels with wave 108 (resolution 0, length 32, every step a
+/// velocity), so every block's step is the stale stack slot `var_1C` modulo 32 and each change
+/// of the word there retriggers. The word is what the code before the PCF left at that stack
+/// address in the block (the render call's lock, the mixer update's compressor id, the clock's
+/// tempo, a compressor on channel 0) or in the block before (the 909 audio's return address, the
+/// delay's output pointer, a compressor on channel 3); the session goes through each of them.
+fn pcf_303_session() -> Vec<(u32, Command)> {
+    use Device as D;
+    let global = |id, value| Command::MixerGlobal { id, value };
+    vec![
+        (0, Command::SongMode(false)),
+        (0, Command::Play),
+        (0, param(D::Pcf, 4, 108)),
+        // the PCF on 303 #1, the compressor on the master, the delay on
+        (0, global(2, 1)),
+        (60, param(D::Delay, 0, 0)),
+        // the compressor on channel 0 and the PCF after it, on 303 #2
+        (100, global(1, 2)),
+        (100, global(2, 2)),
+        (140, param(D::Compressor, 0, 0)),
+        (180, param(D::Delay, 0, 1)),
+        (220, Command::Stop),
+        (260, Command::Play),
+        // the compressor on the 909's channel, after the 909 audio, with the delay off
+        (300, param(D::Compressor, 0, 1)),
+        (300, global(1, 5)),
+        (300, param(D::Delay, 0, 0)),
+        // back on 303 #1, a real wave, then the junk wave again
+        (340, global(2, 1)),
+        (360, param(D::Pcf, 4, 30)),
+        (380, param(D::Pcf, 4, 108)),
+        (420, Command::Stop),
+    ]
+}
+
 /// The pattern each pattern device plays in pattern mode: its data block's controller 1.
 fn patterns(s: &Song) -> [u8; 4] {
     [
@@ -455,6 +496,22 @@ fn pcf_wave_after_returning_to_pattern_mode() {
     let sha = render("pcf", &s, samples(), CALLS, cmds(pcf_session()));
     assert_eq!(
         sha, RBHOST_PCF,
+        "the player's session differs from rbhost's"
+    );
+}
+
+#[test]
+fn pcf_junk_wave_on_the_303_channels() {
+    let s = song(&manifest()["diag"]["full_mix"]);
+    let sha = render(
+        "pcf303",
+        &s,
+        samples(),
+        PCF_303_CALLS,
+        cmds(pcf_303_session()),
+    );
+    assert_eq!(
+        sha, RBHOST_PCF_303,
         "the player's session differs from rbhost's"
     );
 }

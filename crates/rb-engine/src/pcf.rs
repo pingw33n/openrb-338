@@ -251,14 +251,18 @@ pub struct Pcf {
     /// quotient when the resolution is 8, 16 or 32 and is left as it was otherwise. The 73
     /// waves of 55..127 whose resolution is not 8, 16 or 32 reach it; 17 of them fault before
     /// they use it. What the original finds there is what the code before the PCF left at that
-    /// stack address, which in every block is the channel's audio slot (the PCF's own quotient
-    /// does not survive to the next block): on the 808 and 909 channels the return address of
-    /// its last call ([`BlockContext::stack_word`], [C] task-069: 0x1002B8B4 on the 909 in
-    /// every block of a live session; a return address, so the value at the preferred base
-    /// 0x10000000, which the corpus and rbhost assume, as for [`PCF_DATA`]). [G] On the 303
-    /// channels, whose audio slot does not write it, the slot holds older stack contents (the
-    /// delay's, the sequencer's); the engine keeps the last quotient this PCF computed there (0
-    /// before the first).
+    /// stack address ([`BlockContext::stack_word`], [`crate::frame::Frame::stack_word`]; the
+    /// PCF's own quotient does not survive to the next block). On the 808 and 909 channels it is
+    /// the return address of the audio slot's last call ([C] task-069: 0x1002B8B4 on the 909 in
+    /// every block). The 303 audio does not write there, so on the 303 channels it is the last
+    /// of ([C] task-072, every PCF block of six rbhost sessions): the render call's lock (0),
+    /// the mixer update's compressor id, the clock's tempo, an enabled compressor on channel 0
+    /// (its release factor 0x3F7F9724), or from the block before the 909's return address, a
+    /// compressor on channel 3 or the enabled delay's last output pointer. The addresses are
+    /// the values at the preferred base 0x10000000, which the corpus and rbhost assume, as for
+    /// [`PCF_DATA`]. Where the original leaves a heap address (the delay after a partial
+    /// block) the stack word is `None` and the engine keeps the last quotient this PCF computed
+    /// there (0 before the first), a stand-in.
     pub quotient: i32,
     /// Set by a block that divided by zero, read and cleared by [`InsertEffect::faulted`].
     fault: Option<Fault>,
@@ -404,6 +408,17 @@ impl SongDevice for Pcf {
 }
 
 impl InsertEffect for Pcf {
+    /// The quotient when the block stored one (enabled, resolution 8, 16 or 32: 0x10016792,
+    /// 0x100167A0, 0x100167AE, `var_1C` at the entry `esp - 0x1C`), else `prev`.
+    fn stack_word(&self, prev: Option<i32>) -> Option<i32> {
+        let (_, res) = pattern(self.live[WAVE]);
+        if self.live[ENABLED] != 0 && quotient(0, res).is_some() {
+            Some(self.quotient)
+        } else {
+            prev
+        }
+    }
+
     /// Slot 15, 0x100166D0: nothing when disabled (the bus passes unchanged and the counter
     /// stands).
     fn process(&mut self, bus: &mut Block, ctx: &BlockContext) {

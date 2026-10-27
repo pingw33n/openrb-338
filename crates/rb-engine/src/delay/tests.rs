@@ -125,3 +125,13 @@ fn a_pan_above_127_is_clamped() {
     let pg = t.pan[127][127];
     assert_eq!(d.target[1], (GUARD as f64 + pg[1] as f64) as f32);
 }
+
+#[test]
+fn the_enabled_block_leaves_its_output_pointer() {
+    let mut d = Delay::new(ProcessState::new());
+    let end = Some(0x100F_012C + 4 * 63);
+    assert_eq!(d.stack_word(end, Some(5)), end);
+    assert_eq!(d.stack_word(None, Some(5)), None);
+    d.set_param(ENABLED as u8, 0);
+    assert_eq!(d.stack_word(end, Some(5)), Some(5));
+}

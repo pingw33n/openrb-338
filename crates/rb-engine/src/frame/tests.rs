@@ -980,6 +980,123 @@ fn a_step_edit_is_heard() {
     assert_ne!(a, b);
 }
 
+/// A source that leaves `w` at its entry `esp - 0x1C` (as the 808 and 909 audio do), or nothing.
+struct Word(Option<i32>);
+impl SongDevice for Word {}
+impl ChannelDevice for Word {
+    fn process(&mut self, _bus: &mut Block, _ctx: &BlockContext) {}
+    fn stack_word(&self) -> Option<i32> {
+        self.0
+    }
+}
+
+/// An insert that records the stack word it is called with and leaves `w` (or nothing).
+struct SlotProbe {
+    seen: Rc<RefCell<Vec<Option<i32>>>>,
+    w: Option<i32>,
+}
+impl SongDevice for SlotProbe {}
+impl InsertEffect for SlotProbe {
+    fn process(&mut self, _bus: &mut Block, ctx: &BlockContext) {
+        self.seen.borrow_mut().push(ctx.stack_word);
+    }
+    fn stack_word(&self, prev: Option<i32>) -> Option<i32> {
+        self.w.or(prev)
+    }
+}
+
+/// A send effect that leaves the output pointer, as the enabled delay does, or nothing.
+struct OutSend(bool);
+impl SongDevice for OutSend {}
+impl SendEffect for OutSend {
+    fn process(&mut self, send: &mut Block, _l: &mut Block, _r: &mut Block, _ctx: &BlockContext) {
+        send.fill(GUARD);
+    }
+    fn stack_word(&self, out_end: Option<i32>, prev: Option<i32>) -> Option<i32> {
+        if self.0 { out_end } else { prev }
+    }
+}
+
+const W909: i32 = 0x1002_B8B4;
+
+fn slot_engine(delay: bool) -> (Engine, Rc<RefCell<Vec<Option<i32>>>>) {
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let mut d = Devices::placeholders();
+    d.channels[3] = Box::new(Word(Some(W909)));
+    d.pcf = Box::new(SlotProbe {
+        seen: seen.clone(),
+        w: None,
+    });
+    d.delay = Box::new(OutSend(delay));
+    let mut e = engine_with(d, quiet_state());
+    e.frame.devices.mixer.live.pcf_id = 1; // channel 0, a 303's
+    e.frame.devices.mixer.live.comp_id = 1; // the master
+    e.frame.mixer_update();
+    (e, seen)
+}
+
+#[test]
+fn the_stale_slot_through_render_calls() {
+    let (mut e, seen) = slot_engine(true);
+    // blocks 1..3 of the call see the delay's last output pointer of the block before; the
+    // mixer update of the third (counter 16) leaves the compressor id
+    e.frame.state.counter = 14;
+    let mut buf = vec![0i16; 2 * 4 * BLOCK];
+    e.render(&mut buf, 4 * BLOCK);
+    let out = |k: i32| Some(OUT_RIGHT + 4 * (64 * k + 63));
+    assert_eq!(*seen.borrow(), [Some(LOCK_WORD), out(0), Some(1), out(2)]);
+    assert_eq!(e.frame.stack_word, out(3));
+    // the partial block renders into the leftover block (a heap address): unknown after it
+    seen.borrow_mut().clear();
+    e.render(&mut buf, 32);
+    assert_eq!(*seen.borrow(), [Some(LOCK_WORD)]);
+    assert_eq!(e.frame.stack_word, None);
+    // a 0-frame call takes the lock too
+    e.render(&mut buf, 0);
+    assert_eq!(e.frame.stack_word, Some(LOCK_WORD));
+    // with the delay off, the 909 audio's return address is the block's last word
+    let (mut e, seen) = slot_engine(false);
+    e.render(&mut buf, 3 * BLOCK);
+    assert_eq!(*seen.borrow(), [Some(LOCK_WORD), Some(W909), Some(W909)]);
+}
+
+#[test]
+fn the_clock_and_an_earlier_insert_write_the_slot() {
+    let (mut e, seen) = slot_engine(false);
+    e.frame.seq.set_tempo(130_000);
+    e.play();
+    // a block whose clock reaches a new tick (the step loop) leaves the tempo
+    let mut ticked = Vec::new();
+    for _ in 0..12 {
+        let t = e.frame.seq.tick_pos();
+        e.frame.stack_word = Some(LOCK_WORD);
+        block_once(&mut e);
+        ticked.push(e.frame.seq.tick_pos() != t);
+    }
+    let want: Vec<_> = ticked
+        .iter()
+        .map(|&t| Some(if t { 130_000 } else { LOCK_WORD }))
+        .collect();
+    assert!(ticked.contains(&true) && ticked.contains(&false));
+    assert_eq!(*seen.borrow(), want);
+    // the compressor on channel 0 (enabled) writes its release factor before the PCF on
+    // channel 1
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    e.frame.devices.comp = Box::new(SlotProbe {
+        seen: Rc::new(RefCell::new(Vec::new())),
+        w: Some(0x3F7F_9724),
+    });
+    e.frame.devices.pcf = Box::new(SlotProbe {
+        seen: seen.clone(),
+        w: None,
+    });
+    e.frame.devices.mixer.live.comp_id = 2;
+    e.frame.devices.mixer.live.pcf_id = 2;
+    e.frame.mixer_update();
+    block_once(&mut e);
+    assert_eq!(*seen.borrow(), [Some(0x3F7F_9724)]);
+}
+
 #[test]
 fn songs_built_on_one_process_state_share_it() {
     let a = Devices::implemented(None);

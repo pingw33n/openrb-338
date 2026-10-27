@@ -241,7 +241,7 @@ fn a_stale_quotient_is_the_channel_s_stack_word() {
     p.process(&mut bus, &ctx(&t, 12 * 48));
     assert_eq!(p.step, 12);
     assert_ne!(p.trigger, e);
-    // without a stack word (a 303 channel) the last quotient stands: 12 % 16
+    // without a stack word (one the engine cannot know) the last quotient stands: 12 % 16
     p.live[WAVE] = 64;
     p.process(&mut bus, &ctx(&t, 3000));
     assert_eq!((p.quotient, p.step), (12, 12));
@@ -254,6 +254,26 @@ fn a_stale_quotient_is_the_channel_s_stack_word() {
         },
     );
     assert_eq!(p.step, 0x1002_8278 % 16);
+}
+
+#[test]
+fn the_block_leaves_its_quotient_on_the_stack() {
+    let t = Tables::new();
+    let mut p = Pcf::new();
+    let mut bus = [0.0; BLOCK];
+    // wave 30 (resolution 16) stores tick/48 at var_1C
+    p.live[WAVE] = 30;
+    p.process(&mut bus, &ctx(&t, 1000));
+    assert_eq!(p.stack_word(Some(7)), Some(20));
+    // wave 108 (resolution 0) leaves the slot as it was
+    p.live[WAVE] = 108;
+    p.process(&mut bus, &ctx(&t, 1000));
+    assert_eq!(p.stack_word(Some(7)), Some(7));
+    assert_eq!(p.stack_word(None), None);
+    // disabled, the block stores nothing
+    p.live[WAVE] = 30;
+    p.live[ENABLED] = 0;
+    assert_eq!(p.stack_word(Some(7)), Some(7));
 }
 
 #[test]

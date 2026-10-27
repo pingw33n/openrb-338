@@ -208,6 +208,18 @@ impl SongDevice for Delay {
 }
 
 impl SendEffect for Delay {
+    /// Enabled, the sample loop keeps its right-output pointer in a local at the channel slots'
+    /// `esp - 0x1C` (0x1000FA9A, `esp+0x10`; the delay is called from `esp0 - 0xC` of the mixer
+    /// block, 0x10013865), last the block's last right sample, `out_end`; disabled (0x1000FAD1)
+    /// it leaves `prev`.
+    fn stack_word(&self, out_end: Option<i32>, prev: Option<i32>) -> Option<i32> {
+        if self.live[ENABLED] != 0 {
+            out_end
+        } else {
+            prev
+        }
+    }
+
     /// Slot 14, 0x1000F940.
     fn process(&mut self, send: &mut Block, l: &mut Block, r: &mut Block, ctx: &BlockContext) {
         if self.live[ENABLED] == 0 {

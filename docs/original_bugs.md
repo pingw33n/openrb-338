@@ -145,22 +145,39 @@ status is a judgment call.
   records the first fault and the count; the `rb` CLI warns when the song may route the PCF.
 - **Home.** `docs/initial_investigation.md` section 8.2, `docs/export_state.md` section 13.
 
-### OB-7: a stale stack quotient for a PCF resolution other than 8, 16 or 32 [C on the 808 and 909 channels, G on the 303 channels]
+### OB-7: a stale stack quotient for a PCF resolution other than 8, 16 or 32 [C]
 
 - **What.** The tick quotient is `tick/24`, `/48` or `/96` by resolution 32, 16 or 8; any other
   resolution leaves the stack slot `var_1C` (entry `esp - 0x1C`) untouched, so the step uses
   whatever the last write left. The PCF's own quotient does not survive: between two PCF blocks
   other code at the same stack depth rewrites the slot. On the 808 and 909 channels it is the
   channel's audio slot, called from the same `esp` just before the inserts: its last call leaves
-  its return address there, 0x10028278 (808) or 0x1002B8B4 (909), in every block. These are
-  the values at the preferred base 0x10000000: a return address moves with the DLL's load
-  address (`ImageBase`), so the step does too; the corpus and rbhost assume the preferred base,
-  as for the pattern data (OB-5).
+  its return address there, 0x10028278 (808) or 0x1002B8B4 (909), in every block. The 303 audio
+  never writes the slot, so on the 303 channels it is the last of, in block order (task-072): the
+  render call's lock (0, what Windows' `WaitForSingleObject` leaves there on the test machine),
+  every 16th block the mixer update's compressor id, in a block that reaches a new tick the
+  clock's tempo (BPM*1000), an enabled compressor on channel 0 for the PCF on channel 1 (its
+  release factor 0x3F7F9724), and from the block before the 909's return address, an enabled
+  compressor on channel 3 (0x3F7F9724) or the enabled delay's last right-output pointer
+  (`0x100F012C + 4*(pos + 63)` for the block at frame `pos` of the render call). The addresses
+  are the values at the preferred base 0x10000000: they move with the DLL's load address
+  (`ImageBase`), so the step does too; the corpus and rbhost assume the preferred base, as for
+  the pattern data (OB-5). The lock's 0 depends on the Windows build.
 - **Where.** The PCF block 0x100166D0 (the `idiv` at 0x10016811 takes the quotient); the 808
   audio 0x100280B0 (`call sub_1001E4D0` at 0x10028273), the 909 audio 0x1002B6F0
   (`call sub_1001E9A0` at 0x1002B8AF), both from `esp0 - 0x18`; the mixer block calls them at
   0x10013580/0x1001359B and the inserts at 0x100135C3/D9/EF. The distortion (0x10010A50) does not
-  touch the slot.
+  touch the slot. On the 303 channels: the 303 audio 0x10023F10 and 0x100248C4 (no local or
+  call that reaches it); the try-lock `sub_10009450` at 0x10013A5E in `sub_100139E0`; the mixer
+  update 0x10012C3A; the clock 0x1001F3B3; the mono compressor 0x1000ECE9; the delay 0x1000FA9A
+  ([G] its partial block's pointer is `song+0x408`, a heap address: derived statically from
+  0x10013BAA, which renders that block into `song+0x20C+0x100c`; not observed).
+- **Measured.** rbhost with a thunk in the PCF's vtable slot 15 logging `[esp - 0x1C]` and a
+  hardware write watchpoint: the model matches all 66485 PCF blocks of the live test
+  `pcf_junk_wave_on_the_303_channels` and five export songs (PCF on channels 0 and 1, compressor
+  off, on the master, on channels 0 and 3, delay on and off, five tempos, both sound models).
+  The sessions use 1024- and 2048-frame calls, so no measured PCF block followed a partial block
+  with the delay on: the heap-address case above is static only.
 - **Trigger.** Waves 55..127 with a resolution byte other than 8/16/32 and a non-zero length
   (all 73 waves of 55..127 read such a resolution; 17 of them also have length 0, OB-6).
 - **Effect.** The step is the return address modulo the length: constant, so a wave with a
@@ -170,10 +187,16 @@ status is a judgment call.
   block and `+0x74` = 4 = 0x1002B8B4 % 16; a return from song mode to a panel-set wave 30 starts
   on step 4 without a trigger.
 - **Corpus.** `pcf_lp_wave64`, `pcf_bp_wave64` reach it but never trigger (all steps 0); the live
-  test `pcf_wave_after_returning_to_pattern_mode` (`crates/rb-player/tests/live_messages.rs`).
-- **rb.** `ChannelDevice::stack_word` (808, 909) passed to the PCF in `BlockContext::stack_word`;
-  on the 303 channels, whose audio does not write the slot (it then holds older stack contents,
-  e.g. the delay's or the sequencer's), `pcf.rs` keeps its last quotient, a [G] stand-in.
+  tests `pcf_wave_after_returning_to_pattern_mode` and `pcf_junk_wave_on_the_303_channels`
+  (wave 108, every step a velocity; `crates/rb-player/tests/live_messages.rs`).
+- **rb.** `Frame::stack_word`, the word at the slot's address, set by every writer in the
+  original's order (`Engine::render`: `LOCK_WORD`, `Frame::out_end`; `Frame::block`: the mixer
+  update, `Sequencer::tick`, `ChannelDevice::stack_word` of the 808 and 909,
+  `InsertEffect::stack_word` of the PCF and the compressor, `SendEffect::stack_word` of the
+  delay) and passed to the inserts in `BlockContext::stack_word`. After a partial block with the
+  delay on (a heap address) it is unknown and `pcf.rs` keeps its last quotient, a stand-in;
+  with a lock word other than the test machine's 0 (another Windows) rb follows the test
+  machine.
 - **Home.** `docs/initial_investigation.md` section 8.2.
 
 ### OB-8: the export buffer is never cleared, so a faulting chunk repeats the previous one [C for the allocation, G for the content]

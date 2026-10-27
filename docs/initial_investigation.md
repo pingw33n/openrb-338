@@ -1038,8 +1038,30 @@ every PCF song of the corpus exact:
   0x10013580/0x100135C3, and the distortion 0x10010A50 between them does not touch it; the PCF's
   own quotient does not survive to the next block; the words are return addresses, so they hold
   at the preferred base 0x10000000 and move with the DLL's load address, which the corpus and
-  rbhost assume, as for the pattern data); [G] on the 303 channels, whose audio does not write
-  it, older stack contents (the engine keeps its last quotient there);
+  rbhost assume, as for the pattern data). [C] task-072, on the 303 channels: their audio does
+  not write it (0x10023F10: `sub esp, 19Ch` after 4 pushes, locals at most at `esp+0x148` =
+  `esp0 - 0x64`, its calls 0x10013DA0 and the vintage 0x100248C4 from `esp0 - 0x1AC`/`- 0x1B0`),
+  so the slot (the mixer block's `esp - 0x24`) holds the last of these writers, in block order:
+  the render call's try-lock `sub_10009450` at 0x10013A5E (`WaitForSingleObject(h, 0)`; the
+  system code below it leaves 0 there, written last by ntdll, on the test machine's Windows 11,
+  before every call's first block); the mixer update at 0x10012C3A (`[data+4]`, the compressor
+  id; every 16th block); the clock `sub_1001EF20` at 0x1001F3B3 (`[globals+4]`, the tempo it
+  passes to the devices' step, in a block that reaches a new tick); per channel before the PCF's,
+  the 808/909 audio (above), an enabled PCF with `res` 8/16/32 (its `q`) and an enabled mono
+  compressor (0x1000ECE9: its `+0x58`, the release factor 0x3F7F9724, which only the ctor
+  writes); after the channels, the enabled delay 0x1000F940 (0x1000FA9A: its right-output
+  pointer, last `unk_100F012C + 4*(pos + 63)` for the block at frame `pos` of the call, or
+  [G] `song+0x408`, a heap address, for the partial block, which renders into the leftover
+  block: derived statically from 0x10013BAA, `song+0x20C+0x100c`, not observed).
+  The distortion, the stereo compressor 0x1000EDE0 (on the master, `esp0 - 0x18` there: locals
+  `esp+0x18`, `+0x20`) and the disabled paths do not write it. Measured with rbhost and a
+  vtable thunk logging `[esp - 0x1C]` at every PCF block, and a hardware write watchpoint on it:
+  the word equals this model in all 66485 PCF blocks of a live session (1024-frame calls) and
+  five exports (2048-frame chunks), PCF on channels 0 and 1, compressor off, on the master and
+  on channels 0 and 3, delay on and off, stopped and playing, five tempos, both sound models;
+  no measured PCF block followed a partial block with the delay on (1024- and 2048-frame
+  calls). Only the [G] heap address cannot be reproduced (the engine keeps its last quotient
+  there);
   smoother `s = (A*y1 + ((freq*512f)*(1/128f))*g) - b2*y2`, `+0x84 = +0x80` stored **before**
   `step = q % len` (`idiv` at 0x10016811), then `+0x80 = +0x6C = f32(s)`. A new step (`!= +0x74`)
   stores it, sets `dec = dword_100332D0[decay >> 3]` and reads `v = byte_100333F0[w*32 + step]`; a
@@ -1057,7 +1079,7 @@ every PCF song of the corpus exact:
   DLL checks nothing, so a wave of 55..127 reads the bytes after the 55 patterns (the steps end at
   0x10033AD0, the `CPCFInsert` vtable follows), all in the file up to 0x10034400. 73 of the
   waves 55..127 read a `res` other than 8, 16 or 32, so their quotient is the stale `var_1C`
-  (above: [C] on the 808 and 909 channels, [G] on the 303 channels). 17 of them, waves 55, 111
+  (above: [C] on every channel). 17 of them, waves 55, 111
   and 113..127, read `len` 0, and the `idiv` raises a divide
   error in every block (wave 112 reads `len` 120, so its steps reach 88 bytes past its own 32).
   Wave 64 reads `res` 0 (stale quotient) and `len` 16, whose 16 steps are all 0: no trigger

@@ -288,10 +288,12 @@ impl Sequencer {
     /// lastTick = t
     /// ```
     /// The tempo of the position step is the current song's (`sub_1001BCC0` without MIDI sync),
-    /// which is this song's whenever it renders.
-    pub fn tick(&mut self, devices: &mut Devices) {
+    /// which is this song's whenever it renders. Returns whether it reached the step loop,
+    /// whose tempo argument it stores in a local at 0x1001F3B3 (`esp+0x34`, the address of
+    /// [`crate::frame::Frame::stack_word`]).
+    pub fn tick(&mut self, devices: &mut Devices) -> bool {
         if !self.playing() {
-            return;
+            return false;
         }
         let tempo = self.globals.tempo as i32;
         // 0x1001EF51: fild tempo; fmul; fld pos; fadd st, st(1)
@@ -319,14 +321,17 @@ impl Sequencer {
                 // 0x1001F35F: pos > 767231
                 if self.pos > SONG_END {
                     self.song_end(devices);
-                    return;
+                    return false;
                 }
             }
             let sp = shuffled(t, self.globals.shuffle);
             let tempo = self.globals.tempo as i32;
             devices.for_each(|d| d.step(t, sp, tempo));
+            self.last_tick = t;
+            return true;
         }
         self.last_tick = t;
+        false
     }
 
     /// 0x1001F484: record off (`sub_10021194(0)`), the host is told (msg 35 `{2,0}` and

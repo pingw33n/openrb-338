@@ -276,6 +276,17 @@ impl SongDevice for Compressor {
 }
 
 impl InsertEffect for Compressor {
+    /// Slot 15 copies the release factor `+0x58` (only the ctor writes it, so always
+    /// [`RELEASE`]) to its local at the entry `esp - 0x1C` when enabled (0x1000ECE9,
+    /// `esp+0x8` after the 0x24-byte prologue), else leaves `prev`.
+    fn stack_word(&self, prev: Option<i32>) -> Option<i32> {
+        if self.live[ENABLED] != 0 {
+            Some(RELEASE.to_bits() as i32)
+        } else {
+            prev
+        }
+    }
+
     /// Slot 15, 0x1000EC70: the mono compressor on a channel bus.
     fn process(&mut self, bus: &mut Block, ctx: &BlockContext) {
         if self.begin(bus, ctx) {
