@@ -1,0 +1,21 @@
+{
+ "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+ "total_seconds": 192.14,
+ "songs": [
+  {
+   "song": "Metallicon City",
+   "app_sha256": "a63b8d9f2532c7b98953d684cc0110f2d6726a00a25b826d4c226a20f14d098d",
+   "N_t": 3509,
+   "offset_used": 48.0,
+   "candidates_tried": 200,
+   "matches": [
+    3504
+   ],
+   "all_n": false,
+   "seconds": 190.71,
+   "seconds_per_render": 1.902,
+   "workers": 2,
+   "N_minus_N_t": -5
+  }
+ ]
+}

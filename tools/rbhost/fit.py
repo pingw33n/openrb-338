@@ -263,10 +263,12 @@ def main(argv):
         jobs = []
         for i, song_path in enumerate(args.songs):
             song = rbs.read_song(song_path)
+            if args.mod:   # --mod applies to every song of the batch: each must name that mod
+                run.check_mod_name(args.mod, song.glob.mod_name)
             stem = os.path.splitext(os.path.basename(song_path))[0]
             rbhm = os.path.join(outdir, stem + ".rbhm")
             with open(rbhm, "wb") as f:
-                f.write(rbsmsg.message_file(song))
+                f.write(rbsmsg.message_file(song, args.mod_id if args.mod else None))
             name = "%s_%d.rbhm" % (args.tag, i)
             client.upload(rbhm, "%s/%s" % (run.REMOTE_DIR, name))
             side = os.path.join(args.app_dir, stem + ".json")
@@ -277,7 +279,8 @@ def main(argv):
         extra = []
         if args.mod:
             extra = ["--mod-msg", run.upload_mod(argparse.Namespace(
-                mod=args.mod, rb20ful=args.rb20ful, tag=args.tag, mod_id=args.mod_id), client, outdir)]
+                mod=args.mod, rb20ful=args.rb20ful, tag=args.tag, mod_id=args.mod_id), client, outdir,
+                rbs.read_song(args.songs[0]).glob.mod_name)]   # every song was checked above
         app_pids = rb_export.Machine(client, permits).rebirth_pids()
         if app_pids:
             raise Failure("Rebirth.exe is running on the machine (PIDs %s); rbhost runs without it" % app_pids)

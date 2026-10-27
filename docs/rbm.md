@@ -246,9 +246,17 @@ defects.
   own descrambler and AIFF reader on the records and table that `rbm.py` built; the table's
   derivation (section 5) is what the decoded JPEGs and songs confirm, since a wrong page would
   garble every payload past byte 1024.
-- Not checked dynamically: the table that `Rebirth.exe` itself computes (no memory dump of the app
-  was taken). An app export of a song with a mod, compared with an rbhost render (task-031,
-  task-033), would close that.
+- The table that `Rebirth.exe` itself computes was never dumped; task-031 closes that by output
+  (2026-10-27): the original app (File > Export Loop as Audio File, the song's mod found in its
+  own `Mods` folder) exported RSI (PBE2), Fonda Workout (MSM2) and Metallicon City (Metallicon+),
+  and `tools/rbhost/fit.py --all` with `--mod` and `rbm.py`'s key table (from the user's
+  RB20FUL.DAT) found an `N` at which rbhost's render has the same SHA-256 as the app's WAV, byte
+  for byte: N = 3536, 3536 and 3504 (the only match among 200 candidates each). A wrong table
+  would garble the samples, so the app's own table and `rbm.py`'s agree for these three mods
+  (Orbit2 has no shipped song). The references are in `tests/refs` (sets `mod` and `modapp`).
+  The fitted `N - N_t` is -28, -40 and -5, against +48 +- 15 for the mod-less songs (§13 of
+  `docs/export_state.md`): N sits below the timeline's estimate for these mod songs; not
+  investigated [G: 3 exports].
 
 ## 9. The `rbm` crate (task-032, 2026-10-27)
 

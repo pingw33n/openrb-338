@@ -63,6 +63,15 @@ class Shapes(unittest.TestCase):
         with self.assertRaises(ValueError):
             rbsmsg.message_file(song)
 
+    def test_override_gives_the_override_id(self):
+        song = rbs.read_song(os.path.join(DIAG, "303_accent0.rbs"))
+        song.glob.mod_name = "Orbit 2.0"
+        self.assertEqual(rbsmsg.mod_id(song, 412), 412)
+        self.assertEqual(rbsmsg.read_message_file(rbsmsg.message_file(song, 412))["mod"], 412)
+        song.glob.mod_name = rbsmsg.STANDARD_MOD
+        self.assertEqual(rbsmsg.mod_id(song), 411)       # no override: the built-in mod's id
+        self.assertEqual(rbsmsg.mod_id(song, 7), 7)
+
 
 class Payloads(unittest.TestCase):
     def setUp(self):

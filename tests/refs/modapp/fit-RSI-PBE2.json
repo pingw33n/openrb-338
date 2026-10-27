@@ -1,0 +1,21 @@
+{
+ "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+ "total_seconds": 21.27,
+ "songs": [
+  {
+   "song": "RSI",
+   "app_sha256": "b6d4304e2aa9583b4c6c29dc735da4c80707d9f441cf2bcfb50265e41bd93377",
+   "N_t": 3564,
+   "offset_used": 48.0,
+   "candidates_tried": 200,
+   "matches": [
+    3536
+   ],
+   "all_n": false,
+   "seconds": 20.4,
+   "seconds_per_render": 0.201,
+   "workers": 2,
+   "N_minus_N_t": -28
+  }
+ ]
+}

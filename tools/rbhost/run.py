@@ -88,12 +88,22 @@ def download_dir(client, remote, local):
         client.download(remote + "/" + name, os.path.join(local, name))
 
 
-def upload_mod(args, client, outdir):
+def check_mod_name(path, song_mod):
+    """Read the mod at PATH; refuse it when the name in its INFO chunk is not exactly SONG_MOD, the mod
+    the song names (None: no check). Returns the parsed mod."""
+    mod = rbm.read(path)
+    name = mod.info.name.decode("latin-1") if mod.info else None
+    if song_mod is not None and name != song_mod:
+        raise Failure("the song names the mod %r, %s is %r" % (song_mod, path, name))
+    return mod
+
+
+def upload_mod(args, client, outdir, song_mod=None):
     """Upload the mod to C:\\re\\rb\\rbhost\\<tag>.rbm and its message 55 (tools/rbm.py, with the key
     table from --rb20ful) next to it; return the message's remote path for rbhost --mod-msg."""
     if not args.rb20ful:
         raise Failure("--mod needs --rb20ful RB20FUL.DAT")
-    mod = rbm.read(args.mod)
+    mod = check_mod_name(args.mod, song_mod)
     msg = os.path.join(outdir, args.tag + ".rbmmsg")
     with open(msg, "wb") as f:
         f.write(rbm.mod_message(mod, rbm.key_table(mod, args.rb20ful), REMOTE_WIN + "\\%s.rbm" % args.tag,
@@ -129,7 +139,7 @@ def render(args, client, permits, outdir, exe_sha):
         stem = os.path.splitext(os.path.basename(song_path))[0]
         rbhm = os.path.join(outdir, stem + ".rbhm")
         with open(rbhm, "wb") as f:
-            f.write(rbsmsg.message_file(song))
+            f.write(rbsmsg.message_file(song, args.mod_id if args.mod else None))
         remote_rbhm = "%s/%s.rbhm" % (REMOTE_DIR, args.tag)
         client.upload(rbhm, remote_rbhm)
         frames = rb_export.export_frames(song)
@@ -144,7 +154,7 @@ def render(args, client, permits, outdir, exe_sha):
             with open(args.match, "rb") as f:
                 ref = f.read()[rb_export.WAV_HEADER:]
             ref_sha = rb_export.sha256_file(args.match)
-        mod_msg = upload_mod(args, client, outdir) if args.mod else None   # once per song, not per render
+        mod_msg = upload_mod(args, client, outdir, song.glob.mod_name) if args.mod else None   # once per song, not per render
         app_pids = None
         for name, idle in jobs:
             rargs = rbhost_options(args, idle)

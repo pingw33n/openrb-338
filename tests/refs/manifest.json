@@ -2114,5 +2114,215 @@
    "flac": "app/shuffle_303_g64.flac",
    "flac_sha256": "c91bc55932f3fdea8a5f8c3ca9c68c73e2852bf78262e99ace88066b0c81cff3"
   }
+ },
+ "mod": {
+  "Alloy Cowboy Resurrection": {
+   "song": "tests/songs/shipped/Alloy Cowboy Resurrection.rbs",
+   "song_sha256": "7dcf3563440921414a2fb818937fa9939097d92cb09311f6a8ad24237b8e158e",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "72aeb2aa8f96145545d0aa01064b5c8a1c581317b85b2570f063dbed4e150b08",
+   "frames": 14970789,
+   "mod": {
+    "name": "Pitch Black Edition 2.0",
+    "file": "PBE2.rbm",
+    "sha256": "797ea0f74d6fd2ee7d8e70ff0baf375a6d89686c64dfda47bc435006990ad951",
+    "size": 3623024,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "Clodhopper": {
+   "song": "tests/songs/shipped/Clodhopper.rbs",
+   "song_sha256": "f5ddc8b977fdd266d1278236238addeba3a56cf77c37bd805dde6805fa7df1c3",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "8b5f81cbea7d027cd1a4f934222f3f3afc2a9b1677acf6fe4d1c08645b4c7e97",
+   "frames": 9072000,
+   "mod": {
+    "name": "Massen's MSM 2.0",
+    "file": "MSM2.rbm",
+    "sha256": "aced273bbb6440449ed0dd14d9999a45305bd74d21dcf80c6b5ec5719c59fb40",
+    "size": 2183516,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "Fonda Workout": {
+   "song": "tests/songs/shipped/Fonda Workout.rbs",
+   "song_sha256": "687ac2bd2e887757e4dae98568f66ebedbe15c017457b489be3c41348228658b",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "59aefd7504478f7b98bdc8157c184db9236ffc5d86f6291d5b2d9694b2a316af",
+   "frames": 75600,
+   "mod": {
+    "name": "Massen's MSM 2.0",
+    "file": "MSM2.rbm",
+    "sha256": "aced273bbb6440449ed0dd14d9999a45305bd74d21dcf80c6b5ec5719c59fb40",
+    "size": 2183516,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "Groove It Up a 2nd Time!": {
+   "song": "tests/songs/shipped/Groove It Up a 2nd Time!.rbs",
+   "song_sha256": "7d9810881f9b6a0bffa004476f1cf27b59afa83a030e1b2031ba2753fdd61ea6",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "78b753b1ee8b01621f902545dda2431e2995354956f0f329773147fcada91577",
+   "frames": 20058387,
+   "mod": {
+    "name": "Massen's MSM 2.0",
+    "file": "MSM2.rbm",
+    "sha256": "aced273bbb6440449ed0dd14d9999a45305bd74d21dcf80c6b5ec5719c59fb40",
+    "size": 2183516,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "Metallicon City": {
+   "song": "tests/songs/shipped/Metallicon City.rbs",
+   "song_sha256": "9b4a891af8071650ccac325ded6bdc4a197753d04ccf1bdca5cfcbef3093def0",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "635f2f92b9de35270d74e4e03dc9f29c9e5f36ca0bee468bfb241b7d9a200cd0",
+   "frames": 22049999,
+   "mod": {
+    "name": "Metallicon+",
+    "file": "Metallicon.rbm",
+    "sha256": "ef68879dd40d6c3c3fd0745c9f89a7fa5784edbdc7af4a6bc3e7ac3a5962057e",
+    "size": 3532098,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "Mutilated Species II": {
+   "song": "tests/songs/shipped/Mutilated Species II.rbs",
+   "song_sha256": "16bc772d9ccfde4ee8e669948d7d344c9de81aa5c43e5fe603888def322a0ab2",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "f9a4c4196b6bd4de42a62f827f7c4a566fa46ab85fe611531128aa29575b1b3b",
+   "frames": 19897920,
+   "mod": {
+    "name": "Pitch Black Edition 2.0",
+    "file": "PBE2.rbm",
+    "sha256": "797ea0f74d6fd2ee7d8e70ff0baf375a6d89686c64dfda47bc435006990ad951",
+    "size": 3623024,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "RSI": {
+   "song": "tests/songs/shipped/RSI.rbs",
+   "song_sha256": "39e51a632fd6c43f99105f8dcbaf20caf67c4894f0a67522d56f8cefc6ac2154",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "75943a78cf9cd435661071b1873236453303dc0b2f015e4524f1bdb7344cae78",
+   "frames": 62258,
+   "mod": {
+    "name": "Pitch Black Edition 2.0",
+    "file": "PBE2.rbm",
+    "sha256": "797ea0f74d6fd2ee7d8e70ff0baf375a6d89686c64dfda47bc435006990ad951",
+    "size": 3623024,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "SuperNova": {
+   "song": "tests/songs/shipped/SuperNova.rbs",
+   "song_sha256": "dd78b19e10ea323550198eef4f780612ed935146e00b8179ce076f7ce501eb82",
+   "tool": "rbhost",
+   "tool_commit": "dc6467d",
+   "rbhost_sha256": "8140febd949d3a37e84b9d1af93896f6b661970cf7fcc4ec555c4e7cabcd2b91",
+   "idle_blocks": 9088,
+   "captured": "2026-10-27",
+   "wav_sha256": "2e0ee18f871bc76da228f089e7812ebd34b52eaf7a40d032421a9244e51c0606",
+   "frames": 15223561,
+   "mod": {
+    "name": "Massen's MSM 2.0",
+    "file": "MSM2.rbm",
+    "sha256": "aced273bbb6440449ed0dd14d9999a45305bd74d21dcf80c6b5ec5719c59fb40",
+    "size": 2183516,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  }
+ },
+ "modapp": {
+  "RSI": {
+   "song": "tests/songs/shipped/RSI.rbs",
+   "song_sha256": "39e51a632fd6c43f99105f8dcbaf20caf67c4894f0a67522d56f8cefc6ac2154",
+   "tool": "tools/rb_export.py (the original app, docs/export_state.md 11.5)",
+   "tool_commit": "dc6467d",
+   "idle_blocks": 3536,
+   "captured": "2026-10-27",
+   "wav_sha256": "b6d4304e2aa9583b4c6c29dc735da4c80707d9f441cf2bcfb50265e41bd93377",
+   "frames": 62258,
+   "mod": {
+    "name": "Pitch Black Edition 2.0",
+    "file": "PBE2.rbm",
+    "sha256": "797ea0f74d6fd2ee7d8e70ff0baf375a6d89686c64dfda47bc435006990ad951",
+    "size": 3623024,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "Fonda Workout": {
+   "song": "tests/songs/shipped/Fonda Workout.rbs",
+   "song_sha256": "687ac2bd2e887757e4dae98568f66ebedbe15c017457b489be3c41348228658b",
+   "tool": "tools/rb_export.py (the original app, docs/export_state.md 11.5)",
+   "tool_commit": "dc6467d",
+   "idle_blocks": 3536,
+   "captured": "2026-10-27",
+   "wav_sha256": "f38f2a297530b1b0e5176d8555de48b92148e332615ca9773a616104d06c8f45",
+   "frames": 75600,
+   "mod": {
+    "name": "Massen's MSM 2.0",
+    "file": "MSM2.rbm",
+    "sha256": "aced273bbb6440449ed0dd14d9999a45305bd74d21dcf80c6b5ec5719c59fb40",
+    "size": 2183516,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  },
+  "Metallicon City": {
+   "song": "tests/songs/shipped/Metallicon City.rbs",
+   "song_sha256": "9b4a891af8071650ccac325ded6bdc4a197753d04ccf1bdca5cfcbef3093def0",
+   "tool": "tools/rb_export.py (the original app, docs/export_state.md 11.5)",
+   "tool_commit": "dc6467d",
+   "idle_blocks": 3504,
+   "captured": "2026-10-27",
+   "wav_sha256": "a63b8d9f2532c7b98953d684cc0110f2d6726a00a25b826d4c226a20f14d098d",
+   "frames": 22049999,
+   "mod": {
+    "name": "Metallicon+",
+    "file": "Metallicon.rbm",
+    "sha256": "ef68879dd40d6c3c3fd0745c9f89a7fa5784edbdc7af4a6bc3e7ac3a5962057e",
+    "size": 3532098,
+    "id": 412
+   },
+   "tool_change": "task-031"
+  }
  }
 }

@@ -14,7 +14,8 @@ Message file (all integers little-endian unless noted):
     u32 loop end tick, u32 message count, then per message: u32 length, the bytes.
 The tempo and loop values are those of msg 36, which the engine reports to the export's queries.
 
-Only the built-in mod "Standard ReBirth" (id 411, exe sub_417AE9) is supported; mods are m-2.
+Only the built-in mod "Standard ReBirth" (id 411, exe sub_417AE9) is supported; a song naming another mod needs `mod_override`
+(run.py --mod).
 Stdlib only; the song model is tools/rbs.py.
 """
 import os
@@ -247,16 +248,20 @@ def load_messages(song):
     return msgs
 
 
-def mod_id(song):
+def mod_id(song, mod_override=None):
+    """The mod id of the message file: the built-in mod's, or MOD_OVERRIDE (the id of the mod loaded
+    with message 55, tools/rbhost/run.py --mod) for a song that names another mod."""
+    if mod_override is not None:
+        return mod_override
     if song.glob.mod_name != STANDARD_MOD:
         raise ValueError("mod %r: only %r is supported" % (song.glob.mod_name, STANDARD_MOD))
     return STANDARD_MOD_ID
 
 
-def message_file(song):
+def message_file(song, mod_override=None):
     msgs = load_messages(song)
     g = song.glob
-    out = [MAGIC, struct.pack("<IHIIII", VERSION, mod_id(song), g.tempo, g.loop_start, g.loop_end, len(msgs))]
+    out = [MAGIC, struct.pack("<IHIIII", VERSION, mod_id(song, mod_override), g.tempo, g.loop_start, g.loop_end, len(msgs))]
     for m in msgs:
         out.append(struct.pack("<I", len(m)) + m)
     return b"".join(out)
