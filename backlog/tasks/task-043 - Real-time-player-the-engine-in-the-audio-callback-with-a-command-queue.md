@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-complex'
 created_date: '2026-10-26 16:23'
+updated_date: '2026-10-27 03:46'
 labels:
   - engine
   - ui
@@ -29,3 +30,9 @@ The m-1 engine renders an export offline. The UI needs it live: a real-time play
 - [ ] #2 No locks or allocations happen in the audio callback (checked by a test or a debug allocator)
 - [ ] #3 A test shows the player's output equals the offline render for the same song and idle count
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-27, from task-050: the engine does not model the original's pending-song switch. msg 53 (sub_1001BDA4) over a playing song only stores the pending song (+0x170) and returns; the switch happens later via sub_1001C520 → sub_1001BE74 (stop old, slot 6, start new, each gated; see docs/export_state.md activation). rb's Engine::activate(ReplacesCurrent { current_playing: true }) is a no-op. A live player that loads a song while playing must model this switch (when sub_1001C520 runs is still [G]).
+<!-- SECTION:NOTES:END -->
