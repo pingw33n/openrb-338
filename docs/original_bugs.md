@@ -204,6 +204,25 @@ status is a judgment call.
 
 See OB-8 for the unclean buffer.
 
+## 4. Panel (Rebirth.exe)
+
+### OB-13: the 303 Note/Pause key and the drum AC key are VK_OEM_PLUS, not the documented `-` [C]
+
+- **What.** The key translation maps the virtual key VK_OEM_PLUS (0xBB) to the panel key code 28,
+  the code the TB-303 handler uses for Note/Pause and the drum tap handler for AC. VK_OEM_MINUS
+  (0xBD) has no code. The manual (pages 43, 225, 226) documents the `-` key.
+- **Where.** `sub_492312` (case 187 -> code 28); TB-303 `sub_43F673` (case 28 -> Note/Pause
+  button `+0x2E0`); TR-808 `sub_44311B` (case 0x1C -> AC).
+- **Trigger.** Program Synth from Keyboard on a US layout: `-` does nothing, `=` toggles the step's
+  rest. On a Swedish layout the VK_OEM_PLUS key is probably the key right of `0`, where the
+  manual's picture has it, which would mean the table was made on such a keyboard [G: not checked
+  on a Swedish layout].
+- **Effect.** UI only; no audio path.
+- **Corpus.** None (no song data involved).
+- **rb.** Not decided: task-054 (`Decide:` the UI's keyboard mapping); `docs/ui_spec.md`
+  section 10 has both facts.
+- **Home.** `docs/ui_spec.md` sections 10 and 13.
+
 ## Quirks that are not claimed as defects
 
 ### Q-1: the export's frame count is one frame short of an exact length [C]

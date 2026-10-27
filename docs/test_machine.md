@@ -286,3 +286,22 @@ it with `rcs exec`. rbhost takes neither the keyboard nor the screen, so the run
 permit of `redc-win-run`, not all of them. A render takes about 50 ms on the machine plus about 1 s
 of rcs traffic. Usage and options: `tools/rbhost/README.md`; what the DLL needs:
 `docs/export_state.md` section 12.
+
+## 10. Driving the panel with the mouse (task-041, 2026-10-27)
+
+- **The whole panel is visible after a fresh start**: the song window opens at the panel's full
+  size, 624 x 510 client pixels (`docs/ui_spec.md` section 1). On that day its top-left corner
+  was at screen (42, 108). `rcs screenshot --window <song title>` fails ("no visible window"):
+  the song window is an MDI child, not a top-level window. Take the full screen and crop; the
+  panel's position can be found by matching the transport's logo art.
+- **Mouse input works with screen coordinates** (`rcs input move:X,Y down move:... up`, no
+  `--window`), and the drags reach the knobs and faders as real drags (knob values measured
+  through a saved song). Click inside the control's frame, not its bitmap: a 2-frame button of a
+  35 px bitmap is 17 px wide (`docs/ui_spec.md` section 2).
+- **Alt as a modifier is unreliable** through `rcs input keydown:alt`: releasing Alt can open the
+  menu bar. Ctrl+Alt and Ctrl clicks worked.
+- **Saving**: Ctrl+S on an unsaved song opens `Save Song as:`; typing the full path and Enter
+  saves (16,840 bytes for the template song).
+- **Quitting a modified song with `taskkill /PID`** (no `/F`) shows a modal "Save changes before
+  close?" box with Save, Cancel and Don't Save; the app keeps running until a button is pressed.
+  Don't Save was at screen (774, 470) for the frame position above.
