@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 09:06'
+updated_date: '2026-10-27 04:58'
 labels:
   - rbm
   - cli
@@ -29,3 +30,9 @@ Use mods in the engine and the CLI: the song's GLOB mod name ("Standard ReBirth"
 - [ ] #1 rb render uses the song's mod by name from --mod-dir, --mod overrides it, and a missing mod behaves as described
 - [ ] #2 Every mod song of the corpus passes the golden suite
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-27, per task-053: the rb CLI takes --rb20ful PATH (and RB_RB20FUL, then a default location, documented in --help, the same search style as --rebirth-dll), and errors clearly when a song names a non-standard mod and no RB20FUL.DAT or .rbm is found.
+<!-- SECTION:NOTES:END -->
