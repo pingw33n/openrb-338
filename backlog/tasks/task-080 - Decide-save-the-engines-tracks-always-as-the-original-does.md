@@ -1,10 +1,11 @@
 ---
 id: TASK-080
 title: 'Decide: save the engine''s tracks always, as the original does'
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-27 16:28'
+updated_date: '2026-10-27 16:44'
 labels:
   - decision
   - ui
@@ -31,3 +32,9 @@ B. Always write the engine's tracks (rb_player::Player::tracks is already publis
 
 Recommendation: A for now (no visible difference in what plays; the byte-identity of unedited saves is a useful property and test), revisit if files saved by rb must equal the original's byte for byte.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by @pingw33n on 2026-10-27: option A, keep rb's rule. A save writes the song file's own track events unless recording changed them, then the engine's tracks (task-057); an unedited song saves back byte for byte. The original's always-the-engine's-tracks behavior (sub_437CFF reads them back with song msg 22) is not copied.
+<!-- SECTION:FINAL_SUMMARY:END -->
