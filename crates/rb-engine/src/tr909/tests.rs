@@ -1,6 +1,6 @@
 use super::*;
 use crate::process::DrumCounters;
-use crate::samples::{COUNT, FIRST_ID};
+use crate::samples::{COUNT, FIRST_ID, Retired};
 
 /// A sample set whose resource `id` holds `id - 900` frames of the value `id - 1000` (the 909
 /// kit's slot number), so every voice's sample can be told apart.
@@ -310,4 +310,32 @@ fn init_track_holds_the_ctor_defaults() {
             100, 100, 100, 32, 127, 100, 64, 100, 64, 64,
         ]
     );
+}
+
+/// Song msg 19 on the 909 (`sub_1002B8C0`): slot 6, then the table; the voices' samples and
+/// the old table go to `Retired`; the next trigger takes its sample from the new table.
+#[test]
+fn set_samples_silences_then_replaces_the_table() {
+    let mut p = rbs_defaults();
+    p[RS_LEVEL] = 100;
+    p[CP_LEVEL] = 100;
+    let mut d = device(p, &[row(&[(RS, 1), (CP, 1)]), row(&[(RS, 1)])]);
+    d.step(0, 0, 0);
+    assert_eq!(d.simple.iter().filter(|v| v.v.active).count(), 2);
+    let old = d.samples.clone();
+    // resource 1000 + n holds -(n + 1): minus the 909 slot number, minus 1
+    let new = Arc::new(SampleSet::from_samples(
+        (0..COUNT)
+            .map(|i| Sample::from_audio(&vec![-(i as i16) - 1; 300]))
+            .collect(),
+    ));
+    let mut r = Retired::default();
+    d.set_samples(&new, &mut r);
+    assert!(!d.simple.iter().any(|v| v.v.active));
+    assert!(Arc::ptr_eq(&d.samples, &new));
+    assert!(Arc::ptr_eq(r.sets().next().unwrap(), &old));
+    assert_eq!(r.samples().count(), 2);
+    d.step(48, 48, 0);
+    let rs = d.simple.iter().find(|v| v.v.active).unwrap();
+    assert_eq!(slot_of(&rs.v.sample), -(slot::RS as i16) - 1);
 }

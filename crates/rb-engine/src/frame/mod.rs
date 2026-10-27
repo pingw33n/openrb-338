@@ -25,7 +25,7 @@ mod tests;
 use std::sync::Arc;
 
 use crate::process::ProcessState;
-use crate::samples::SampleSet;
+use crate::samples::{Retired, SampleSet};
 use crate::seq::Sequencer;
 use crate::song;
 use crate::tables::Tables;
@@ -216,6 +216,11 @@ pub trait ChannelDevice: SongDevice {
     fn stack_word(&self) -> Option<i32> {
         None
     }
+    /// Not a slot: the drum machine's part of song msg 19, the mod change (`sub_10028290` for
+    /// the 808, `sub_1002B8C0` for the 909): slot 6, then the sample table (`+0x18D8`,
+    /// `+0x18DC`) becomes `samples`. The old table and the samples the voices held go into
+    /// `retired`. The 303s and the placeholders have no table and do nothing.
+    fn set_samples(&mut self, _samples: &Arc<SampleSet>, _retired: &mut Retired) {}
 }
 
 /// An insert effect: the distortion, the PCF or the compressor.
@@ -1175,6 +1180,19 @@ impl Engine {
     pub fn halt(&mut self) {
         let f = &mut self.frame;
         f.seq.halt(&mut f.devices);
+    }
+
+    /// Song msg 19 `{u16 mod}`, the mod change of the Mods menu (`docs/rbm.md` section 14):
+    /// the DLL defers it to its idle loop (top-level msg 78, 0x10011F67 → 0x1001D7B9 →
+    /// `sub_10012940`), finds the loaded mod by id (`sub_1001A860`) and runs `sub_10011D84`:
+    /// the song's mod pointer (`+0x174`), then the TR-808 (slot 6 and its table) and the
+    /// TR-909 (the same), in that order. Nothing else changes: no new song, the transport,
+    /// position and play state, the 303s, the effects, the mixer and the shared delay line
+    /// stay as they are. What the drum machines let go of goes into `retired`.
+    pub fn set_samples(&mut self, samples: &Arc<SampleSet>, retired: &mut Retired) {
+        let d = &mut self.frame.devices;
+        d.channels[2].set_samples(samples, retired);
+        d.channels[3].set_samples(samples, retired);
     }
 
     /// Song msg 35 `{0,m}` (`sub_1001FBE0`): song mode (1) or pattern mode (0).

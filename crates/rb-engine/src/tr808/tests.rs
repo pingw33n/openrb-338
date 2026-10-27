@@ -1,6 +1,6 @@
 use super::*;
 use crate::frame::BLOCK;
-use crate::samples::{COUNT, FIRST_ID};
+use crate::samples::{COUNT, FIRST_ID, Retired};
 use crate::song::Device;
 
 /// A sample set whose resource `id` holds `id - 900` frames of the value `id - 999` (the
@@ -299,4 +299,40 @@ fn init_track_holds_the_ctor_defaults() {
             100, 100, 0, 100, 100, 100, 100,
         ]
     );
+}
+
+/// A set whose resource `id` holds 300 frames of `999 - id` (minus the 808 slot number).
+fn negative_set() -> Arc<SampleSet> {
+    Arc::new(SampleSet::from_samples(
+        (0..COUNT)
+            .map(|i| Sample::from_audio(&vec![-(i as i16) - 1; 300]))
+            .collect(),
+    ))
+}
+
+/// Song msg 19 on the 808 (`sub_10028290`): slot 6, then the table; the voices' samples and
+/// the old table go to `Retired`; the next trigger takes its sample from the new table.
+#[test]
+fn set_samples_silences_then_replaces_the_table() {
+    let mut p = DEFAULT_PARAMS;
+    p[RS_LEVEL] = 100;
+    let mut d = device(p, &[row(&[BD, SD, LT, RS]), row(&[RS])]);
+    d.step(0, 0, 0);
+    assert!(d.simple[0].v.active && d.dual.v.active && d.pitched[0].v.active);
+    let old = d.samples.clone();
+    let new = negative_set();
+    let mut r = Retired::default();
+    d.set_samples(&new, &mut r);
+    assert!(!d.simple[0].v.active && !d.dual.v.active && !d.pitched[0].v.active);
+    assert!(!d.filter.iter().any(|f| f.v.active));
+    assert!(d.simple[0].v.sample.is_none() && d.dual.b.is_none());
+    assert!(Arc::ptr_eq(&d.samples, &new));
+    // the old table, and the samples of BD (one FILTER voice), SD (A and B), LT and RS/CL
+    assert_eq!(r.sets().count(), 1);
+    assert!(Arc::ptr_eq(r.sets().next().unwrap(), &old));
+    assert_eq!(r.samples().count(), 5);
+    // the next step: CL (selector 0) from the new table
+    d.step(48, 48, 0);
+    assert!(d.simple[0].v.active);
+    assert_eq!(slot_of(&d.simple[0].v.sample), -(slot::CL as i16));
 }

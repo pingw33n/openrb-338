@@ -41,8 +41,16 @@
 //! `sub_1001BE74`) halts the old song, runs its slot 6, starts the new one and makes it
 //! current. (The other path into `sub_1001BE74`, `sub_1001C524`, runs only on a MIDI Start
 //! message, out of scope.) Every command addresses the newest song, current or pending, as the
-//! original's panel addresses its own song. A mod is the sample set a song is built with (how
-//! the original changes the mod of an open song is task-056).
+//! original's panel addresses its own song.
+//!
+//! # Mods
+//!
+//! A song is built with the sample set of its mod. The Mods menu changes the mod of the open
+//! song in place, as song msg 19 does (`docs/rbm.md` section 14): [`Player::set_mod`] sends
+//! [`Command::Mod`], and the callback runs [`Engine::set_samples`] on the newest song: the 808's
+//! and the 909's voices are silenced (slot 6) and their sample table replaced; the song keeps
+//! playing from where it is, and nothing else changes. The old tables and the samples the
+//! voices held come back to the UI thread in the command's own box.
 //!
 //! The panel's own device messages (task-055, `docs/song_load.md` section 4.10) have their
 //! commands: the knobs and switches ([`Command::DeviceParam`], [`Command::MixerGlobal`],
@@ -59,7 +67,7 @@ use rb_engine::frame::edit::PatternShape;
 use rb_engine::frame::export::REALTIME_FRAMES;
 use rb_engine::frame::{Devices, Engine, MixerParams};
 use rb_engine::process::ProcessState;
-use rb_engine::samples::SampleSet;
+use rb_engine::samples::{Retired, SampleSet};
 use rb_engine::song::{Device, Song};
 use rb_engine::tables::Tables;
 
@@ -165,12 +173,32 @@ pub enum Command {
     },
     /// Make a song built by [`Player::build`] current (top-level msg 53).
     Load(Box<Engine>),
+    /// Song msg 19 `{u16 mod}`, the Mods menu's mod change (`sub_426FB3` → `sub_4259FF`;
+    /// [`Engine::set_samples`]). Built by [`Player::set_mod`]; the box goes back through the
+    /// garbage queue with what the change let go of.
+    Mod(Box<ModSwap>),
+}
+
+/// A mod change, built on the UI thread ([`Player::set_mod`]): the new sample set and the room
+/// for what the change lets go of.
+pub struct ModSwap {
+    samples: Arc<SampleSet>,
+    retired: Retired,
+}
+
+impl ModSwap {
+    /// What the change let go of: the old sample tables and the samples the voices held (empty
+    /// before it ran, or when the song's drum machines were silent placeholders).
+    pub fn retired(&self) -> &Retired {
+        &self.retired
+    }
 }
 
 /// What the callback hands back to the UI thread to be dropped there.
 pub enum Garbage {
     Engine(Box<Engine>),
     Bytes(Box<[u8]>),
+    Mod(Box<ModSwap>),
 }
 
 /// One device's live parameter block ([`rb_engine::frame::SongDevice::live`]), inline.
@@ -324,6 +352,14 @@ impl Player {
     pub fn load(&mut self, song: &Song, samples: Option<Arc<SampleSet>>) -> Result<(), Command> {
         let e = self.build(song, samples);
         self.send(Command::Load(e))
+    }
+
+    /// [`Command::Mod`] with `samples`: the newest song's drum machines take them (song msg 19).
+    pub fn set_mod(&mut self, samples: Arc<SampleSet>) -> Result<(), Command> {
+        self.send(Command::Mod(Box::new(ModSwap {
+            samples,
+            retired: Retired::default(),
+        })))
     }
 
     /// Queues a command (after dropping what the callback handed back). A full queue returns
@@ -524,6 +560,11 @@ impl Audio {
                 }
             }
             Command::Load(new) => self.activate(new),
+            Command::Mod(mut m) => {
+                let ModSwap { samples, retired } = &mut *m;
+                self.target().set_samples(samples, retired);
+                self.throw(Garbage::Mod(m));
+            }
         }
     }
 

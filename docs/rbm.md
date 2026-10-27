@@ -33,6 +33,8 @@ The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte w
 - `rb standard-mod` builds the built-in kit (ReBirth.dll's 46 AIFF resources) and panel
   (Rebirth.exe's JPEG resources) into such a mod, "ReBirth Standard Kit", from which rb takes the
   built-in samples (section 13).
+- The Mods menu changes the mod of an open song in place: song msg 19 `{id}`, which silences the
+  808's and the 909's voices and replaces their sample table; the song plays on (section 14).
 - Shown correct on the four shipped mods: every embedded file decodes (JPEGs, the demo songs, the
   AIFFs), and the samples the original DLL loads from them equal `rbm.py`'s (section 8). [C]
 
@@ -674,3 +676,99 @@ and `RB_REBIRTH_DLL` are gone from them, and `rb standard-mod` is the one comman
 (and the exe). The mod must be named "ReBirth Standard Kit", be recrypted and have all 46 slots
 (`Rbm::load_all_samples`). A third-party mod's missing slots and `--standard-kit` take the standard
 mod's samples. The corpus is unchanged: 164 of 164 EQUAL, 175 of 175 with `RB_MOD_DIR`.
+
+## 14. Changing the mod of an open song: the Mods menu (task-056, 2026-10-27)
+
+The Mods menu does not make a new song: it sends the song **message 19** `{u16 mod id}`, and the
+DLL swaps the sample table of the song's TR-808 and TR-909 in place, after silencing their
+voices. The song plays on. [C: read in the disassembly; not run on the test machine.]
+
+### 14.1 The exe [C]
+
+- **The commands.** "Select Mod..." (403) is handled by the song window's command handler
+  `sub_42C204` (`cmp ..., 193h` at 0x42C294 → `sub_41A482`, which runs the modal "Mod Selector"
+  dialog `CModSelectorWindow`: ctor `sub_419460`, vtable 0x4BB69C, command handler `sub_41A0C5`).
+  The menu's one item per mod is command `5000 + i` (0x1388..0x144F), handled by the main frame's
+  `sub_40C163` (0x40C427..0x40C489): the active song window (`sub_40B4A6`), the mod object
+  `sub_415578(i)`, then `sub_42D80D(window, mod)` and `dword_4DA788 = mod`.
+- **The dialog.** It lists the mods and preselects the one whose INFO name equals the song's
+  mod name (`strcmp` at 0x4199A2; the name from 0x4197A8..0x4197D0: the window's document, its
+  open mod `[doc+4]` (`unknown_libname_8` at 0x426F72 is `mov eax,[ecx+4]`), and `sub_41691A`,
+  which copies the open mod's name at `+1595`, `add eax, 63Bh` at 0x416924).
+  Selecting an entry already opens that mod (`sub_416300` at 0x41A16A, releasing the one opened
+  before, `sub_4165BE` at 0x41A13E) and plays its startup sound (`sub_426C67` at 0x41A180). OK
+  (0x41A2B6..0x41A305) calls `sub_42D80D(window, mod)`, stores `dword_4DA788` and closes the
+  dialog (`sub_47350E`).
+- **Opening a mod** (`sub_416300`): the mod object's word `+1088` counts its users; the first
+  one builds the open mod (`sub_41813E` for a file mod, `sub_417AE9` for "Standard ReBirth"),
+  whose `sub_41693C` sends top-level 55 (the samples, section 6) or 56 (id 411). Releasing
+  (`sub_4165BE`) decrements it and, for the last user, keeps the open mod in a one-deep cache
+  (`this+8`), deleting the one cached before (`sub_4162BC`); `sub_416300` takes a mod back from
+  that cache when its name matches (0x41634F). The file mod's destructor `sub_418A87` sends
+  top-level 57 `{id}` (`sub_416EF9`, called at 0x418EA9), which the DLL's `sub_1001DB60` answers by
+  freeing the mod (`sub_1001A6B0`) and clearing the startup-sound preview (`engine+0x428`).
+- **`sub_42D80D(window, mod)`**: when the song document's mod (`sub_426F83`, the open mod at
+  `doc+4`) is another one, it calls `sub_426FB3(doc, mod)`, then detaches the window from the
+  document (`sub_42D7F7(0)`), destroys it (`sub_47350E`) and builds a new song window for the
+  document (`sub_42DA72(doc, 0, rect)`, at the old window's place), which draws the panel with the
+  new mod's bitmaps (section 13.1). The new window's activation (`sub_40D163` at 0x42E5AE) sends
+  top-level 53 only when the document is not already the current one (0x40D178), and it is, so no
+  msg 53 is sent. The same mod again does nothing.
+- **`sub_426FB3(doc, mod)`**, in this order: the document is marked modified (`sub_42590B`);
+  `doc+4` = the new mod opened (`sub_416300`, which sends 55 or 56 if it was not open); **song
+  msg 19 `{u16 BE id}`** to the document's song (`sub_4259FF`: `sub_465F5E` packs the id,
+  `push 13h` at 0x425A31, sender `sub_40B1E3`, then the reply wait `sub_40ABE5`); the old mod
+  released (`sub_4165BE`); the startup sound (`sub_426C67`: top-level 58 when the mod's `+1088`
+  is 1 and "Play Mod Startup Sound" is on, docs/export_state.md section 8).
+- **The save writes the new name** [C for the source of the name]: the save `sub_4270F7` copies
+  the name of the document's open mod (`mov ecx,[ecx+4]; call sub_41691A`, 0x427522..0x42752B;
+  `sub_41691A` copies from `+1595`, 0x416924)
+  and the mod's INFO URLs (`+0x4A9`, `+1394`) and passes them to the RBS writer `sub_438025`
+  (called at 0x42758A), which writes the GLOB chunk (0x43817C). [G: the GLOB field the name
+  lands in was not traced through `sub_438025`'s copies.]
+
+### 14.2 The DLL [C]
+
+- The song-message handler `sub_10011ED0` (table `0x10151D6C + 4*msg`) takes msg 19 at
+  0x10011F67: it does not act, it forwards the message as top-level **78** `{slot, 19, id}` (the
+  bytes 'N', the song's slot `+0x178`, then the message, built at `byte_100DC7B0`) to the queue the
+  idle loop drains (`sub_1001D690`, which falls into `sub_1001D694`, the queue of msg 52).
+- The idle dispatcher `sub_1001D6D4` (table `0x101531F8 + 4*msg`) runs 78 at 0x1001D7B9:
+  `sub_10012940(song)` with the song `engine+0x14 + 4*slot`, whose case 19 (0x1001296D) reads the
+  BE id (`sub_10004060`), finds the loaded mod by id (`sub_1001A860`, the list `dword_10118280`;
+  none found: nothing happens) and calls **`sub_10011D84(song, mod)`**, then replies 39.
+- `sub_10011D84`, under the song's lock (`song+0x154`, `sub_10009480` / `sub_100094A0`): the
+  song's mod pointer `+0x174` = mod (0x10011DA6); the first device of type 3 in the song's list
+  (`+0x18C`, count `+0x1C4`; the 808) gets `sub_10028290(mod)`, the first of type 4 (the 909)
+  `sub_1002B8C0(mod)`.
+- `sub_10028290`: vtable slot 6 (`mov eax,[eax+18h]; call eax`, 0x10028297: the 808's slot 6,
+  every voice silenced), then `+0x18D8` = mod (0x100282A0), the 808's sample table. `sub_1002B8C0`
+  is the same for the 909: slot 6, then `+0x18DC` (0x1002B8D0).
+
+So: **no new song, no msg 52, no msg 53.** The transport, the position, the play flag, the
+patterns, the 303s, the effects, the mixer and the process globals (the shared delay line, which
+only the delay's slot 6 clears; the drum counters) are untouched; voices that sounded stop at once
+(no release), and the next step plays from the new samples. A song that plays keeps playing.
+
+[G, not traced] With more than one song window open, destroying the old window may let Windows
+activate another song's window (`sub_42D7BE` → msg 53 for that song) before the new window
+activates this one again (msg 53 back), which on a stopped song runs slot 6 on both songs
+(docs/export_state.md section 3). rb's UI has one song, so this is not modelled (task-075).
+
+### 14.3 rb
+
+`Engine::set_samples` (crates/rb-engine/src/frame/mod.rs) is `sub_10011D84`: the 808, then the
+909, each `ChannelDevice::set_samples` = slot 6, then the table. The real-time player sends it as
+`Command::Mod` (`Player::set_mod`, crates/rb-player), to the newest song as every command. The
+audio callback frees nothing: the command's box (`ModSwap`) carries a fixed-capacity
+`samples::Retired` that takes the old tables and the samples the silenced voices still held, and
+goes back to the UI thread through the garbage queue. The original's voices keep their old sample
+pointer; rb's voices let go of it, which changes no output (an inactive voice reads nothing, and
+every 808 and 909 trigger passes a sample). Tests: the engine's
+`set_samples_silences_then_replaces_the_table` (808, 909); the player's `mod_change.rs` (a mod
+set on a stopped new song equals building the song with it; on a playing song the tick runs on as
+without the change, the drums go silent at once with a silent kit and sound again with the
+built-in one); `no_alloc.rs` (the change twice while playing, the first kit freed on the UI side
+before the voices retrigger). The startup sound (msg 58, the preview player) is not modelled by
+rb-player (task-074). The check against the DLL itself (an rbhost `--live` session with a msg-19
+record) is task-076.

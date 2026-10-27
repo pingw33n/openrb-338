@@ -724,8 +724,8 @@ From the menu resource `SMNU` 128 (item id after `=`, string id after `?`) [C]:
 | File | Save As... | | 104 | file dialog "Save Song as:" |
 | File | Export Loop as Audio File... | | 108 | dialog "Export audio as:" (WAV or AIFF); disabled in pattern mode; renders the loop (`docs/initial_investigation.md` section 3) |
 | Edit | Vintage ReBirth Synth Sound | | 323 | toggles GLOB vintage (msg 35 id 21, handler 0x42C32E); check mark = the byte (0x42BF09; `docs/song_load.md` section 3) |
-| Mods | Select Mod... | Ctrl+M | 403 | the mod dialog: list of the mods in the Mods folder, OK applies to the song |
-| Mods | (one item per mod) | | | applies that mod to the song |
+| Mods | Select Mod... | Ctrl+M | 403 | the mod dialog "Mod Selector" (`sub_419460`): list of the mods in the Mods folder; selecting one loads it and plays its startup sound, OK applies it to the song (`docs/rbm.md` section 14) |
+| Mods | (one item per mod) | | 5000 + i | applies mod i to the active song (`sub_40C163`, 0x40C427; `docs/rbm.md` section 14) |
 
 The Mac menu variant has "Export Loop as AIFF File..." (106) and "... as Wave File..." (107);
 the PC build uses 108. Closing a modified song asks "Save changes before close?" with Save,

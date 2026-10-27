@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::drums::{Dual, Filter, Pitched, Simple};
 use crate::frame::{Block, BlockContext, ChannelDevice, SongDevice};
 use crate::process::ProcessState;
-use crate::samples::{Sample, SampleSet};
+use crate::samples::{Retired, Sample, SampleSet};
 use crate::seq::Track;
 use crate::tables::data::{
     TR808_DECAY, TR808_SD_NOISE_SAMPLE, TR808_SD_NOISE_SEQ, TR808_SD_SAMPLE, TR808_TONE,
@@ -501,6 +501,27 @@ impl SongDevice for Tr808 {
 impl ChannelDevice for Tr808 {
     fn playing_pattern(&self) -> Option<u8> {
         Some(self.cur_pattern)
+    }
+
+    /// `sub_10028290`: slot 6 (`[eax+18h]`, 0x10028297), then the table `+0x18D8`
+    /// (0x100282A0).
+    fn set_samples(&mut self, samples: &Arc<SampleSet>, retired: &mut Retired) {
+        self.silence();
+        for v in &mut self.simple {
+            v.retire(retired);
+        }
+        for v in &mut self.filter {
+            v.retire(retired);
+        }
+        for v in &mut self.pitched {
+            v.retire(retired);
+        }
+        self.dual.retire(retired);
+        let old = std::mem::replace(&mut self.samples, samples.clone());
+        if let Err(old) = retired.keep_set(old) {
+            // no room: dropped here (`Retired::SETS` has room for both drum machines)
+            drop(old);
+        }
     }
 
     fn patterns_mut(&mut self) -> Option<&mut [u8]> {

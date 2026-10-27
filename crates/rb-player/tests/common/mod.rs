@@ -43,6 +43,21 @@ pub fn samples() -> Arc<SampleSet> {
     .clone()
 }
 
+/// A kit of fresh samples (shared with nothing else): the built-in ones with `f` applied to
+/// every value.
+pub fn kit(f: impl Fn(i16) -> i16) -> Arc<SampleSet> {
+    use rb_engine::samples::{FIRST_ID, LAST_ID, Sample};
+    let s = samples();
+    Arc::new(SampleSet::from_samples(
+        (FIRST_ID..=LAST_ID)
+            .map(|id| {
+                let a: Vec<i16> = s.get(id).audio().iter().map(|&x| f(x)).collect();
+                Sample::from_audio(&a)
+            })
+            .collect(),
+    ))
+}
+
 /// Sends a command that must fit.
 pub fn send(p: &mut Player, c: Command) {
     assert!(p.send(c).is_ok(), "the command queue is full");

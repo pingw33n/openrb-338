@@ -19,7 +19,7 @@ mod tests;
 use std::sync::Arc;
 
 use crate::frame::Block;
-use crate::samples::Sample;
+use crate::samples::{Retired, Sample};
 
 /// `dbl_10153640`: 2^-15, the int16 scale folded into the gain (0x1001E2CD).
 const SCALE: f64 = f64::from_bits(0x3F00_0000_0000_0000);
@@ -73,6 +73,19 @@ impl Voice {
     pub fn silence(&mut self) {
         self.active = false;
         self.g = 0.0;
+    }
+
+    /// Not in the original: hands the sample of a silenced voice to `r` (a mod change, which
+    /// replaces the table the voices' samples come from). The original keeps the pointer; here
+    /// the voice keeps nothing, which changes no output: an inactive voice reads no sample, and
+    /// every trigger of the 808 and the 909 passes one.
+    pub fn retire(sample: &mut Option<Arc<Sample>>, r: &mut Retired) {
+        if let Some(s) = sample.take()
+            && let Err(s) = r.keep_sample(s)
+        {
+            // no room: keep it (it is freed when the voice is next triggered)
+            *sample = Some(s);
+        }
     }
 
     /// The block's multiplier: 1.0 while held (one hold block used), else `m`.
@@ -141,6 +154,11 @@ impl Simple {
         self.v.silence();
     }
 
+    /// [`Voice::retire`] on the voice's sample.
+    pub fn retire(&mut self, r: &mut Retired) {
+        Voice::retire(&mut self.v.sample, r);
+    }
+
     pub fn process(&mut self, out: &mut Block) {
         if !self.v.active {
             return;
@@ -187,6 +205,11 @@ impl Filter {
 
     pub fn silence(&mut self) {
         self.v.silence();
+    }
+
+    /// [`Voice::retire`] on the voice's sample.
+    pub fn retire(&mut self, r: &mut Retired) {
+        Voice::retire(&mut self.v.sample, r);
     }
 
     pub fn process(&mut self, out: &mut Block) {
@@ -260,6 +283,12 @@ impl Dual {
         self.v.silence();
     }
 
+    /// [`Voice::retire`] on both samples.
+    pub fn retire(&mut self, r: &mut Retired) {
+        Voice::retire(&mut self.v.sample, r);
+        Voice::retire(&mut self.b, r);
+    }
+
     pub fn process(&mut self, out: &mut Block) {
         if !self.v.active {
             return;
@@ -321,6 +350,11 @@ impl Pitched {
 
     pub fn silence(&mut self) {
         self.v.silence();
+    }
+
+    /// [`Voice::retire`] on the voice's sample.
+    pub fn retire(&mut self, r: &mut Retired) {
+        Voice::retire(&mut self.v.sample, r);
     }
 
     fn sample_at(d: &[i16], phase: u32) -> f64 {

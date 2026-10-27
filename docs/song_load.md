@@ -59,7 +59,8 @@ song, a MIDI file (0x425DE4); that import is section 12. The steps below are the
 1. `sub_4349C7` peeks HEAD and GLOB (version, mod name). No message.
 2. The mod named in GLOB is looked up (`sub_4155D1`, with a dialog if missing). The engine already
    knows it: `sub_41693C`, called from the mod constructors `sub_417AE9` (the built-in "Standard
-   ReBirth", id 411) and `sub_41813E` [G: when that one runs was not traced], registers a mod with
+   ReBirth", id 411) and `sub_41813E` (a file mod; both built by `sub_416300` for the mod's first
+   user, `docs/rbm.md` section 14.1 [C], task-056), registers a mod with
    top-level 56 {u16 id} or 55 (a file mod), after the start-up handshake 50
    (`docs/export_state.md` §12, task-011).
 3. Top-level **52** `{u16 mod}` (`sub_425A5D`, 0x425A94): the engine opens a new song and replies

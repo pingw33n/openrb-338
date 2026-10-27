@@ -5,7 +5,8 @@
 //! ([`Audio::render_i16`] and [`Output::fill`]) and sends every kind of command from the
 //! unarmed UI side in between: transport, song and pattern mode, loop, tempo, shuffle, Vintage,
 //! device controllers, the mixer's master and mutes, a data block, the panel's device and
-//! pattern messages (task-055, a whole pattern's box included), songs loaded over a stopped
+//! pattern messages (task-055, a whole pattern's box included), the mod change (task-056),
+//! songs loaded over a stopped
 //! song, over a playing one (pending) and switched to by Play, through the direct 44.1 kHz path
 //! and the resampled one, with stereo, mono and six-channel devices. The callback's songs play
 //! the drum machines, the 303s and every effect (the corpus song `full_mix`).
@@ -25,7 +26,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use common::{manifest, samples, send, song, tables};
+use common::{kit, manifest, samples, send, song, tables};
 use rb_engine::song::Device;
 use rb_player::output::Output;
 use rb_player::{Audio, CALL_FRAMES, Command, Player};
@@ -195,6 +196,17 @@ fn the_callback_does_not_allocate() {
         send(&mut p, c);
         events += render(&mut a, &mut buf, 3);
     }
+    // the Mods menu's change on the playing song (task-056), twice: the second lets go of a
+    // kit only the song held (its table and the samples its voices played), which would be
+    // freed if the callback dropped it
+    assert!(p.set_mod(kit(|x| x / 2)).is_ok());
+    events += render(&mut a, &mut buf, 20);
+    assert!(p.set_mod(kit(|x| x / 3)).is_ok());
+    events += render(&mut a, &mut buf, 1);
+    // the first kit is freed here, on the UI side; the voices that played it must not hold it
+    // when the next renders retrigger them
+    assert_eq!(p.collect_garbage(), 1);
+    events += render(&mut a, &mut buf, 40);
     // a song over the playing one: pending, then Play switches
     assert!(p.load(&other, Some(samples())).is_ok());
     events += render(&mut a, &mut buf, 3);

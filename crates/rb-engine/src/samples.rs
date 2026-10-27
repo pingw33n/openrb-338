@@ -189,3 +189,53 @@ impl SampleSet {
         self.get(id_909(i))
     }
 }
+
+/// What a mod change ([`crate::frame::Engine::set_samples`]) lets go of: the drum machines' old
+/// sample tables and the samples their silenced voices still held. It has room for all of them
+/// up front, so that the change frees nothing where it runs (the real-time player's audio
+/// callback); its owner drops it elsewhere.
+#[derive(Debug, Default)]
+pub struct Retired {
+    sets: [Option<Arc<SampleSet>>; Retired::SETS],
+    samples: [Option<Arc<Sample>>; Retired::SAMPLES],
+}
+
+impl Retired {
+    /// Room for the old tables: the TR-808's and the TR-909's.
+    pub const SETS: usize = 2;
+    /// Room for the voices' samples: 13 per drum machine (the 808's 5 SIMPLE, 3 FILTER,
+    /// 3 PITCHED and the DUAL's two; the 909's 4, 2, 5 and two), with room to spare.
+    pub const SAMPLES: usize = 32;
+
+    /// Keeps `s`, or hands it back when full.
+    pub fn keep_set(&mut self, s: Arc<SampleSet>) -> Result<(), Arc<SampleSet>> {
+        match self.sets.iter_mut().find(|x| x.is_none()) {
+            Some(slot) => {
+                *slot = Some(s);
+                Ok(())
+            }
+            None => Err(s),
+        }
+    }
+
+    /// Keeps `s`, or hands it back when full.
+    pub fn keep_sample(&mut self, s: Arc<Sample>) -> Result<(), Arc<Sample>> {
+        match self.samples.iter_mut().find(|x| x.is_none()) {
+            Some(slot) => {
+                *slot = Some(s);
+                Ok(())
+            }
+            None => Err(s),
+        }
+    }
+
+    /// The tables kept.
+    pub fn sets(&self) -> impl Iterator<Item = &Arc<SampleSet>> {
+        self.sets.iter().flatten()
+    }
+
+    /// The samples kept.
+    pub fn samples(&self) -> impl Iterator<Item = &Arc<Sample>> {
+        self.samples.iter().flatten()
+    }
+}
