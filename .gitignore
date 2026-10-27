@@ -20,3 +20,7 @@
 
 # Python bytecode caches
 __pycache__/
+
+# Disassembly listings of the original (llvm-objdump output), local only
+/text.s
+*.asm
