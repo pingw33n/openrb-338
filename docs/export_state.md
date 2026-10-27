@@ -215,14 +215,28 @@ set it starts the new song (0x1001BEEC, `sub_1001F7E0`, an entry that loads its 
 into the play body `sub_1001F7E4`) and calls `sub_1001BE14(new, 1)`; with bh clear it only sets
 `transport+0x151` = 1 (0x1001BF17). If `transport+0x15C` != 0x2E it always starts the new song
 (0x1001BF23) and calls `sub_1001BE14(new, 1)`. Every path makes the new song current at 0x1001BF07.
-What `transport+0x15C` == 0x2E, `sub_1001BE14` and `transport+0x160` mean, and when `sub_1001C520`
-runs, are not traced [G]. This is the on-the-fly song switch while playing, not a defect. In the
-corpus the replaced song (rbhost's untitled song, the app's "Untitled song") is never played, so the
-refill is always taken; `Engine::activate` takes the flag as
-`Activation::ReplacesCurrent { current_playing }`, `false` for the corpus, and does nothing when it
-is `true`. **rb does not model the pending-song switch**: `current_playing = true` is a no-op that
-leaves the new song not current, so a future live player must model `sub_1001C520` and
-`sub_1001BE74` itself. Otherwise the old song's devices get slot 6 (`sub_10013D40`:
+**When the switch runs [C] (task-043).** `sub_1001C520` is an unreferenced 4-byte prologue,
+`mov eax, [esp+4]` (`8B 44 24 04`), that falls through into `sub_1001C524` (the code above);
+nothing calls or jumps to 0x1001C520. The only caller of `sub_1001C524` is `EngineHandleMIDI` (0x1001B230) at 0x1001B2C3, the case of
+status byte 0xFA, **MIDI Start** (the table `stru_101528C8 + 4*status`, entries at 0x10152C90: 0xF2
+Song Position → `sub_1001C5C4`, 0xF8 clock → `sub_1001C614`, 0xFA Start → `sub_1001C524`, 0xFB
+Continue → `sub_1001C574`, 0xFC Stop → `sub_1001E0B0`); it also tests `transport+0x160` first
+(0x1001C52A). Without MIDI (out of rb's scope) it never runs. The other caller of `sub_1001BE74`
+is `sub_1001BF50` (0x1001BF5D), **play**, called from the song-message handler `sub_10011ED0`
+at 0x1001259D (song msg 35 `{1,1}`) and at 0x10012711 (msg 36 with its play byte, globals byte
+1, set), with the song the message is addressed to.
+So a song activated over a playing one stays pending until Play is sent to it (the exe sends song
+messages to its window's song); then the old song is halted, gets slot 6, and the new one starts
+and becomes current. With `transport+0x15C` == 0x2E and the old song stopped, play would only set
+`+0x151` and start nothing (0x1001BF17), so ordinary play implies `+0x15C` != 0x2E [G: what the
+value means, and `sub_1001BE14`, are not traced]. This is the on-the-fly song switch while
+playing, not a defect. In the corpus the replaced song (rbhost's untitled song, the app's
+"Untitled song") is never played, so the refill is always taken; `Engine::activate` takes the flag
+as `Activation::ReplacesCurrent { current_playing }`, `false` for the corpus, and does nothing when
+it is `true`. The real-time player (`crates/rb-player`, task-043) models the switch itself: a song
+loaded over a playing one is pending (not rendered, but every command goes to it), and its Play
+halts the old song, runs slot 6 on it, plays the new one and makes it current. Otherwise the old
+song's devices get slot 6 (`sub_10013D40`:
 303 note-off, drum voices silenced, **the global delay buffer cleared**, §6) and `sub_1001BD24` makes
 the new song current. [C] (task-011) When no song is current, slot 6 is called on the **new** song
 instead (0x1001BDF3), so its 303s get the note-off release constants (`+0xCC8`, `+0xCCC`) before
@@ -506,7 +520,8 @@ Exporting twice in one process is worse: the second export starts after the firs
 - [G] The MME worker object `sub_48D6EA` (thread or timer) and whether a refill can overlap the first
   export call.
 - [C] The port's ring layout (§2.7) and the `_SEMA` object type: traced for task-011.
-- [G] The pending song switch while playing (`transport+0x170`).
+- [C] The pending song switch while playing (`transport+0x170`): §3, task-043 (Play on the
+  pending song, or MIDI Start). [G] `transport+0x15C`, `+0x160`, `+0x151` and `sub_1001BE14`.
 - [G] Field-level reset audit of the 808/909 devices and distortion constructors. [C] The PCF and
   the compressor: task-027 (§7.4).
 - [G] The startup sample of the standard mod and its length (it did not reach any export, §11.4).

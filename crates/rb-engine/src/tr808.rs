@@ -345,6 +345,10 @@ impl Tr808 {
 }
 
 impl SongDevice for Tr808 {
+    fn live(&self) -> &[u8] {
+        &self.live
+    }
+
     /// Slot 1, 0x10027690.
     fn step(&mut self, tick: i32, shuffled: i32, _tempo: i32) {
         let pat = self.cur_pattern;
@@ -485,6 +489,10 @@ impl SongDevice for Tr808 {
 }
 
 impl ChannelDevice for Tr808 {
+    fn playing_pattern(&self) -> Option<u8> {
+        Some(self.cur_pattern)
+    }
+
     /// Slot 14, 0x100280B0: the bus is zeroed, then the voices add in this order: BD A, BD B,
     /// SD, LT, MT, HT, RS/CL, CP/MA, CB, OH, CH, CY (every per-instrument output is null in the
     /// export, so all go to bus 0).

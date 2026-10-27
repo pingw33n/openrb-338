@@ -153,6 +153,10 @@ impl Delay {
 }
 
 impl SongDevice for Delay {
+    fn live(&self) -> &[u8] {
+        &self.live
+    }
+
     /// Slot 5, 0x1000F4F0: slot 6.
     fn reset(&mut self) {
         self.silence();
@@ -206,12 +210,11 @@ impl SongDevice for Delay {
 impl SendEffect for Delay {
     /// Slot 14, 0x1000F940.
     fn process(&mut self, send: &mut Block, l: &mut Block, r: &mut Block, ctx: &BlockContext) {
-        let process = self.process.clone();
-        let mut line = process.lock_delay();
         if self.live[ENABLED] == 0 {
             // 0x1000FAD1: the line refilled once (while the gate is clear), the send bus
             // refilled, the meter byte and the peak reset; nothing reaches the master
-            if !line.gate {
+            let line = self.process.delay();
+            if !line.gate() {
                 line.refill();
             }
             send.fill(GUARD);
@@ -219,8 +222,8 @@ impl SendEffect for Delay {
             self.peak = GUARD;
             return;
         }
-        // 0x1000F95F
-        line.gate = false;
+        // 0x1000F95F (the update below touches no cell of the line)
+        self.process.delay().set_gate(false);
         if self.counter & 15 == 0 {
             self.param_update(ctx);
         }
@@ -235,17 +238,17 @@ impl SendEffect for Delay {
         let gr = smooth(self.gain[1], self.target[1]);
         self.gain = [st(gl), st(gr)];
         let fb = self.feedback as f64;
-        let buf = &mut line.buf;
+        let buf = self.process.delay();
         let mut rd = self.write.wrapping_sub(self.length) & DELAY_MASK;
         let mut w = self.write;
         // 0x1000FA34: per sample, the read before the write (they meet when the length is 0)
         for i in 0..BLOCK {
-            let x = buf[rd as usize] as f64;
+            let x = buf.get(rd) as f64;
             l[i] = st(x * gl + l[i] as f64);
             r[i] = st(r[i] as f64 + x * gr);
             let s = send[i] as f64;
             send[i] = GUARD;
-            buf[w as usize] = st(x * fb + s);
+            buf.set(w, st(x * fb + s));
             rd = (rd + 1) & DELAY_MASK;
             w = (w + 1) & DELAY_MASK;
         }

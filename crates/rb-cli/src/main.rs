@@ -1,5 +1,6 @@
-//! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), and compares
-//! renders with their references (`rb compare`).
+//! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), compares renders
+//! with their references (`rb compare`), and plays a song through the audio output with the
+//! real-time player (`rb play`).
 //!
 //! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable)
 //! or, for `compare`, a song differs from its reference, 2 a usage error (bad arguments,
@@ -80,6 +81,34 @@ enum Cmd {
         #[arg(long)]
         standard_kit: bool,
     },
+    /// Play a song through the default audio output device with the real-time player, for
+    /// listening (no UI): from its song position (or --bar) until the song stops (or Ctrl+C).
+    /// A song in pattern mode plays its patterns until --seconds.
+    Play {
+        /// The song, an .rbs file.
+        input: PathBuf,
+        /// Start at this bar, counted from 0 as in --range.
+        #[arg(long, value_name = "N")]
+        bar: Option<u32>,
+        /// Stop after this many seconds.
+        #[arg(long, value_name = "S")]
+        seconds: Option<f64>,
+        /// The ReBirth.dll with the built-in drum samples, as in render.
+        #[arg(long, value_name = "PATH")]
+        rebirth_dll: Option<PathBuf>,
+        /// The folder of .rbm mods, as in render.
+        #[arg(long, value_name = "DIR")]
+        mod_dir: Option<PathBuf>,
+        /// Use this .rbm mod whatever mod the song names.
+        #[arg(long = "mod", value_name = "FILE")]
+        mod_file: Option<PathBuf>,
+        /// The CD's RB20FUL.DAT, as in render.
+        #[arg(long, value_name = "PATH")]
+        rb20ful: Option<PathBuf>,
+        /// When the song's mod is not found, play with the built-in kit, as in render.
+        #[arg(long)]
+        standard_kit: bool,
+    },
     /// Render songs and compare each with its reference, byte for byte as a WAV: prints EQUAL
     /// or the first difference (frame, time, bar, channel, both values) per song, and exits 1
     /// when any song differs. Either `SONG --reference REF` or `--manifest PATH [NAME...]`.
@@ -154,6 +183,27 @@ fn main() -> ExitCode {
             quality,
             range.as_deref(),
             idle_blocks,
+            rebirth_dll.as_deref(),
+            ModOpts {
+                mod_file,
+                mod_dir,
+                rb20ful,
+                standard_kit,
+            },
+        ),
+        Cmd::Play {
+            input,
+            bar,
+            seconds,
+            rebirth_dll,
+            mod_dir,
+            mod_file,
+            rb20ful,
+            standard_kit,
+        } => play(
+            &input,
+            bar,
+            seconds,
             rebirth_dll.as_deref(),
             ModOpts {
                 mod_file,
@@ -384,6 +434,78 @@ fn render(
     Ok(())
 }
 
+/// `rb play`: the song in the real-time player (`rb-player`) on the default output device.
+fn play(
+    input: &Path,
+    bar: Option<u32>,
+    seconds: Option<f64>,
+    rebirth_dll: Option<&Path>,
+    mods: ModOpts,
+) -> Result<(), Fail> {
+    use rb_player::{Command, Player};
+    if let Some(s) = seconds
+        && (s.is_nan() || s <= 0.0)
+    {
+        return Err(fail(
+            2,
+            format!("--seconds {s}: expected a positive number"),
+        ));
+    }
+    if let Some(b) = bar
+        && b.saturating_mul(TICKS_PER_BAR) >= MAX_TICK
+    {
+        return Err(fail(2, format!("--bar {b}: past the last bar")));
+    }
+    let song = load_song(input)?;
+    let label = input.display().to_string();
+    let mut r = Renderer::new(rebirth_dll, mods);
+    let samples = r.samples(&label, &song)?;
+    let (mut player, audio) = Player::new(r.tables.clone(), samples.clone());
+    let queue = |_| fail(1, "the player's command queue is full");
+    player.load(&song, samples).map_err(queue)?;
+    if let Some(b) = bar {
+        player
+            .send(Command::Locate(b * TICKS_PER_BAR))
+            .map_err(queue)?;
+    }
+    player.send(Command::Play).map_err(queue)?;
+    let stream =
+        rb_player::output::start(audio).map_err(|e| fail(1, format!("audio output: {e}")))?;
+    eprintln!(
+        "rb: playing {label} on {} ({} Hz{}, {} channels, {}); Ctrl+C stops",
+        stream.device,
+        stream.config.sample_rate,
+        if stream.resampled {
+            ", resampled from 44100"
+        } else {
+            ""
+        },
+        stream.config.channels,
+        stream.format
+    );
+    let start = std::time::Instant::now();
+    let mut started = false;
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        player.collect_garbage();
+        if stream.failed() {
+            eprintln!();
+            return Err(fail(1, "the audio output stopped with an error"));
+        }
+        let s = *player.snapshot();
+        started |= s.playing;
+        if s.song_mode {
+            eprint!("\rbar {:4}", s.tick / TICKS_PER_BAR as i32 + 1);
+        }
+        if (started && !s.playing) || seconds.is_some_and(|t| start.elapsed().as_secs_f64() >= t) {
+            break;
+        }
+    }
+    eprintln!();
+    drop(stream);
+    Ok(())
+}
+
 /// Reads and converts an `.rbs` song.
 fn load_song(input: &Path) -> Result<Song, Fail> {
     let data = std::fs::read(input)
@@ -452,6 +574,24 @@ impl Renderer {
     /// The export of `song` after `idle_blocks` idle blocks: interleaved int16 stereo.
     /// `label` names the song in a warning.
     fn render(&mut self, label: &str, song: &Song, idle_blocks: u32) -> Result<Vec<i16>, Fail> {
+        let samples = self.samples(label, song)?;
+        let mut engine = Engine::new(self.tables.clone(), Devices::implemented(samples));
+        let samples = export::export_song(&mut engine, song, idle_blocks);
+        // A render call that faults in the original (the PCF's divide by zero) writes nothing;
+        // the output is what the original writes, but say why it is silent or repeats itself.
+        if let Some(f) = engine.fault() {
+            eprintln!(
+                "rb: warning: {label}: the original produces silence here: {}; {} render calls \
+                 faulted, the first in block {}, and each left its output unwritten",
+                f.first, f.calls, f.block
+            );
+        }
+        Ok(samples)
+    }
+
+    /// The drum samples `song` renders with: its mod's on top of the built-in kit, or the
+    /// built-in kit, or none when no drum machine plays.
+    fn samples(&mut self, label: &str, song: &Song) -> Result<Option<Arc<SampleSet>>, Fail> {
         // The mod is resolved for every song, so that a missing one is an error even when no
         // drum machine plays (and then needs no key file: nothing of it is read).
         let kit = mods::resolve(&self.mods, label, &song.mod_name)?;
@@ -488,17 +628,6 @@ impl Renderer {
                 }
             }
         };
-        let mut engine = Engine::new(self.tables.clone(), Devices::implemented(samples));
-        let samples = export::export_song(&mut engine, song, idle_blocks);
-        // A render call that faults in the original (the PCF's divide by zero) writes nothing;
-        // the output is what the original writes, but say why it is silent or repeats itself.
-        if let Some(f) = engine.fault() {
-            eprintln!(
-                "rb: warning: {label}: the original produces silence here: {}; {} render calls \
-                 faulted, the first in block {}, and each left its output unwritten",
-                f.first, f.calls, f.block
-            );
-        }
         Ok(samples)
     }
 }

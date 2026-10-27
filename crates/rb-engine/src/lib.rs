@@ -32,5 +32,7 @@ pub mod seq;
 pub mod song;
 pub mod tables;
 pub mod tb303;
+#[cfg(test)]
+mod test_cell;
 pub mod tr808;
 pub mod tr909;

@@ -136,7 +136,7 @@ and applies each field (0x100126B2).
 |---|---|---|---|
 | 0 | GLOB[0] | 0 pattern / 1 song mode | `sub_1001FBE0` (id 0) |
 | 1 | — | 0 | play/stop: 0 → `sub_1001E100` stop (id 1) |
-| 2 | — | 0 | `sub_10021190`, a thunk to `0x10021194` (id 2): record (task-022) |
+| 2 | — | 0 | `sub_10021190` (called at 0x100125B6 and 0x10012724), a 4-byte prologue `mov eax, [esp+4]` that falls through into `0x10021194` (id 2): record (task-022) |
 | 3 | GLOB[1] | loop on | `sub_1001C0A0` (id 3) |
 | 4..7 | GLOB[2..5] | tempo, BPM×1000 | `sub_1001BFC0` (id 4) |
 | 8..11 | — | 0 | locate to this tick, `sub_1001BF70` (id 8) |
@@ -378,6 +378,35 @@ rb: `MixerParams::default`, `tb303::DEFAULT_PARAMS`, `tr808::DEFAULT_PARAMS`,
 hold these values, and every device's `SongDevice::init_track` models its slot 8; the mixer's
 (0x100160F0) was missing until task-034 (`frame::tests::constructor_tracks_hold_the_defaults`,
 `song_mode_chase_restores_the_mixer_ctor_values`).
+
+### 4.10 The panel's live device messages, as far as read (task-043)
+
+Besides the data block, each device's host-message handler (slot 10) takes the panel's live
+changes. Read so far (the rest, and the exe's senders: task-055):
+
+- **TB-303**, `sub_100256E0`, jump table `flt_10153BD8 + 4*sub` (subs 31..46, entries from
+  0x10153C54) [C]. Sub 39 (0x10025CB0) is the data block. Sub 40 `{ctrl, v}` (0x10025CFC): for
+  ctrl 0..8 it stores the live byte `+0xC7C + ctrl` and calls `sub_10012BC0` → `sub_10021340`,
+  the record hook, which acts only with globals byte 0 (song mode) and byte 2 (record) set: it
+  sets the track's hold byte `+4 + ctrl` and inserts the event (`sub_10014750`); ctrl 9 stores
+  nothing, ctrl 10 stores `+0xC86`; every ctrl then clears its changed flag `+0xC88 + ctrl`. So
+  with record off, sub 40 is slot 11 (0x10026180) for ctrls 0..8. Sub 45 `{pattern, step, field,
+  v}` (0x10025FC4, field 0..5): the byte `+0x3E + 98*pattern + 6*step + field`, i.e. a step byte
+  of the pattern block of §4.6. Sub 42 `{pattern, 0|1, v}` (0x10025F25): the pattern's byte
+  `+0x3C` or `+0x3D + 98*pattern`. Subs 43, 44 and 46 (`sub_100191E0`, `sub_10018DC0`,
+  `sub_10019B00`) not read.
+- **Mixer**, `sub_10015520`, table at `0x10151ECC + 4*sub` (subs 137..148, entries from
+  0x101520F0) [C]. Sub 143 (0x1001588F) is the data block; sub 144 (0x100158E7) puts a block
+  into the pattern copy `+0x58` only; sub 145 `{id, v}` (0x10015900): id 0 the live master
+  `+0x30` (0x1001592C, no record hook), 1 the compressor id `+0x34` and 2 the PCF id `+0x38`
+  (each clears a changed flag, `+0x81` or `+0x82`, and calls the record hook with controller 1
+  or 2), 3 and 4 nothing; sub 147 `{c, k, v}` (0x100159DB): k 0 the live enabled byte
+  `+0x40 + 6c` (0x10015A1F, no record hook: the mute is not automatable), k 1..4 the live level,
+  pan, send and dist `+0x41..+0x44 + 6c` with the record hook on controller `5 + 6c + k`.
+
+rb: `Engine::set_param` (slot 11) stands for the controller messages with record off,
+`MixerDevice::set_master` and `MixerDevice::set_enabled` for sub 145 id 0 and sub 147 field 0;
+`rb_player::Command` sends them.
 
 ## 5. Msg 37: track events [C]
 

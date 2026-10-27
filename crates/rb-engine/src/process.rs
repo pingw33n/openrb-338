@@ -20,11 +20,19 @@
 //! The state is one handle per [`crate::frame::Engine`] (made by its `Devices`), not a true
 //! process global: a second engine in the same OS process starts at zero, unlike the original,
 //! where every song of the process shares the DLL's globals. To carry them from one engine to
-//! the next, copy [`ProcessState::drum_counters`] and [`ProcessState::delay_line`] into the next
-//! engine's handle.
+//! the next, build the next engine's devices with the same handle
+//! ([`crate::frame::Devices::implemented_with`], as the real-time player does), or copy
+//! [`ProcessState::drum_counters`] and [`ProcessState::delay_line`] into the next engine's
+//! handle.
+//!
+//! **Lock-free.** Every cell is an atomic (relaxed loads and stores, which compile to plain
+//! moves), so a render in a real-time audio callback takes no lock (task-043). Only one thread
+//! renders at a time; the atomics make the handle `Sync` without a lock, not a concurrent
+//! design: a caller that reads the line while another thread renders gets a mix of old and
+//! new cells.
 
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 
 use crate::frame::GUARD;
 
@@ -75,12 +83,56 @@ pub struct DrumCounters {
     pub bd_909: u16,
 }
 
+/// The delay line as the engine holds it: one atomic per cell (the f32 bits) and the gate.
+#[derive(Debug)]
+pub(crate) struct SharedDelayLine {
+    buf: Box<[AtomicU32]>,
+    gate: AtomicBool,
+}
+
+impl Default for SharedDelayLine {
+    /// All zero, as [`DelayLine::default`].
+    fn default() -> Self {
+        SharedDelayLine {
+            buf: (0..DELAY_LEN).map(|_| AtomicU32::new(0)).collect(),
+            gate: AtomicBool::new(false),
+        }
+    }
+}
+
+impl SharedDelayLine {
+    pub(crate) fn get(&self, i: u32) -> f32 {
+        f32::from_bits(self.buf[i as usize].load(Ordering::Relaxed))
+    }
+
+    pub(crate) fn set(&self, i: u32, x: f32) {
+        self.buf[i as usize].store(x.to_bits(), Ordering::Relaxed);
+    }
+
+    pub(crate) fn gate(&self) -> bool {
+        self.gate.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_gate(&self, v: bool) {
+        self.gate.store(v, Ordering::Relaxed);
+    }
+
+    /// [`DelayLine::refill`].
+    pub(crate) fn refill(&self) {
+        let g = GUARD.to_bits();
+        for c in self.buf.iter() {
+            c.store(g, Ordering::Relaxed);
+        }
+        self.set_gate(true);
+    }
+}
+
 /// A shared handle on the process globals. Clones share the same state; a fresh handle holds
 /// what the DLL has right after it is loaded (all zero).
 #[derive(Debug, Clone, Default)]
 pub struct ProcessState {
     drums: Arc<[AtomicU16; 4]>,
-    delay: Arc<Mutex<DelayLine>>,
+    delay: Arc<SharedDelayLine>,
 }
 
 const SNARE_808: usize = 0;
@@ -115,25 +167,37 @@ impl ProcessState {
 
     /// A copy of the delay line and its gate as they are now.
     pub fn delay_line(&self) -> DelayLine {
-        self.lock_delay().clone()
+        let d = &self.delay;
+        DelayLine {
+            buf: (0..DELAY_LEN as u32).map(|i| d.get(i)).collect(),
+            gate: d.gate(),
+        }
     }
 
     /// Presets the delay line and its gate (a capture's export-start state, e.g. rbhost's
     /// `delay_buffer` and `delay_gate` dumps). Panics unless `line.buf` has [`DELAY_LEN`] cells.
     pub fn set_delay_line(&self, line: DelayLine) {
         assert_eq!(line.buf.len(), DELAY_LEN);
-        *self.lock_delay() = line;
+        for (i, &x) in line.buf.iter().enumerate() {
+            self.delay.set(i as u32, x);
+        }
+        self.delay.set_gate(line.gate);
     }
 
     /// The delay's slot 6, 0x100100E0: the line refilled with 1e-6 and the gate set. The
     /// effect of msg 53 when it replaces a current song (that song's delay runs it) and of
     /// msg 33 (slot 5, 0x1000F4F0, calls slot 6).
     pub fn refill_delay_line(&self) {
-        self.lock_delay().refill();
+        self.delay.refill();
     }
 
-    pub(crate) fn lock_delay(&self) -> MutexGuard<'_, DelayLine> {
-        self.delay.lock().unwrap_or_else(|e| e.into_inner())
+    /// Whether two handles share the same state.
+    pub fn same(&self, other: &ProcessState) -> bool {
+        Arc::ptr_eq(&self.drums, &other.drums) && Arc::ptr_eq(&self.delay, &other.delay)
+    }
+
+    pub(crate) fn delay(&self) -> &SharedDelayLine {
+        &self.delay
     }
 
     /// The 808 snare's hit: `c = (c + 1) & 31` is stored and returned (0x1002A23F..0x1002A27D:

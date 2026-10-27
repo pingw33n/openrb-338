@@ -353,6 +353,10 @@ impl Pcf {
 }
 
 impl SongDevice for Pcf {
+    fn live(&self) -> &[u8] {
+        &self.live
+    }
+
     /// Slot 9, 0x10017290: entering song mode saves the live block into the pattern copy,
     /// leaving it restores the live block from the copy (all eight bytes).
     fn set_song_mode(&mut self, on: bool) {

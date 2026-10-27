@@ -355,7 +355,7 @@ impl Sequencer {
 
     /// `sub_100218A0`: when playing, clear the play flag and stop every device (slot 4); prune
     /// every track; in song mode chase every track to the current tick.
-    fn halt(&mut self, devices: &mut Devices) {
+    pub fn halt(&mut self, devices: &mut Devices) {
         if self.playing() {
             self.globals.play = 0;
             devices.for_each(|d| d.stop());

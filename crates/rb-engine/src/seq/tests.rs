@@ -4,14 +4,12 @@
 //! Every case is chosen with the fraction far from an integer, so the f64 accumulation cannot
 //! move it.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use super::*;
 use crate::frame::{
     Block, BlockContext, ChannelDevice, ChannelParams, GUARD, InsertEffect, MixerDevice,
     MixerParams, SendEffect, SongDevice,
 };
+use crate::test_cell::{Rc, RefCell};
 
 type Log = Rc<RefCell<Vec<String>>>;
 

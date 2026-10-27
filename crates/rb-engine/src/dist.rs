@@ -249,6 +249,10 @@ impl Distortion {
 }
 
 impl SongDevice for Distortion {
+    fn live(&self) -> &[u8] {
+        &self.live
+    }
+
     /// Slot 9, 0x100111F0: entering song mode saves the live block into the pattern copy,
     /// leaving it restores the live block from the copy (all four bytes).
     fn set_song_mode(&mut self, on: bool) {

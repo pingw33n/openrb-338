@@ -1,9 +1,8 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
 use super::export::{CHUNK_FRAMES, ExportRange, chunk_sizes, frame_count};
 use super::*;
+use crate::test_cell::{Rc, RefCell};
 
 fn tables() -> Arc<Tables> {
     static T: OnceLock<Arc<Tables>> = OnceLock::new();
@@ -734,4 +733,59 @@ fn export_of_silence_is_zero() {
     assert!(e.output.leftover_pos <= 0);
     // msg 33 ran after the chunks
     assert_eq!(e.frame.state.master, 0.0);
+}
+
+#[test]
+fn the_live_message_entry_points() {
+    let mut e = Engine::new(tables(), Devices::implemented(None));
+    // msg 145 {0,v} and msg 147 {c,0,v}: the master and a channel's enabled byte, live
+    e.frame.devices.mixer.set_master(33);
+    e.frame.devices.mixer.set_enabled(2, 0);
+    e.frame.devices.mixer.set_enabled(9, 0);
+    let live = e.frame.devices.mixer.live;
+    assert_eq!(live.master, 33);
+    assert_eq!(live.channels.map(|c| c.enabled), [1, 1, 0, 1]);
+    assert_eq!(e.frame.devices.mixer.pattern, MixerParams::default());
+    // slot 11 through Engine::set_param
+    e.set_param(song::Device::Mixer, 7, 5);
+    assert_eq!(e.frame.devices.mixer.live.channels[0].pan, 5);
+    e.set_param(song::Device::Delay, 3, 99);
+    assert_eq!(e.frame.devices.delay.live()[3], 99);
+    // msg 35 id 21
+    e.set_vintage(1);
+    assert!(e.frame.vintage && e.frame.seq.globals.vintage == 1);
+    e.set_vintage(0);
+    assert!(!e.frame.vintage);
+    // the msg 35 setters
+    e.set_tempo(99_000);
+    e.set_shuffle(7);
+    e.set_loop_on(1);
+    e.set_loop_start(768);
+    e.set_loop_end(1536);
+    let g = &e.frame.seq.globals;
+    assert_eq!(
+        (g.tempo, g.shuffle, g.loop_on, g.loop_start, g.loop_end),
+        (99_000, 7, 1, 768, 1536)
+    );
+    // play, then halt: no bar locate
+    e.set_song_mode(1);
+    e.play();
+    assert!(e.playing());
+    let mut buf = vec![0i16; 2 * 1024];
+    e.render(&mut buf, 1024);
+    let t = e.frame.seq.tick_pos();
+    assert!(t > 0);
+    e.halt();
+    assert!(!e.playing());
+    assert_eq!(e.frame.seq.tick_pos(), t);
+}
+
+#[test]
+fn songs_built_on_one_process_state_share_it() {
+    let a = Devices::implemented(None);
+    let b = Devices::implemented_with(None, a.process.clone());
+    assert!(a.process.same(&b.process));
+    assert!(!a.process.same(&Devices::implemented(None).process));
+    b.process.refill_delay_line();
+    assert!(a.process.delay_line().gate);
 }

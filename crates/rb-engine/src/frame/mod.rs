@@ -134,7 +134,10 @@ pub struct FaultRecord {
 ///
 /// Slots 1..3 are no-ops (`retn` at 0x10010380, 0x1001BF40, 0x10012C00) for the mixer, the delay
 /// and the inserts; only the 303s, the 808 and the 909 override them.
-pub trait SongDevice {
+///
+/// `Send`, so that a whole [`Engine`] can be built on one thread and rendered on another (the
+/// real-time player builds a song on the UI thread and renders it in the audio callback).
+pub trait SongDevice: Send {
     /// Slot 1: the clock reached a new tick (0x1001F464): `tick` is `trunc(pos)`, `shuffled` its
     /// shuffled tick ([`crate::seq::shuffled`]), `tempo` the song's BPM*1000. Called in every
     /// block whose tick passed the last one, playing, in either mode; the 303's step function
@@ -169,12 +172,24 @@ pub trait SongDevice {
     /// slot 8 with tick 0) with the device's own track: the 303's set the track's quantisation
     /// and insert its initial events.
     fn init_track(&mut self, _track: &mut crate::seq::Track) {}
+    /// Not a slot: the live parameter block, the bytes the audio reads and the panel polls
+    /// (controllers by number, plus the bytes the device writes itself: the 303's, 808's and
+    /// 909's last step at 9, 29 and 30, the delay's meter at 5). Empty for a placeholder; the
+    /// mixer's live set is [`MixerDevice::live`].
+    fn live(&self) -> &[u8] {
+        &[]
+    }
 }
 
 /// A mixer channel's sound source: TB-303 #1, #2, TR-808 or TR-909.
 pub trait ChannelDevice: SongDevice {
     /// Vtable slot 14 (0x10013580): render one block into `bus`, overwriting all of it.
     fn process(&mut self, bus: &mut Block, ctx: &BlockContext);
+    /// Not a slot: the pattern the device plays (the 303's `+0xC94`, the 808's `+0x18D0`, the
+    /// 909's `+0x18D3`), latched from controller 1 at a bar line. `None` for a placeholder.
+    fn playing_pattern(&self) -> Option<u8> {
+        None
+    }
 }
 
 /// An insert effect: the distortion, the PCF or the compressor.
@@ -237,7 +252,15 @@ impl Devices {
     /// without samples silent drum machines (exact for a song whose drum machines play no
     /// step).
     pub fn implemented(samples: Option<Arc<SampleSet>>) -> Self {
+        Self::implemented_with(samples, ProcessState::new())
+    }
+
+    /// [`Devices::implemented`] sharing the process globals `process` (the drum counters and
+    /// the delay line) with the songs already built on it: in the original every song of the
+    /// process shares the DLL's globals ([`crate::process`]).
+    pub fn implemented_with(samples: Option<Arc<SampleSet>>, process: ProcessState) -> Self {
         let mut d = Self::placeholders();
+        d.process = process;
         d.channels[0] = Box::new(crate::tb303::Tb303::new());
         d.channels[1] = Box::new(crate::tb303::Tb303::new());
         d.dist = Box::new(crate::dist::Distortion::new());
@@ -493,6 +516,23 @@ impl SongDevice for MixerDevice {
                     }
                 }
             }
+        }
+    }
+}
+
+impl MixerDevice {
+    /// Msg 145 `{0, v}` (0x10015928): the live master level. It has no controller, so the
+    /// record hook is not called.
+    pub fn set_master(&mut self, v: u8) {
+        self.live.master = v;
+    }
+
+    /// Msg 147 `{c, 0, v}` (0x10015A12): channel c's live enabled byte (the panel's mute). It
+    /// has no controller, so the record hook is not called. A channel above 3 is ignored (the
+    /// original would write past the channel blocks; the panel sends only 0..3).
+    pub fn set_enabled(&mut self, c: usize, v: u8) {
+        if let Some(ch) = self.live.channels.get_mut(c) {
+            ch.enabled = v;
         }
     }
 }
@@ -975,8 +1015,9 @@ impl Engine {
         match a {
             // 0x1001BDC7..0x1001BDCC: the current song is playing, so the routine returns at
             // 0x1001BE03 with no slot 6 and no switch; the switch is made later by
-            // `sub_1001BE74` (from `sub_1001C520`). rb does not model that pending-song switch:
-            // this arm leaves the new song not current, so a live player must model it
+            // `sub_1001BE74`, when the pending song is played (msg 35 `{1,1}`, `sub_1001BF50`) or
+            // on a MIDI Start (`sub_1001C524`). The engine holds one song, so this arm leaves the
+            // new song not current; the real-time player (`rb-player`) models the switch
             // (docs/export_state.md §3)
             Activation::ReplacesCurrent {
                 current_playing: true,
@@ -1089,6 +1130,71 @@ impl Engine {
     pub fn play(&mut self) {
         let f = &mut self.frame;
         f.seq.play(&mut f.devices);
+    }
+
+    /// The song's play flag (`song+0x159`, globals byte 1): what msg 53 and `sub_1001BE74` test
+    /// on the current song.
+    pub fn playing(&self) -> bool {
+        self.frame.seq.globals.play != 0
+    }
+
+    /// `sub_100218A0`: the stop of `sub_1001BE74`'s song switch, without the bar locate of msg
+    /// 35 `{1,0}`: when playing, clear the play flag and run slot 4; prune every track; in song
+    /// mode chase every track to the current tick.
+    pub fn halt(&mut self) {
+        let f = &mut self.frame;
+        f.seq.halt(&mut f.devices);
+    }
+
+    /// Song msg 35 `{0,m}` (`sub_1001FBE0`): song mode (1) or pattern mode (0).
+    pub fn set_song_mode(&mut self, mode: u8) {
+        let f = &mut self.frame;
+        f.seq.set_song_mode(mode, &mut f.devices);
+    }
+
+    /// Song msg 35 `{3,v}`: the loop switch.
+    pub fn set_loop_on(&mut self, v: u8) {
+        self.frame.seq.set_loop_on(v);
+    }
+
+    /// Song msg 35 `{4,v}`: the tempo, BPM*1000.
+    pub fn set_tempo(&mut self, v: u32) {
+        self.frame.seq.set_tempo(v);
+    }
+
+    /// Song msg 35 `{12,v}`: the loop start in ticks.
+    pub fn set_loop_start(&mut self, v: u32) {
+        self.frame.seq.set_loop_start(v);
+    }
+
+    /// Song msg 35 `{16,v}`: the loop end in ticks.
+    pub fn set_loop_end(&mut self, v: u32) {
+        self.frame.seq.set_loop_end(v);
+    }
+
+    /// Song msg 35 `{20,v}`: the shuffle amount.
+    pub fn set_shuffle(&mut self, v: u8) {
+        self.frame.seq.set_shuffle(v);
+    }
+
+    /// Song msg 35 `{21,v}`: the sound-model byte (`song+0x16D`; the menu's "Vintage ReBirth
+    /// Synth Sound", `docs/song_load.md` section 3), stored as msg 36 stores it; the 303s read
+    /// it at note-on, note-off and in their audio, the mixer update in its send.
+    pub fn set_vintage(&mut self, v: u8) {
+        let f = &mut self.frame;
+        f.seq.globals.vintage = v;
+        f.vintage = v != 0;
+        let on = f.vintage;
+        f.devices.for_each(|d| d.set_sound_model(on));
+    }
+
+    /// Slot 11 of device `d` with controller `ctrl` (`sub_10012B40`): what a track event does,
+    /// and what the panel's knob and switch messages do with record off (the 303's msg 40
+    /// `{ctrl, v}` at 0x10025CFC stores the live byte as slot 11 does, then calls the record
+    /// hook `sub_10021340`, which acts only in song mode with record on; the mixer's msg 145
+    /// ids 1, 2 and msg 147 fields 1..4 likewise).
+    pub fn set_param(&mut self, d: song::Device, ctrl: u8, value: u8) {
+        self.frame.devices.device_mut(d).set_param(ctrl, value);
     }
 
     /// Song msg 33, `sub_10014140`: the master's current gain and peaks to 0, the send buses to

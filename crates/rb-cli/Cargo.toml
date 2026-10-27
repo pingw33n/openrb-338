@@ -13,6 +13,8 @@ path = "src/main.rs"
 rbs = { path = "../rbs" }
 rb-engine = { path = "../rb-engine" }
 rbm = { path = "../rbm" }
+# rb play.
+rb-player = { path = "../rb-player" }
 clap = { version = "4.6.7", features = ["derive"] }
 flacenc = "0.5.1"
 vorbis_rs = "0.5.6"

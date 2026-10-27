@@ -534,6 +534,10 @@ impl Tb303 {
 }
 
 impl SongDevice for Tb303 {
+    fn live(&self) -> &[u8] {
+        &self.live
+    }
+
     /// Slot 1, 0x100253A0.
     fn step(&mut self, tick: i32, shuffled: i32, _tempo: i32) {
         let pat = self.cur_pattern;
@@ -704,6 +708,10 @@ impl SongDevice for Tb303 {
 }
 
 impl ChannelDevice for Tb303 {
+    fn playing_pattern(&self) -> Option<u8> {
+        Some(self.cur_pattern)
+    }
+
     /// Slot 14, 0x10023F10.
     fn process(&mut self, bus: &mut Block, ctx: &BlockContext) {
         if self.vintage {
