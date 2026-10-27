@@ -145,18 +145,35 @@ status is a judgment call.
   records the first fault and the count; the `rb` CLI warns when the song may route the PCF.
 - **Home.** `docs/initial_investigation.md` section 8.2, `docs/export_state.md` section 13.
 
-### OB-7: a stale stack quotient for a PCF resolution other than 8, 16 or 32 [G]
+### OB-7: a stale stack quotient for a PCF resolution other than 8, 16 or 32 [C on the 808 and 909 channels, G on the 303 channels]
 
 - **What.** The tick quotient is `tick/24`, `/48` or `/96` by resolution 32, 16 or 8; any other
-  resolution leaves the stack slot `var_1C` untouched, so the step uses whatever the last write
-  left.
-- **Where.** The PCF block 0x100166D0 (the `idiv` at 0x10016811 takes the quotient).
+  resolution leaves the stack slot `var_1C` (entry `esp - 0x1C`) untouched, so the step uses
+  whatever the last write left. The PCF's own quotient does not survive: between two PCF blocks
+  other code at the same stack depth rewrites the slot. On the 808 and 909 channels it is the
+  channel's audio slot, called from the same `esp` just before the inserts: its last call leaves
+  its return address there, 0x10028278 (808) or 0x1002B8B4 (909), in every block. These are
+  the values at the preferred base 0x10000000: a return address moves with the DLL's load
+  address (`ImageBase`), so the step does too; the corpus and rbhost assume the preferred base,
+  as for the pattern data (OB-5).
+- **Where.** The PCF block 0x100166D0 (the `idiv` at 0x10016811 takes the quotient); the 808
+  audio 0x100280B0 (`call sub_1001E4D0` at 0x10028273), the 909 audio 0x1002B6F0
+  (`call sub_1001E9A0` at 0x1002B8AF), both from `esp0 - 0x18`; the mixer block calls them at
+  0x10013580/0x1001359B and the inserts at 0x100135C3/D9/EF. The distortion (0x10010A50) does not
+  touch the slot.
 - **Trigger.** Waves 55..127 with a resolution byte other than 8/16/32 and a non-zero length
   (all 73 waves of 55..127 read such a resolution; 17 of them also have length 0, OB-6).
-- **Effect.** The step follows an unrelated number. Not observed: no corpus song reaches it with a
-  trigger.
-- **Corpus.** `pcf_lp_wave64`, `pcf_bp_wave64` reach it but never trigger (all steps 0).
-- **rb.** `pcf.rs` uses the engine's last quotient, a [G] stand-in for the stack slot.
+- **Effect.** The step is the return address modulo the length: constant, so a wave with a
+  trigger there triggers once; and the last step `+0x74` it leaves decides whether the first
+  block after a switch to a real wave is a new step. Observed (task-069, rbhost `--live` with a
+  write watchpoint): `full_mix` (wave 64, PCF on the 909) has `var_1C` = 0x1002B8B4 at every PCF
+  block and `+0x74` = 4 = 0x1002B8B4 % 16; a return from song mode to a panel-set wave 30 starts
+  on step 4 without a trigger.
+- **Corpus.** `pcf_lp_wave64`, `pcf_bp_wave64` reach it but never trigger (all steps 0); the live
+  test `pcf_wave_after_returning_to_pattern_mode` (`crates/rb-player/tests/live_messages.rs`).
+- **rb.** `ChannelDevice::stack_word` (808, 909) passed to the PCF in `BlockContext::stack_word`;
+  on the 303 channels, whose audio does not write the slot (it then holds older stack contents,
+  e.g. the delay's or the sequencer's), `pcf.rs` keeps its last quotient, a [G] stand-in.
 - **Home.** `docs/initial_investigation.md` section 8.2.
 
 ### OB-8: the export buffer is never cleared, so a faulting chunk repeats the previous one [C for the allocation, G for the content]

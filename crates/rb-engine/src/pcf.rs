@@ -247,11 +247,18 @@ pub struct Pcf {
     pub smooth: [f32; 2],
     /// `+0x88`: the peak meter of the input (display only).
     pub peak: f32,
-    /// The block's stack slot `var_1C` (`esp+0x48`), which holds the step quotient when the
-    /// resolution is 8, 16 or 32 and is left as it was otherwise. [G] What the original finds
-    /// there then depends on whichever call last wrote that stack address; the engine keeps the
-    /// last quotient this PCF computed (0 before the first). The 73 waves of 55..127 whose
-    /// resolution is not 8, 16 or 32 reach it; 17 of them fault before they use it.
+    /// The block's stack slot `var_1C` (`esp+0x48`, entry `esp - 0x1C`), which holds the step
+    /// quotient when the resolution is 8, 16 or 32 and is left as it was otherwise. The 73
+    /// waves of 55..127 whose resolution is not 8, 16 or 32 reach it; 17 of them fault before
+    /// they use it. What the original finds there is what the code before the PCF left at that
+    /// stack address, which in every block is the channel's audio slot (the PCF's own quotient
+    /// does not survive to the next block): on the 808 and 909 channels the return address of
+    /// its last call ([`BlockContext::stack_word`], [C] task-069: 0x1002B8B4 on the 909 in
+    /// every block of a live session; a return address, so the value at the preferred base
+    /// 0x10000000, which the corpus and rbhost assume, as for [`PCF_DATA`]). [G] On the 303
+    /// channels, whose audio slot does not write it, the slot holds older stack contents (the
+    /// delay's, the sequencer's); the engine keeps the last quotient this PCF computed there (0
+    /// before the first).
     pub quotient: i32,
     /// Set by a block that divided by zero, read and cleared by [`InsertEffect::faulted`].
     fault: Option<Fault>,
@@ -306,6 +313,9 @@ impl Pcf {
         let (len, res) = pattern(p[WAVE]);
         if let Some(q) = quotient(ctx.tick, res) {
             self.quotient = q;
+        } else if let Some(w) = ctx.stack_word {
+            // the slot as the channel's audio slot left it
+            self.quotient = w;
         }
         // 0x100167B2..0x10016825: the smoother; `+0x84` takes the old `+0x80` before the
         // division, `+0x80` and the base the new value after it

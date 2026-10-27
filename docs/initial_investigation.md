@@ -1031,7 +1031,15 @@ every PCF song of the corpus exact:
   `tick = sub_1001F870()` (the song position after this block's sequencer step); the wave byte
   `w` indexes `len = word_10033310[w]` and `res = word_10033380[w]` **unchecked**; `q = tick/24`,
   `/48`, `/96` (signed `idiv`) for `res` = 32, 16, 8, and for any other `res` the stack slot
-  `var_1C` keeps whatever was there [G: not modelled, the engine keeps its last quotient];
+  `var_1C` (entry `esp - 0x1C`) keeps whatever was there: [C] task-069, on the 808 and 909
+  channels the return address their audio slot's last call leaves there in every block
+  (0x10028278 after `call sub_1001E4D0` at 0x10028273, 0x1002B8B4 after `call sub_1001E9A0` at
+  0x1002B8AF, both from `esp0 - 0x18`; the slots are called from the same `esp` as the inserts,
+  0x10013580/0x100135C3, and the distortion 0x10010A50 between them does not touch it; the PCF's
+  own quotient does not survive to the next block; the words are return addresses, so they hold
+  at the preferred base 0x10000000 and move with the DLL's load address, which the corpus and
+  rbhost assume, as for the pattern data); [G] on the 303 channels, whose audio does not write
+  it, older stack contents (the engine keeps its last quotient there);
   smoother `s = (A*y1 + ((freq*512f)*(1/128f))*g) - b2*y2`, `+0x84 = +0x80` stored **before**
   `step = q % len` (`idiv` at 0x10016811), then `+0x80 = +0x6C = f32(s)`. A new step (`!= +0x74`)
   stores it, sets `dec = dword_100332D0[decay >> 3]` and reads `v = byte_100333F0[w*32 + step]`; a
@@ -1049,7 +1057,8 @@ every PCF song of the corpus exact:
   DLL checks nothing, so a wave of 55..127 reads the bytes after the 55 patterns (the steps end at
   0x10033AD0, the `CPCFInsert` vtable follows), all in the file up to 0x10034400. 73 of the
   waves 55..127 read a `res` other than 8, 16 or 32, so their quotient is the stale `var_1C`
-  [G]. 17 of them, waves 55, 111 and 113..127, read `len` 0, and the `idiv` raises a divide
+  (above: [C] on the 808 and 909 channels, [G] on the 303 channels). 17 of them, waves 55, 111
+  and 113..127, read `len` 0, and the `idiv` raises a divide
   error in every block (wave 112 reads `len` 120, so its steps reach 88 bytes past its own 32).
   Wave 64 reads `res` 0 (stale quotient) and `len` 16, whose 16 steps are all 0: no trigger
   ever, the filter follows the base alone. Wave 127 is the corpus' faulting wave. `SafeSoundCallback` (0x1001AE40) wraps the render in a C++ `try` with `catch (...)`

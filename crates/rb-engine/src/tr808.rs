@@ -507,6 +507,15 @@ impl ChannelDevice for Tr808 {
         Some(&mut self.patterns[..])
     }
 
+    /// Slot 14 ends with an unconditional `call sub_1001E4D0` at 0x10028273 from `esp0 - 0x18`
+    /// (four register pushes, `push esi` 0x100280B8, `push edi` 0x10028265), whose return
+    /// address 0x10028278 stays at `esp0 - 0x1C` (the write was observed, task-069). The value
+    /// holds at the DLL's preferred base 0x10000000 (it moves with the load address), which the
+    /// corpus and rbhost assume.
+    fn stack_word(&self) -> Option<i32> {
+        Some(0x1002_8278)
+    }
+
     /// Slot 14, 0x100280B0: the bus is zeroed, then the voices add in this order: BD A, BD B,
     /// SD, LT, MT, HT, RS/CL, CP/MA, CB, OH, CH, CY (every per-instrument output is null in the
     /// export, so all go to bus 0).

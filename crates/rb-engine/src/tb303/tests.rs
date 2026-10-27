@@ -225,6 +225,7 @@ fn idle_output_is_zero_and_the_phase_runs() {
         meter_index: 0,
         tempo: 120_000,
         tick: 0,
+        stack_word: None,
     };
     for vintage in [false, true] {
         let mut d = Tb303::new();
@@ -249,6 +250,7 @@ fn a_note_sounds_in_both_models() {
         meter_index: 0,
         tempo: 120_000,
         tick: 0,
+        stack_word: None,
     };
     for vintage in [false, true] {
         let mut d = device(&[NOTE]);

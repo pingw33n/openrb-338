@@ -348,8 +348,10 @@ fn session(pat: [u8; 4]) -> Vec<(u32, Command)> {
 }
 
 /// task-069: the PCF's wave set to a stepping pattern in pattern mode, then song mode and back
-/// to pattern mode while playing. rb differs from the DLL from the return (call 400) on; the
-/// same with the wave sent in a data block, and nothing differs without the return.
+/// to pattern mode while playing. The song's wave 64 (resolution 0) takes the step from the
+/// stale stack slot in song mode, which on the 909's channel holds the 909 audio's return
+/// address 0x1002B8B4; whether the first block back on wave 30 (call 400) is a new step depends
+/// on it.
 fn pcf_session() -> Vec<(u32, Command)> {
     vec![
         (0, Command::SongMode(false)),
@@ -420,7 +422,6 @@ fn the_session_equals_rbhost() {
 }
 
 #[test]
-#[ignore = "task-069: rb's PCF step after a return to pattern mode differs from the DLL"]
 fn pcf_wave_after_returning_to_pattern_mode() {
     let s = song(&manifest()["diag"]["full_mix"]);
     let sha = render("pcf", &s, pcf_session());

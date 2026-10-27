@@ -85,6 +85,12 @@ pub struct BlockContext<'a> {
     /// The tick of the song's position (`sub_1001F870`), already advanced by this block's
     /// sequencer step; the PCF's pattern step follows it (0x10016756).
     pub tick: i32,
+    /// The dword the current channel's audio slot leaves on the stack at its entry `esp - 0x1C`
+    /// ([`ChannelDevice::stack_word`]), set per channel by the mixer block: the inserts after it
+    /// are called from the same `esp` (0x100135C3), so it is what the PCF's uninitialised slot
+    /// `var_1C` holds ([`crate::pcf::Pcf::quotient`]). `None` outside a channel's inserts, or
+    /// where it is not known.
+    pub stack_word: Option<i32>,
 }
 
 /// A block aborted by a CPU exception in the original: the PCF's division by a zero pattern
@@ -201,6 +207,13 @@ pub trait ChannelDevice: SongDevice {
     /// `+0x50`, the 909's `+0x51`), which the panel's pattern messages write
     /// ([`edit::PatternShape`]). `None` for a placeholder.
     fn patterns_mut(&mut self) -> Option<&mut [u8]> {
+        None
+    }
+    /// Not a slot: the dword slot 14 leaves at its entry `esp - 0x1C` in every block, whatever
+    /// the device's state (the return address of its last call, which is made from
+    /// `esp0 - 0x18`), or `None` when the audio slot does not write that stack address.
+    /// [`BlockContext::stack_word`] passes it to the channel's inserts.
+    fn stack_word(&self) -> Option<i32> {
         None
     }
 }
@@ -728,6 +741,7 @@ impl Frame {
             meter_index: self.state.meter_index as usize,
             tempo: self.seq.globals.tempo,
             tick: self.seq.tick_pos(),
+            stack_word: None,
         };
         for (c, ch) in self.state.channels.iter_mut().enumerate() {
             let cp = p.channels[c];
@@ -792,15 +806,20 @@ impl Frame {
         let mi = mi as usize;
         l.fill(GUARD);
         r.fill(GUARD);
-        let ctx = BlockContext {
+        let mut ctx = BlockContext {
             tables: &self.tables,
             meter_index: mi,
             tempo: self.seq.globals.tempo,
             tick: self.seq.tick_pos(),
+            stack_word: None,
         };
         let bus = &mut self.bus;
         for (c, ch) in self.state.channels.iter_mut().enumerate() {
+            ctx.stack_word = None;
             self.devices.channels[c].process(bus, &ctx);
+            // the word the audio slot leaves at its esp0 - 0x1C; the distortion (0x10010A50: no
+            // local there, calls only below its esp) leaves it for the PCF after it
+            ctx.stack_word = self.devices.channels[c].stack_word();
             let inserts = [
                 (ch.routing.dist, &mut self.devices.dist),
                 (ch.routing.pcf, &mut self.devices.pcf),

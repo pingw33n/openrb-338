@@ -604,6 +604,15 @@ impl ChannelDevice for Tr909 {
         Some(&mut self.patterns[..])
     }
 
+    /// Slot 14 ends with an unconditional `call sub_1001E9A0` at 0x1002B8AF from `esp0 - 0x18`
+    /// (four register pushes, `push esi` 0x1002B6F8, `push edi` 0x1002B8A5), whose return
+    /// address 0x1002B8B4 stays at `esp0 - 0x1C` (measured, task-069). The value holds at the
+    /// DLL's preferred base 0x10000000 (it moves with the load address), which the corpus and
+    /// rbhost assume.
+    fn stack_word(&self) -> Option<i32> {
+        Some(0x1002_B8B4)
+    }
+
     /// Slot 14, 0x1002B6F0: the bus is zeroed, then the voices add in this order: BD A, BD B,
     /// SD, LT, MT, HT, RS, CP, CH, OH, crash, ride (every per-instrument output is null in the
     /// export, so all go to bus 0).

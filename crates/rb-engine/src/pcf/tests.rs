@@ -7,6 +7,7 @@ fn ctx(t: &Tables, tick: i32) -> BlockContext<'_> {
         meter_index: 0,
         tempo: 120_000,
         tick,
+        stack_word: None,
     }
 }
 
@@ -215,6 +216,44 @@ fn an_instant_trigger() {
         e2 *= dec as f64;
     }
     assert_eq!(p.trigger, e2 as f32);
+}
+
+#[test]
+fn a_stale_quotient_is_the_channel_s_stack_word() {
+    let t = Tables::new();
+    // wave 30 (16 steps at 16 per bar) at tick 1000: step 20 % 16 = 4, velocity 65
+    let mut p = Pcf::new();
+    p.live[WAVE] = 30;
+    let mut bus = [0.0; BLOCK];
+    p.process(&mut bus, &ctx(&t, 1000));
+    assert_eq!((p.quotient, p.step), (20, 4));
+    // wave 64 (resolution 0) after the 909: the slot holds 0x1002B8B4, step 0x1002B8B4 % 16
+    p.live[WAVE] = 64;
+    let after_909 = BlockContext {
+        stack_word: Some(0x1002_B8B4),
+        ..ctx(&t, 1500)
+    };
+    p.process(&mut bus, &after_909);
+    assert_eq!((p.quotient, p.step), (0x1002_B8B4, 4));
+    // back to wave 30 at a tick of step 12 (velocity 58): a new step, which triggers
+    p.live[WAVE] = 30;
+    let e = p.trigger;
+    p.process(&mut bus, &ctx(&t, 12 * 48));
+    assert_eq!(p.step, 12);
+    assert_ne!(p.trigger, e);
+    // without a stack word (a 303 channel) the last quotient stands: 12 % 16
+    p.live[WAVE] = 64;
+    p.process(&mut bus, &ctx(&t, 3000));
+    assert_eq!((p.quotient, p.step), (12, 12));
+    // the 808's word
+    p.process(
+        &mut bus,
+        &BlockContext {
+            stack_word: Some(0x1002_8278),
+            ..ctx(&t, 3000)
+        },
+    );
+    assert_eq!(p.step, 0x1002_8278 % 16);
 }
 
 #[test]
