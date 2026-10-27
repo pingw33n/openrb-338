@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 09:06'
-updated_date: '2026-10-27 04:58'
+updated_date: '2026-10-27 05:15'
 labels:
   - rbm
   - cli
@@ -35,4 +35,6 @@ Use mods in the engine and the CLI: the song's GLOB mod name ("Standard ReBirth"
 
 <!-- SECTION:NOTES:BEGIN -->
 Supervisor 2026-10-27, per task-053: the rb CLI takes --rb20ful PATH (and RB_RB20FUL, then a default location, documented in --help, the same search style as --rebirth-dll), and errors clearly when a song names a non-standard mod and no RB20FUL.DAT or .rbm is found.
+
+Supervisor 2026-10-27, from task-032's review: crates/rb-engine/src/samples/aiff.rs tests the COMM rate for zero on its raw bytes, while the DLL tests the truncated integer after fistp (sub_100016F4). A rate that is non-zero but truncates to 0 (below 1 Hz) is accepted by rb and rejected by the DLL. Align it here if cheap (a unit test with such a rate).
 <!-- SECTION:NOTES:END -->
