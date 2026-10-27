@@ -787,3 +787,29 @@ Each item says what would settle it.
   counterparts for code 31 with Shift; or tap on the test machine during playback.
 - [G] What Clear does to the length and shuffle flag. Settle: read `sub_43CB97` (called from
   `sub_43F5F5`); or set a 303 pattern to 8 steps with shuffle on, Clear, and save the song.
+
+## 16. How rb wires the panel (task-045)
+
+`crates/rb-ui/src/link.rs` connects the panel model to the real-time player. rb does what the
+sections above say; this section lists what rb's wiring decides where the original's code was not
+read, and what it leaves out.
+
+- **Messages.** Each control sends the messages of `docs/song_load.md` section 4.10 (`Link::log`
+  records them; `crates/rb-ui/tests/wired.rs` checks every knob, fader, switch, toggle, arrow, step
+  and transport button against them, and against the engine's live block and pattern arrays).
+  The Clear button sends the whole pattern (sub 44, 98 bytes) with the pattern's own shuffle and
+  length bytes [G, section 5]. Loop start up/down sends `{12, start}` then `{16, end}`, loop length
+  `{16, end}`. Stop while stopped sends the locate `{8, t}`. Record sends `{2, v}` in the log but
+  the player has no Record command (task-057): it has no effect yet.
+- **The panel follows the engine** after each engine call: position, play, mode, loop, tempo, every
+  controller's live value (the knobs follow the song's automation), the mixer, the pattern each
+  section selects (the bank follows it [G]), the drum running lights, the meters. The values of a
+  call that ran before the panel's last commands, of a control being dragged, and of a loaded song
+  that waits for Play (the old one plays on; the panel shows the newest song, as the original's
+  does) are not taken.
+- **Meters [G].** The meter byte (0..127) maps linearly to the 11 states, rounded up so that any
+  signal shows. The compressor's gain reduction (live byte 3, `min(G*18, 127)`) lights the centre
+  LED ("0") and up to four LEDs to its left, the first two amber and the others red. Neither scale
+  was read in the original (`sub_424220`, `sub_424A7E`; section 15).
+- **Not done.** The logo click (msg 58), the song's own mod (the built-in kit plays every song;
+  task-047), and the computer keyboard beyond Space and the Up/Down focus keys (task-070).

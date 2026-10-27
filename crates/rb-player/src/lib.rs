@@ -605,6 +605,13 @@ impl Audio {
         &self.current
     }
 
+    /// The current song, mutable (for tests, and for reading the empty song `Player::new`
+    /// builds, e.g. its pattern arrays, before the callback runs; the callback is the only
+    /// other user).
+    pub fn current_mut(&mut self) -> &mut Engine {
+        &mut self.current
+    }
+
     /// A device callback output silence because the resampler failed.
     pub(crate) fn output_error(&mut self) {
         self.output_errors += 1;

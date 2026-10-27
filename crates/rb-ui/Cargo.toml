@@ -14,6 +14,12 @@ name = "rb-ui"
 path = "src/main.rs"
 
 [dependencies]
+rb-engine = { path = "../rb-engine" }
+# The player the panel drives (task-045) and its audio output.
+rb-player = { path = "../rb-player" }
+# Song files and the standard mod (the built-in drum samples).
+rbs = { path = "../rbs" }
+rbm = { path = "../rbm" }
 eframe = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["svg"] }
 # Saves the --screenshot PNG.

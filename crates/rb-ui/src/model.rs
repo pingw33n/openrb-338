@@ -41,6 +41,8 @@ pub enum Event {
         field: u8,
         value: u8,
     },
+    /// The Clear button emptied a 303 pattern (sent whole, msg 41 sub 44).
+    Clear303 { synth: usize, pattern: u8 },
 }
 
 /// The transport (ticks, 768 per bar).
@@ -279,6 +281,8 @@ pub struct Panel {
     pub gr_leds: [u8; 9],
     /// What the engine must hear, drained by the caller.
     pub events: Vec<Event>,
+    /// The knob or fader being dragged (set by the window): the engine's value does not move it.
+    pub held: Option<String>,
     knobs: HashMap<String, i32>,
     faders: HashMap<String, i32>,
     toggles: HashMap<String, bool>,
@@ -320,6 +324,7 @@ impl Panel {
             meters: HashMap::new(),
             gr_leds: [0; 9],
             events: Vec::new(),
+            held: None,
             knobs: HashMap::new(),
             faders: HashMap::new(),
             toggles: HashMap::new(),
@@ -507,6 +512,52 @@ impl Panel {
         }
     }
 
+    // ---- the engine's values -------------------------------------------------------------
+
+    /// Takes the engine's value `v` for the control `id` without sending it back: a knob or
+    /// fader moves only when the value it would send differs (so the position the user dragged
+    /// to is kept), a toggle, switch or number takes it. A control being dragged keeps its
+    /// position. Unknown ids are ignored.
+    pub fn adopt(&mut self, id: &str, v: i32) {
+        if self.held.as_deref() == Some(id) {
+            return;
+        }
+        if let Some(p) = self.knobs.get_mut(id) {
+            if id != "tr808.selector" && behavior::knob_send(*p) != v {
+                *p = behavior::knob_from_engine(v);
+            }
+        } else if let Some(p) = self.faders.get_mut(id) {
+            if behavior::fader_send(*p) != v {
+                *p = behavior::knob_from_engine(v).min(behavior::FADER_MAX);
+            }
+        } else if let Some(t) = self.toggles.get_mut(id) {
+            *t = v != 0;
+        } else if let Some(s) = self.switches.get_mut(id) {
+            *s = v as u8;
+        } else if let Some(n) = self.numbers.get_mut(id) {
+            *n = v;
+        } else if let Some(r) = id
+            .strip_suffix(".on")
+            .and_then(|s| index_of(s, "pattern"))
+            .filter(|&r| r < 4)
+        {
+            self.rows[r].enabled = v != 0;
+        } else if id == "mixer.pcf_id" {
+            self.pcf_id = v as u8;
+        } else if id == "mixer.comp_id" {
+            self.comp_id = v as u8;
+        }
+    }
+
+    /// Takes the pattern the engine selects in row `r`; the shown bank follows it.
+    pub fn adopt_pattern(&mut self, r: usize, pattern: u8) {
+        let row = &mut self.rows[r];
+        if row.pattern != pattern {
+            row.pattern = pattern;
+            row.bank = pattern / 8;
+        }
+    }
+
     // ---- toggles and presses ------------------------------------------------------------
 
     /// The on/off state of a toggle-like control.
@@ -603,10 +654,21 @@ impl Panel {
                 });
             }
             "stop" => {
+                // Playing: stop `{1, 0}`; stopped: locate `{8, t}` (`sub_429FE6`).
+                let was_playing = t.playing;
+                let was_recording = t.recording;
                 t.stop();
-                self.emit(Event::Press {
-                    id: "transport.stop".into(),
-                });
+                if was_recording {
+                    self.set_event("transport.record", 0);
+                }
+                if was_playing {
+                    self.emit(Event::Press {
+                        id: "transport.stop".into(),
+                    });
+                } else {
+                    let position = self.transport.position;
+                    self.set_event("transport.position", position);
+                }
             }
             "record" => {
                 t.recording = !t.recording;
@@ -691,17 +753,7 @@ impl Panel {
                 "pitch_button" => s.toggle_pitch(),
                 "clear" => {
                     s.patterns[pattern as usize] = [Step303::default(); 16];
-                    for step in 0..16 {
-                        for (field, value) in [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 1)] {
-                            self.events.push(Event::Step303 {
-                                synth: k,
-                                pattern,
-                                step,
-                                field,
-                                value,
-                            });
-                        }
-                    }
+                    self.events.push(Event::Clear303 { synth: k, pattern });
                 }
                 _ => {}
             }
@@ -723,6 +775,10 @@ impl Panel {
     /// `..._down`).
     pub fn arrow(&mut self, id: &str) {
         if id == "transport.rewind" || id == "transport.ff" {
+            // record goes off with the move: `{2, 0}` first
+            if self.transport.recording {
+                self.set_event("transport.record", 0);
+            }
             self.transport.wind(id == "transport.ff");
             let position = self.transport.position;
             self.set_event("transport.position", position);
@@ -745,16 +801,22 @@ impl Panel {
                 (format!("{sec}.{stem}"), self.transport.tempo)
             }
             ("transport", "bar") => {
+                if !up && self.transport.recording {
+                    self.set_event("transport.record", 0);
+                }
                 self.transport.bar_step(up);
                 (format!("{sec}.{stem}"), self.transport.position)
             }
             ("transport", "loop_start") => {
+                // Sends `{12, start}` then `{16, end}` (`sub_429E5B`).
                 self.transport.loop_start_step(d * BAR);
-                (format!("{sec}.{stem}"), self.transport.loop_start)
+                let start = self.transport.loop_start;
+                self.set_event("transport.loop_start", start);
+                ("transport.loop_end".to_string(), self.transport.loop_end)
             }
             ("transport", "loop_length") => {
                 self.transport.loop_length_step(d * BAR);
-                (format!("{sec}.{stem}"), self.transport.loop_end)
+                ("transport.loop_end".to_string(), self.transport.loop_end)
             }
             (s, "steps") if s.starts_with("pattern") => {
                 let r = index_of(s, "pattern").unwrap_or(0).min(3);

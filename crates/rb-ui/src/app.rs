@@ -17,6 +17,7 @@ use eframe::egui::{
 use crate::art::{self, KnobDesign};
 use crate::behavior::{self, Mods};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
+use crate::link::Link;
 use crate::model::Panel;
 
 /// The panel's background and the letterbox color.
@@ -85,6 +86,9 @@ impl Shot {
 
 pub struct App {
     pub panel: Panel,
+    /// The player the panel drives (task-045); without one the model's events pile up in
+    /// `Panel::events`.
+    pub link: Option<Link>,
     ctls: Vec<Ctl>,
     shot: Option<Shot>,
 }
@@ -93,9 +97,17 @@ impl App {
     pub fn new(panel: Panel, shot: Option<Shot>) -> Self {
         Self {
             panel,
+            link: None,
             ctls: layout::controls(),
             shot,
         }
+    }
+
+    /// An app whose panel drives `link`.
+    pub fn with_link(panel: Panel, link: Link, shot: Option<Shot>) -> Self {
+        let mut app = Self::new(panel, shot);
+        app.link = Some(link);
+        app
     }
 }
 
@@ -128,6 +140,7 @@ impl App {
         ui.painter().rect_filled(avail, 0.0, BG);
         let view = View::fit(avail, ui.ctx().pixels_per_point());
         let now = ui.input(|i| i.time);
+        self.panel.held = None;
 
         self.keyboard(ui);
         self.focus_click(ui, &view);
@@ -153,6 +166,12 @@ impl App {
         self.ctls = ctls;
         self.drum_strips(ui, &view);
         self.instrument_selection(ui, &view);
+
+        // Send what was done, take what the engine did (the panel follows playback).
+        if let Some(link) = &mut self.link {
+            link.sync(&mut self.panel);
+            ui.ctx().request_repaint_after(Duration::from_millis(16));
+        }
     }
 
     fn keyboard(&mut self, ui: &Ui) {
@@ -317,6 +336,7 @@ impl App {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
         }
         if down {
+            self.panel.held = Some(c.id.clone());
             if !g.down {
                 // Mouse down grabs the knob where it is (no jump); Shift now means fine.
                 g.p0 = self.panel.knob(&c.id);
@@ -354,6 +374,7 @@ impl App {
         let (id, mut g) = Self::gesture(ui, c);
         let down = r.is_pointer_button_down_on();
         if down {
+            self.panel.held = Some(c.id.clone());
             if !g.down {
                 let y = Self::press_origin(ui, view).map_or(0.0, |p| p.y) - c.y;
                 let p = self.panel.fader(&c.id);
