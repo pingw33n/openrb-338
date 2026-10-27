@@ -1,10 +1,11 @@
 ---
 id: TASK-040
 title: 'Decide: UI toolkit and audio output for the bundled UI'
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-26 16:23'
+updated_date: '2026-10-27 06:30'
 labels:
   - decision
   - ui
@@ -28,3 +29,13 @@ For audio: cpal (cross-platform, callback-based), with the engine rendering in t
 
 Recommendation: egui + eframe with resvg-rasterized SVG at the current pixel density, and cpal for audio. Decide also the minimum window size and whether the panel keeps the original aspect ratio when scaled.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by @pingw33n on 2026-10-27:
+- UI toolkit: egui + eframe.
+- SVG: use egui's own SVG support (egui_extras image loaders with the svg feature, which parse with usvg and rasterize with resvg into textures). No separate rasterizer in rb. Load each SVG with a size hint equal to its displayed size in physical pixels (points x pixels_per_point) and reload when the scale changes, so it stays crisp; egui itself draws only textured triangles, so this is the vector path egui offers.
+- Audio output: cpal (engine renders in the callback; commands through a lock-free queue).
+- Scaling: the panel keeps the original's aspect ratio and is letterboxed to fit the window; minimum window size = 0.5 x the original's native panel size.
+<!-- SECTION:FINAL_SUMMARY:END -->

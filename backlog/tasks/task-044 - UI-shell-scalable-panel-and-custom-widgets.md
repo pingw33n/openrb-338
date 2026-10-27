@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 16:23'
+updated_date: '2026-10-27 06:30'
 labels:
   - ui
 milestone: m-3
@@ -29,3 +30,9 @@ The application shell: a window with the chosen toolkit, the panel composed from
 - [ ] #2 Every widget type works with the original's interaction per docs/ui_spec.md
 - [ ] #3 cargo test and clippy pass; widget behavior has unit or snapshot tests
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-27, per task-040: egui + eframe; SVG via egui_extras image loaders (svg feature) with size hints = displayed size in physical pixels, reloaded on scale change (no own rasterizer); panel keeps the original aspect ratio, letterboxed; minimum window 0.5 x native size. A prototype crates/rb-ui-poc exists uncommitted in the .claude/worktrees/ui-poc worktree (not from this backlog) — ask the supervisor before using or touching it.
+<!-- SECTION:NOTES:END -->

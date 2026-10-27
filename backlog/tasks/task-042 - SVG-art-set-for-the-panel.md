@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 16:23'
+updated_date: '2026-10-27 06:30'
 labels:
   - ui
 milestone: m-3
@@ -27,3 +28,9 @@ Draw the panel as scalable SVG of our own: the full panel background per section
 - [ ] #2 No original artwork or third-party marks are used; the license is stated
 - [ ] #3 A render check shows every part at 1x, 2x and 3x (screenshots in the notes)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor 2026-10-27, per task-040: the art is drawn by egui through egui_extras' SVG loader (usvg + resvg), loaded at the displayed physical pixel size; check the parts render correctly with resvg (the same renderer).
+<!-- SECTION:NOTES:END -->
