@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 16:23'
-updated_date: '2026-10-27 06:30'
+updated_date: '2026-10-27 06:33'
 labels:
   - ui
 milestone: m-3
@@ -33,4 +33,6 @@ Draw the panel as scalable SVG of our own: the full panel background per section
 
 <!-- SECTION:NOTES:BEGIN -->
 Supervisor 2026-10-27, per task-040: the art is drawn by egui through egui_extras' SVG loader (usvg + resvg), loaded at the displayed physical pixel size; check the parts render correctly with resvg (the same renderer).
+
+Supervisor 2026-10-27, per the user: the visual look of the user's experiment is the base for the art set. It is crates/rb-ui-poc on branch worktree-ui-poc (commit 1359e39; not on main): an egui/eframe 0.37 front panel redrawn in a flat style from SVG generated in code (src/art.rs, src/sprites.rs, src/widgets.rs; design size 1200 x 940; palette in art::pal). Read it with `git show worktree-ui-poc:crates/rb-ui-poc/src/art.rs` etc. or the worktree .claude/worktrees/ui-poc. Keep its look (palette, flat style, knob/button styles) and lay the controls out per docs/ui_spec.md.
 <!-- SECTION:NOTES:END -->

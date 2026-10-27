@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-26 16:23'
-updated_date: '2026-10-27 06:30'
+updated_date: '2026-10-27 06:33'
 labels:
   - ui
 milestone: m-3
@@ -35,4 +35,6 @@ The application shell: a window with the chosen toolkit, the panel composed from
 
 <!-- SECTION:NOTES:BEGIN -->
 Supervisor 2026-10-27, per task-040: egui + eframe; SVG via egui_extras image loaders (svg feature) with size hints = displayed size in physical pixels, reloaded on scale change (no own rasterizer); panel keeps the original aspect ratio, letterboxed; minimum window 0.5 x native size. A prototype crates/rb-ui-poc exists uncommitted in the .claude/worktrees/ui-poc worktree (not from this backlog) — ask the supervisor before using or touching it.
+
+Supervisor 2026-10-27, per the user: the ui-poc experiment (branch worktree-ui-poc, commit 1359e39, crates/rb-ui-poc) was the user's; its visual look is the base. Its code may be reused where it fits (it uses eframe 0.37 and resvg 0.49 directly); task-040 chose egui_extras' SVG loader at the displayed pixel size, so reconcile its rendering path with that or explain why the poc's direct resvg use is kept.
 <!-- SECTION:NOTES:END -->
