@@ -6,9 +6,11 @@
 //! for a mod song (rbsmsg refuses those, mods are m-2) the message list of
 //! `rbsmsg.load_messages`.
 
+#[path = "../../../tests/common/python.rs"]
+mod python;
+
 use rb_engine::load;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -75,14 +77,13 @@ fn rbhm(song: &rb_engine::song::Song, msgs: &[Vec<u8>]) -> Vec<u8> {
 fn equals_rbsmsg() {
     let songs = songs();
     assert!(songs.len() >= 163, "found only {} songs", songs.len());
-    let out = Command::new("/usr/bin/python3")
-        .arg("-I")
+    let out = python::python()
         .arg("-c")
         .arg(DUMP)
         .arg(root())
         .args(&songs)
         .output()
-        .expect("run /usr/bin/python3");
+        .expect("run the rbsmsg dump");
     assert!(
         out.status.success(),
         "rbsmsg.py failed: {}",

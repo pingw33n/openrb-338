@@ -1,11 +1,13 @@
 //! Round trip and model equality over the shipped songs and the diagnostic corpus.
 //!
-//! The model is compared with `tools/rbs.py json` (run through /usr/bin/python3 on each song).
+//! The model is compared with `tools/rbs.py json` (run through Python 3 on each song).
+
+#[path = "../../../tests/common/python.rs"]
+mod python;
 
 use rbs::*;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -100,12 +102,12 @@ fn round_trip_is_byte_identical() {
 #[test]
 fn model_equals_rbs_py_json() {
     for p in songs() {
-        let out = Command::new("/usr/bin/python3")
+        let out = python::python()
             .arg(root().join("tools/rbs.py"))
             .arg("json")
             .arg(&p)
             .output()
-            .expect("run /usr/bin/python3 tools/rbs.py");
+            .expect("run tools/rbs.py");
         assert!(out.status.success(), "rbs.py failed on {}", p.display());
         let want: Value = serde_json::from_slice(&out.stdout).unwrap();
         let song = Song::parse(&std::fs::read(&p).unwrap()).unwrap();

@@ -2,9 +2,11 @@
 //! `RB_RB20FUL` (the user's RB20FUL.DAT) and `RB_RBM_DIR` (a folder of `.rbm` files) and skip with
 //! a message when unset. None of that material is in the repository.
 
+#[path = "../../../tests/common/python.rs"]
+mod python;
+
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use rb_engine::samples::{self, Sample, SampleSet};
 use rbm::*;
@@ -351,8 +353,7 @@ fn python_extract(modp: &Path, dat: &Path) -> Option<PathBuf> {
         modp.file_stem()?.to_string_lossy()
     ));
     let _ = std::fs::remove_dir_all(&out);
-    let r = Command::new("/usr/bin/python3")
-        .arg("-I")
+    let r = python::python()
         .arg(&script)
         .arg("extract")
         .arg(modp)
@@ -363,7 +364,7 @@ fn python_extract(modp: &Path, dat: &Path) -> Option<PathBuf> {
     match r {
         Ok(o) if o.status.success() => Some(out),
         Ok(o) => panic!("rbm.py failed: {}", String::from_utf8_lossy(&o.stderr)),
-        Err(e) => panic!("cannot run /usr/bin/python3 for the rbm.py comparison: {e}"),
+        Err(e) => panic!("cannot run python for the rbm.py comparison: {e}"),
     }
 }
 

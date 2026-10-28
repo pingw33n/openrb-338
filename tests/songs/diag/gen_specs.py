@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 """Generate the diagnostic songs' JSON specs (specs/*.json) and the README.
 
     gen_specs.py            write specs/NAME.json for every song and README.md

@@ -3,10 +3,12 @@
 //! tracks 2..5, enough events to flush a track buffer mid-walk. The user's 129 real 1.x songs are
 //! compared by the env-gated `crates/rb-cli/tests/thirdparty.rs`.
 
+#[path = "../../../tests/common/python.rs"]
+mod python;
+
 use rb_engine::load;
 use rbs::rb1x::{BLOCK_LEN, Block, Event, Kind, Song1x};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -90,8 +92,7 @@ fn equals_rb1x_py() {
         let ours = load::load_1x(&Song1x::parse(&data).unwrap())
             .unwrap()
             .messages(0);
-        let out = Command::new("/usr/bin/python3")
-            .arg("-I")
+        let out = python::python()
             .arg("-c")
             .arg(
                 "import os, struct, sys\n\
@@ -104,7 +105,7 @@ fn equals_rb1x_py() {
             .arg(root())
             .arg(&path)
             .output()
-            .expect("cannot run /usr/bin/python3");
+            .expect("cannot run the rb1x dump");
         assert!(
             out.status.success(),
             "{}",

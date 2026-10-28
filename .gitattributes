@@ -1,3 +1,8 @@
+# Everything is text with LF on every platform (also on Windows checkouts): the tests and
+# hashes that read the JSON/SVG/TSV fixtures, and the shell scripts, depend on it. This line is
+# first: git applies the last matching line, so the binary rules below override it.
+* text=auto eol=lf
+
 # The original program and its databases are data: store them byte for byte.
 original/** -text
 *.i64 binary
@@ -6,3 +11,17 @@ original/** -text
 *.wav binary
 *.flac binary
 *.aif binary
+*.png binary
+*.bin binary
+*.dll binary
+*.exe binary
+*.jpg binary
+*.jpeg binary
+*.ttf binary
+*.otf binary
+*.ico binary
+*.icns binary
+*.zip binary
+*.gz binary
+*.dmg binary
+*.ogg binary

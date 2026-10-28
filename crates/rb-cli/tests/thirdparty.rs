@@ -21,6 +21,8 @@
 //!   `tools/rb1x.py`'s. No song may panic.
 
 mod common;
+#[path = "../../../tests/common/python.rs"]
+mod python;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -77,15 +79,14 @@ fn mods() {
         eprintln!("skipped: RB_RB20FUL is not set or RB_THIRDPARTY_DIR/Mods.orig is missing");
         return;
     };
-    let out = Command::new("/usr/bin/python3")
-        .arg("-I")
+    let out = python::python()
         .arg(root().join("tools/rbm.py"))
         .arg("check-dir")
         .arg(&e.orig)
         .arg(&dat)
         .arg("--json")
         .output()
-        .expect("cannot run /usr/bin/python3 for tools/rbm.py");
+        .expect("cannot run tools/rbm.py");
     let reference: Vec<Value> =
         serde_json::from_slice(&out.stdout).expect("rbm.py check-dir --json output");
     assert!(!reference.is_empty(), "no .rbm in {}", e.mods.display());
@@ -420,8 +421,7 @@ out = struct.pack("<I", len(msgs))
 out += b"".join(struct.pack("<I", len(m)) + m for m in msgs)
 sys.stdout.buffer.write(out)
 "#;
-    let o = Command::new("/usr/bin/python3")
-        .arg("-I")
+    let o = python::python()
         .arg("-c")
         .arg(DUMP)
         .arg(root())

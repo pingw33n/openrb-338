@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 """Build the diagnostic songs: specs/NAME.json -> songs/NAME.rbs with tools/rbs.py build.
 
     build.py [NAME...]     all songs, or only the named ones (run gen_specs.py first to refresh specs/)

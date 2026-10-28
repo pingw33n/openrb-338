@@ -119,7 +119,10 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
     Build, clippy and tests use the stable toolchain pinned in `rust-toolchain.toml`.
   - `test` on `ubuntu-latest`, `windows-latest` and `macos-latest`:
     `cargo clippy --workspace --all-targets --locked -- -D warnings` and
-    `cargo test --workspace --locked`. The tests that need `original/`, `RB_MOD_DIR`, `RB_CD_ISO`
+    `cargo test --workspace --locked --no-fail-fast` (one run shows every failure). Some tests
+    run `tools/*.py` with Python 3 (every runner has it): `RB_PYTHON` if set, else the first of
+    `python3`, `python`, `py -3` on PATH that is Python 3 (`tests/common/python.rs`); none found
+    fails the test with a message naming `RB_PYTHON`. The tests that need `original/`, `RB_MOD_DIR`, `RB_CD_ISO`
     or `RB_THIRDPARTY_DIR` skip when those are absent (checked locally with all of them unset).
     Linux installs `libasound2-dev` first.
 - `release.yml`, on a tag `v*` and by hand:
