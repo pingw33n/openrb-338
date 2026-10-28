@@ -932,6 +932,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, one entry per mod of the Mods folder, Choose file... | the song's kit (below) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
+| Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F), Select Patterns (Ctrl+G) | `App::key_mode` (section 10, task-070) |
 
 - **Save** (`document::compose`). The original saves by asking every device for its data block
@@ -974,7 +975,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   task-074) when the preference "Play Mod Startup Sound" is on: `Settings::startup_sound`, on by
   default as the original's (the preferences' constructor `sub_41CAA4` sets prefs `+536` = 1 at
   0x41CB13, the app's constructor `sub_40D1D2` app `+0x533` = 1 at 0x40D338), stored in the
-  settings file as `startup_sound=0|1`. rb has no switch for it in its menu yet (task-086).
+  settings file as `startup_sound=0|1`. The Options menu's checkbox "Play Mod Startup Sound" switches it (task-086, task-089).
 - **The startup sound of an open and of the start** (task-087). Below.
 
 ### 18.1 When the original plays the mod's startup sound (task-087) [C unless marked]

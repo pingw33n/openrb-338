@@ -1079,3 +1079,29 @@ fn a_song_the_node_pool_refuses_is_not_opened() {
     assert_eq!(s.audio.preview_position(), None, "no startup sound");
     assert_eq!(s.app.doc.path, None);
 }
+
+/// task-089: the Options menu's "Play Mod Startup Sound" flips the preference and saves the
+/// settings file at once; a save error goes to the notice line.
+#[test]
+fn the_startup_sound_checkbox_flips_the_preference_and_saves_it() {
+    let dir = std::env::temp_dir().join(format!("rb-ui-startup-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = dir.join("settings.txt");
+    let mut h = Harness::new();
+    h.app.settings.file = Some(file.clone());
+    assert!(h.app.settings.startup_sound);
+    h.app.command(Cmd::ToggleStartupSound);
+    assert!(!h.app.settings.startup_sound);
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("startup_sound=0\n"), "{text}");
+    h.app.command(Cmd::ToggleStartupSound);
+    assert!(h.app.settings.startup_sound);
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("startup_sound=1\n"), "{text}");
+    assert!(h.app.notice.is_none());
+    // a file that cannot be written: the error is on the notice line
+    h.app.settings.file = Some(file.join("x"));
+    h.app.command(Cmd::ToggleStartupSound);
+    assert!(h.app.notice.is_some());
+    let _ = std::fs::remove_dir_all(&dir);
+}

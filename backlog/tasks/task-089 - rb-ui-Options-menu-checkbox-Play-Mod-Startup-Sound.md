@@ -1,10 +1,11 @@
 ---
 id: TASK-089
 title: 'rb-ui: Options menu checkbox ''Play Mod Startup Sound'''
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 05:41'
+updated_date: '2026-10-28 05:44'
 labels:
   - ui
 milestone: m-3
@@ -29,8 +30,28 @@ What: add a checkbox 'Play Mod Startup Sound' to the Options menu next to 'Vinta
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The Options menu shows a 'Play Mod Startup Sound' checkbox next to 'Vintage ReBirth Synth Sound', checked when Settings::startup_sound is on
-- [ ] #2 Toggling it flips Settings::startup_sound and saves the settings file at once; a save error is shown on the notice line
-- [ ] #3 A test covers the toggle (the setting flips and the saved file has startup_sound=0 then 1)
-- [ ] #4 docs/ui_spec.md section 18 lists the new item; cargo test and cargo clippy --all-targets -- -D warnings pass
+- [x] #1 The Options menu shows a 'Play Mod Startup Sound' checkbox next to 'Vintage ReBirth Synth Sound', checked when Settings::startup_sound is on
+- [x] #2 Toggling it flips Settings::startup_sound and saves the settings file at once; a save error is shown on the notice line
+- [x] #3 A test covers the toggle (the setting flips and the saved file has startup_sound=0 then 1)
+- [x] #4 docs/ui_spec.md section 18 lists the new item; cargo test and cargo clippy --all-targets -- -D warnings pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Cmd::ToggleStartupSound in menu.rs: flips Settings::startup_sound, Settings::save, error to notice. 2. Options checkbox after Vintage. 3. Test in tests/menu.rs with settings.file in a temp dir. 4. ui_spec section 18 table + drop 'no switch yet' sentence.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-abec9a1623d2a3cef
+
+Cmd::ToggleStartupSound in menu.rs; checkbox after Vintage; test the_startup_sound_checkbox_flips_the_preference_and_saves_it (tests/menu.rs) checks startup_sound=0 then 1 in the file and a notice on an unwritable file. fmt, clippy -D warnings and cargo test --release -p rb-ui pass.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Options > Play Mod Startup Sound checkbox added (menu.rs), flips Settings::startup_sound, saves at once, save error to notice. Test added; ui_spec section 18 updated. Branch worktree-agent-abec9a1623d2a3cef, one commit. Tests: rb-ui all pass, clippy clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

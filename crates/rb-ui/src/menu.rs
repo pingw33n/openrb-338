@@ -72,6 +72,8 @@ pub enum Cmd {
     /// A kit from the Mods menu (or a mod file the browser chose).
     UseKit(Kit),
     ToggleVintage,
+    /// "Play Mod Startup Sound" of the Options menu (the original's Edit > Preferences).
+    ToggleStartupSound,
     SetKeyMode(KeyMode),
 }
 
@@ -473,6 +475,12 @@ impl App {
                 let on = !self.panel.vintage;
                 self.panel.set_vintage(on);
             }
+            Cmd::ToggleStartupSound => {
+                self.settings.startup_sound = !self.settings.startup_sound;
+                if let Err(e) = self.settings.save() {
+                    self.notice = Some(e);
+                }
+            }
             Cmd::SetKeyMode(m) => self.key_mode = m,
         }
     }
@@ -720,6 +728,11 @@ impl App {
                             let mut v = self.panel.vintage;
                             if ui.checkbox(&mut v, "Vintage ReBirth Synth Sound").clicked() {
                                 cmd = Some(Cmd::ToggleVintage);
+                                ui.close();
+                            }
+                            let mut st = self.settings.startup_sound;
+                            if ui.checkbox(&mut st, "Play Mod Startup Sound").clicked() {
+                                cmd = Some(Cmd::ToggleStartupSound);
                                 ui.close();
                             }
                             ui.separator();
