@@ -1,7 +1,8 @@
 //! `ui-art gen [DIR]` writes the art set (default `assets/ui`);
 //! `ui-art check [DIR]` renders the committed set at 1x, 2x and 3x with resvg
 //! and writes the panel and a sheet of all parts as PNGs to `DIR/preview`;
-//! `ui-art iconset DIR` renders the app icon at the sizes of a macOS `.iconset` (task-110).
+//! `ui-art iconset DIR` renders the app icon at the sizes of a macOS `.iconset` (task-110);
+//! `ui-art ico [FILE]` writes the Windows icon (default `assets/app_icon.ico`, task-111).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -85,8 +86,18 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        "ico" => {
+            // The Windows icon (task-111): assets/app_icon.ico, embedded by rb-ui's build.rs.
+            // The optional argument is the output file.
+            let out = explicit_dir.unwrap_or_else(|| default_dir().join("../app_icon.ico"));
+            let svg = fs::read_to_string(default_dir().join("app_icon.svg")).expect("app_icon.svg");
+            let bytes = rb_ui_art::ico(&svg).expect("render");
+            fs::write(&out, &bytes).unwrap();
+            println!("{} ({} bytes)", out.display(), bytes.len());
+            ExitCode::SUCCESS
+        }
         _ => {
-            eprintln!("usage: ui-art gen|check [DIR] | iconset DIR");
+            eprintln!("usage: ui-art gen|check [DIR] | iconset DIR | ico [FILE]");
             ExitCode::from(2)
         }
     }

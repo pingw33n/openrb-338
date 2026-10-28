@@ -38,3 +38,6 @@ rb-ui-art = { path = "../rb-ui-art" }
 # The gated tests' external inputs (task-121).
 rb-testkit = { path = "../rb-testkit" }
 tempfile = "3.27.0"
+
+[build-dependencies]
+embed-resource = "3"

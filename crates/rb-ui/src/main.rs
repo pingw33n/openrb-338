@@ -18,6 +18,11 @@
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
 //! settings file (`rb/ui.toml` in the configuration folder, or `$RB_UI_CONFIG`).
 
+// The Windows release build is a GUI-subsystem program: no console window opens behind the
+// panel (task-111). `rb` is not affected (this attribute is in the UI binary only). A debug
+// build keeps the console, for `dbg!` and panics.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -41,7 +46,49 @@ fn usage() -> ! {
     std::process::exit(2);
 }
 
+/// Gives a GUI-subsystem process the console of the program that started it (task-111).
+///
+/// Such a process has no console, so `eprintln!` (the usage text, a song that does not open, the
+/// audio error) goes nowhere. When it is started from `cmd` or PowerShell, this attaches to that
+/// console and points the standard output and error at it, unless they were redirected (a file
+/// or a pipe stays as it is). Started from the Start menu or Explorer there is no parent
+/// console and nothing happens. What stays lost: `cmd` does not wait for a GUI program, so the
+/// prompt comes back at once and the text appears over it; `start /wait OpenRB-338.exe` waits.
+#[cfg(all(windows, not(debug_assertions)))]
+fn attach_parent_console() {
+    use std::fs::OpenOptions;
+    use std::os::windows::io::IntoRawHandle;
+
+    type Handle = *mut core::ffi::c_void;
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
+    const STD_ERROR_HANDLE: u32 = -12i32 as u32;
+    unsafe extern "system" {
+        fn AttachConsole(process_id: u32) -> i32;
+        fn GetStdHandle(std_handle: u32) -> Handle;
+        fn SetStdHandle(std_handle: u32, handle: Handle) -> i32;
+    }
+    // SAFETY: plain Win32 calls; the handle given to SetStdHandle is leaked on purpose, it must
+    // live as long as the process.
+    unsafe {
+        if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+            return;
+        }
+        for id in [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+            let h = GetStdHandle(id);
+            // none (null) or invalid (-1): not redirected, so use the console
+            if (h.is_null() || h as isize == -1)
+                && let Ok(f) = OpenOptions::new().write(true).open("CONOUT$")
+            {
+                SetStdHandle(id, f.into_raw_handle());
+            }
+        }
+    }
+}
+
 fn main() -> eframe::Result {
+    #[cfg(all(windows, not(debug_assertions)))]
+    attach_parent_console();
     let mut demo = false;
     let mut size = [PANEL_W, PANEL_H];
     let mut sized = false;

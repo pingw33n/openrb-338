@@ -66,6 +66,39 @@ pub fn iconset_files() -> Vec<(String, u32)> {
     v
 }
 
+/// The pixel sizes of the Windows `.ico` (task-111): the sizes Explorer, the taskbar and the
+/// Start menu pick from at 100% to 400% scale.
+pub const ICO_SIZES: [u32; 8] = [16, 24, 32, 48, 64, 96, 128, 256];
+
+/// The app icon as a Windows `.ico` file: one PNG-compressed image per size of [`ICO_SIZES`]
+/// (the form Windows Vista and newer read; the entry of 256 pixels is stored as width 0).
+pub fn ico(svg: &str) -> Result<Vec<u8>, String> {
+    let mut images = Vec::new();
+    for size in ICO_SIZES {
+        let png = render_size(svg, size)?
+            .encode_png()
+            .map_err(|e| e.to_string())?;
+        images.push((size, png));
+    }
+    let mut out = Vec::new();
+    out.extend_from_slice(&[0, 0, 1, 0]); // reserved, type 1 = icon
+    out.extend_from_slice(&(images.len() as u16).to_le_bytes());
+    let mut offset = 6 + 16 * images.len() as u32;
+    for (size, png) in &images {
+        let dim = if *size >= 256 { 0 } else { *size as u8 };
+        out.extend_from_slice(&[dim, dim, 0, 0]); // width, height, no palette, reserved
+        out.extend_from_slice(&1u16.to_le_bytes()); // planes
+        out.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
+        out.extend_from_slice(&(png.len() as u32).to_le_bytes());
+        out.extend_from_slice(&offset.to_le_bytes());
+        offset += png.len() as u32;
+    }
+    for (_, png) in images {
+        out.extend_from_slice(&png);
+    }
+    Ok(out)
+}
+
 /// The number of pixels that are not fully transparent.
 fn visible(pixmap: &tiny_skia::Pixmap) -> usize {
     pixmap.pixels().iter().filter(|p| p.alpha() > 0).count()

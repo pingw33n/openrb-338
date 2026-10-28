@@ -87,3 +87,42 @@ fn iconset_has_the_ten_sizes() {
         assert!(px.pixels().iter().any(|p| p.alpha() > 0), "{name} is empty");
     }
 }
+
+/// Reads the directory of an `.ico` file: (width, height, PNG bytes) per image; a width of 0
+/// means 256.
+fn ico_images(bytes: &[u8]) -> Vec<(u32, u32, Vec<u8>)> {
+    assert_eq!(&bytes[..4], &[0, 0, 1, 0], "an icon file");
+    let n = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
+    (0..n)
+        .map(|i| {
+            let e = &bytes[6 + 16 * i..6 + 16 * (i + 1)];
+            let dim = |b: u8| if b == 0 { 256 } else { b as u32 };
+            let len = u32::from_le_bytes(e[8..12].try_into().unwrap()) as usize;
+            let off = u32::from_le_bytes(e[12..16].try_into().unwrap()) as usize;
+            (dim(e[0]), dim(e[1]), bytes[off..off + len].to_vec())
+        })
+        .collect()
+}
+
+/// The Windows icon (task-111): `ico` has one PNG per size, and the committed
+/// `assets/app_icon.ico` (made by `ui-art ico`) has the same sizes. The bytes are not compared:
+/// the pixels may differ in the last bit between CPUs.
+#[test]
+fn ico_has_the_sizes_and_the_committed_file_matches() {
+    let svg = fs::read_to_string(root().join("assets/ui/app_icon.svg")).unwrap();
+    let made = rb_ui_art::ico(&svg).unwrap();
+    let committed = fs::read(root().join("assets/app_icon.ico")).unwrap();
+    for bytes in [&made, &committed] {
+        let images = ico_images(bytes);
+        let sizes: Vec<u32> = images.iter().map(|i| i.0).collect();
+        assert_eq!(sizes, rb_ui_art::ICO_SIZES);
+        for (w, h, png) in images {
+            assert_eq!(w, h);
+            assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+            // the PNG header's width and height agree with the directory entry
+            let pw = u32::from_be_bytes(png[16..20].try_into().unwrap());
+            let ph = u32::from_be_bytes(png[20..24].try_into().unwrap());
+            assert_eq!((pw, ph), (w, h));
+        }
+    }
+}

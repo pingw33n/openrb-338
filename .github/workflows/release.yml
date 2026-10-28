@@ -121,3 +121,38 @@ jobs:
           name: dmg
           path: dist/universal-apple-darwin/OpenRB-338-*.dmg
           if-no-files-found: error
+
+  installer:
+    # The Windows installers (task-111): NSIS, one per architecture, from the Windows `bin-`
+    # artifacts of the package jobs. makensis runs on Linux (apt install nsis), so the job
+    # needs no Windows runner and no Rust. The installers are not signed.
+    name: installer (${{ matrix.arch }})
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-pc-windows-msvc, arch: x64 }
+          - { target: aarch64-pc-windows-msvc, arch: arm64 }
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
+      # Ubuntu's apt NSIS is 3.08 (windows-latest ships none: NSIS is not in the runner-images
+      # list), the script was checked with 3.13: no -WX here, so a warning of the older
+      # makensis does not stop a release.
+      MAKENSIS_FLAGS: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install NSIS
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: bin-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/bin
+      - name: Build the installer
+        run: SKIP_BUILD=1 scripts/package-installer.sh "${{ matrix.target }}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-${{ matrix.arch }}
+          path: dist/${{ matrix.target }}/OpenRB-338-*-setup.exe
+          if-no-files-found: error

@@ -1,6 +1,9 @@
 # assets
 
 - `ui/`: the panel's SVG art set (`crates/rb-ui-art`).
+- `app_icon.ico`: the Windows icon (the `app_icon` part at 16 to 256 px), made by
+  `cargo run --release -p rb-ui-art --bin ui-art -- ico` and embedded in `OpenRB-338.exe` by
+  `crates/rb-ui/build.rs` (task-111).
 - `Standard.rbm`: the standard mod, rb's built-in kit (task-067, docs/rbm.md section 13).
 
 ## Standard.rbm

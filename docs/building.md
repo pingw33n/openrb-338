@@ -123,8 +123,7 @@ architectures, so the minimum is glibc 2.35. Both Linux packages were smoke-test
 `ubuntu:22.04` containers (`rb --help`, `rb info` on a shipped song, and OpenRB-338
 `--screenshot` under xvfb, which wrote a PNG), amd64 and arm64.
 
-The Windows build of OpenRB-338 is still a console-subsystem exe (a console window opens
-behind it); the GUI subsystem is part of task-111.
+The Windows build of OpenRB-338 is a GUI-subsystem exe (task-111), see "The Windows installer".
 
 ## Scripts (`scripts/`)
 
@@ -134,6 +133,8 @@ behind it); the GUI subsystem is part of task-111.
 | `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
 | `scripts/build-all.sh [TARGET...]` | packages every target practical from this machine, and lists the skipped and failed ones |
 | `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |
+| `scripts/package-installer.sh TARGET` | `build.sh` for a Windows target, then `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x64\|arm64>-setup.exe` with NSIS (`SKIP_BUILD=1` uses the existing `bin/`; `MAKENSIS` names makensis) |
+| `scripts/installer/openrb.nsi`, `scripts/installer/path.ps1` | the installer's script, and the helper that edits the user's PATH |
 | `scripts/macos-app.sh OUT_DIR UI [CLI]` | makes `OUT_DIR/OpenRB-338.app` from the binaries (Info.plist, icon, ad-hoc signature) |
 | `scripts/macos-dev-app.sh` | wraps `target/release/OpenRB-338` into `target/OpenRB-338.app` for everyday runs |
 | `scripts/version.sh` | prints the version `YYYY.MMDD.HHMM` (the UTC build time from `SOURCE_DATE_EPOCH`, to the minute); `--time` the full time, `--epoch v2026.1028.1930` the `SOURCE_DATE_EPOCH` of a release tag |
@@ -174,6 +175,8 @@ These are the commands that were run (Homebrew and rustup; nothing else is chang
 ```sh
 brew install llvm             # clang-cl, lld-link and llvm-lib, for the C parts of the Windows builds
 brew install actionlint shellcheck   # to check the workflows and the scripts
+brew install makensis         # NSIS 3.13, for the Windows installers (task-111)
+brew install sevenzip         # `7zz l setup.exe` lists an installer's files (the check below)
 cargo install cargo-xwin --locked
 rustup target add --toolchain 1.99.1 x86_64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc
 ```
@@ -184,7 +187,9 @@ Swift's toolchain also provides one). Docker Desktop must be running for the Lin
 scripts do not start it. The Windows C build sets `CL=-Wno-incompatible-pointer-types`: the
 vendored libvorbis (`aotuv_lancer_vorbis_sys`) passes a `float *` to `_mm_prefetch`, which MSVC's
 `cl` accepts with a warning and clang-cl 21 and newer rejects (cargo-xwin overwrites `CFLAGS_*`
-and `CC_*`, so the variable `CL`, which clang-cl reads itself, is the way in).
+and `CC_*`, so the variable `CL`, which clang-cl reads itself, is the way in). The same Homebrew
+LLVM gives `llvm-rc`, which compiles the exe's icon and version resource when cross-building for
+Windows (below); `llvm-readobj` (also there) reads the result back.
 
 ### Docker (Linux builds off Linux)
 
@@ -235,8 +240,16 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
     artifacts, runs `SKIP_BUILD=1 scripts/package-dmg.sh` and uploads the artifact `dmg`
     (`OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg`). It reuses the two package
     builds and the `prepare` build time, so the app's version string is theirs.
-  - The draft release with the changelog (task-113), the Windows installers (task-111) and the
-    AppImages (task-112) are added to this workflow by those tasks.
+  - `installer` (task-111), one job per Windows architecture on `ubuntu-latest` after the package
+    jobs: installs NSIS (`apt-get install nsis`), downloads `bin-x86_64-pc-windows-msvc` or
+    `bin-aarch64-pc-windows-msvc`, runs `SKIP_BUILD=1 scripts/package-installer.sh <target>` and
+    uploads the artifact `installer-x64` or `installer-arm64`
+    (`OpenRB-338-<YYYY.MMDD.HHMM>-<x64|arm64>-setup.exe`). It needs no Windows runner and no
+    Rust, and takes the `prepare` build time, so the installer's version is the exe's. Not run
+    yet: only `actionlint` and a local run of the same script checked it (see "The CI job and
+    old NSIS" below; the first release run is the check, task for it is separate).
+  - The draft release with the changelog (task-113) and the AppImages (task-112) are added to
+    this workflow by those tasks.
 
 Validation before merge: `actionlint .github/workflows/*.yml` and `shellcheck scripts/*.sh`
 (both from Homebrew). `act` was not used: it cannot run the macOS and Windows runners.
@@ -294,6 +307,160 @@ In CI the `dmg` job of `release.yml` runs `SKIP_BUILD=1 scripts/package-dmg.sh` 
 macOS `bin-<target>` artifacts, so the app carries the same version string as the `.tar.gz`
 packages.
 
+## The Windows installer (task-111)
+
+`scripts/package-installer.sh x86_64-pc-windows-msvc|aarch64-pc-windows-msvc` builds
+`dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-x64-setup.exe` or `...-arm64-setup.exe` (names as the
+user decided, 2026-10-28; task-133 for the version) with NSIS: `scripts/installer/openrb.nsi`.
+NSIS rather than Inno Setup because `makensis` runs on macOS, Linux and Windows, so the same
+script builds on this Mac and on a CI runner (Inno Setup needs Windows or Wine). The installer
+itself is a 32-bit x86 program (the NSIS stub), which Windows on Arm runs under emulation; what
+it installs is the native x64 or arm64 build.
+
+**What it installs.** Per user, to `%LOCALAPPDATA%\Programs\OpenRB-338` (`/D=DIR` changes it):
+`OpenRB-338.exe`, `rb.exe` (later `orb.exe`, task-068), `LICENSE.txt` (the GPLv3, also the
+installer's license page) and `README.txt`, and `Uninstall.exe`. Per user, not per machine,
+because the program is two executables with no service, driver or shared file; because an
+unsigned installer that also asks for administrator rights shows a second warning for nothing
+(no UAC prompt now); and because a per-user PATH needs no rights either. The cost: other
+accounts of the PC do not get the program (they run the installer themselves). The pages:
+welcome, license, components, folder, install, finish (start the app, show the readme).
+
+| Component | Default | Does |
+|---|---|---|
+| OpenRB-338 and rb | required | the files above; the uninstaller; the entry in Settings > Apps > Installed apps (Add or remove programs) under `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenRB-338`: `DisplayName`, `DisplayVersion` = `YYYY.MMDD.HHMM`, `Publisher`, `DisplayIcon`, `InstallLocation`, `UninstallString`, `QuietUninstallString`, `EstimatedSize`, no Modify or Repair |
+| Start menu shortcut | on | `OpenRB-338` in the user's Start menu |
+| Desktop shortcut | off | `OpenRB-338` on the desktop |
+| Add rb to the PATH of the current user | off | appends the folder to `HKCU\Environment\Path` |
+
+Silent install: `setup.exe /S [/STARTMENU=0|1] [/DESKTOP=0|1] [/PATH=0|1] [/D=DIR]` (`/D=` must
+be the last argument and unquoted, an NSIS rule). Silent uninstall: `Uninstall.exe /S`, which
+returns at once (it copies itself to a temporary folder to delete its own file); add `_?=DIR`
+(`Uninstall.exe /S _?=C:\dir`) to wait for it, which then leaves `Uninstall.exe` behind to
+delete by hand.
+
+**The PATH.** `scripts/installer/path.ps1` does it (the installer runs it with
+`powershell -NoProfile -ExecutionPolicy Bypass -File`): NSIS strings are 1024 characters here
+(`makensis -HDRINFO`: `NSIS_MAX_STRLEN=1024`), so a long PATH would be cut, and .NET's
+`SetEnvironmentVariable` turns the `REG_EXPAND_SZ` value into `REG_SZ`, so `%USERPROFILE%` in it
+would stop expanding. The script reads the value unexpanded and writes `REG_EXPAND_SZ` back,
+keeps every entry that is not ours exactly as it is (empty ones too), adds the folder once
+(after a `;` unless the value is empty or ends with one), and the uninstaller removes our entry
+and the `;` after it (a last entry: only the entry), so install then uninstall gives the value
+back, except that a value without a `;` at its end ends up with one; then the installer
+broadcasts `WM_SETTINGCHANGE`, so new
+terminals see it (an open one does not). If PowerShell fails (a group policy that forbids
+scripts even with `Bypass`), the installer says so and goes on. The uninstaller runs `remove`
+whenever `path.ps1` is in the folder.
+
+**The uninstaller** removes the files, the shortcuts, the PATH entry and both registry keys, and
+the folder if it is empty. It keeps the user's own files in the folder, and the settings file
+(`%APPDATA%\rb\ui.toml`) and songs.
+
+**Running programs, upgrades.** Before it changes anything, the installer and the uninstaller try
+to open `OpenRB-338.exe` and `rb.exe` of the folder for writing, which fails while one runs from
+it. Then a box asks to close the program (Retry or Cancel); under `/S`, or on Cancel, nothing is
+changed and the exit code is 5 (tested on the test machine for both). If a file still cannot be
+deleted after that (it appeared meanwhile), the uninstaller keeps the entry in Apps and the
+registry keys, says so, and exits 6 (not exercised), so the uninstall can be repeated.
+Installing over an
+earlier version into the same folder just overwrites the files and the registry values (the
+folder is remembered in `HKCU\Software\OpenRB-338` and is the default). Installing into another
+folder removes the PATH entry of the earlier folder (a new one is added only if the PATH
+component is ticked), moves the Apps entry to the new folder and leaves the earlier folder's
+files, which can be deleted by hand. The shortcuts are overwritten. Start menu and desktop are
+the current user's (`SetShellVarContext current`).
+
+**The GUI subsystem.** `crates/rb-ui/src/main.rs` has
+`#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]`: the release
+and dist builds of `OpenRB-338.exe` open no console window; a debug build keeps one. `rb.exe`
+(crate `rb-cli`) is unchanged, a console program. What a GUI-subsystem program loses:
+`eprintln!` has nowhere to go. `attach_parent_console` (same file) attaches to the console of the
+program that started it (`cmd`, PowerShell) with `AttachConsole` and points stdout and stderr at
+`CONOUT$`, unless they were redirected (then they stay), so the usage text, a song that does not
+open and the audio error show in a terminal. Still lost: `cmd` and PowerShell do not wait for a
+GUI program, so the prompt comes back at once and the text appears over it (`start /wait
+OpenRB-338.exe`, or `| more`, waits); started from the Start menu or Explorer, the text goes
+nowhere (the errors that matter also show in the app's message box). `--screenshot OUT.png`
+writes a file and is not affected.
+
+**The icon and the version resource** (Windows targets only). `assets/app_icon.ico` is the
+`app_icon` part of `assets/ui` rendered by `cargo run --release -p rb-ui-art --bin ui-art -- ico`
+(same resvg as the panel and the macOS iconset): 16, 24, 32, 48, 64, 96, 128 and 256 pixels, PNG
+entries. `crates/rb-ui/build.rs` writes an `.rc` with that icon and a `VERSIONINFO` (file and
+product version `YYYY.MMDD.HHMM` as the four 16-bit numbers 2026, 1028, 1930, 0 and as text;
+product name OpenRB-338, license GPL-3.0-only) and `embed-resource` compiles it (`llvm-rc` from
+Homebrew LLVM on this Mac, `rc.exe` on a Windows runner) into the binary of `rb-ui` only, only
+when the target is Windows. A failure fails the build. The test
+`ico_has_the_sizes_and_the_committed_file_matches` (`crates/rb-ui-art/tests/art.rs`) checks the
+committed file's sizes; the pixels are not compared byte for byte (two CPUs can round the last
+bit differently), so regenerate the file when `app_icon.svg` changes.
+
+`setup.exe` and `Uninstall.exe` have the same icon (`MUI_ICON`, from `assets/app_icon.ico`).
+
+**The CI job and old NSIS.** `windows-latest` has no NSIS (the runner-images list has Inno Setup
+and WiX, not NSIS), so the job runs on Ubuntu, whose apt NSIS is older than the 3.13 checked
+here (3.08 on ubuntu-24.04, as reviewed). The script uses nothing that is new in 3.13 as far
+as I can tell from reading it (`Unicode true`, MUI2, FileFunc, LogicLib `${ForEach}`,
+`nsExec`, `SendMessage /TIMEOUT`, `ManifestDPIAware` all exist in 3.0x), and the job sets
+`MAKENSIS_FLAGS` empty (no `-WX`), so a warning of the older makensis cannot stop a release. It
+was not run on 3.08: the first release run is the check.
+
+**Reproducible.** NSIS 3.13 honors `SOURCE_DATE_EPOCH` (`makensis -HDRINFO` lists
+`NSIS_SOURCE_DATE_EPOCH`; the header time), and the script
+copies the files into a stage folder with the build time as their mtime (NSIS stores it), so two
+runs over the same binaries give byte-identical installers (checked here, both architectures).
+
+**The installer is a PE of its own:** `file` says `PE32 executable (GUI) Intel 80386, Nullsoft
+Installer self-extracting archive`, `7zz l` lists its files.
+
+### Checked (2026-10-28, this Mac and the Windows test machine)
+
+With `SOURCE_DATE_EPOCH=1793215800` (version `2026.1028.1930`):
+
+| File | Bytes |
+|---|---|
+| `OpenRB-338-2026.1028.1930-x64-setup.exe` | 8,395,465 |
+| `OpenRB-338-2026.1028.1930-arm64-setup.exe` | 7,498,263 |
+
+- Local: `makensis -V2 -WX` (warnings are errors) builds both; `7zz l` lists `OpenRB-338.exe`,
+  `rb.exe`, `LICENSE.txt`, `README.txt`, `path.ps1` and the uninstaller; `llvm-readobj
+  --file-headers` says `IMAGE_SUBSYSTEM_WINDOWS_GUI` for `OpenRB-338.exe` and
+  `IMAGE_SUBSYSTEM_WINDOWS_CUI` for `rb.exe` (`file`: `PE32+ executable (GUI)` and
+  `(console)`), machine AMD64 and ARM64; `llvm-readobj --coff-resources` lists 8 `RT_ICON`, the
+  `GROUP_ICON` and the `VERSIONINFO` (file version 2026.1028.1930.0).
+- On the Windows test machine (Windows 11 build 26200, x64; folder `C:\re\rb\inst111`, never
+  the ReBirth installation, deleted afterwards): `setup.exe /S /PATH=1 /DESKTOP=1
+  /D=C:\re\rb\inst111\app` exits 0, the six files are there, the `Uninstall` registry key has the
+  name and version `2026.1028.1930`, both shortcuts exist, PATH is still `REG_EXPAND_SZ`
+  with the folder appended and the old entries intact; the file properties show the version and
+  product name; `rb.exe --help` prints; `OpenRB-338.exe` starts (window title `OpenRB-338 -
+  Untitled`, the panel in a screenshot) with no child process (no console host);
+  `OpenRB-338.exe --bogus` with stderr redirected to a file writes the usage text and exits 2,
+  and started through ShellExecute from PowerShell it exits 2. `Uninstall.exe /S _?=...` exits
+  0 and removes the registry keys, both shortcuts and the PATH entry (PATH equal to before),
+  leaving only `Uninstall.exe`. The first uninstall, by the first draft of `path.ps1`, also
+  dropped an empty entry at the end of PATH; the script was changed to keep other entries
+  exactly and the cycle repeated. The whole cycle was run again with the final x64 installer
+  (sha256 `374d8097...5267`) after the review round: install, `rb --help`, app start, then
+  `setup.exe /S` over the running app (exit 5, nothing changed), `Uninstall.exe /S` of the
+  running app (exit 5, files and the Apps entry kept), an install in place over the closed app
+  (exit 0), an install into a second folder (the PATH entry of the first folder is gone, the
+  Apps entry points to the second), and uninstalls; the PATH value was byte-identical to its
+  start. The exit-6 path (a file that cannot be deleted) was not exercised.
+- `assets/app_icon.ico` and a fresh `ui-art ico` on this host (aarch64 macOS) are byte-identical
+  (`cmp`, sha256 `67f66747...c366e7`); other CPUs may differ in the last bit of a pixel, which is
+  why the test compares sizes only.
+- The icon path in `build.rs` is not canonicalized (a native Windows `\\?\` path may not open in
+  `rc.exe`). The native-Windows build (`windows-latest`, `windows-11-arm`: `ci.yml`, the release
+  package jobs, with `rc.exe`) was not run here and is unverified until a CI Windows job runs;
+  the cross build with `llvm-rc` was.
+- Not checked: the arm64 installer was not run (the machine is x64); `AttachConsole`'s visible
+  output was not seen (the test machine's console cannot be read back through rcs; the code runs
+  without a crash and does not change the exit code); the installer's own wizard pages were not
+  clicked through (only `/S`); the `installer` jobs of `release.yml` ran nowhere (the first
+  release run checks them, with Ubuntu's older makensis).
+
 ## What the system shows for an unsigned download
 
 Nothing is signed or notarized (decided 2026-10-28). Expect:
@@ -310,5 +477,13 @@ Nothing is signed or notarized (decided 2026-10-28). Expect:
   `.dmg` applies to the app copied out of it (the `README.txt` in the image says the same).
   These Gatekeeper paths were not tried here (no download, and this Mac is not on 15 for a
   quarantined app); only the local launch from the mounted image was.
-- Windows (SmartScreen): "Windows protected your PC": More info > Run anyway.
+- Windows (SmartScreen): "Windows protected your PC", "Microsoft Defender SmartScreen prevented
+  an unrecognized app from starting": the publisher is shown as "Unknown publisher" (an
+  Authenticode certificate would name it). Click "More info", then "Run anyway". It applies to a
+  file downloaded in a browser (it carries the Mark of the Web), to the installer, and again to
+  `OpenRB-338.exe` and `rb.exe` from the `.zip`. The installer asks for no administrator rights,
+  so there is no UAC prompt with "Unknown publisher" on top of it. The warning fades with
+  SmartScreen's reputation for the file's hash, which a new build per version starts again.
+  Right-click the file > Properties > Unblock (or `Unblock-File`) removes the mark.
+  This was not tried here (no download on the test machine).
 - Linux: nothing; `chmod +x` if the file lost its mode.
