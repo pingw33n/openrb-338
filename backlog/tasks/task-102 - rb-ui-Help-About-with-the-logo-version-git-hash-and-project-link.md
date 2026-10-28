@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 08:38'
-updated_date: '2026-10-28 09:34'
+updated_date: '2026-10-28 10:38'
 labels:
   - ui
 milestone: m-3
@@ -57,3 +57,9 @@ What:
 - [ ] #3 The version string is '<UTC build time> (<git>)' with dev- for a non-main build and -dirty for a dirty tree (the user's four forms), '(unknown)' without git; the build never fails for lack of git; a commit or branch switch updates it without cargo clean
 - [ ] #4 A unit test checks the four example forms and unknown; a headless test opens and closes the window
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Addition from the user (2026-10-28), for task-113's release builds: the build script takes the build time from SOURCE_DATE_EPOCH when it is set (already in the spec), and takes the branch from an override variable RB_BUILD_BRANCH when it is set (main or anything else), before looking at git or GITHUB_REF_NAME. A tag build in GitHub Actions is on a detached HEAD whose GITHUB_REF_NAME is the tag, so without the override a release would show dev-. Test both variables in the unit tests of the version function.
+<!-- SECTION:NOTES:END -->
