@@ -88,6 +88,8 @@ fn main() -> eframe::Result {
     let mut link = None;
     let mut app_samples = None;
     let mut startup = None;
+    // errors of the start, shown in the message box once the app is up (task-130)
+    let mut start_errors: Vec<String> = Vec::new();
     // keeps the audio stream alive for the whole run
     let mut _stream = None;
     if !demo {
@@ -98,15 +100,21 @@ fn main() -> eframe::Result {
         if let Some(path) = &song {
             match session::open_song(path) {
                 Ok(o) => startup = Some((path.clone(), o)),
+                // the app starts on the new song, with the error in its message box
                 Err(e) => {
                     eprintln!("OpenRB-338: {e}");
-                    std::process::exit(1);
+                    start_errors.push(e);
                 }
             }
         }
         match rb_player::output::start(audio) {
             Ok(s) => _stream = Some(s),
-            Err(e) => eprintln!("OpenRB-338: audio output: {e}; the panel runs without sound"),
+            Err(e) => {
+                eprintln!("OpenRB-338: audio output: {e}; the panel runs without sound");
+                // the one failure at the launch is an error the user expects to hear of: the
+                // box. Later audio errors repeat: `App::notify`.
+                start_errors.push(format!("Audio output: {e}; the panel runs without sound"));
+            }
         }
         link = Some(l);
     }
@@ -144,7 +152,13 @@ fn main() -> eframe::Result {
             app.settings = Settings::load();
             // the song (or the new empty song) and its mod's startup sound; nothing in the demo,
             // which has no player
-            app.start(startup);
+            // (the errors of the start are one box)
+            app.action(|app| {
+                app.start(startup);
+                for e in start_errors {
+                    app.fail(e);
+                }
+            });
             if let Some(mode) = browse {
                 app.open_browser(mode);
             }

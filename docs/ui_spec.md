@@ -952,11 +952,11 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, a mod per file, Choose file... | the song's kit, checked (below) |
-| Mods | Refresh List | reads the Mods folder again (the list cache, below; task-101); directly after "Choose file..." with a separator after it, so the two form one group (task-118); the status line then says "Mod list refreshed: N mods in <folder> (+a, -b)" (what changed against the previous list, by file), a read error of the folder goes to the notice line (like the export's) |
+| Mods | Refresh List | reads the Mods folder again (the list cache, below; task-101); directly after "Choose file..." with a separator after it, so the two form one group (task-118); the status line then says "Mod list refreshed: N mods in <folder> (+a, -b)" (what changed against the previous list, by file), a read error of the folder goes to the error message box (section 18.0) |
 | Mods | Demo Song | opens the `Demo.rbs` of the current song's mod (below); enabled only when that mod file has one, so never for "Standard ReBirth" (task-094) |
 | Mods | Info... | a centered, closable window (Escape closes it) with the splash of the kit that plays at its 2000-era physical size, the mod's INFO facts and the file's (task-106; below) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
-| Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
+| Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the error message box); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
 | Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key rb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
 | Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the logo (the `app_icon` part), the name, `Version <UTC build time> (<git>)` and the link https://github.com/pingw33n/open-rb-338 (task-102; below) |
@@ -1017,18 +1017,18 @@ is one more entry.
   tracks the engine holds after the load (`Link::loaded_tracks`: sorted by tick, the song
   constructor's tick-0 events included), as the original's save writes them (task-125,
   `docs/song_load.md` section 12.6). A new song is saved from the empty 4.2 song (`rbs::Song::empty`) and the panel.
-  The file is written next to itself and renamed over it; an error is shown in the notice line.
+  The file is written next to itself and renamed over it; an error is shown in the error message box.
 - **Export** uses `rb render`'s code (`rb_cli::render`, the `rb-cli` library: `Renderer::render_to_file`,
   the same encoders, 9088 idle blocks, Ogg quality 0.5): the song as saved (composed, written, parsed
   and converted again) is rendered on a thread and written, so the file is the one `rb render`
   writes for the saved song with the same kit (`tests/menu.rs` compares WAV, FLAC and Ogg byte for byte; the
   Ogg stream serial is fixed, so `rb render` .ogg files are reproducible). The built-in kit
   is the one rb embeds (`assets/Standard.rbm`), as in `rb render`. Errors are shown in the
-  notice line, progress and the result in the status line.
+  error message box, progress and the result in the status line.
 - **The mod** (`docs/rbm.md` section 14). Opening a song looks its GLOB mod name up in the Mods
   folder (the settings' folder, else `RB_MOD_DIR` and the defaults of `rb render`); "Standard
   ReBirth" is the built-in kit; a mod that is not found, or not recrypted, plays the built-in kit
-  with a notice and the song keeps the name. A choice in the Mods menu is `sub_426FB3`: the same
+  with an error box and the song keeps the name. A choice in the Mods menu is `sub_426FB3`: the same
   kit again does nothing; else the song is marked modified, its mod name is the mod's INFO menu
   name, and `Link::set_mod` (song msg 19, `Player::set_mod`) gives the newest song's drum machines
   the kit; the save writes the name. The entries are the INFO names of the folder in the original's
@@ -1056,7 +1056,7 @@ is one more entry.
   is the song's resolved kit (`App::mod_checks`), so a mod found by file name is checked and a
   mod chosen from outside the folder is not. It follows a song open and a mod change because it
   is computed from the document each time the menu is drawn. A song whose mod is not in the
-  folder (it plays the built-in kit with a notice) has nothing checked. The original does check: the
+  folder (it plays the built-in kit, with an error box) has nothing checked. The original does check: the
   menu update `sub_40B977` builds the Mods items 5000 + i from the mod objects (`sub_415578(i)`,
   name at object +1011 = 0x3F3, 0x40BEB9) and sets each item's checked flag (the byte at
   `[ebp-0DDh]`, 0x40BF14) to 1 when a song window is active and its mod object
@@ -1123,6 +1123,62 @@ is one more entry.
   USRI flag, `docs/RBS42.txt`) is not done either: the window opens only from the menu. The
   original shows these in its Song Information dialog; its layout is not copied.
 - **The startup sound of an open and of the start** (task-087). Below.
+
+### 18.0 The status line and the error message box (task-130)
+
+rb-specific (a UI decision of the user, not a fact about the original).
+
+- **The status line** is the 22-point bar at the bottom of the window, for information and for
+  repeating notifications: "Saved PATH", "Exporting PATH ...", "Exported PATH", "Mod list
+  refreshed: N mods in FOLDER (+a, -b)", and the notifications of errors that repeat (below).
+  A click (outside any box, prompt or browser) dismisses it, except while an export runs. It
+  never shows the error of a one-time action: that is the box.
+- **The error message box** (`rb-ui/src/error_box.rs`, `App::fail`) shows every error, one at a
+  time, in the order they came (`App::errors`; "N more" under the text when others wait). It is
+  a modal over the panel, drawn above every other window and dark like them: the title "Error"
+  with a close button (X) at the right of the title bar, the message (wrapped, selectable to
+  copy) and, at the bottom right, a Copy button (the whole message to the clipboard; the box
+  stays open) and an OK button, which has the focus. The text is selected with the mouse and
+  copied with Ctrl/Cmd+C (egui's Copy event, which the box leaves alone; the input block takes
+  away key events only); neither closes the box.
+  - It closes on OK, on the close button, on Escape and on Enter (Enter whatever has the focus;
+    Space presses OK while it has the focus). A click outside the box does nothing, so that a
+    misclick does not dismiss an error. The next queued error then shows.
+  - While it is open the panel, the menu bar, the shortcuts and every other window (the
+    unsaved prompt, the browser, Info, About, the keys window) get no click and no key: the box
+    takes the frame's key, text, paste and cut events away after it has used them, so the
+    Escape or Enter that closes it does not also reach the window under it. A menu that was
+    open when the error came is closed.
+  - The errors of one action are one box: Open, Demo Song, a mod choice, Save, Export, Refresh
+    List and the start-up run inside `App::action`, which collects what they report and shows
+    it as one box (`App::fail_many`), so an Open with a missing mod and a refused load is one
+    box with two lines, not two boxes.
+- **The rule: the box is for the error of a one-time action the user expects to happen.**
+  That is Open, Save, Save As, New, Demo Song, a mod choice, Choose file, Refresh List, the
+  settings write after an Options change, and the start-up song or mod of the command line.
+  An error that can repeat or come in the background (a failing audio output, a device that
+  disappears, a stream error raised again, a periodic retry) never opens a box: it is a
+  notification on the status line (`App::notify`), the latest one shown, one notice per kind,
+  with "(repeated N times)" when it came again, so that nothing piles up. Even for a box
+  error, an identical message that is already shown or waiting is not queued again, and a
+  burst from one action is one box that lists the distinct messages, each with its count
+  (`App::fail_many`; the box scrolls when the list is long).
+- **Which messages are errors.** Errors: a song that cannot be opened, read, composed or
+  written (Open, Save, Save As, Demo Song, the start-up song of the command line, which then
+  starts on the new song), "There is no player to ...", the engine's refusal of a song ("There
+  is not enough memory for opening the Song."), a mod that is missing, not found in the Mods
+  folder, not recrypted or unreadable (including a demo that cannot be read), a Mods folder that
+  cannot be read (Refresh List), an export that is refused (pattern mode, a wrong extension, one
+  already running) or fails or stops, a settings file that cannot be written (an Options
+  change, and the browser's recent-folder note and "Use as songs/mods folder", which the
+  browser hands to the app: `Browser::take_failures`), and the one audio output failure of the
+  launch ("Audio output: ...; the panel runs without sound").
+  Notifications on the status line: a later audio or stream error, which can repeat.
+  Information (status line): Saved, Exporting, Exported, Mod list refreshed.
+  Left as they are: the file browser's own error line, for what is wrong with the dialog's
+  input (a path that is not a folder or does not exist, a read-only folder, a bad name, a
+  mod that is not recrypted), and the Mods > Info window's text about the mod it shows (a part
+  of that window).
 
 ### 18.1 When the original plays the mod's startup sound (task-087) [C unless marked]
 

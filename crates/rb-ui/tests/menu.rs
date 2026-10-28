@@ -129,7 +129,7 @@ impl Harness {
 
     fn open(&mut self, path: &Path) {
         self.app.open_song(path);
-        assert!(self.app.notice.is_none(), "{:?}", self.app.notice);
+        assert!(self.app.errors.is_empty(), "{:?}", self.app.errors);
         self.calls(2);
     }
 
@@ -425,14 +425,14 @@ fn save_without_a_file_asks_for_one_and_a_failed_write_is_shown() {
     let dir = tempfile::tempdir().unwrap();
     let bad = dir.path().join("no/such/dir/x.rbs");
     h.app.chosen(Mode::SaveSong, bad);
-    let n = h.app.notice.clone().unwrap();
+    let n = h.app.errors.pop_front().unwrap();
     assert!(n.contains("cannot write"), "{n}");
     assert!(h.app.doc.path.is_none());
 
     // a new song saves too, and re-opens as the panel showed it
     let ok = dir.path().join("new.rbs");
     h.app.chosen(Mode::SaveSong, ok.clone());
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     let s = read_rbs(&ok);
     assert_eq!(s.head.version(), "4.2");
     assert_eq!(s.glob.mod_name, STANDARD);
@@ -542,7 +542,7 @@ fn export_writes_the_file_rb_render_writes() {
             h.app.chosen(Mode::Export, got.clone());
             assert!(h.app.exporting());
             h.finish_export();
-            assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+            assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
             let format = match ext {
                 "wav" => rb_cli::encode::Format::Wav,
                 "flac" => rb_cli::encode::Format::Flac,
@@ -574,19 +574,20 @@ fn export_is_not_offered_in_pattern_mode_and_its_errors_are_shown() {
     let mut h = Harness::new();
     h.app.command(Cmd::Export);
     assert!(!h.app.browsing());
-    assert!(h.app.notice.as_deref().unwrap().contains("song mode"));
-    h.app.notice = None;
+    assert!(h.app.error().unwrap().contains("song mode"));
+    h.app.dismiss_error();
 
     let src = root().join("tests/songs/diag/songs/303_saw_lowcut.rbs");
     h.open(&src);
     assert!(h.app.panel.transport.song_mode);
     // a wrong extension, and a folder that is not there
     h.app.chosen(Mode::Export, PathBuf::from("/tmp/x.mp3"));
-    assert!(h.app.notice.as_deref().unwrap().contains(".wav"));
+    assert!(h.app.error().unwrap().contains(".wav"));
+    h.app.dismiss_error();
     let dir = tempfile::tempdir().unwrap();
     h.app.chosen(Mode::Export, dir.path().join("no/dir/x.wav"));
     h.finish_export();
-    let n = h.app.notice.clone().unwrap();
+    let n = h.app.error().unwrap();
     assert!(n.contains("cannot write"), "{n}");
 }
 
@@ -724,7 +725,7 @@ fn a_mod_changes_the_kit_and_is_saved() {
     mod_h.app.settings.startup_sound = false;
     mod_h.open(&src);
     mod_h.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
-    assert!(mod_h.app.notice.is_none(), "{:?}", mod_h.app.notice);
+    assert!(mod_h.app.errors.is_empty(), "{:?}", mod_h.app.errors);
     assert!(mod_h.app.doc.modified);
     let name = session::mod_info(&pbe2).unwrap().name;
     assert_eq!(mod_h.app.doc.mod_name, name);
@@ -762,7 +763,7 @@ fn a_mod_changes_the_kit_and_is_saved() {
     e.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
     e.app.chosen(Mode::Export, wav.clone());
     e.finish_export();
-    assert!(e.app.notice.is_none(), "{:?}", e.app.notice);
+    assert!(e.app.errors.is_empty(), "{:?}", e.app.errors);
     let song = load_song(&src).unwrap();
     let mods = ModOpts {
         mod_file: Some(pbe2),
@@ -812,7 +813,7 @@ fn a_mod_change_plays_the_startup_sound_when_the_preference_is_on() {
         h.frame(vec![]);
         h.calls(3);
         h.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
-        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
         let out = h.calls(calls);
         (out, h.audio.preview_position())
     };
@@ -834,7 +835,7 @@ fn a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on() {
         h.app.settings.mods_dir = mods_dir.map(Path::to_path_buf);
         h.app.settings.startup_sound = on;
         h.app.open_song(path);
-        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
         let out = h.calls(calls);
         (out, h.audio.preview_position())
     };
@@ -858,7 +859,7 @@ fn a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on() {
     h.open(&src);
     h.app.command(Cmd::UseKit(Kit::Mod(pbe2.clone())));
     h.app.save_to(&saved);
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     let kit = rb_cli::render::load_mod(&pbe2, &standard).unwrap_or_else(|e| panic!("{}", e.1));
     let audio = kit.get(rb_engine::samples::STARTUP_ID).audio();
     assert_ne!(audio, standard.get(rb_engine::samples::STARTUP_ID).audio());
@@ -884,7 +885,7 @@ fn the_start_plays_the_startup_sound_when_the_preference_is_on() {
         h.app.settings.startup_sound = on;
         let opened = song.then(|| (src.clone(), session::open_song(&src).unwrap()));
         h.app.start(opened);
-        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
         assert_eq!(h.app.doc.path.as_deref(), song.then_some(src.as_path()));
         let out = h.calls(calls);
         (out, h.audio.preview_position())
@@ -944,7 +945,7 @@ fn a_cancelled_save_as_from_the_prompt_ends_the_action() {
     assert!(!h.app.browsing());
     // a plain Save As later does not close the window
     h.app.chosen(Mode::SaveSong, dir.path().join("later.rbs"));
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     assert!(!h.app.close_allowed());
     assert!(!h.app.doc.modified);
 }
@@ -993,7 +994,7 @@ fn the_mods_menu_lists_the_mods_folder() {
     assert!(list.iter().any(|e| e.path == pbe2), "{list:?}");
     assert!(list.len() >= 3);
 
-    // a mod that is not found gives the built-in kit, a notice, and keeps the name
+    // a mod that is not found gives the built-in kit, an error, and keeps the name
     // (an empty folder that exists: a missing one falls back to the binary's RB_MOD_DIR)
     let empty = tempfile::tempdir().unwrap();
     h.app.settings.mods_dir = Some(empty.path().to_path_buf());
@@ -1003,7 +1004,7 @@ fn the_mods_menu_lists_the_mods_folder() {
     s.glob.mod_name = "No Such Mod".into();
     std::fs::write(&out, s.write().unwrap()).unwrap();
     h.app.open_song(&out);
-    assert!(h.app.notice.as_deref().unwrap().contains("No Such Mod"));
+    assert!(h.app.error().unwrap().contains("No Such Mod"));
     assert_eq!(h.app.doc.kit, Kit::Standard);
     assert_eq!(h.app.doc.mod_name, "No Such Mod");
 }
@@ -1114,7 +1115,7 @@ fn refresh_list_reads_the_mods_folder_again() {
 }
 
 /// task-118: Mods > Refresh List reports on the status line what it read (the count, the folder
-/// and what changed), and a folder that cannot be read on the notice line.
+/// and what changed), and a folder that cannot be read in the message box (task-130).
 #[test]
 fn refresh_list_reports_its_result() {
     let dir = tempfile::tempdir().unwrap();
@@ -1122,15 +1123,16 @@ fn refresh_list_reports_its_result() {
     std::fs::create_dir(&folder).unwrap();
     let mut h = Harness::new();
     h.app.settings.mods_dir = Some(folder.clone());
-    h.app.notice = Some("unrelated".into());
+    h.app.fail("unrelated");
     h.app.command(Cmd::RefreshMods);
     let want = format!(
         "Mod list refreshed: 0 mods in {} (+0, -0)",
         folder.display()
     );
     assert_eq!(h.app.status.as_deref(), Some(want.as_str()));
-    // an unrelated notice stays
-    assert_eq!(h.app.notice.as_deref(), Some("unrelated"));
+    // the information adds no error, and an unrelated error stays
+    assert_eq!(h.app.errors, ["unrelated"]);
+    h.app.dismiss_error();
 
     if let (Some(pbe2), Some(msm2)) = (mod_file("PBE2.rbm"), mod_file("MSM2.rbm")) {
         std::fs::copy(&pbe2, folder.join("PBE2.rbm")).unwrap();
@@ -1144,7 +1146,7 @@ fn refresh_list_reports_its_result() {
         assert_eq!(h.app.status.as_deref(), Some(want.as_str()));
     }
 
-    // a folder that cannot be read: the notice, no success line
+    // a folder that cannot be read: the error box, no success line
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1163,18 +1165,13 @@ fn refresh_list_reports_its_result() {
             h.app.settings.mods_dir = Some(locked.clone());
             h.app.command(Cmd::RefreshMods);
             assert_eq!(h.app.status, None);
-            assert!(
-                !h.app
-                    .notice
-                    .clone()
-                    .expect("the read error is shown")
-                    .is_empty()
-            );
+            assert!(!h.app.error().expect("the read error is shown").is_empty());
             assert!(matches!(h.app.mods(), Some(Err(_))));
-            // a good read after it takes the error's notice away
+            // a good read after it adds no error (the one shown stays until OK)
+            h.app.dismiss_error();
             h.app.settings.mods_dir = Some(folder.clone());
             h.app.command(Cmd::RefreshMods);
-            assert_eq!(h.app.notice, None);
+            assert!(!h.app.error_open());
             assert!(
                 h.app
                     .status
@@ -1274,7 +1271,7 @@ fn a_song_the_node_pool_refuses_is_not_opened() {
     let doc_path = h.app.doc.path.clone();
     h.app.open_song(&big_path);
     assert_eq!(
-        h.app.notice.as_deref(),
+        h.app.error(),
         Some("There is not enough memory for opening the Song.")
     );
     assert_eq!(h.app.panel.transport.tempo, 77);
@@ -1287,7 +1284,7 @@ fn a_song_the_node_pool_refuses_is_not_opened() {
     s.app.settings.startup_sound = true;
     let opened = rb_ui::session::open_song(&big_path).unwrap();
     s.app.start(Some((big_path.clone(), opened)));
-    assert!(s.app.notice.is_some());
+    assert!(s.app.error_open());
     s.calls(2);
     assert_eq!(s.audio.preview_position(), None, "no startup sound");
     assert_eq!(s.app.doc.path, None);
@@ -1313,7 +1310,7 @@ fn opening_a_song_while_playing_stops_it_and_a_refused_open_does_not() {
     h.open(&a);
     play(&mut h);
     h.app.open_song(&b);
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     h.calls(4);
     assert_eq!(h.app.doc.path.as_deref(), Some(b.as_path()));
     assert!(!h.app.panel.transport.playing, "stopped");
@@ -1328,7 +1325,7 @@ fn opening_a_song_while_playing_stops_it_and_a_refused_open_does_not() {
     play(&mut h);
     h.app
         .open_song(&root().join("tests/songs/diag/songs/no_such_song.rbs"));
-    assert!(h.app.notice.is_some());
+    assert!(h.app.error_open());
     h.calls(4);
     assert!(h.app.panel.transport.playing);
     assert_eq!(h.app.doc.path.as_deref(), Some(a.as_path()));
@@ -1366,14 +1363,14 @@ fn opening_a_song_while_playing_stops_it_and_a_refused_open_does_not() {
     h.open(&a);
     play(&mut h);
     h.app.open_song(&big_path);
-    assert!(h.app.notice.is_some());
+    assert!(h.app.error_open());
     h.calls(4);
     assert!(h.app.panel.transport.playing);
     assert_eq!(h.app.doc.path.as_deref(), Some(a.as_path()));
 }
 
 /// task-089: the Options menu's "Play Mod Startup Sound" flips the preference and saves the
-/// settings file at once; a save error goes to the notice line.
+/// settings file at once; a save error goes to the message box.
 #[test]
 fn the_startup_sound_checkbox_flips_the_preference_and_saves_it() {
     let dir = std::env::temp_dir().join(format!("rb-ui-startup-{}", std::process::id()));
@@ -1390,11 +1387,11 @@ fn the_startup_sound_checkbox_flips_the_preference_and_saves_it() {
     assert!(h.app.settings.startup_sound);
     let text = std::fs::read_to_string(&file).unwrap();
     assert!(text.contains("startup_sound = true\n"), "{text}");
-    assert!(h.app.notice.is_none());
-    // a file that cannot be written: the error is on the notice line
+    assert!(!h.app.error_open());
+    // a file that cannot be written: the error is in the message box
     h.app.settings.file = Some(file.join("x"));
     h.app.command(Cmd::ToggleStartupSound);
-    assert!(h.app.notice.is_some());
+    assert!(h.app.error_open());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1538,7 +1535,7 @@ fn the_demo_song_of_the_current_mod_opens_as_an_unsaved_song() {
     // the standard kit has no demo, and "Demo Song" does nothing
     assert!(!h.app.has_demo());
     h.app.demo_song();
-    assert!(h.app.notice.is_none());
+    assert!(!h.app.error_open());
     assert_eq!(h.app.doc.path, None);
 
     // a mod file without a Demo.rbs (the standard mod) is not offered either
@@ -1567,7 +1564,7 @@ fn the_demo_song_of_the_current_mod_opens_as_an_unsaved_song() {
     h.app.demo_song();
     assert!(h.app.prompting());
     h.app.answer(Answer::DontSave);
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     h.calls(4);
     assert!(!h.app.panel.transport.playing, "stopped");
     assert_eq!(h.app.panel.transport.position, 0);
@@ -1967,7 +1964,7 @@ fn the_startup_sound_plays_only_when_the_kit_changes() {
     // runs `op`, lets one call render, and tells whether the sound started; then drains it
     let sounds = |h: &mut Harness, op: &dyn Fn(&mut Harness)| {
         op(h);
-        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
         h.calls(1);
         let on = h.audio.preview_position().is_some();
         h.calls(long);
@@ -1995,7 +1992,8 @@ fn the_startup_sound_plays_only_when_the_kit_changes() {
     assert!(sounds(&mut h, &|h| h.app.use_kit(Kit::Mod(pbe2.clone()))));
     let bad = Kit::Mod(root().join("no/such/mod.rbm"));
     h.app.use_kit(bad);
-    assert!(h.app.notice.is_some());
+    assert!(h.app.error_open());
+    h.app.dismiss_error();
     h.calls(1);
     assert_eq!(h.audio.preview_position(), None);
     assert_eq!(h.app.doc.kit, Kit::Mod(pbe2.clone()));
@@ -2132,7 +2130,7 @@ fn a_1x_song_with_unsorted_imports_saves_and_reopens_the_same() {
     let lists = track_lists(&mut h);
     let saved = dir.path().join("saved.rbs");
     h.app.save_to(&saved);
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     // the file holds the engine's lists as they are
     let s = read_rbs(&saved);
     for (t, list) in lists.iter().enumerate() {
@@ -2160,7 +2158,7 @@ fn a_1x_song_with_unsorted_imports_saves_and_reopens_the_same() {
     // and saving the reopened song again writes its lists
     let again = dir.path().join("again.rbs");
     h2.app.save_to(&again);
-    assert!(h2.app.notice.is_none(), "{:?}", h2.app.notice);
+    assert!(h2.app.errors.is_empty(), "{:?}", h2.app.errors);
 }
 
 /// task-125, gated on `RB_THIRDPARTY_SONGS_DIR` (the user's songs, read in place): every ReBirth
@@ -2198,10 +2196,10 @@ fn every_1x_song_of_the_collection_saves() {
         h.open(p);
         h.app.save_to(&saved);
         assert!(
-            h.app.notice.is_none(),
+            h.app.errors.is_empty(),
             "{}: {:?}",
             p.display(),
-            h.app.notice
+            h.app.errors
         );
         // the saved song reopens with the import's tracks, a tick's events reversed
         let lists = track_lists(&mut h);
@@ -2242,9 +2240,9 @@ fn every_1x_song_of_the_collection_saves() {
     };
     h.open(&razor);
     h.app.command(Cmd::UseKit(Kit::Mod(pbe2)));
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     h.app.save_to(&saved);
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     assert_eq!(read_rbs(&saved).glob.mod_name, h.app.doc.mod_name);
 }
 
@@ -2331,7 +2329,7 @@ fn file_info_of_a_1x_song_shows_its_own_facts() {
     // saved, the file is an RBS 4.2 song and the window says so
     let saved = dir.path().join("saved.rbs");
     h.app.save_to(&saved);
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     h.frame(vec![]);
     let after = h.app.info_shown().unwrap().clone();
     assert_eq!(after.format, "RBS 4.2");
@@ -2417,7 +2415,7 @@ fn a_mod_change_of_a_1x_song_updates_the_infos_mod_addresses() {
     h.app.settings.startup_sound = false;
     h.open(&src);
     h.app.use_kit(Kit::Mod(pbe2.clone()));
-    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
     let m = session::mod_info(&pbe2).unwrap();
     assert!(
         !m.web.is_empty() || !m.ftp.is_empty(),

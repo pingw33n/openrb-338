@@ -174,6 +174,10 @@ pub struct Browser {
     entries: Vec<Entry>,
     selected: Option<usize>,
     error: Option<String>,
+    /// The errors of the settings writes (the recent-folder note, "Use as ... folder"): they
+    /// are not about the dialog's input, the app shows them in its error box
+    /// ([`Browser::take_failures`], task-130).
+    failures: Vec<String>,
     /// A path that exists and waits for the overwrite confirmation.
     confirm: Option<PathBuf>,
     mods: HashMap<PathBuf, ModStatus>,
@@ -208,6 +212,7 @@ impl Browser {
             entries: Vec::new(),
             selected: None,
             error: None,
+            failures: Vec::new(),
             confirm: None,
             mods: HashMap::new(),
             scroll: 0.0,
@@ -571,8 +576,8 @@ impl Browser {
         if let Some(dir) = path.parent() {
             settings.note_recent(dir);
             if let Err(e) = settings.save() {
-                // The choice stands; the failed note is not worth blocking it.
-                eprintln!("OpenRB-338: settings: {e}");
+                // The choice stands; the failed note does not block it, the app shows it.
+                self.failures.push(e);
             }
         }
         Poll::Chosen(path)
@@ -808,11 +813,16 @@ impl Browser {
                 }
             }
             ui.add_space(6.0);
-            if ui.button("Use as songs folder").clicked() {
+            let b = ui.button("Use as songs folder");
+            self.hits
+                .push(("button:Use as songs folder".into(), b.rect));
+            if b.clicked() {
                 settings.songs_dir = Some(self.dir.clone());
                 self.save_settings(settings);
             }
-            if ui.button("Use as mods folder").clicked() {
+            let b = ui.button("Use as mods folder");
+            self.hits.push(("button:Use as mods folder".into(), b.rect));
+            if b.clicked() {
                 settings.mods_dir = Some(self.dir.clone());
                 self.save_settings(settings);
             }
@@ -821,8 +831,14 @@ impl Browser {
 
     fn save_settings(&mut self, settings: &Settings) {
         if let Err(e) = settings.save() {
-            self.error = Some(e);
+            self.failures.push(e);
         }
+    }
+
+    /// The errors of the settings writes since the last call. The inline error line stays for
+    /// what is wrong with the dialog's input ("not a folder", "no such file", read-only).
+    pub fn take_failures(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.failures)
     }
 
     /// Draws the list; true when a row was double clicked.

@@ -127,9 +127,22 @@ pub struct App {
     /// Whether a song has settled yet; until then the "previous kit" of the startup sound's
     /// rule is none and the first song's mod plays (task-099).
     pub(crate) settled: bool,
-    /// An error shown at the bottom of the window (a song that could not be opened or written).
-    pub notice: Option<String>,
-    /// What was done, shown at the bottom when there is no error ("Saved ...").
+    /// The errors not closed yet: the first is in the message box (`App::error_box_ui`, task-130),
+    /// the rest wait for it.
+    pub errors: std::collections::VecDeque<String>,
+    /// How many times each kind of repeating error was notified (`App::notify`).
+    pub(crate) notified: std::collections::HashMap<String, u32>,
+    /// Where the box's OK button was drawn last (`App::error_ok_rect`).
+    pub(crate) error_ok: Option<Rect>,
+    /// The errors of the action running, shown as one box when it ends (`App::action`).
+    pub(crate) batch: Option<Vec<String>>,
+    /// Where its close button was drawn last (`App::error_close_rect`).
+    pub(crate) error_close: Option<Rect>,
+    /// Where its Copy button was drawn last (`App::error_copy_rect`).
+    pub(crate) error_copy: Option<Rect>,
+    /// Where its message text was drawn last (`App::error_text_rect`).
+    pub(crate) error_text: Option<Rect>,
+    /// What was done, shown at the bottom of the window ("Saved ...").
     pub status: Option<String>,
     /// The Options menu's keyboard mode (Ctrl/Cmd+F / +G).
     pub key_mode: KeyMode,
@@ -183,7 +196,13 @@ impl App {
             browser: None,
             doc: Document::new(),
             settled: false,
-            notice: None,
+            errors: Default::default(),
+            notified: Default::default(),
+            error_ok: None,
+            batch: None,
+            error_close: None,
+            error_copy: None,
+            error_text: None,
             status: None,
             key_mode: KeyMode::default(),
             menu: false,
@@ -216,8 +235,12 @@ impl App {
     /// Opens the file browser for `mode` over the panel (the menu calls this). Ctrl/Cmd+O opens it
     /// for a song.
     pub fn open_browser(&mut self, mode: Mode) {
-        self.notice = None;
         self.browser = Some(Browser::new(mode, &self.settings));
+    }
+
+    /// Where the open browser drew its part `name` last (for tests; `Browser::hit`).
+    pub fn browser_hit(&self, name: &str) -> Option<Rect> {
+        self.browser.as_ref().and_then(|b| b.hit(name))
     }
 
     /// Whether a browser is open (the panel takes no input meanwhile).
@@ -233,6 +256,9 @@ impl App {
         let mode = b.mode();
         let mods_dir = self.settings.mods_dir.clone();
         let poll = b.show(ctx, &mut self.settings);
+        // a failed settings write (the recent-folder note, "Use as ... folder"): the box
+        let failures = b.take_failures();
+        self.fail_many(failures);
         // the browser's "Use as mods folder" (task-101)
         if self.settings.mods_dir != mods_dir {
             self.refresh_mods();
@@ -251,32 +277,27 @@ impl App {
         }
     }
 
-    /// The line at the bottom of the window: the error, else what was done.
-    fn notice_bar(&mut self, ui: &Ui) {
-        let (text, fill, ink) = match (&self.notice, &self.status) {
-            (Some(t), _) => (t, (0x3a, 0x1a, 0x18), (0xff, 0xb0, 0x00)),
-            (None, Some(t)) => (t, (0x1f, 0x2d, 0x24), (0xb8, 0xd8, 0xc0)),
-            (None, None) => return,
+    /// The line at the bottom of the window: what was done. Errors are not here, they are in
+    /// the message box (`App::error_box_ui`).
+    fn status_bar(&mut self, ui: &Ui) {
+        let Some(text) = &self.status else {
+            return;
         };
         let avail = ui.ctx().content_rect();
         let bar = Rect::from_min_max(Pos2::new(avail.min.x, avail.max.y - 22.0), avail.max);
         ui.painter()
-            .rect_filled(bar, 0.0, Color32::from_rgb(fill.0, fill.1, fill.2));
+            .rect_filled(bar, 0.0, Color32::from_rgb(0x1f, 0x2d, 0x24));
         ui.painter().text(
             bar.left_center() + Vec2::new(8.0, 0.0),
             egui::Align2::LEFT_CENTER,
             text,
             egui::FontId::proportional(12.0),
-            Color32::from_rgb(ink.0, ink.1, ink.2),
+            Color32::from_rgb(0xb8, 0xd8, 0xc0),
         );
-        // Clicks in the browser over it do not dismiss it.
-        let blocked = self.browser.is_some() || self.prompt.is_some();
-        if !blocked && ui.input(|i| i.pointer.any_click()) {
-            if self.notice.is_some() {
-                self.notice = None;
-            } else if self.export.is_none() {
-                self.status = None;
-            }
+        // Clicks in the browser, the prompt or the box over it do not dismiss it.
+        let blocked = self.browser.is_some() || self.prompt.is_some() || self.error_open();
+        if !blocked && self.export.is_none() && ui.input(|i| i.pointer.any_click()) {
+            self.status = None;
         }
     }
 
@@ -366,9 +387,9 @@ impl App {
         let now = ui.input(|i| i.time);
         self.panel.held = None;
 
-        // While the file browser or the prompt is open the panel takes no keys and no clicks
-        // of its own.
-        if self.browser.is_none() && self.prompt.is_none() {
+        // While the file browser, the prompt or the error box is open the panel takes no keys
+        // and no clicks of its own.
+        if self.browser.is_none() && self.prompt.is_none() && !self.error_open() {
             if shortcuts::consume(ui, &shortcuts::NEW) {
                 self.new_song();
             } else if shortcuts::consume(ui, &shortcuts::OPEN) {
@@ -421,11 +442,13 @@ impl App {
             self.doc.modified |= link.recorded_revision() != before;
             ui.ctx().request_repaint_after(Duration::from_millis(16));
         }
-        self.notice_bar(ui);
+        self.status_bar(ui);
+        let ctx = ui.ctx().clone();
+        // before everything that takes keys, which it takes away (the box is drawn above all)
+        self.error_box_ui(&ctx);
         if self.menu {
             self.menu_bar(ui);
         }
-        let ctx = ui.ctx().clone();
         self.browse(&ctx);
         self.prompt_ui(&ctx);
         self.info_ui(&ctx);

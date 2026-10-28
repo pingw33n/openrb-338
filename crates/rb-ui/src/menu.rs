@@ -5,7 +5,8 @@
 //! - **File**: New (Ctrl/Cmd+N: the state of the app's start), Open (Ctrl/Cmd+O), Save (Ctrl/Cmd+S;
 //!   the texts come from [`crate::shortcuts`]; a song that was never saved goes to Save As), Save
 //!   As, Info ([`crate::info`]), Export loop as audio file. The browser (task-046) returns paths
-//!   only; the writes happen here and their errors are shown in the notice line.
+//!   only; the writes happen here and their errors are shown in the message box
+//!   ([`crate::error_box`]).
 //! - **Mods**: "Standard ReBirth", the mods of the Mods folder (one entry per INFO menu name, as
 //!   the original's Mods menu: `sub_40C163`, docs/rbm.md section 14), and a file picked in the
 //!   browser. A choice is the original's `sub_42D80D` -> `sub_426FB3`: the song is marked modified,
@@ -44,8 +45,8 @@ use crate::shortcuts;
 /// The height of the menu bar in points.
 pub const MENU_H: f32 = 22.0;
 
-const SLATE_DARK: Color32 = Color32::from_rgb(0x2c, 0x35, 0x42);
-const SLATE_LINE: Color32 = Color32::from_rgb(0x56, 0x64, 0x7a);
+pub(crate) const SLATE_DARK: Color32 = Color32::from_rgb(0x2c, 0x35, 0x42);
+pub(crate) const SLATE_LINE: Color32 = Color32::from_rgb(0x56, 0x64, 0x7a);
 const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
 const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 
@@ -157,9 +158,13 @@ impl App {
 
     /// Mods > Refresh List: [`App::refresh_mods`], then the result on the status line, as the
     /// export reports its end: "Mod list refreshed: N mods in <folder> (+a, -b)" with what
-    /// changed against the previous list (by file), or a read error of the folder on the
-    /// notice line. The scan is synchronous and fast, so there is no "in progress" line.
+    /// changed against the previous list (by file), or a read error of the folder in the
+    /// message box. The scan is synchronous and fast, so there is no "in progress" line.
     pub fn refresh_mods_reported(&mut self) {
+        self.action(|s| s.refresh_mods_reported_now());
+    }
+
+    fn refresh_mods_reported_now(&mut self) {
         let paths = |l: &Option<Result<Vec<ModEntry>, String>>| -> Vec<PathBuf> {
             match l {
                 Some(Ok(l)) => l.iter().map(|e| e.path.clone()).collect(),
@@ -167,11 +172,6 @@ impl App {
             }
         };
         let before = paths(&self.mod_list);
-        // the notice an earlier refresh set for a folder error goes with a good read
-        let earlier = match &self.mod_list {
-            Some(Err(e)) => Some(e.clone()),
-            _ => None,
-        };
         self.refresh_mods();
         match &self.mod_list {
             Some(Ok(list)) => {
@@ -184,16 +184,13 @@ impl App {
                 };
                 let n = list.len();
                 let s = if n == 1 { "" } else { "s" };
-                if earlier.is_some() && self.notice == earlier {
-                    self.notice = None;
-                }
                 self.status = Some(format!(
                     "Mod list refreshed: {n} mod{s}{folder} (+{added}, -{removed})"
                 ));
             }
             Some(Err(e)) => {
                 self.status = None;
-                self.notice = Some(e.clone());
+                self.fail(e.clone());
             }
             None => {}
         }
@@ -218,7 +215,7 @@ impl App {
     }
 
     /// The kit a song names: the standard kit, or the mod of that name in the Mods folder.
-    /// A mod that is not there gives the standard kit and a notice.
+    /// A mod that is not there gives the standard kit and an error.
     fn kit_for(&mut self, mod_name: &str) -> Kit {
         if mod_name == STANDARD {
             return Kit::Standard;
@@ -231,14 +228,14 @@ impl App {
         match found {
             Ok(Some(p)) => Kit::Mod(p),
             Ok(None) => {
-                self.notice = Some(format!(
+                self.fail(format!(
                     "The mod \"{mod_name}\" was not found in the Mods folder; the built-in kit \
                      plays. Choose it in the Mods menu."
                 ));
                 Kit::Standard
             }
             Err(rb_cli::Fail(_, m)) => {
-                self.notice = Some(m);
+                self.fail(m);
                 Kit::Standard
             }
         }
@@ -273,22 +270,26 @@ impl App {
     }
 
     /// Opens the song at `path` in the player, replacing the document; a failure goes to the
-    /// notice line and leaves the song open as it was.
+    /// message box and leaves the song open as it was.
     pub fn open_now(&mut self, path: &Path) {
+        self.action(|s| s.open_now_inner(path));
+    }
+
+    fn open_now_inner(&mut self, path: &Path) {
         if self.link.is_none() {
-            self.notice = Some("There is no player to open the song in.".into());
+            self.fail("There is no player to open the song in.");
             return;
         }
         match session::open_song(path) {
             Ok(opened) => self.adopt(path, opened),
-            Err(e) => self.notice = Some(e),
+            Err(e) => self.fail(e),
         }
     }
 
     /// Makes a song that was read the open document: its mod is looked up, the song is loaded
     /// with that kit.
     pub fn adopt(&mut self, path: &Path, opened: session::Opened) {
-        self.adopt_as(Some(path.to_path_buf()), opened, None);
+        self.action(|s| s.adopt_as(Some(path.to_path_buf()), opened, None));
     }
 
     /// [`App::adopt`] for a song that may have no file (`path` is `None`: Untitled) and may be
@@ -299,7 +300,6 @@ impl App {
         opened: session::Opened,
         forced: Option<(String, Kit)>,
     ) {
-        self.notice = None;
         let (mod_name, kit) = match forced {
             Some(f) => f,
             None => {
@@ -312,7 +312,7 @@ impl App {
         let (kit, samples) = match self.kit_samples(&kit) {
             Ok(s) => (kit, s),
             Err(e) => {
-                self.notice = Some(e);
+                self.fail(e);
                 (Kit::Standard, self.samples.clone())
             }
         };
@@ -322,7 +322,7 @@ impl App {
         // a song the node pool refuses opens no window (sub_40B575's STOP alert): the current
         // song, the panel and the document stay, and no startup sound plays
         if link.load(&opened.engine, samples, &mut self.panel).is_err() {
-            self.notice = Some(LoadRefused::ALERT.into());
+            self.fail(LoadRefused::ALERT);
             // the start song refused: the player keeps the built-in kit, which counts as the
             // kit that played, so a later song on it plays nothing (task-099)
             self.settled = true;
@@ -372,10 +372,14 @@ impl App {
     /// Opens the `Demo.rbs` of the mod file `mod_path` as a song that was never saved
     /// (Untitled, so Save goes to Save As and never writes into the mod), on that mod. The
     /// load is [`App::adopt_as`]'s: the player stops the playing song, and a demo the node pool
-    /// refuses opens nothing. A failure goes to the notice line.
+    /// refuses opens nothing. A failure goes to the message box.
     pub fn open_demo_now(&mut self, mod_path: &Path) {
+        self.action(|s| s.open_demo_inner(mod_path));
+    }
+
+    fn open_demo_inner(&mut self, mod_path: &Path) {
         if self.link.is_none() {
-            self.notice = Some("There is no player to open the song in.".into());
+            self.fail("There is no player to open the song in.");
             return;
         }
         let label = format!("{}: {}", mod_path.display(), session::DEMO);
@@ -394,7 +398,7 @@ impl App {
                     Some((info.name, Kit::Mod(mod_path.to_path_buf()))),
                 );
             }
-            (Err(e), _) | (_, Err(e)) => self.notice = Some(e),
+            (Err(e), _) | (_, Err(e)) => self.fail(e),
         }
     }
 
@@ -447,7 +451,6 @@ impl App {
     fn fresh(&mut self) {
         if self.link.is_none() {
             self.panel = crate::model::Panel::new();
-            self.notice = None;
             self.settle(
                 None,
                 rbs::Song::empty(),
@@ -457,7 +460,6 @@ impl App {
             );
             return;
         }
-        self.notice = None;
         let samples = self.samples.clone();
         if let Some(link) = &mut self.link {
             link.load_new(samples, &mut self.panel);
@@ -522,8 +524,12 @@ impl App {
     }
 
     /// Writes the song to `path`; it becomes the song's file and the song is no longer modified.
-    /// An error is shown in the notice line and nothing else changes.
+    /// An error is shown in the message box and nothing else changes.
     pub fn save_to(&mut self, path: &Path) {
+        self.action(|s| s.save_to_inner(path));
+    }
+
+    fn save_to_inner(&mut self, path: &Path) {
         let result = self
             .song_bytes()
             .and_then(|bytes| session::write_file(path, &bytes));
@@ -537,7 +543,6 @@ impl App {
                 }
                 self.doc.path = Some(path.to_path_buf());
                 self.doc.modified = false;
-                self.notice = None;
                 self.status = Some(format!("Saved {}", path.display()));
                 if let Some(t) = self.after_save.take() {
                     self.proceed(t);
@@ -545,7 +550,7 @@ impl App {
             }
             Err(e) => {
                 self.after_save = None;
-                self.notice = Some(e);
+                self.fail(e);
             }
         }
     }
@@ -556,19 +561,23 @@ impl App {
     /// the song as saved is rendered by `rb render`'s code (`rb_cli::render`), so the file is
     /// the one `rb render` writes for the saved song.
     pub fn export_to(&mut self, path: &Path) {
+        self.action(|s| s.export_to_inner(path));
+    }
+
+    fn export_to_inner(&mut self, path: &Path) {
         let Some(format) = ExportFormat::of_path(path).map(|f| match f {
             ExportFormat::Wav => Format::Wav,
             ExportFormat::Flac => Format::Flac,
             ExportFormat::Ogg => Format::Ogg,
         }) else {
-            self.notice = Some(format!(
+            self.fail(format!(
                 "{}: the export's extension must be .wav, .flac or .ogg",
                 path.display()
             ));
             return;
         };
         if self.export.is_some() {
-            self.notice = Some("An export is still running.".into());
+            self.fail("An export is still running.");
             return;
         }
         let song = self.song_bytes().and_then(|bytes| {
@@ -584,7 +593,7 @@ impl App {
         let song = match song {
             Ok(s) => s,
             Err(e) => {
-                self.notice = Some(e);
+                self.fail(e);
                 return;
             }
         };
@@ -612,7 +621,6 @@ impl App {
                 .map_err(|rb_cli::Fail(_, m)| m);
             let _ = tx.send(result);
         });
-        self.notice = None;
         self.status = Some(format!("Exporting {} ...", path.display()));
         self.export = Some(Job {
             rx,
@@ -632,7 +640,7 @@ impl App {
             }
             Ok(Err(e)) => {
                 self.status = None;
-                self.notice = Some(e);
+                self.fail(e);
                 self.export = None;
             }
             Err(TryRecvError::Empty) => {
@@ -640,7 +648,7 @@ impl App {
             }
             Err(TryRecvError::Disconnected) => {
                 self.status = None;
-                self.notice = Some("The export stopped unexpectedly.".into());
+                self.fail("The export stopped unexpectedly.");
                 self.export = None;
             }
         }
@@ -657,12 +665,16 @@ impl App {
     /// song is marked modified, its mod name becomes the kit's, and the player takes the kit's
     /// samples. A failure (a mod that is not recrypted) is shown and changes nothing.
     pub fn use_kit(&mut self, kit: Kit) {
+        self.action(|s| s.use_kit_inner(kit));
+    }
+
+    fn use_kit_inner(&mut self, kit: Kit) {
         let name = match &kit {
             Kit::Standard => STANDARD.to_string(),
             Kit::Mod(p) => match session::mod_info(p) {
                 Ok(info) => info.name,
                 Err(e) => {
-                    self.notice = Some(e);
+                    self.fail(e);
                     return;
                 }
             },
@@ -673,12 +685,12 @@ impl App {
         let samples = match self.kit_samples(&kit) {
             Ok(s) => s,
             Err(e) => {
-                self.notice = Some(e);
+                self.fail(e);
                 return;
             }
         };
         let Some(link) = &mut self.link else {
-            self.notice = Some("There is no player to change the mod of.".into());
+            self.fail("There is no player to change the mod of.");
             return;
         };
         if let Some(samples) = samples {
@@ -705,7 +717,6 @@ impl App {
         self.doc.kit = kit;
         self.doc.mod_name = name;
         self.doc.modified = true;
-        self.notice = None;
     }
 
     // ---- commands -----------------------------------------------------------------------
@@ -721,10 +732,9 @@ impl App {
                 if self.panel.transport.song_mode {
                     self.open_browser(Mode::Export);
                 } else {
-                    self.notice = Some(
+                    self.fail(
                         "Export needs song mode: the original's export is disabled in pattern \
-                         mode."
-                            .into(),
+                         mode.",
                     );
                 }
             }
@@ -743,7 +753,7 @@ impl App {
             Cmd::ToggleStartupSound => {
                 self.settings.startup_sound = !self.settings.startup_sound;
                 if let Err(e) = self.settings.save() {
-                    self.notice = Some(e);
+                    self.fail(e);
                 }
             }
             Cmd::SetKeyMode(m) => self.key_mode = m,
@@ -922,7 +932,7 @@ impl App {
     /// Draws the menu bar and runs what it chooses.
     pub fn menu_bar(&mut self, ui: &mut Ui) {
         let mut cmd: Option<Cmd> = None;
-        let enabled = !self.browsing() && !self.prompting();
+        let enabled = !self.browsing() && !self.prompting() && !self.error_open();
         egui::Panel::top("rb_menu")
             .exact_size(MENU_H)
             .show(ui, |ui| {

@@ -325,10 +325,10 @@ fn a_panel_control_does_not_react_while_the_browser_is_open() {
     // The click on the backdrop goes to the browser (it closes it), not to the Play button.
     assert!(app.panel.events.is_empty(), "{:?}", app.panel.events);
     assert!(!app.browsing());
-    // A click inside the dialog does not dismiss the app's notice line.
+    // A click inside the dialog does not dismiss the app's status line.
     app.open_browser(Mode::OpenSong);
     run(&mut app, vec![]);
-    app.notice = Some("x".into());
+    app.status = Some("x".into());
     let mid = Pos2::new(PANEL_W / 2.0, PANEL_H / 2.0);
     let button = |pressed| Event::PointerButton {
         pos: mid,
@@ -340,7 +340,7 @@ fn a_panel_control_does_not_react_while_the_browser_is_open() {
     run(&mut app, vec![button(true)]);
     run(&mut app, vec![button(false)]);
     assert!(app.browsing());
-    assert!(app.notice.is_some());
+    assert!(app.status.is_some());
     assert!(app.panel.events.is_empty());
 }
 
@@ -440,6 +440,24 @@ fn unreadable_folders_and_missing_paths_are_errors() {
     b.go(d.path().join("nope"));
     assert!(b.error().unwrap().contains("cannot open"));
     assert_eq!(b.dir(), d.path());
+}
+
+/// task-130: a failed settings write is not about the dialog's input: it is handed to the app
+/// (`take_failures`), not shown in the dialog's error line, and the choice stands.
+#[test]
+fn a_failed_settings_write_goes_to_the_app_not_the_dialog() {
+    let d = tree();
+    let (mut b, mut s) = browser(Mode::OpenSong, d.path());
+    // a settings file that cannot be written: its parent is a file
+    s.file = Some(d.path().join("a.rbs/ui.toml"));
+    b.type_ahead("a");
+    assert_eq!(b.selected_name(), Some("a.rbs"));
+    let p = b.accept(&mut s);
+    assert_eq!(p, Poll::Chosen(d.path().join("a.rbs")));
+    let failures = b.take_failures();
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert!(b.error().is_none(), "{:?}", b.error());
+    assert!(b.take_failures().is_empty(), "taken once");
 }
 
 #[test]
