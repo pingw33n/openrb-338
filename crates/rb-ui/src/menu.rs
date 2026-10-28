@@ -91,6 +91,8 @@ pub enum Cmd {
     DemoSong,
     /// "Refresh List" of the Mods menu: reads the Mods folder again (task-101).
     RefreshMods,
+    /// "Info" of the Mods menu: the current mod's splash and details (task-106).
+    ModInfo,
     ToggleVintage,
     /// "Play Mod Startup Sound" of the Options menu (the original's Edit > Preferences).
     ToggleStartupSound,
@@ -648,6 +650,7 @@ impl App {
             Cmd::UseKit(kit) => self.use_kit(kit),
             Cmd::DemoSong => self.demo_song(),
             Cmd::RefreshMods => self.refresh_mods(),
+            Cmd::ModInfo => self.show_mod_info(),
             Cmd::ToggleVintage => {
                 let on = !self.panel.vintage;
                 self.panel.set_vintage(on);
@@ -908,6 +911,9 @@ impl App {
                             if r.clicked() {
                                 cmd = Some(Cmd::DemoSong);
                                 ui.close();
+                            }
+                            if item(ui, "Info...", None) {
+                                cmd = Some(Cmd::ModInfo);
                             }
                             if item(ui, "Refresh List", None) {
                                 cmd = Some(Cmd::RefreshMods);

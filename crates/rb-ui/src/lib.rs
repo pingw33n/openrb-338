@@ -17,6 +17,7 @@ pub mod keys;
 pub mod layout;
 pub mod link;
 pub mod menu;
+pub mod mod_info;
 pub mod model;
 pub mod session;
 pub mod settings;

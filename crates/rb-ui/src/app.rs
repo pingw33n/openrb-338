@@ -153,6 +153,12 @@ pub struct App {
     /// `info_serial`; `App::about_ui`).
     pub(crate) about_open: bool,
     pub(crate) about_serial: u32,
+    /// The Mods > Info window (task-106): open, the number of its opens (its id), the file
+    /// details of the kit shown and what it drew of the splash last.
+    pub(crate) mod_info_open: bool,
+    pub(crate) mod_info_serial: u32,
+    pub(crate) mod_details: Option<crate::mod_info::Cached>,
+    pub(crate) mod_info_shown: Option<crate::mod_info::SplashShown>,
     /// The same for the Help > Keyboard Shortcuts window (`App::key_help_ui`).
     pub(crate) key_help_open: bool,
     pub(crate) key_help_serial: u32,
@@ -191,6 +197,10 @@ impl App {
             info_serial: 0,
             about_open: false,
             about_serial: 0,
+            mod_info_open: false,
+            mod_info_serial: 0,
+            mod_details: None,
+            mod_info_shown: None,
             key_help_open: false,
             key_help_serial: 0,
             info_shown: None,
@@ -379,6 +389,7 @@ impl App {
         self.info_ui(&ctx);
         self.about_ui(&ctx);
         self.key_help_ui(&ctx);
+        self.mod_info_ui(&ctx);
         self.poll_export(&ctx);
         self.update_title(&ctx);
         self.close_if_allowed(&ctx);
@@ -547,11 +558,7 @@ impl App {
     fn mod_view(&mut self, ui: &Ui, view: &View, c: &Ctl) {
         const PAD: f32 = 4.0;
         let side = c.w - 2.0 * PAD;
-        if self.splash.as_ref().is_none_or(|(k, _)| *k != self.doc.kit) {
-            let tex = self.load_splash(ui.ctx());
-            self.splash = Some((self.doc.kit.clone(), tex));
-        }
-        if let Some((_, Some(tex))) = &self.splash {
+        if let Some(tex) = self.splash_texture(ui.ctx()) {
             let r = view.rect(c.x + PAD, c.y + PAD, side, side);
             Image::new((tex.id(), r.size())).paint_at(ui, r);
         }
@@ -569,20 +576,15 @@ impl App {
             .galley(pos, galley, Color32::WHITE);
     }
 
-    /// The splash picture of the kit that plays, as a texture; None when there is none.
-    fn load_splash(&self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
-        let bytes = match &self.doc.kit {
-            rb_cli::mods::Kit::Mod(p) => {
-                crate::session::mod_file(p, crate::session::SPLASH).ok()?
-            }
-            rb_cli::mods::Kit::Standard => rbm::standard::builtin_file(crate::session::SPLASH)?,
-        };
-        let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
-            .ok()?
-            .to_rgba8();
-        let size = [img.width() as usize, img.height() as usize];
-        let color = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
-        Some(ctx.load_texture("mod-splash", color, egui::TextureOptions::LINEAR))
+    /// The splash picture of the kit that plays, as a texture (cached per kit, shared by the
+    /// 808's mod window and Mods > Info); None when there is none.
+    pub(crate) fn splash_texture(&mut self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
+        if self.splash.as_ref().is_none_or(|(k, _)| *k != self.doc.kit) {
+            let tex = crate::session::splash_image(&self.doc.kit)
+                .map(|c| ctx.load_texture("mod-splash", c, egui::TextureOptions::LINEAR));
+            self.splash = Some((self.doc.kit.clone(), tex));
+        }
+        self.splash.as_ref().and_then(|(_, t)| t.clone())
     }
 
     fn hit(&self, ui: &mut Ui, c: &Ctl, rect: Rect) -> Response {

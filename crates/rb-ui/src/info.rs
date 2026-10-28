@@ -113,7 +113,7 @@ pub fn web_url(text: &str) -> Option<String> {
 }
 
 /// A web address as a link when it is one, else as plain text.
-fn link(ui: &mut egui::Ui, text: &str) {
+pub(crate) fn link(ui: &mut egui::Ui, text: &str) {
     match web_url(text) {
         Some(url) => {
             ui.hyperlink_to(text, url);

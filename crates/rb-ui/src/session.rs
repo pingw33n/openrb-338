@@ -92,6 +92,88 @@ pub fn mod_info(path: &Path) -> Result<rbm::Info, String> {
         .ok_or_else(|| format!("{}: not a mod: it has no INFO chunk", path.display()))
 }
 
+/// The splash picture of the kit that plays, decoded (`App::mod_view`, Mods > Info); None when
+/// the kit has none or it does not decode.
+pub fn splash_image(kit: &rb_cli::mods::Kit) -> Option<eframe::egui::ColorImage> {
+    let bytes = match kit {
+        rb_cli::mods::Kit::Mod(p) => mod_file(p, SPLASH).ok()?,
+        rb_cli::mods::Kit::Standard => rbm::standard::builtin_file(SPLASH)?,
+    };
+    let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
+        .ok()?
+        .to_rgba8();
+    let size = [img.width() as usize, img.height() as usize];
+    Some(eframe::egui::ColorImage::from_rgba_unmultiplied(
+        size,
+        img.as_raw(),
+    ))
+}
+
+/// What Mods > Info shows of a mod file besides its splash (task-106).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModDetails {
+    pub name: String,
+    /// `(major, minor, revision)`; None when the mod says "the app's version".
+    pub version: Option<(u8, u8, u8)>,
+    /// The description, with `\r` and `\r\n` turned into `\n`.
+    pub text: String,
+    pub web: String,
+    pub ftp: String,
+    pub file_name: String,
+    pub folder: Option<String>,
+    pub size: u64,
+    /// The number of embedded files (EMBF chunks).
+    pub files: usize,
+}
+
+impl ModDetails {
+    /// The details of the file of a kit: the mod file, or the embedded standard mod.
+    pub fn of(kit: &rb_cli::mods::Kit) -> Result<Self, String> {
+        match kit {
+            rb_cli::mods::Kit::Standard => Self::from_bytes(
+                rbm::standard::EMBEDDED.to_vec(),
+                "Standard.rbm (built in)".into(),
+                None,
+            ),
+            rb_cli::mods::Kit::Mod(p) => {
+                let bytes =
+                    std::fs::read(p).map_err(|e| format!("{}: cannot read: {e}", p.display()))?;
+                let name = p.file_name().map_or_else(
+                    || p.display().to_string(),
+                    |n| n.to_string_lossy().into_owned(),
+                );
+                let folder = p.parent().map(|d| d.display().to_string());
+                Self::from_bytes(bytes, name, folder)
+            }
+        }
+    }
+
+    /// The details of the bytes of a mod file; `file_name` names the file in the errors.
+    pub fn from_bytes(
+        bytes: Vec<u8>,
+        file_name: String,
+        folder: Option<String>,
+    ) -> Result<Self, String> {
+        let size = bytes.len() as u64;
+        let rbm = rbm::Rbm::parse(bytes).map_err(|e| format!("{file_name}: not a mod: {e}"))?;
+        let info = rbm
+            .info()
+            .cloned()
+            .ok_or_else(|| format!("{file_name}: not a mod: it has no INFO chunk"))?;
+        Ok(Self {
+            name: info.name,
+            version: info.version,
+            text: info.text.replace("\r\n", "\n").replace('\r', "\n"),
+            web: info.web,
+            ftp: info.ftp,
+            file_name,
+            folder,
+            size,
+            files: rbm.embedded().count(),
+        })
+    }
+}
+
 /// Writes `bytes` to `path` through a temporary file next to it, renamed over it, so a failed
 /// write leaves the old file.
 pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {

@@ -936,6 +936,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, a mod per file, Choose file... | the song's kit, checked (below) |
 | Mods | Demo Song | opens the `Demo.rbs` of the current song's mod (below); enabled only when that mod file has one, so never for "Standard ReBirth" (task-094) |
+| Mods | Info... | a centered, closable window (Escape closes it) with the splash of the kit that plays at its 2000-era physical size, the mod's INFO facts and the file's (task-106; below) |
 | Mods | Refresh List | reads the Mods folder again (the list cache, below; task-101) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
@@ -1058,6 +1059,37 @@ is one more entry.
   name and URLs are the mod's INFO. Opening the demo plays the mod's startup sound by the
   preference, as any open does (18.1): it goes through `App::adopt_as` -> `settle` ->
   `mod_opened`.
+- **Mods > Info** (task-106; `crates/rb-ui/src/mod_info.rs`). A centered window "Mod Information"
+  (pivot CENTER_CENTER, `default_pos` at the content center, a fresh id per open:
+  `App::mod_info_serial`; Escape is consumed after the other windows' Escape) for the kit that
+  plays (`doc.kit`): the built-in kit is the embedded `assets/Standard.rbm`. It shows the splash
+  (the same texture as the 808's mod window: `App::splash_texture`, `session::splash_image`), the
+  INFO chunk (docs/rbm.md 2: name, version as a.b.c or "the app's version", description with its
+  line breaks, web as a link by `info::web_url`, ftp as plain text) and the file: name, folder,
+  size in bytes with KB or MB (1024 based) and the number of embedded files (EMBF chunks). There
+  is no "recrypted" row: the kit that plays is always loadable (`use_kit` and `adopt_as` fall
+  back to the built-in kit or change nothing when `kit_samples` fails, which requires
+  `slots_covered`). A song whose mod is missing (the kit is the built-in one but the song names another mod) gets the missing
+  name and "is missing: the built-in kit plays" above the built-in kit's facts.
+  **The size of the splash.** A 17-inch CRT of 2000 had about 16 in (406 mm) viewable at 4:3,
+  325 x 244 mm, and typically ran at 1024 x 768: 1024 px / 325 mm = 3.15 px/mm, about 80 px per
+  inch, so 0.317 mm per px (`MM_PER_PX`). The known splashes are 256 x 256 px, so 256 x 0.317 =
+  81.2 mm (3.2 in) wide. The window draws the image that wide:
+  - display size known (macOS: `CGDisplayScreenSize` in mm and the pixel width of
+    `CGDisplayCopyDisplayMode`, of the display holding the window's center, else the main one;
+    a tiny `extern "C"` binding to CoreGraphics, no crate): `points = image_px x 0.317 x
+    (display_px / display_mm) / pixels_per_point`;
+  - not known (Windows, Linux: no cheap query was added; or a display that reports 0 mm): the
+    fallback of 110 logical points per inch on macOS and 96 elsewhere, `points = image_px x
+    0.317 x ppi / 25.4`; the window's note names which one it used ("the display's reported
+    size" or "an assumed N points per inch");
+  - when that width does not fit the window (`min(content width - 56, content height - 400)`,
+    at least 64) the splash is scaled down to fit and the note says "Scaled down to fit the
+    window". The EDID size of a display can be wrong (an external display that reports a
+    default size); then the splash is as far off as the report is.
+  `physical_width`, `splash_width`, `format_size` and `format_version` are unit-tested from
+  given DPIs. On the developer's MacBook (main display 345.44 mm, 2992 px wide: 8.66 px/mm) a
+  256 px splash is 702.9 px, i.e. 351.4 points at 2 pixels per point.
 - **File > Info** (task-095). Below "Save As...", a closable window "Song Information"
   (`crates/rb-ui/src/info.rs`; the close button or Escape closes it). It is read-only and shows
   the current document each frame, so it follows an open of another song. It lists the file

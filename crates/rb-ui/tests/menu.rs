@@ -1697,6 +1697,131 @@ fn the_about_window_opens_centered_and_closes() {
     assert!(!h.app.about_is_open(), "the close button closes it");
 }
 
+/// task-106: Mods > Info opens a centered window with the kit's splash at its physical width,
+/// the INFO facts and the file facts; Escape and the close button close it; a song whose mod
+/// is missing says so.
+#[test]
+fn the_mod_info_window_opens_centered_shows_the_kit_and_closes() {
+    let mut h = Harness::with_menu();
+    // a screen high enough for the whole window
+    h.height = 900.0;
+    let rect = |h: &Harness| h.ctx.memory(|m| m.area_rect(h.app.mod_info_id()));
+    let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(PANEL_W, h.height));
+    let esc = || Event::Key {
+        key: egui::Key::Escape,
+        physical_key: Some(egui::Key::Escape),
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    assert!(!h.app.mod_info_is_open());
+    h.app.command(Cmd::ModInfo);
+    assert!(h.app.mod_info_is_open());
+    let mut shapes = String::new();
+    for _ in 0..8 {
+        shapes = h.frame_shapes(vec![]);
+    }
+    let r = rect(&h).expect("the window is drawn");
+    let off = (r.center() - screen.center()).abs();
+    assert!(off.x < 3.0 && off.y < 3.0, "centered: {r:?} in {screen:?}");
+    for s in [
+        "Standard ReBirth",
+        "Embedded files",
+        "Standard.rbm (built in)",
+    ] {
+        assert!(shapes.contains(s), "{s:?} is drawn in {r:?}");
+    }
+    assert!(!shapes.contains("is missing"));
+    // the splash: 256 px, drawn at its physical width (this display's, or the fallback)
+    let s = h.app.mod_info_splash().expect("the splash is drawn");
+    let want = rb_ui::mod_info::physical_width(256.0, s.basis, h.ctx.pixels_per_point());
+    assert_eq!(s.physical, want);
+    if !s.scaled_down {
+        assert_eq!(s.width, want);
+    } else {
+        assert!(s.width < want);
+    }
+    if let rb_ui::mod_info::Basis::Assumed(ppi) = s.basis {
+        assert_eq!(ppi, rb_ui::mod_info::fallback_ppi());
+    }
+
+    // Escape closes it
+    h.frame(vec![esc()]);
+    assert!(!h.app.mod_info_is_open());
+
+    // a song whose mod is missing: the name and the words; the built-in kit's facts
+    h.app.doc.mod_name = "Gone Mod".into();
+    h.app.command(Cmd::ModInfo);
+    for _ in 0..4 {
+        shapes = h.frame_shapes(vec![]);
+    }
+    assert!(shapes.contains("Gone Mod") && shapes.contains("is missing"));
+    assert!(shapes.contains("Standard.rbm (built in)"));
+    let r = rect(&h).expect("drawn again");
+    let off = (r.center() - screen.center()).abs();
+    assert!(off.x < 3.0 && off.y < 3.0, "centered again: {r:?}");
+    // the close button is at the right end of the title bar
+    h.click(Pos2::new(r.max.x - 12.0, r.min.y + 10.0));
+    h.frame(vec![]);
+    assert!(!h.app.mod_info_is_open(), "the close button closes it");
+}
+
+/// task-106: the window shows a real mod file's INFO, size and file count, and its splash.
+#[test]
+fn the_mod_info_window_shows_a_mod_files_facts() {
+    let Some(path) = mod_file("PBE2.rbm") else {
+        return;
+    };
+    let mut h = Harness::with_menu();
+    // high enough for a long description
+    h.height = 1400.0;
+    h.app.use_kit(Kit::Mod(path.clone()));
+    assert_eq!(h.app.doc.kit, Kit::Mod(path.clone()));
+    h.app.command(Cmd::ModInfo);
+    let mut shapes = String::new();
+    for _ in 0..8 {
+        shapes = h.frame_shapes(vec![]);
+    }
+    let d = rb_ui::session::ModDetails::of(&Kit::Mod(path.clone())).unwrap();
+    assert_eq!(d.file_name, "PBE2.rbm");
+    assert_eq!(d.size, std::fs::metadata(&path).unwrap().len());
+    assert_eq!(d.name, h.app.doc.mod_name);
+    assert!(d.files > 40, "{d:?}");
+    for s in [
+        d.name.as_str(),
+        "PBE2.rbm",
+        &rb_ui::mod_info::format_size(d.size),
+        &d.files.to_string(),
+    ] {
+        assert!(shapes.contains(s), "{s:?} is drawn");
+    }
+    assert!(h.app.mod_info_splash().is_some(), "its splash is drawn");
+}
+
+/// task-106: the Mods menu lists "Info..." next to "Refresh List".
+#[test]
+fn the_mods_menu_has_an_info_item() {
+    let mut h = Harness::with_menu();
+    for x in (10..200).step_by(6) {
+        let p = Pos2::new(x as f32, MENU_H / 2.0);
+        h.frame(vec![Event::PointerMoved(p)]);
+        let down = |pressed| Event::PointerButton {
+            pos: p,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        h.frame(vec![down(true)]);
+        h.frame(vec![down(false)]);
+        let text = h.frame_shapes(vec![]);
+        if text.contains("Refresh List") {
+            assert!(text.contains("Info..."), "the Mods menu has Info...");
+            return;
+        }
+    }
+    panic!("the Mods menu did not open");
+}
+
 /// task-105: Help > Keyboard Shortcuts opens a centered window (each open again) that lists the
 /// keys by group with the current mode marked; Escape and the close button close it.
 #[test]
