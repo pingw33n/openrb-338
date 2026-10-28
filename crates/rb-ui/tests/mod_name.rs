@@ -12,7 +12,7 @@ fn placed(strip: Rect, text: &str) -> (Rect, usize) {
         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(300.0, 300.0))),
         ..Default::default()
     };
-    let _ = ctx.run_ui(input, |ui| {
+    let mut frame = ctx.run_ui(input, |ui| {
         let galley = ui.painter().layout(
             text.into(),
             FontId::proportional(14.0),
@@ -22,6 +22,8 @@ fn placed(strip: Rect, text: &str) -> (Rect, usize) {
         let pos = centered_in(strip, galley.size());
         out = Some((Rect::from_min_size(pos, galley.size()), galley.rows.len()));
     });
+    // epaint panics in debug when a TexturesDelta is dropped with deltas unapplied
+    frame.textures_delta.clear();
     out.expect("the frame ran")
 }
 

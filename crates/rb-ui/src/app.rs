@@ -302,9 +302,46 @@ fn paint_part(ui: &Ui, name: &str, rect: Rect) {
     paint_part_rotated(ui, name, rect, None);
 }
 
+/// The size to rasterize an image of `pixels` at when a side may be at most `max`: None when it
+/// fits, else the size scaled down (both sides by the same factor) to fit.
+fn capped_hint(pixels: Vec2, max: usize) -> Option<egui::load::SizeHint> {
+    let max = max as f32;
+    let big = pixels.x.max(pixels.y);
+    if big <= max {
+        return None;
+    }
+    let k = max / big;
+    Some(egui::load::SizeHint::Size {
+        width: (pixels.x * k).floor().max(1.0) as u32,
+        height: (pixels.y * k).floor().max(1.0) as u32,
+        maintain_aspect_ratio: false,
+    })
+}
+
 fn paint_part_rotated(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>) {
     let part = art::part(name).unwrap_or_else(|| panic!("missing art part {name}"));
     let mut image = Image::from_bytes(part.uri, part.svg).fit_to_exact_size(rect.size());
+    // `paint_at` rasterizes the SVG at the rect's size in pixels. A rect that big (a frame
+    // drawn before the window settles, a huge window, a high density) would make a texture
+    // wider than the GPU allows, which wgpu refuses with a panic. Rasterize it smaller then
+    // and let egui scale the texture up: a part this big is mostly plain fill.
+    let max = ui.ctx().input(|i| i.max_texture_side);
+    let pixels =
+        (rect.round_to_pixels(ui.pixels_per_point()).size() * ui.pixels_per_point()).round();
+    if let Some(hint) = capped_hint(pixels, max) {
+        let source = egui::ImageSource::Bytes {
+            uri: part.uri.into(),
+            bytes: part.svg.into(),
+        };
+        match source.load(ui.ctx(), egui::TextureOptions::LINEAR, hint) {
+            Ok(egui::load::TexturePoll::Ready { texture }) => {
+                image = Image::from_texture(texture).fit_to_exact_size(rect.size());
+            }
+            // not loaded (yet): paint nothing this frame, the uncapped load would crash;
+            // egui repaints when the load finishes
+            _ => return,
+        }
+    }
     if let Some((angle, origin)) = rot {
         image = image.rotate(angle, origin);
     }
