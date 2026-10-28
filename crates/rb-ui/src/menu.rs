@@ -535,10 +535,10 @@ impl App {
             .and_then(|bytes| session::write_file(path, &bytes));
         match result {
             Ok(()) => {
-                if self.doc.facts_1x.take().is_some()
-                    && let Some(link) = &self.link
-                {
-                    // the file is an RBS 4.2 song now: File > Info shows what it says
+                self.doc.facts_1x = None;
+                if let Some(link) = &self.link {
+                    // the file is an RBS 4.2 song now (a 1.x song included): the document is
+                    // the song as written, so File > Info shows what the file says
                     self.doc.source = self.composed_song(link);
                 }
                 self.doc.path = Some(path.to_path_buf());

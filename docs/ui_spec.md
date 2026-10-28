@@ -1118,8 +1118,15 @@ is one more entry.
   text (0x0d shown as a line break) and web page (a link), the mod's name with its state
   (built-in kit, loaded, or missing with the built-in kit playing) and the mod's web and ftp
   addresses, the format version and copyright of the file as read, and the tempo, mode, loop,
-  shuffle and synth sound of the file. `SongInfo::of` builds the facts from the document
-  without a player. Editing the song information is not done. "Show song info on open" (the
+  shuffle and synth sound of the file, and "Last event": `bar N` (1-based) of the song's last
+  track event, or `none` (task-124; `SongFacts::last_event_bar`, the same facts `rb info`
+  prints, for a 4.x and a 1.x song; an .rbs song has no length field, so this is its useful
+  length). The row follows the song as it is now: after a recording (the Link's recorded
+  tracks, which Save writes) it is the latest tick over those tracks
+  (`rb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), and a
+  successful Save of any song makes the document's song the one written, so the document
+  matches the file. `SongInfo::of` builds the facts from the document (and the recorded
+  tracks) without a player. Editing the song information is not done. "Show song info on open" (the
   USRI flag, `docs/RBS42.txt`) is not done either: the window opens only from the menu. The
   original shows these in its Song Information dialog; its layout is not copied.
 - **The startup sound of an open and of the start** (task-087). Below.

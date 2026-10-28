@@ -3,8 +3,9 @@
 //! player); editing the song information is not done.
 
 use eframe::egui::{self, Color32, Context, Key, Modifiers, RichText};
-use rb_cli::info::SongFacts;
+use rb_cli::info::{SongFacts, last_tick};
 use rb_cli::mods::{Kit, STANDARD};
+use rb_engine::seq::Event as TrackEvent;
 
 use crate::app::App;
 use crate::document::Document;
@@ -66,18 +67,26 @@ pub struct SongInfo {
     pub looping: bool,
     pub shuffle: u8,
     pub vintage: bool,
+    /// The 1-based bar of the song's last track event, `None` for a song with none
+    /// ([`SongFacts::last_event_bar`]).
+    pub last_event_bar: Option<u32>,
 }
 
 impl SongInfo {
     /// The information of a document.
-    pub fn of(doc: &Document) -> Self {
+    pub fn of(doc: &Document, recorded: Option<&[Vec<TrackEvent>; 9]>) -> Self {
         // the facts are those of `rb info` (rb_cli::info)
         // a 1.x song has no `rbs` song: its facts were taken when it was opened (task-123)
-        let f = match &doc.facts_1x {
+        let mut f = match &doc.facts_1x {
             Some(f) => f.clone(),
             None => SongFacts::of_source(&doc.source),
         };
+        if let Some(tracks) = recorded {
+            // a recorded song: the tracks as the engine holds them (what Save writes)
+            f.last_event_tick = last_tick(tracks.iter().flatten().map(|e| e.tick as u32));
+        }
         let format = f.format();
+        let last_event_bar = f.last_event_bar();
         let mod_state = match &doc.kit {
             Kit::Mod(_) => ModState::Loaded,
             Kit::Standard if doc.mod_name == STANDARD => ModState::Standard,
@@ -106,6 +115,15 @@ impl SongInfo {
             looping: f.looping,
             shuffle: f.shuffle,
             vintage: f.vintage,
+            last_event_bar,
+        }
+    }
+
+    /// The text of the "Last event" row: `bar N` or `none`.
+    pub fn last_event_text(&self) -> String {
+        match self.last_event_bar {
+            Some(b) => format!("bar {b}"),
+            None => "none".into(),
         }
     }
 }
@@ -149,6 +167,14 @@ impl App {
         self.info_open = true;
     }
 
+    /// The information of the song now: the document, and the tracks recording has made.
+    pub fn song_info(&self) -> SongInfo {
+        SongInfo::of(
+            &self.doc,
+            self.link.as_ref().and_then(|l| l.recorded_tracks()),
+        )
+    }
+
     /// The id of the info window now (for tests, to look its place up).
     pub fn info_id(&self) -> egui::Id {
         info_window_id(self.info_serial)
@@ -165,7 +191,7 @@ impl App {
             self.info_shown = None;
             return;
         }
-        let info = SongInfo::of(&self.doc);
+        let info = self.song_info();
         self.info_shown = Some(info.clone());
         let mut open = true;
         // The pivot is the window's center and the default place applies when the id has no
@@ -229,6 +255,7 @@ impl App {
                             "ReBirth 2.0"
                         },
                     );
+                    row(ui, "Last event", &info.last_event_text());
                 });
         });
         if !open {
@@ -263,7 +290,7 @@ mod tests {
 
     #[test]
     fn untitled_song_strings_and_standard_mod() {
-        let i = SongInfo::of(&doc());
+        let i = SongInfo::of(&doc(), None);
         assert_eq!(i.name, "Untitled");
         assert_eq!(i.folder, None);
         assert_eq!(i.window_title, "My song");
@@ -276,12 +303,38 @@ mod tests {
     }
 
     #[test]
+    fn last_event_row_from_the_facts() {
+        // no events: none
+        let i = SongInfo::of(&doc(), None);
+        assert_eq!(i.last_event_bar, None);
+        assert_eq!(i.last_event_text(), "none");
+        // 4.x: a position is in 32nd notes (32 a bar): bar 3 starts at 64
+        let mut d = doc();
+        d.source.tracks[0].events.push(rbs::Event {
+            pos: 70,
+            ctrl: 1,
+            value: 2,
+        });
+        let i = SongInfo::of(&d, None);
+        assert_eq!(i.last_event_bar, Some(3));
+        assert_eq!(i.last_event_text(), "bar 3");
+        // 1.x: the row is the facts' own, whatever the (empty) `rbs` source says
+        let mut f = SongFacts::of_source(&d.source);
+        f.rb1x = true;
+        f.last_event_tick = Some(768 * 9 + 5);
+        d.facts_1x = Some(f);
+        let i = SongInfo::of(&d, None);
+        assert_eq!(i.last_event_bar, Some(10));
+        assert_eq!(i.last_event_text(), "bar 10");
+    }
+
+    #[test]
     fn crlf_latin1_and_mod_addresses() {
         let mut d = doc();
         d.source.usri.text = "a\r\nb\u{e9}".into();
         d.source.glob.mod_www = "www.mod.org".into();
         d.source.glob.mod_ftp = "ftp://mod.org/x".into();
-        let i = SongInfo::of(&d);
+        let i = SongInfo::of(&d, None);
         assert_eq!(i.text, "a\nb\u{e9}");
         assert_eq!(i.mod_www, "www.mod.org");
         assert_eq!(i.mod_ftp, "ftp://mod.org/x");
@@ -323,12 +376,12 @@ mod tests {
         let mut d = doc();
         d.path = Some(PathBuf::from("/songs/a.rbs"));
         d.mod_name = "Some Mod".into();
-        let i = SongInfo::of(&d);
+        let i = SongInfo::of(&d, None);
         assert_eq!(i.mod_state, ModState::Missing);
         assert_eq!(i.name, "a.rbs");
         assert_eq!(i.folder.as_deref(), Some("/songs"));
         d.kit = Kit::Mod(PathBuf::from("/mods/some.rbm"));
-        let i = SongInfo::of(&d);
+        let i = SongInfo::of(&d, None);
         assert_eq!(i.mod_name, "Some Mod");
         assert_eq!(i.mod_state, ModState::Loaded);
     }

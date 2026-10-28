@@ -118,6 +118,13 @@ impl Usri1x {
     }
 }
 
+/// The latest tick of the events of the engine's tracks (`None` for no events): the one
+/// computation of [`SongFacts::last_event_tick`] for a song held by the engine, also File > Info's
+/// for a song with recorded tracks.
+pub fn last_tick(ticks: impl IntoIterator<Item = u32>) -> Option<u32> {
+    ticks.into_iter().max()
+}
+
 fn bars(ticks: u32) -> u32 {
     ticks / TICKS_PER_BAR
 }
@@ -188,7 +195,7 @@ impl SongFacts {
             loop_bars: bars(g.loop_end.saturating_sub(g.loop_start)),
             shuffle: g.shuffle,
             vintage: g.vintage != 0,
-            last_event_tick: engine.tracks.iter().flatten().map(|e| e.tick).max(),
+            last_event_tick: last_tick(engine.tracks.iter().flatten().map(|e| e.tick)),
         }
     }
 

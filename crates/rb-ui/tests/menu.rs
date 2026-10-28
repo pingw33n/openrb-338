@@ -2429,3 +2429,60 @@ fn a_mod_change_of_a_1x_song_updates_the_infos_mod_addresses() {
     assert_eq!(i.mod_ftp, m.ftp);
     assert_eq!(i.window_title, "Old song");
 }
+
+/// Records knob moves for `n` calls of the open song in song mode, then stops the recording
+/// (which merges the moves into the tracks).
+fn record_moves(h: &mut Harness, n: usize) {
+    if !h.app.panel.transport.song_mode {
+        h.app.panel.press("transport.mode", 0.0);
+    }
+    h.app.panel.press("transport.record", 0.0);
+    h.app.panel.press("transport.play", 0.0);
+    h.frame(vec![]);
+    for k in 0..n / 20 {
+        h.calls(20);
+        h.app.panel.set_knob("tb303_1.cutoff", 100 + 20 * k as i32);
+        h.frame(vec![]);
+    }
+    h.app.panel.press("transport.record", 0.0);
+    h.frame(vec![]);
+    h.calls(2);
+    assert!(!h.app.panel.transport.recording);
+}
+
+/// task-124: File > Info's "Last event" follows a recording and the Save after it, for a 4.x and
+/// a 1.x song.
+#[test]
+fn the_last_event_row_follows_a_recording_and_save() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old.rbs");
+    std::fs::write(&old, song_1x_unsorted()).unwrap();
+    let four = root().join("tests/songs/diag/songs/303_saw_lowcut.rbs");
+    for src in [four, old] {
+        let mut h = Harness::new();
+        h.app.settings.startup_sound = false;
+        h.open(&src);
+        let was = h.app.song_info().last_event_bar;
+        record_moves(&mut h, 400);
+        let link = h.app.link.as_ref().unwrap();
+        let rec = link.recorded_tracks().unwrap();
+        let tick = rec.iter().flatten().map(|e| e.tick as u32).max().unwrap();
+        let after = h.app.song_info();
+        let name = src.display();
+        assert_eq!(after.last_event_bar, Some(tick / 768 + 1), "{name}");
+        assert_ne!(after.last_event_bar, was, "{name}: past the old last event");
+        let saved = dir.path().join("saved.rbs");
+        h.app.save_to(&saved);
+        assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
+        // the document is the file now: the row is the file's
+        assert_eq!(
+            h.app.song_info().last_event_bar,
+            after.last_event_bar,
+            "{name}"
+        );
+        assert_eq!(h.app.song_info().version, "4.2");
+        let facts = rb_cli::info::SongFacts::of_file(&saved).unwrap();
+        assert_eq!(h.app.song_info().last_event_bar, facts.last_event_bar());
+        assert_eq!(read_rbs(&saved).tracks, h.app.doc.source.tracks, "{name}");
+    }
+}
