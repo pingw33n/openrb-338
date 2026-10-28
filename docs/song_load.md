@@ -1005,6 +1005,22 @@ would read back right after the load. It does not copy `load_1x`'s buffers, whic
   distinct) save, and reopen with the import's lists in the order above. Razor Topz.RBS plays the
   same, 200 engine calls, after the save, and saves after a change to Pitch Black Edition 2.0.
 
+**The song information is saved [C] (task-123).** `sub_430BA0` builds a record from the decoded
+block's bytes at 0x3160 (`sub_42FED6`, `sub_4304C5`, `sub_42FFEC`) and `strcpy`s it into the
+document's USRI fields: the title to +0 (0x431039), the text to +0x29 (0x43104F), the web page to
++0x1BA (0x431067) and the show-on-open byte to +0x21F (0x431078, `neg/sbb/neg` in `sub_42FFEC`
+0x430043..0x43004D makes it 0 or 1). `sub_42FFEC` copies each string with `sub_465D8D(src, max,
+dst)` with max 0x28, 0xC8 and 0x64 (block offsets +0, +0x29, +0xF2): bytes up to the first zero or
+until `max` bytes are written; after a 0x0d byte it writes a 0x0a as well (0x465DDA..0x465DED)
+unless `max` is reached, and that byte counts. So a saved 1.x song keeps its title, text (with
+CR LF where the file had CR) and web page in its USRI chunk, and it has no copyright (the HEAD is
+the constructor's).
+
+**rb.** `rb_cli::info::Usri1x::of` does that copy (`usri_copy`); `document::source_of_1x` puts it
+into the stand-in song's USRI, so Save writes it, and `rb info` and File > Info show it
+(`SongFacts::of_1x`). Checked by `file_info_of_a_1x_song_shows_its_own_facts` and
+`song_information_of_a_1x_song_is_copied_like_the_original` in `crates/rb-ui/tests/menu.rs`.
+
 [G] The original's Save of a 1.x song was not run on the test machine. What it writes is read
 from the disassembly above. That rb's lists equal the DLL's after a load rests on the msg-22
 comparison of task-057 (RBS songs) and on the 1.x renders.

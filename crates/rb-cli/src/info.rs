@@ -58,11 +58,64 @@ fn newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// A zero-terminated Latin-1 string at `off` of `raw`, at most `size` bytes.
-fn latin1_z(raw: &[u8], off: usize, size: usize) -> String {
-    let b = &raw[off..off + size];
-    let n = b.iter().position(|&c| c == 0).unwrap_or(size);
-    b[..n].iter().map(|&c| c as char).collect()
+/// The song information string of a 1.x song's block the way the original copies it
+/// (`sub_465D8D`, called by `sub_42FFEC`): the bytes of `raw` from `off` up to the first zero or
+/// until `max` bytes are copied, each 0x0d followed by a 0x0a that counts too and is dropped when
+/// `max` is already reached. Latin-1.
+fn usri_copy(raw: &[u8], off: usize, max: usize) -> String {
+    let mut out = String::new();
+    let mut n = 0;
+    let mut i = off;
+    while n < max {
+        let c = raw.get(i).copied().unwrap_or(0);
+        if c == 0 {
+            break;
+        }
+        out.push(c as char);
+        n += 1;
+        if c == 0x0d && n < max {
+            out.push('\n');
+            n += 1;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// The song information of a ReBirth 1.x song as the original's import stores it in the
+/// document's USRI fields (`sub_42FFEC`, `sub_430BA0` 0x431039..0x431078).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Usri1x {
+    /// At most 40 characters.
+    pub title: String,
+    /// At most 200 characters; each 0x0d is followed by a 0x0a.
+    pub text: String,
+    /// At most 100 characters.
+    pub web_page: String,
+    /// 0 or 1.
+    pub show_on_open: u8,
+}
+
+impl Usri1x {
+    /// Reads the information of a parsed 1.x song (it has its sysex block).
+    pub fn of(song: &Song1x) -> Self {
+        let block = song
+            .tracks
+            .iter()
+            .flatten()
+            .find_map(|e| match &e.kind {
+                Kind::Sysex(d) => Block::decode(d).ok(),
+                _ => None,
+            })
+            .expect("a parsed 1.x song has its sysex block");
+        let b = block.bytes();
+        Self {
+            title: usri_copy(b, RB1X_INFO, 0x28),
+            text: usri_copy(b, RB1X_INFO + 0x29, 0xC8),
+            web_page: usri_copy(b, RB1X_INFO + 0xF2, 0x64),
+            show_on_open: (b[RB1X_INFO + 0x157] != 0) as u8,
+        }
+    }
 }
 
 fn bars(ticks: u32) -> u32 {
@@ -99,6 +152,16 @@ impl SongFacts {
         }
     }
 
+    /// The file's format as `rb info` and File > Info print it: "RBS 4.2", or "ReBirth 1.x MIDI
+    /// file (file version 3.1)".
+    pub fn format(&self) -> String {
+        if self.rb1x {
+            format!("ReBirth 1.x MIDI file (file version {})", self.version)
+        } else {
+            format!("RBS {}", self.version)
+        }
+    }
+
     /// The 1-based bar of the latest track event, `None` for a song with no events.
     pub fn last_event_bar(&self) -> Option<u32> {
         self.last_event_tick.map(|t| bars(t) + 1)
@@ -106,23 +169,14 @@ impl SongFacts {
 
     /// The facts of a ReBirth 1.x song, with the engine song the import made of it.
     pub fn of_1x(song: &Song1x, engine: &EngineSong) -> Self {
-        let block = song
-            .tracks
-            .iter()
-            .flatten()
-            .find_map(|e| match &e.kind {
-                Kind::Sysex(d) => Block::decode(d).ok(),
-                _ => None,
-            })
-            .expect("a parsed 1.x song has its sysex block");
-        let b = block.bytes();
+        let info = Usri1x::of(song);
         let g = &engine.globals;
         Self {
             rb1x: true,
             version: format!("{}.{}", song.version.0, song.version.1),
-            window_title: latin1_z(b, RB1X_INFO, 41),
-            text: newlines(&latin1_z(b, RB1X_INFO + 41, 201)),
-            web_page: latin1_z(b, RB1X_INFO + 242, 101),
+            window_title: info.title,
+            text: newlines(&info.text),
+            web_page: info.web_page,
             copyright: String::new(),
             mod_name: engine.mod_name.clone(),
             mod_ftp: String::new(),
@@ -240,12 +294,7 @@ fn field(out: &mut String, label: &str, value: &str) {
 pub fn to_text(file: &Path, f: &SongFacts, mod_res: &ModResolution) -> String {
     let mut o = String::new();
     field(&mut o, "File", &file.display().to_string());
-    let format = if f.rb1x {
-        format!("ReBirth 1.x MIDI file (file version {})", f.version)
-    } else {
-        format!("RBS {}", f.version)
-    };
-    field(&mut o, "Format", &format);
+    field(&mut o, "Format", &f.format());
     field(&mut o, "Title", &f.window_title);
     field(&mut o, "Text", &f.text);
     field(&mut o, "Web page", &f.web_page);

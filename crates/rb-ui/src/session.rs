@@ -7,12 +7,16 @@
 
 use std::path::{Path, PathBuf};
 
+use rb_cli::info::SongFacts;
 use rb_engine::song::Song;
 
 /// A song file read: the engine's song and the `rbs` song it came from (the document's source).
 pub struct Opened {
     pub engine: Song,
     pub source: rbs::Song,
+    /// The facts of a ReBirth 1.x song, which has no `rbs` song of its own (`source` is a
+    /// stand-in): File > Info shows them (task-123).
+    pub facts_1x: Option<SongFacts>,
 }
 
 /// Reads and converts an `.rbs` song, keeping the file's `rbs` song.
@@ -28,14 +32,23 @@ pub fn open_bytes(data: &[u8], label: &str) -> Result<Opened, String> {
             .map_err(|e| format!("{label}: not a valid ReBirth 1.x song: {e}"))?;
         let engine = rb_engine::load::convert_1x(&parsed)
             .map_err(|e| format!("{label}: cannot load the song: {e}"))?;
-        let source = crate::document::source_of_1x(&engine);
-        return Ok(Opened { engine, source });
+        let source = crate::document::source_of_1x(&engine, &parsed);
+        let facts_1x = Some(SongFacts::of_1x(&parsed, &engine));
+        return Ok(Opened {
+            engine,
+            source,
+            facts_1x,
+        });
     }
     let source =
         rbs::Song::parse(data).map_err(|e| format!("{label}: not a valid .rbs song: {e}"))?;
     let engine = rb_engine::load::convert(&source)
         .map_err(|e| format!("{label}: cannot load the song: {e:?}"))?;
-    Ok(Opened { engine, source })
+    Ok(Opened {
+        engine,
+        source,
+        facts_1x: None,
+    })
 }
 
 /// The name of the demo song a mod carries (docs/rbm.md 13.1; `sub_417000` looks it up).

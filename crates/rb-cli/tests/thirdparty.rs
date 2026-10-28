@@ -9,7 +9,7 @@
 //! Run it in release, with the summary shown:
 //!
 //! ```text
-//! RB_THIRDPARTY_MODS_DIR=~/rb_stuff/Mods RB_THIRDPARTY_SONGS_DIR=~/rb_stuff/songs \
+//! RB_THIRDPARTY_MODS_DIR=~/rb-mods/mods RB_THIRDPARTY_SONGS_DIR=~/rb-songs/songs \
 //!     cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1
 //! ```
 //!

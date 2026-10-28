@@ -2247,3 +2247,187 @@ fn every_1x_song_of_the_collection_saves() {
     assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
     assert_eq!(read_rbs(&saved).glob.mod_name, h.app.doc.mod_name);
 }
+
+/// A ReBirth 1.x song with a title, text, web page, 128 BPM, song mode and a loop (bars 2..6),
+/// as `crates/rb-cli/tests/info.rs` builds one.
+fn song_1x_with_info() -> Vec<u8> {
+    use rbs::rb1x::{BLOCK_LEN, Block, Event as MidiEvent, Kind, Song1x};
+    let mut b = Box::new([0u8; BLOCK_LEN]);
+    b[..5].copy_from_slice(&[0xBC, 3, 1, 0, 0]);
+    b[5..9].copy_from_slice(b"TinY");
+    b[9] = 90;
+    b[10..14].copy_from_slice(&2u32.to_be_bytes());
+    b[14..18].copy_from_slice(&4u32.to_be_bytes());
+    b[0x12] = 1;
+    b[0x2A..0x2E].copy_from_slice(&128_000u32.to_be_bytes());
+    b[0x2E] = 1;
+    for j in 0..3 {
+        let r = 0x100 + 32 * j;
+        b[r + 2..r + 5].copy_from_slice(&[100, 64, 20]);
+        b[r + 7] = 0x3F;
+        b[r + 0x17] = 1;
+    }
+    let put = |b: &mut [u8], off: usize, s: &[u8]| b[off..off + s.len()].copy_from_slice(s);
+    put(&mut b[..], 0x3160, b"Old song");
+    put(&mut b[..], 0x3160 + 41, b"first\rsecond \xe9");
+    put(&mut b[..], 0x3160 + 242, b"www.example.org");
+    Song1x {
+        format: 1,
+        division: 32,
+        tracks: vec![
+            vec![MidiEvent {
+                time: 0,
+                kind: Kind::Meta {
+                    kind: 2,
+                    data: b"File version 3.1.0".to_vec(),
+                },
+            }],
+            vec![MidiEvent {
+                time: 0,
+                kind: Kind::Sysex(Block(b).encode()),
+            }],
+        ],
+        version: (3, 1),
+    }
+    .write()
+}
+
+/// task-123: File > Info of a ReBirth 1.x song shows the facts `rb info` prints for it (the
+/// song's, not the empty stand-in's), and after a save, which makes an RBS 4.2 file, what that
+/// file says.
+#[test]
+fn file_info_of_a_1x_song_shows_its_own_facts() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("old.rbs");
+    std::fs::write(&src, song_1x_with_info()).unwrap();
+    let expect = rb_cli::info::SongFacts::of_file(&src).unwrap();
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.open(&src);
+    h.app.show_info();
+    h.frame(vec![]);
+    let i = h.app.info_shown().unwrap().clone();
+    assert_eq!(i.format, "ReBirth 1.x MIDI file (file version 3.1)");
+    assert_eq!(i.version, "3.1");
+    assert_eq!(i.window_title, "Old song");
+    assert_eq!(i.text, "first\nsecond \u{e9}");
+    assert_eq!(i.web_page, "www.example.org");
+    assert_eq!(i.copyright, "");
+    assert_eq!(i.bpm, 128.0);
+    assert!(i.song_mode && i.looping && i.vintage);
+    assert_eq!(i.shuffle, 64);
+    // all of it is rb info's
+    assert_eq!(i.window_title, expect.window_title);
+    assert_eq!(i.text, expect.text);
+    assert_eq!(i.web_page, expect.web_page);
+    assert_eq!(i.copyright, expect.copyright);
+    assert_eq!(i.version, expect.version);
+    assert_eq!(
+        (i.bpm, i.shuffle, i.vintage),
+        (expect.bpm, expect.shuffle, expect.vintage)
+    );
+    assert_eq!((i.song_mode, i.looping), (expect.song_mode, expect.looping));
+
+    // saved, the file is an RBS 4.2 song and the window says so
+    let saved = dir.path().join("saved.rbs");
+    h.app.save_to(&saved);
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    h.frame(vec![]);
+    let after = h.app.info_shown().unwrap().clone();
+    assert_eq!(after.format, "RBS 4.2");
+    assert!(!after.rb1x);
+    // the facts the window shows are the same before and after
+    let facts = |i: &rb_ui::info::SongInfo| {
+        (
+            i.window_title.clone(),
+            i.text.clone(),
+            i.web_page.clone(),
+            i.copyright.clone(),
+            i.bpm,
+            i.song_mode,
+            i.looping,
+            i.shuffle,
+            i.vintage,
+        )
+    };
+    assert_eq!(facts(&after), facts(&i));
+
+    // the file keeps the song information, as the original's import copies it to the USRI
+    // fields (`sub_430BA0` 0x431039..0x431078): a 0x0d is followed by a 0x0a (`sub_465D8D`)
+    let s = read_rbs(&saved);
+    assert_eq!(s.usri.window_title, "Old song");
+    assert_eq!(s.usri.text, "first\r\nsecond \u{e9}");
+    assert_eq!(s.usri.web_page, "www.example.org");
+    assert_eq!(s.head.copyright, "");
+    let mut h2 = Harness::new();
+    h2.app.settings.startup_sound = false;
+    h2.open(&saved);
+    h2.app.show_info();
+    h2.frame(vec![]);
+    let reopened = h2.app.info_shown().unwrap();
+    assert_eq!(reopened.format, "RBS 4.2");
+    assert_eq!(facts(reopened), facts(&i));
+}
+
+/// The song information of a 1.x song is copied as the original does (`sub_465D8D`): at most 40,
+/// 200 and 100 bytes, a 0x0a after each 0x0d that counts and is left out at the limit, and the
+/// show-on-open byte is 0 or 1.
+#[test]
+fn song_information_of_a_1x_song_is_copied_like_the_original() {
+    use rb_cli::info::Usri1x;
+    use rbs::rb1x::{BLOCK_LEN, Block, Event as MidiEvent, Kind, Song1x};
+    let mut b = Box::new([0u8; BLOCK_LEN]);
+    b[..5].copy_from_slice(&[0xBC, 3, 1, 0, 0]);
+    b[5..9].copy_from_slice(b"TinY");
+    // 39 letters and a CR: the LF would be the 41st byte, so it is dropped
+    b[0x3160..0x3160 + 39].fill(b'a');
+    b[0x3160 + 39] = 0x0d;
+    // 50 bytes of CR: the pairs fill 200
+    b[0x3160 + 41..0x3160 + 41 + 150].fill(0x0d);
+    // a full web page with no terminator in 100 bytes
+    b[0x3160 + 242..0x3160 + 242 + 101].fill(b'w');
+    b[0x3160 + 343] = 7;
+    let song = Song1x {
+        format: 1,
+        division: 32,
+        tracks: vec![vec![MidiEvent {
+            time: 0,
+            kind: Kind::Sysex(Block(b).encode()),
+        }]],
+        version: (3, 1),
+    };
+    let u = Usri1x::of(&song);
+    assert_eq!(u.title, format!("{}\r", "a".repeat(39)));
+    assert_eq!(u.text, "\r\n".repeat(100));
+    assert_eq!(u.web_page, "w".repeat(100));
+    assert_eq!(u.show_on_open, 1);
+}
+
+/// task-123: a mod change of a 1.x song updates the mod's web and ftp addresses File > Info
+/// shows, as it does the saved file's.
+#[test]
+fn a_mod_change_of_a_1x_song_updates_the_infos_mod_addresses() {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("old.rbs");
+    std::fs::write(&src, song_1x_with_info()).unwrap();
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.open(&src);
+    h.app.use_kit(Kit::Mod(pbe2.clone()));
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    let m = session::mod_info(&pbe2).unwrap();
+    assert!(
+        !m.web.is_empty() || !m.ftp.is_empty(),
+        "the mod has no addresses to test"
+    );
+    h.app.show_info();
+    h.frame(vec![]);
+    let i = h.app.info_shown().unwrap();
+    assert_eq!(i.mod_name, m.name);
+    assert_eq!(i.mod_www, m.web);
+    assert_eq!(i.mod_ftp, m.ftp);
+    assert_eq!(i.window_title, "Old song");
+}

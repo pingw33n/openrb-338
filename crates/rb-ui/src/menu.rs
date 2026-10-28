@@ -26,6 +26,7 @@ use eframe::egui::{
     Stroke, Ui,
 };
 use rb_cli::encode::Format;
+use rb_cli::info::SongFacts;
 use rb_cli::mods::{self, Kit, ModOpts, STANDARD};
 use rb_cli::render::{DEFAULT_IDLE_BLOCKS, DEFAULT_QUALITY, Renderer, load_mod};
 use rb_engine::frame::LoadRefused;
@@ -36,6 +37,7 @@ use crate::app::App;
 use crate::browser::{ExportFormat, Mode};
 use crate::document::{self, Document};
 use crate::keys::KeyMode;
+use crate::link::Link;
 use crate::session;
 use crate::shortcuts;
 
@@ -335,7 +337,7 @@ impl App {
             // the original does (task-125)
             document::set_engine_tracks(&mut source, link.loaded_tracks());
         }
-        self.settle(path, source, mod_name, kit);
+        self.settle(path, source, opened.facts_1x, mod_name, kit);
     }
 
     /// Whether the current song's mod has a `Demo.rbs` (the Mods menu's "Demo Song"): never for
@@ -399,7 +401,14 @@ impl App {
     /// The song is loaded in the player: its mod's startup sound plays when the preference is
     /// on and the kit changed (task-099), and the document is the song, not modified. The tail
     /// of [`App::adopt`] and [`App::fresh`].
-    fn settle(&mut self, path: Option<PathBuf>, source: rbs::Song, mod_name: String, kit: Kit) {
+    fn settle(
+        &mut self,
+        path: Option<PathBuf>,
+        source: rbs::Song,
+        facts_1x: Option<SongFacts>,
+        mod_name: String,
+        kit: Kit,
+    ) {
         // only a changed kit plays its sound (task-099); the first song has no previous kit
         if !self.settled || self.doc.kit != kit {
             self.mod_opened();
@@ -407,6 +416,7 @@ impl App {
         self.settled = true;
         self.doc = Document {
             source,
+            facts_1x,
             path,
             modified: false,
             mod_name,
@@ -438,7 +448,13 @@ impl App {
         if self.link.is_none() {
             self.panel = crate::model::Panel::new();
             self.notice = None;
-            self.settle(None, rbs::Song::empty(), STANDARD.into(), Kit::Standard);
+            self.settle(
+                None,
+                rbs::Song::empty(),
+                None,
+                STANDARD.into(),
+                Kit::Standard,
+            );
             return;
         }
         self.notice = None;
@@ -446,7 +462,13 @@ impl App {
         if let Some(link) = &mut self.link {
             link.load_new(samples, &mut self.panel);
         }
-        self.settle(None, rbs::Song::empty(), STANDARD.into(), Kit::Standard);
+        self.settle(
+            None,
+            rbs::Song::empty(),
+            None,
+            STANDARD.into(),
+            Kit::Standard,
+        );
     }
 
     /// File > New: with unsaved changes first asks what to do with them.
@@ -482,9 +504,13 @@ impl App {
         let Some(link) = &self.link else {
             return Err("There is no song to save.".into());
         };
-        let song = document::compose(&self.doc.source, &self.panel, link, &self.doc.mod_name);
-        song.write()
+        self.composed_song(link)
+            .write()
             .map_err(|e| format!("cannot write the song: {e}"))
+    }
+
+    fn composed_song(&self, link: &Link) -> rbs::Song {
+        document::compose(&self.doc.source, &self.panel, link, &self.doc.mod_name)
     }
 
     /// Save: to the song's file, or Save As for a song that has none.
@@ -503,6 +529,12 @@ impl App {
             .and_then(|bytes| session::write_file(path, &bytes));
         match result {
             Ok(()) => {
+                if self.doc.facts_1x.take().is_some()
+                    && let Some(link) = &self.link
+                {
+                    // the file is an RBS 4.2 song now: File > Info shows what it says
+                    self.doc.source = self.composed_song(link);
+                }
                 self.doc.path = Some(path.to_path_buf());
                 self.doc.modified = false;
                 self.notice = None;
@@ -665,7 +697,11 @@ impl App {
             Kit::Standard => Default::default(),
         };
         self.doc.source.glob.mod_ftp = ftp;
-        self.doc.source.glob.mod_www = web;
+        self.doc.source.glob.mod_www = web.clone();
+        if let Some(f) = &mut self.doc.facts_1x {
+            f.mod_ftp = self.doc.source.glob.mod_ftp.clone();
+            f.mod_www = web;
+        }
         self.doc.kit = kit;
         self.doc.mod_name = name;
         self.doc.modified = true;

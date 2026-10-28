@@ -53,7 +53,12 @@ pub struct SongInfo {
     pub mod_state: ModState,
     pub mod_ftp: String,
     pub mod_www: String,
-    /// The format version of the file as read, "4.2".
+    /// The file's format, "RBS 4.2" or "ReBirth 1.x MIDI file (file version 3.1)"
+    /// ([`SongFacts::format`]).
+    pub format: String,
+    /// A ReBirth 1.x song (a MIDI file) rather than an RBS 4.x file.
+    pub rb1x: bool,
+    /// The format version of the file as read: "4.2", or a 1.x file's "File version", "3.1".
     pub version: String,
     pub copyright: String,
     pub bpm: f64,
@@ -67,7 +72,12 @@ impl SongInfo {
     /// The information of a document.
     pub fn of(doc: &Document) -> Self {
         // the facts are those of `rb info` (rb_cli::info)
-        let f = SongFacts::of_source(&doc.source);
+        // a 1.x song has no `rbs` song: its facts were taken when it was opened (task-123)
+        let f = match &doc.facts_1x {
+            Some(f) => f.clone(),
+            None => SongFacts::of_source(&doc.source),
+        };
+        let format = f.format();
         let mod_state = match &doc.kit {
             Kit::Mod(_) => ModState::Loaded,
             Kit::Standard if doc.mod_name == STANDARD => ModState::Standard,
@@ -87,6 +97,8 @@ impl SongInfo {
             mod_state,
             mod_ftp: f.mod_ftp,
             mod_www: f.mod_www,
+            format,
+            rb1x: f.rb1x,
             version: f.version,
             copyright: f.copyright,
             bpm: f.bpm,
@@ -202,7 +214,7 @@ impl App {
                     ui.label(RichText::new("Mod ftp").color(INK_DIM));
                     ui.label(RichText::new(&info.mod_ftp).color(INK));
                     ui.end_row();
-                    row(ui, "Format version", &info.version);
+                    row(ui, "Format", &info.format);
                     row(ui, "Copyright", &info.copyright);
                     row(ui, "Tempo", &format!("{:.3} BPM", info.bpm));
                     row(ui, "Mode", if info.song_mode { "song" } else { "pattern" });
