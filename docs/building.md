@@ -23,8 +23,43 @@ Every OS has an amd64 and an arm64 variant:
 
 A package is `OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-<target>.tar.gz|zip` holding a folder of the same
 name with `rb` (`rb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The
-binaries are built with `--locked` and stripped (`CARGO_PROFILE_RELEASE_STRIP=symbols`; the
-profile in `Cargo.toml` is unchanged).
+binaries are built with `--locked` and the `dist` profile (below).
+
+### The dist profile (task-132)
+
+Decided by the user (2026-10-28): link-time optimization is for packaging only. `Cargo.toml` has
+
+```toml
+[profile.dist]
+inherits = "release"   # opt-level 3 (opt-level "s" was rejected: the engine's speed), unwinding panics
+lto = "fat"
+codegen-units = 1
+strip = true
+```
+
+`scripts/build.sh` (so `package.sh`, `build-all.sh`, `package-dmg.sh`, the Docker path and every
+package job of `release.yml`) builds with `--profile dist` and takes the binaries from
+`target/<target>/dist/`. `cargo build --release` and `scripts/macos-dev-app.sh` are unchanged
+(`macos-app.sh` renders the icon with a release `ui-art`, which is not shipped). A dist build
+takes minutes more than a release build (about 1.5 to 3 minutes per target here). Nothing reads
+`PROFILE` (`crates/rb-ui/build.rs` uses `OUT_DIR` and the version variables only), so the profile
+changes no behavior.
+
+Fidelity: a dist-built `rb` (`target/aarch64-apple-darwin/dist/rb compare --manifest
+tests/refs/manifest.json --mod-dir DIR`, the mods from `rb mod recrypt --iso "$RB_CD_ISO" -o
+DIR`) compares 175 of 175 corpus songs equal, as the release build does.
+
+Sizes on this Mac (2026-10-28, bytes; release profile with `strip = symbols`, then dist):
+
+| Target | Binary `rb` | Binary `OpenRB-338` | Package |
+|---|---|---|---|
+| aarch64-apple-darwin | 5,924,320 to 5,418,736 | 21,058,864 to 14,981,536 | .tar.gz 15,417,562 to 11,888,843 |
+| x86_64-apple-darwin | 6,170,656 to 5,749,832 | 22,011,896 to 16,373,416 | .tar.gz 15,940,752 to 12,531,940 |
+| universal-apple-darwin | 12,101,088 to 11,185,904 | 43,078,960 to 31,365,536 | .dmg 34,302,700 to 26,980,214 |
+| aarch64-pc-windows-msvc | 5,666,816 to 5,509,120 | 21,507,072 to 17,240,576 | .zip 15,703,374 to 12,583,557 |
+| x86_64-pc-windows-msvc | 6,229,504 to 6,064,128 | 24,596,480 to 20,065,792 | .zip 16,469,940 to 13,365,072 |
+
+The Linux packages were not built (Docker was not running).
 
 ### The version is the build time
 
@@ -68,7 +103,7 @@ behind it); the GUI subsystem is part of task-111.
 
 | Script | Does |
 |---|---|
-| `scripts/build.sh TARGET` | builds `rb` and `OpenRB-338` for the target into `dist/<target>/bin/` |
+| `scripts/build.sh TARGET` | builds `rb` and `OpenRB-338` (profile `dist`) for the target into `dist/<target>/bin/` |
 | `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
 | `scripts/build-all.sh [TARGET...]` | packages every target practical from this machine, and lists the skipped and failed ones |
 | `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |

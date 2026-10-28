@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the release binaries of rb (the CLI) and OpenRB-338 (rb-ui) for one target triple and
+# Builds the dist-profile binaries of rb (the CLI) and OpenRB-338 (rb-ui) for one target triple and
 # copies them to dist/<target>/bin/ (task-108). scripts/package.sh packs them.
 #
 #   scripts/build.sh TARGET
@@ -33,9 +33,10 @@ case $target in
     *) echo "unknown target: $target" >&2; exit 2 ;;
 esac
 
-# Stripped binaries; the profile in Cargo.toml stays as it is.
-export CARGO_PROFILE_RELEASE_STRIP=symbols
-cargo_args=(--release --locked --target "$target" -p rb-cli -p rb-ui)
+# The dist profile of Cargo.toml: fat LTO, one codegen unit, stripped (task-132). Its binaries
+# are in target/<target>/dist/.
+profile=dist
+cargo_args=(--profile "$profile" --locked --target "$target" -p rb-cli -p rb-ui)
 target_dir=${CARGO_TARGET_DIR:-$root/target}
 
 build_docker() {
@@ -112,6 +113,6 @@ esac
 
 mkdir -p "$bin_dir"
 for b in rb OpenRB-338; do
-    cp "$target_dir/$target/release/$b$exe" "$bin_dir/$b$exe"
+    cp "$target_dir/$target/$profile/$b$exe" "$bin_dir/$b$exe"
 done
 echo "built $target -> $bin_dir"
