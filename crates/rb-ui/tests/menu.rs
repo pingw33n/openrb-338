@@ -1028,6 +1028,61 @@ fn the_mods_menu_lists_the_mods_folder() {
     assert_eq!(h.app.doc.mod_name, "No Such Mod");
 }
 
+/// task-093: the Mods menu checks the current song's mod: by the song's mod name, following a
+/// song open and a mod change; a mod that is not in the folder checks nothing.
+#[test]
+fn the_mods_menu_checks_the_songs_mod() {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
+        return;
+    };
+    let mut h = Harness::new();
+    h.app.settings.mods_dir = pbe2.parent().map(Path::to_path_buf);
+    let list = h.app.list_mods().unwrap();
+    let pbe2_at = list.iter().position(|e| e.path == pbe2).unwrap();
+
+    // the start: the standard kit
+    assert_eq!(h.app.mod_checks(&list), (true, None));
+
+    // a mod change
+    h.app.use_kit(Kit::Mod(pbe2.clone()));
+    assert_eq!(h.app.mod_checks(&list), (false, Some(pbe2_at)));
+    h.app.use_kit(Kit::Standard);
+    assert_eq!(h.app.mod_checks(&list), (true, None));
+
+    // a song open: a song that names the mod, then one that names a mod that is missing
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = rbs::Song::empty();
+    s.glob.mod_name = list[pbe2_at].name.clone();
+    let named = dir.path().join("named.rbs");
+    std::fs::write(&named, s.write().unwrap()).unwrap();
+    h.app.doc.modified = false; // the mod changes above asked for the unsaved prompt
+    h.app.open_song(&named);
+    assert_eq!(h.app.mod_checks(&list), (false, Some(pbe2_at)));
+    s.glob.mod_name = "No Such Mod".into();
+    let missing = dir.path().join("missing.rbs");
+    std::fs::write(&missing, s.write().unwrap()).unwrap();
+    h.app.open_song(&missing);
+    assert_eq!(h.app.mod_checks(&list), (false, None));
+
+    // a song that names the mod by its file name (`mods::find_in_dir`'s fallback) plays it
+    s.glob.mod_name = "pbe2".into();
+    let by_file = dir.path().join("by_file.rbs");
+    std::fs::write(&by_file, s.write().unwrap()).unwrap();
+    h.app.open_song(&by_file);
+    assert_eq!(h.app.doc.kit, Kit::Mod(pbe2.clone()));
+    assert_eq!(h.app.mod_checks(&list), (false, Some(pbe2_at)));
+
+    // a mod file from outside the folder with a folder mod's INFO name checks nothing
+    let outside = dir.path().join("Outside.rbm");
+    std::fs::copy(&pbe2, &outside).unwrap();
+    h.app.doc.modified = false;
+    h.app.use_kit(Kit::Standard);
+    h.app.use_kit(Kit::Mod(outside.clone()));
+    assert_eq!(h.app.doc.kit, Kit::Mod(outside));
+    assert_eq!(h.app.doc.mod_name, list[pbe2_at].name);
+    assert_eq!(h.app.mod_checks(&list), (false, None));
+}
+
 /// task-088: a song the node pool refuses (more than 100000 events) opens no song: the alert's
 /// text is shown, the open song, its document and the panel stay, and no startup sound plays
 /// (sub_40B575's STOP alert, docs/song_load.md section 5.2).

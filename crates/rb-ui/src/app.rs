@@ -342,7 +342,7 @@ impl App {
 
     /// The computer keyboard (`keys`): a key press acts like a mouse press on its button, a
     /// held repeat button keeps repeating, and the button shows pressed while the key is down.
-    /// Auto-repeat events and keys with Ctrl (the menu's shortcuts) are ignored, as the
+    /// Auto-repeat events and keys with Ctrl or Cmd (the menu's shortcuts) are ignored, as the
     /// original's handlers do.
     fn keyboard(&mut self, ui: &Ui) {
         let (events, now, focused) = ui.input(|i| (i.events.clone(), i.time, i.focused));

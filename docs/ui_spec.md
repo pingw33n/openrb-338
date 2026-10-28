@@ -931,7 +931,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Save (Ctrl+S, Cmd+S on macOS) | writes the song's file; a song with none goes to Save As |
 | File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
-| Mods | Standard ReBirth, one entry per mod of the Mods folder, Choose file... | the song's kit (below) |
+| Mods | Standard ReBirth, a mod per file, Choose file... | the song's kit, checked (below) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
@@ -977,6 +977,19 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   default as the original's (the preferences' constructor `sub_41CAA4` sets prefs `+536` = 1 at
   0x41CB13, the app's constructor `sub_40D1D2` app `+0x533` = 1 at 0x40D338), stored in the
   settings file as `startup_sound=0|1`. The Options menu's checkbox "Play Mod Startup Sound" switches it (task-086, task-089).
+- **The checked mod** (task-093). The Mods menu checks the item of the current song's mod:
+  "Standard ReBirth" when the kit is the built-in one under that name, else the entry whose file
+  is the song's resolved kit (`App::mod_checks`), so a mod found by file name is checked and a
+  mod chosen from outside the folder is not. It follows a song open and a mod change because it
+  is computed from the document each time the menu is drawn. A song whose mod is not in the
+  folder (it plays the built-in kit with a notice) has nothing checked. The original does check: the
+  menu update `sub_40B977` builds the Mods items 5000 + i from the mod objects (`sub_415578(i)`,
+  name at object +1011 = 0x3F3, 0x40BEB9) and sets each item's checked flag (the byte at
+  `[ebp-0DDh]`, 0x40BF14) to 1 when a song window is active and its mod object
+  (`sub_426F83`, called at 0x40BE23; its body was not read, that it returns the song's mod
+  object is [G]) is that item's mod object (`cmp edx, [ebp-134h]`, 0x40BF0C) [C: the loop,
+  the item id, the name offset and the compare are read in the disassembly]. The
+  original compares mod objects, rb compares the kit's mod file with the entry's file.
 - **The startup sound of an open and of the start** (task-087). Below.
 
 ### 18.1 When the original plays the mod's startup sound (task-087) [C unless marked]

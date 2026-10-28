@@ -128,6 +128,19 @@ impl App {
             .collect())
     }
 
+    /// What the Mods menu checks for the current song (task-093): whether "Standard ReBirth" is
+    /// checked, and the index in `list` of the checked mod. The song's resolved kit decides: a
+    /// mod is the entry of its file, so a mod found by file name is checked, and a mod chosen
+    /// from outside the folder, or a song whose mod is missing (the built-in kit under another
+    /// name), checks nothing. The original checks the item whose mod object is the active
+    /// song's (`sub_40B977`, 0x40BF0C).
+    pub fn mod_checks(&self, list: &[ModEntry]) -> (bool, Option<usize>) {
+        match &self.doc.kit {
+            Kit::Standard => (self.doc.mod_name == STANDARD, None),
+            Kit::Mod(p) => (false, list.iter().position(|e| &e.path == p)),
+        }
+    }
+
     /// The kit a song names: the standard kit, or the mod of that name in the Mods folder.
     /// A mod that is not there gives the standard kit and a notice.
     fn kit_for(&mut self, mod_name: &str) -> Kit {
@@ -742,22 +755,25 @@ impl App {
                             if self.mod_list.is_none() {
                                 self.mod_list = Some(self.list_mods());
                             }
-                            let cur = (self.doc.kit.clone(), self.doc.mod_name.clone());
-                            let std_on = cur.0 == Kit::Standard && cur.1 == STANDARD;
+                            let (std_on, checked) = match &self.mod_list {
+                                Some(Ok(l)) => self.mod_checks(l),
+                                _ => self.mod_checks(&[]),
+                            };
                             if ui.selectable_label(std_on, STANDARD).clicked() {
                                 cmd = Some(Cmd::UseKit(Kit::Standard));
                                 ui.close();
                             }
-                            match self.mod_list.clone() {
+                            match &self.mod_list {
                                 None => {}
                                 Some(Ok(list)) => {
                                     egui::ScrollArea::vertical()
                                         .max_height(300.0)
                                         .show(ui, |ui| {
-                                            for e in list {
-                                                let on = cur.0 == Kit::Mod(e.path.clone());
+                                            for (i, e) in list.iter().enumerate() {
+                                                let on = checked == Some(i);
                                                 if ui.selectable_label(on, &e.name).clicked() {
-                                                    cmd = Some(Cmd::UseKit(Kit::Mod(e.path)));
+                                                    cmd =
+                                                        Some(Cmd::UseKit(Kit::Mod(e.path.clone())));
                                                     ui.close();
                                                 }
                                             }
