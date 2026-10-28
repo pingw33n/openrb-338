@@ -778,7 +778,7 @@ impl Browser {
             if let Some(h) = settings::home_dir() {
                 places.push(("Home".into(), h));
             }
-            ui.label(RichText::new("Places").color(INK_DIM).small());
+            ui.label(RichText::new("Places").color(INK_DIM));
             for (label, p) in places {
                 let r = ui
                     .selectable_label(self.dir == p, label.as_str())
@@ -789,10 +789,10 @@ impl Browser {
                 }
             }
             ui.add_space(4.0);
-            ui.label(RichText::new("Recent folders").color(INK_DIM).small());
+            ui.label(RichText::new("Recent folders").color(INK_DIM));
             let recent = settings.recent.clone();
             if recent.is_empty() {
-                ui.label(RichText::new("none yet").color(INK_DIM).small());
+                ui.label(RichText::new("none yet").color(INK_DIM));
             }
             for p in recent {
                 let label = p.file_name().map_or_else(
@@ -808,12 +808,11 @@ impl Browser {
                 }
             }
             ui.add_space(6.0);
-            let small = |t: &str| egui::Button::new(RichText::new(t).small());
-            if ui.add(small("Use as songs folder")).clicked() {
+            if ui.button("Use as songs folder").clicked() {
                 settings.songs_dir = Some(self.dir.clone());
                 self.save_settings(settings);
             }
-            if ui.add(small("Use as mods folder")).clicked() {
+            if ui.button("Use as mods folder").clicked() {
                 settings.mods_dir = Some(self.dir.clone());
                 self.save_settings(settings);
             }
