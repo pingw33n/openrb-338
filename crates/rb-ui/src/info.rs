@@ -11,6 +11,11 @@ use crate::document::Document;
 const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
 const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 
+/// The id of the info window of an open (`App::info_serial`).
+pub fn info_window_id(serial: u32) -> egui::Id {
+    egui::Id::unique(("rb_song_info_window", serial))
+}
+
 /// Where the song's mod stands.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModState {
@@ -122,7 +127,17 @@ fn link(ui: &mut egui::Ui, text: &str) {
 impl App {
     /// File > Info.
     pub fn show_info(&mut self) {
+        if !self.info_open {
+            // a new id: no stored place, so the window opens at its default, the center; an
+            // open window stays where it is
+            self.info_serial += 1;
+        }
         self.info_open = true;
+    }
+
+    /// The id of the info window now (for tests, to look its place up).
+    pub fn info_id(&self) -> egui::Id {
+        info_window_id(self.info_serial)
     }
 
     /// Draws the info window when it is open; it shows the document of the moment, so it
@@ -139,60 +154,69 @@ impl App {
         let info = SongInfo::of(&self.doc);
         self.info_shown = Some(info.clone());
         let mut open = true;
-        egui::Window::new("Song Information")
+        // The pivot is the window's center and the default place applies when the id has no
+        // stored place (each open has its own id), so the window is centered from its first
+        // frame whatever its size, and dragging moves the stored place.
+        let window = egui::Window::new("Song Information")
+            .id(self.info_id())
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
-            .default_width(380.0)
-            .show(ctx, |ui| {
-                egui::Grid::new("rb_song_info_grid")
-                    .num_columns(2)
-                    .spacing([12.0, 4.0])
-                    .show(ui, |ui| {
-                        let row = |ui: &mut egui::Ui, k: &str, v: &str| {
-                            ui.label(RichText::new(k).color(INK_DIM));
-                            ui.label(RichText::new(v).color(INK));
-                            ui.end_row();
-                        };
-                        row(ui, "File", &info.name);
-                        if let Some(f) = &info.folder {
-                            row(ui, "Folder", f);
-                        }
-                        row(ui, "Title", &info.window_title);
-                        ui.label(RichText::new("Text").color(INK_DIM));
-                        ui.label(RichText::new(&info.text).color(INK));
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .vscroll(true)
+            // a small window: the info scrolls in a window that fits
+            .max_size(ctx.content_rect().size() - egui::vec2(16.0, 16.0))
+            .default_width(380.0);
+        window.show(ctx, |ui| {
+            egui::Grid::new("rb_song_info_grid")
+                .num_columns(2)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    let row = |ui: &mut egui::Ui, k: &str, v: &str| {
+                        ui.label(RichText::new(k).color(INK_DIM));
+                        ui.label(RichText::new(v).color(INK));
                         ui.end_row();
-                        ui.label(RichText::new("Web page").color(INK_DIM));
-                        link(ui, &info.web_page);
-                        ui.end_row();
-                        row(
-                            ui,
-                            "Mod",
-                            &format!("{} ({})", info.mod_name, info.mod_state.text()),
-                        );
-                        ui.label(RichText::new("Mod web").color(INK_DIM));
-                        link(ui, &info.mod_www);
-                        ui.end_row();
-                        ui.label(RichText::new("Mod ftp").color(INK_DIM));
-                        ui.label(RichText::new(&info.mod_ftp).color(INK));
-                        ui.end_row();
-                        row(ui, "Format version", &info.version);
-                        row(ui, "Copyright", &info.copyright);
-                        row(ui, "Tempo", &format!("{:.3} BPM", info.bpm));
-                        row(ui, "Mode", if info.song_mode { "song" } else { "pattern" });
-                        row(ui, "Loop", if info.looping { "on" } else { "off" });
-                        row(ui, "Shuffle", &info.shuffle.to_string());
-                        row(
-                            ui,
-                            "Synth sound",
-                            if info.vintage {
-                                "vintage"
-                            } else {
-                                "ReBirth 2.0"
-                            },
-                        );
-                    });
-            });
+                    };
+                    row(ui, "File", &info.name);
+                    if let Some(f) = &info.folder {
+                        row(ui, "Folder", f);
+                    }
+                    row(ui, "Title", &info.window_title);
+                    ui.label(RichText::new("Text").color(INK_DIM));
+                    ui.label(RichText::new(&info.text).color(INK));
+                    ui.end_row();
+                    ui.label(RichText::new("Web page").color(INK_DIM));
+                    link(ui, &info.web_page);
+                    ui.end_row();
+                    row(
+                        ui,
+                        "Mod",
+                        &format!("{} ({})", info.mod_name, info.mod_state.text()),
+                    );
+                    ui.label(RichText::new("Mod web").color(INK_DIM));
+                    link(ui, &info.mod_www);
+                    ui.end_row();
+                    ui.label(RichText::new("Mod ftp").color(INK_DIM));
+                    ui.label(RichText::new(&info.mod_ftp).color(INK));
+                    ui.end_row();
+                    row(ui, "Format version", &info.version);
+                    row(ui, "Copyright", &info.copyright);
+                    row(ui, "Tempo", &format!("{:.3} BPM", info.bpm));
+                    row(ui, "Mode", if info.song_mode { "song" } else { "pattern" });
+                    row(ui, "Loop", if info.looping { "on" } else { "off" });
+                    row(ui, "Shuffle", &info.shuffle.to_string());
+                    row(
+                        ui,
+                        "Synth sound",
+                        if info.vintage {
+                            "vintage"
+                        } else {
+                            "ReBirth 2.0"
+                        },
+                    );
+                });
+        });
         if !open {
             self.info_open = false;
         }

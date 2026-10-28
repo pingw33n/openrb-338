@@ -1463,6 +1463,94 @@ fn the_info_window_follows_the_song_and_escape_closes_it() {
     assert!(!h.app.info_is_open());
 }
 
+/// task-100: File > Info opens the window centered in the app window, each open centers it
+/// again, it can be dragged, and it stays inside a small window.
+#[test]
+fn the_info_window_opens_centered_and_stays_draggable() {
+    let mut h = Harness::with_menu();
+    let rect = |h: &Harness| {
+        h.ctx
+            .memory(|m| m.area_rect(h.app.info_id()))
+            .expect("the window is drawn")
+    };
+    let screen = |h: &Harness| Rect::from_min_size(Pos2::ZERO, Vec2::new(PANEL_W, h.height));
+    let esc = || Event::Key {
+        key: egui::Key::Escape,
+        physical_key: Some(egui::Key::Escape),
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+
+    h.app.show_info();
+    for _ in 0..4 {
+        h.frame(vec![]);
+    }
+    let r = rect(&h);
+    let off = (r.center() - screen(&h).center()).abs();
+    assert!(
+        off.x < 3.0 && off.y < 3.0,
+        "centered: {r:?} in {:?}",
+        screen(&h)
+    );
+
+    // drag the title bar: the window moves and stays where it was dropped
+    let grab = Pos2::new(r.center().x, r.min.y + 8.0);
+    let to = grab + Vec2::new(-60.0, 40.0);
+    let button = |pos, pressed| Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    h.frame(vec![Event::PointerMoved(grab)]);
+    h.frame(vec![button(grab, true)]);
+    h.frame(vec![Event::PointerMoved(to)]);
+    h.frame(vec![button(to, false)]);
+    for _ in 0..3 {
+        h.frame(vec![]);
+    }
+    let moved = rect(&h);
+    assert!(
+        (moved.min - (r.min + Vec2::new(-60.0, 40.0)))
+            .abs()
+            .max_elem()
+            < 3.0,
+        "dragged: {r:?} -> {moved:?}"
+    );
+
+    // File > Info on the open window leaves it where it was dropped
+    h.app.show_info();
+    for _ in 0..3 {
+        h.frame(vec![]);
+    }
+    assert_eq!(rect(&h), moved, "an open window is not moved");
+
+    // closed and opened again: centered again
+    h.frame(vec![esc()]);
+    assert!(!h.app.info_is_open());
+    h.app.show_info();
+    for _ in 0..4 {
+        h.frame(vec![]);
+    }
+    let off = (rect(&h).center() - screen(&h).center()).abs();
+    assert!(off.x < 3.0 && off.y < 3.0, "centered again: {:?}", rect(&h));
+
+    // a small window: the window is inside it
+    h.frame(vec![esc()]);
+    h.height = 200.0;
+    h.app.show_info();
+    for _ in 0..4 {
+        h.frame(vec![]);
+    }
+    let r = rect(&h);
+    assert!(
+        screen(&h).expand(0.5).contains_rect(r),
+        "inside: {r:?} in {:?}",
+        screen(&h)
+    );
+}
+
 /// task-099: the startup sound plays only when the kit that plays after the change differs
 /// from the one before: a song open on the same mod, Demo Song of the current mod and File >
 /// New on the standard kit play nothing; a mod change and File > New from a mod song do.

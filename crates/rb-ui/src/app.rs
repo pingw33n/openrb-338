@@ -142,6 +142,9 @@ pub struct App {
     pub(crate) splash: Option<(rb_cli::mods::Kit, Option<egui::TextureHandle>)>,
     /// Whether the File > Info window is open (`App::info_ui`).
     pub(crate) info_open: bool,
+    /// The number of the info window's opens; it is in the window's id, so that each open
+    /// starts with no stored place and egui centers it (`App::info_ui`).
+    pub(crate) info_serial: u32,
     /// What the info window drew last (`App::info_shown`).
     pub(crate) info_shown: Option<crate::info::SongInfo>,
     pub(crate) events_seen: usize,
@@ -174,6 +177,7 @@ impl App {
             demo_cache: None,
             splash: None,
             info_open: false,
+            info_serial: 0,
             info_shown: None,
             events_seen: 0,
             allow_close: false,
