@@ -6,11 +6,12 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-10-27 11:21'
-updated_date: '2026-10-27 11:24'
+updated_date: '2026-10-28 09:11'
 labels:
   - rbm
   - cli
   - tests
+milestone: m-4
 dependencies:
   - TASK-036
 references:

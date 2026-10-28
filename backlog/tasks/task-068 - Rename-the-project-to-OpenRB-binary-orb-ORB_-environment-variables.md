@@ -4,12 +4,13 @@ title: 'Rename the project to OpenRB-338: binary orb, ORB_ environment variables
 status: To Do
 assignee: []
 created_date: '2026-10-27 11:27'
-updated_date: '2026-10-27 11:29'
+updated_date: '2026-10-28 09:11'
 labels:
   - cli
   - tools
   - docs
   - tests
+milestone: m-4
 dependencies: []
 references:
   - AGENTS.md

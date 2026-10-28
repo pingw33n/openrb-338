@@ -4,11 +4,12 @@ title: 'Remove Rebirth.exe, ReBirth.dll and the IDA databases from git history'
 status: To Do
 assignee: []
 created_date: '2026-10-27 10:07'
-updated_date: '2026-10-27 11:16'
+updated_date: '2026-10-28 09:11'
 labels:
   - tools
   - tests
   - docs
+milestone: m-4
 dependencies: []
 references:
   - AGENTS.md
