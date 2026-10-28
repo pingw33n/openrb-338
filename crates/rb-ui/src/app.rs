@@ -108,12 +108,10 @@ pub struct App {
     /// The player the panel drives (task-045); without one the model's events pile up in
     /// `Panel::events`.
     pub link: Option<Link>,
-    /// The built-in drum samples (the standard mod's): the kit "Standard ReBirth", and what a
-    /// mod's samples are laid over.
+    /// The drum samples of the kit "Standard ReBirth" (`rbm::standard::builtin_samples`, the
+    /// embedded standard mod's; None: silent drum machines). A mod's samples are laid over the
+    /// built-in kit.
     pub samples: Option<Arc<SampleSet>>,
-    /// The standard mod file named on the command line, for the export (`rb render`'s lookup
-    /// applies without it).
-    pub standard_path: Option<PathBuf>,
     /// The folders of the file browser (task-046).
     pub settings: Settings,
     /// The open file browser, if any (`open_browser`).
@@ -161,7 +159,6 @@ impl App {
             panel,
             link: None,
             samples: None,
-            standard_path: None,
             settings: Settings::default(),
             browser: None,
             doc: Document::new(),
@@ -525,8 +522,8 @@ impl App {
         }
     }
 
-    /// The 808's mod window: the current kit's `splash.jpg` (the standard mod's for the built-in
-    /// kit) in a square at the top, the song's mod name under it.
+    /// The 808's mod window: the current kit's `splash.jpg` (the embedded standard mod's for the
+    /// built-in kit) in a square at the top, the song's mod name under it.
     fn mod_view(&mut self, ui: &Ui, view: &View, c: &Ctl) {
         const PAD: f32 = 4.0;
         let side = c.w - 2.0 * PAD;
@@ -554,13 +551,12 @@ impl App {
 
     /// The splash picture of the kit that plays, as a texture; None when there is none.
     fn load_splash(&self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
-        let path = match &self.doc.kit {
-            rb_cli::mods::Kit::Mod(p) => p.clone(),
-            rb_cli::mods::Kit::Standard => {
-                crate::session::locate_standard_mod(self.standard_path.as_deref()).ok()?
+        let bytes = match &self.doc.kit {
+            rb_cli::mods::Kit::Mod(p) => {
+                crate::session::mod_file(p, crate::session::SPLASH).ok()?
             }
+            rb_cli::mods::Kit::Standard => rbm::standard::builtin_file(crate::session::SPLASH)?,
         };
-        let bytes = crate::session::mod_file(&path, crate::session::SPLASH).ok()?;
         let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
             .ok()?
             .to_rgba8();

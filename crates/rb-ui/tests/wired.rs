@@ -27,13 +27,9 @@ fn tables() -> Arc<Tables> {
     T.get_or_init(|| Arc::new(Tables::new())).clone()
 }
 
+/// The built-in kit rb embeds.
 fn samples() -> Arc<SampleSet> {
-    static S: OnceLock<Arc<SampleSet>> = OnceLock::new();
-    S.get_or_init(|| {
-        let dll = std::fs::read(root().join("original/ReBirth.dll")).unwrap();
-        Arc::new(SampleSet::from_dll(&dll).unwrap())
-    })
-    .clone()
+    rbm::standard::builtin_samples()
 }
 
 struct Harness {

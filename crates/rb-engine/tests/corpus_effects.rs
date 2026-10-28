@@ -4,7 +4,7 @@
 //! 145, render byte-identical to their corpus references (`tests/refs/manifest.json`, the WAV's
 //! sha256 at the entry's `idle_blocks`, 9088 for every diag song) with the engine's own delay
 //! ([`rb_engine::delay::Delay`]) and distortion ([`rb_engine::dist::Distortion`]) and the
-//! built-in samples of `original/ReBirth.dll`. Every one has the delay enabled. The reference
+//! built-in samples (rb's embedded kit). Every one has the delay enabled. The reference
 //! comparison of every corpus song is the golden test's (`corpus_golden.rs`, task-029); the
 //! device tests keep the controls, which prove the golden test hears each device.
 //!

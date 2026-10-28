@@ -1,12 +1,10 @@
-//! Shared by the CLI tests: the repository root and the standard mod, built once per test
-//! binary by `rb mod pack-standard` from `original/ReBirth.dll` and `original/Rebirth.exe` into
-//! cargo's temporary directory for integration tests (task-036).
+//! Shared by the CLI tests: the repository root and the standard mod, the committed
+//! `assets/Standard.rbm` that rb embeds as its built-in kit (task-067; none of the tests needs
+//! `original/`, except those that build the mod, which skip without it).
 
 #![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::OnceLock;
 
 pub fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -20,32 +18,19 @@ pub fn env_path(name: &str) -> Option<PathBuf> {
         .map(|v| root().join(v))
 }
 
-/// The standard mod, made by `rb mod pack-standard` the first time it is asked for.
+/// The standard mod: `assets/Standard.rbm`, the file rb embeds.
 pub fn standard_mod() -> &'static Path {
-    static MOD: OnceLock<PathBuf> = OnceLock::new();
-    MOD.get_or_init(|| {
-        // one file per test binary (they run in parallel), written whole and then renamed
-        let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
-        let path = dir.join(format!("standard-{}.rbm", env!("CARGO_CRATE_NAME")));
-        let tmp = dir.join(format!(
-            "standard-{}.{}.tmp",
-            env!("CARGO_CRATE_NAME"),
-            std::process::id()
-        ));
-        let o = Command::new(env!("CARGO_BIN_EXE_rb"))
-            .args(["mod", "pack-standard"])
-            .arg("--rebirth-dll")
-            .arg(root().join("original/ReBirth.dll"))
-            .arg("-o")
-            .arg(&tmp)
-            .output()
-            .unwrap();
-        assert!(
-            o.status.success(),
-            "rb mod pack-standard: {}",
-            String::from_utf8_lossy(&o.stderr)
-        );
-        std::fs::rename(&tmp, &path).unwrap();
-        path
-    })
+    static MOD: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    MOD.get_or_init(|| root().join("assets/Standard.rbm"))
+}
+
+/// A file of `original/`, or `None` (with a "skipped" line) when it is not there.
+pub fn original(name: &str) -> Option<PathBuf> {
+    let p = root().join("original").join(name);
+    if p.is_file() {
+        Some(p)
+    } else {
+        eprintln!("skipped: {} is not there", p.display());
+        None
+    }
 }

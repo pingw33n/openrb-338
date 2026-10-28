@@ -3350,6 +3350,7 @@ version = "0.1.0"
 dependencies = [
  "claxon",
  "libm",
+ "rbm",
  "rbs",
  "serde_json",
  "sha2",

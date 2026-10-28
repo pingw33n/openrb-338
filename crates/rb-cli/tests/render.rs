@@ -6,7 +6,7 @@ mod common;
 use std::path::Path;
 use std::process::{Command, Output};
 
-use common::{root, standard_mod};
+use common::root;
 use sha2::{Digest, Sha256};
 
 fn rb(args: &[&std::ffi::OsStr]) -> Output {
@@ -120,10 +120,9 @@ fn pattern_mode_warns() {
 fn no_device_warns() {
     let dir = tempfile::tempdir().unwrap();
     let wav = dir.path().join("w.wav");
-    let kit = standard_mod();
     let stderr = |name: &str| {
         let song = root().join(format!("tests/songs/diag/songs/{name}.rbs"));
-        let o = render(&song, &wav, &["--standard-mod", kit.to_str().unwrap()]);
+        let o = render(&song, &wav, &[]);
         assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
         String::from_utf8_lossy(&o.stderr).into_owned()
     };
@@ -147,10 +146,9 @@ fn no_device_warns() {
 fn a_faulting_pcf_warns() {
     let dir = tempfile::tempdir().unwrap();
     let wav = dir.path().join("w.wav");
-    let kit = standard_mod();
     for name in ["pcf_lp_wave127", "pcf_bp_wave127"] {
         let song = root().join(format!("tests/songs/diag/songs/{name}.rbs"));
-        let o = render(&song, &wav, &["--standard-mod", kit.to_str().unwrap()]);
+        let o = render(&song, &wav, &[]);
         let e = String::from_utf8_lossy(&o.stderr);
         assert!(o.status.success(), "{name}: {e}");
         assert!(

@@ -1,7 +1,7 @@
 //! The PCF and the compressor against the original (task-027): every diagnostic song that
 //! routes either renders byte-identical to its corpus reference (`tests/refs/manifest.json`,
 //! the WAV's sha256 at the entry's `idle_blocks`, 9088) with the engine's devices
-//! ([`Devices::implemented`]) and the built-in samples of `original/ReBirth.dll`.
+//! ([`Devices::implemented`]) and the built-in samples (rb's embedded kit).
 //!
 //! That comparison, and the one of the shipped songs, is the golden test's (`corpus_golden.rs`,
 //! task-029); this file keeps the routing lists and the controls, which prove the golden test

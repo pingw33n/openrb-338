@@ -93,46 +93,6 @@ pub fn drums_playing(song: &Song) -> Vec<&'static str> {
     v
 }
 
-/// Loads the built-in drum samples from the standard mod that `mods::locate_standard_mod`
-/// finds. `need` says why they are needed, for the error.
-pub fn load_standard(
-    explicit: Option<&Path>,
-    mods: &ModOpts,
-    drums: &[&str],
-) -> Result<SampleSet, Fail> {
-    let need = format!(
-        "the song plays the {}, which needs the built-in drum samples",
-        drums.join(" and ")
-    );
-    let path = mods::locate_standard_mod(explicit, mods)
-        .map_err(|Fail(c, m)| fail(c, format!("{need}; {m}")))?;
-    let rbm = read_mod(&path)?;
-    let remake = "make it with `rb mod pack-standard --rebirth-dll ReBirth.dll -o FILE`";
-    if !rbm.is_standard() {
-        return Err(fail(
-            1,
-            format!(
-                "{}: not a standard mod (its menu name is not \"{}\"); {remake}",
-                path.display(),
-                rbm::standard::NAME
-            ),
-        ));
-    }
-    let table = rbm::KeyTable::embedded(&rbm)
-        .filter(|t| rbm.slots_covered(t))
-        .ok_or_else(|| {
-            fail(
-                1,
-                format!(
-                    "{}: the standard mod is not recrypted for rb; {remake}",
-                    path.display()
-                ),
-            )
-        })?;
-    rbm.load_all_samples(&table)
-        .map_err(|e| fail(1, format!("{}: {e}; {remake}", path.display())))
-}
-
 /// Reads and parses an `.rbm` file.
 pub fn read_mod(path: &Path) -> Result<rbm::Rbm, Fail> {
     let bytes = std::fs::read(path)
@@ -163,23 +123,19 @@ pub fn load_mod(path: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
 }
 
 /// Renders songs, each in a new engine with every device, sharing the tables and the sample
-/// sets: the built-in drum samples (loaded from the standard mod the first time a song plays a
-/// drum machine) and one set per mod file used.
+/// sets: the built-in drum samples (the embedded standard mod's, `rbm::standard`) and one set
+/// per mod file used.
 pub struct Renderer {
     pub tables: Arc<Tables>,
-    standard_mod: Option<PathBuf>,
     mods: ModOpts,
-    builtin: Option<Arc<SampleSet>>,
     mod_sets: HashMap<PathBuf, Arc<SampleSet>>,
 }
 
 impl Renderer {
-    pub fn new(standard_mod: Option<&Path>, mods: ModOpts) -> Self {
+    pub fn new(mods: ModOpts) -> Self {
         Renderer {
             tables: Arc::new(Tables::new()),
-            standard_mod: standard_mod.map(Path::to_path_buf),
             mods,
-            builtin: None,
             mod_sets: HashMap::new(),
         }
     }
@@ -209,18 +165,13 @@ impl Renderer {
         // The mod is resolved for every song, so that a missing one is an error even when no
         // drum machine plays (and then needs no key file: nothing of it is read).
         let kit = mods::resolve(&self.mods, label, &song.mod_name)?;
-        // The drum samples are loaded only for a song that plays a drum machine; a 303-only
-        // song renders without the standard mod (its drum machines play no step, so the silent
-        // placeholders the engine uses without samples are exact).
-        let drums = drums_playing(song);
-        let samples = if drums.is_empty() {
+        // The drum samples are given only to a song that plays a drum machine; a 303-only song
+        // renders without them (its drum machines play no step, so the silent placeholders the
+        // engine uses without samples are exact), and a mod it names is never read.
+        let samples = if drums_playing(song).is_empty() {
             None
         } else {
-            if self.builtin.is_none() {
-                let set = load_standard(self.standard_mod.as_deref(), &self.mods, &drums)?;
-                self.builtin = Some(Arc::new(set));
-            }
-            let builtin = self.builtin.clone().unwrap();
+            let builtin = rbm::standard::builtin_samples();
             match kit {
                 Kit::Standard => Some(builtin),
                 Kit::Mod(path) => {

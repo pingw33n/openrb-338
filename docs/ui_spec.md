@@ -433,7 +433,7 @@ UI state (BD at start: observed, the steps showed the BD column and a drag paint
   knob shows `(127 * i + 5) / 11` for the selected instrument i (`sub_441E79`). rb has no
   selector knob (the user's change of 2026-10-28): the legend selects, and the knob's place
   right of the legend shows the mod's window, the `splash.jpg` of the kit that plays (the
-  standard mod's for the built-in kit) above the song's mod name (`App::mod_view`).
+  embedded standard mod's for the built-in kit) above the song's mod name (`App::mod_view`).
 
 **Shared slots [C].** The switch of slots 3..7 is a vertical two-position switch: the top half
 gives 0, the bottom half 1. 0 plays the sound of the upper label (LC, MC, HC, CL, MA), non-zero
@@ -907,9 +907,9 @@ starts with it open. The panel takes no key or click while a browser is open. Th
   Errors (empty name, a character of `/\:*?"<>|`, a folder of that name, a read-only or missing
   folder, an unreadable folder) show in red in the dialog.
 - **Mods.** A `.rbm` is checked when its row is drawn (parse, embedded key window, as
-  `session::load_standard`): one that is not recrypted is listed in amber marked "needs rb
-  recrypt" and cannot be chosen (the error tells the `rb mod recrypt` command, docs/rbm.md 12.4); a
-  file that is not an RBM is marked "not a mod".
+  the embedded kit is loaded, `rbm::standard::builtin_samples`): one that is not recrypted is
+  listed in amber marked "needs rb recrypt" and cannot be chosen (the error tells the `rb mod
+  recrypt` command, docs/rbm.md 12.4); a file that is not an RBM is marked "not a mod".
 - **Defaults and settings** (`crates/rb-ui/src/settings.rs`): the start folder is the songs folder
   (songs, export) or the mods folder (mods) of the settings, else the documents folder
   (`~/Documents`, else the home folder). "Use as songs/mods folder" in the dialog sets them to the
@@ -964,8 +964,8 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   the same encoders, 9088 idle blocks, Ogg quality 0.5): the song as saved (composed, written, parsed
   and converted again) is rendered on a thread and written, so the file is the one `rb render`
   writes for the saved song with the same kit (`tests/menu.rs` compares WAV, FLAC and Ogg byte for byte; the
-  Ogg stream serial is fixed, so `rb render` .ogg files are reproducible). The standard mod
-  is the one named by `--standard-mod` or found as `rb render` finds it. Errors are shown in the
+  Ogg stream serial is fixed, so `rb render` .ogg files are reproducible). The built-in kit
+  is the one rb embeds (`assets/Standard.rbm`), as in `rb render`. Errors are shown in the
   notice line, progress and the result in the status line.
 - **The mod** (`docs/rbm.md` section 14). Opening a song looks its GLOB mod name up in the Mods
   folder (the settings' folder, else `RB_MOD_DIR` and the defaults of `rb render`); "Standard

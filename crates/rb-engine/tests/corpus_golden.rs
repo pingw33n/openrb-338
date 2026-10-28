@@ -21,7 +21,7 @@
 //! left out of `shipped`, and that each modded one is in `mod`.
 //!
 //! Every song renders in a fresh engine with every device the engine has
-//! ([`Devices::implemented`]) and the built-in samples of `original/ReBirth.dll`, as rbhost
+//! ([`Devices::implemented`]) and the built-in samples (rb's embedded kit), as rbhost
 //! renders each reference in a fresh process. On failure each failing song is printed with its
 //! first difference: the frame, its time (s) and bar (from the song's tempo, a bar is four
 //! beats), the channel and both sample values, from the decoded FLAC reference. `rb compare`

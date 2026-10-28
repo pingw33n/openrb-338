@@ -47,11 +47,10 @@ pub fn song(entry: &Value) -> Song {
     rb_engine::load::convert(&rbs::Song::parse(&data).unwrap()).unwrap()
 }
 
-/// The built-in samples of `original/ReBirth.dll`.
+/// The built-in samples: the kit rb embeds (`assets/Standard.rbm`, the samples of the
+/// original's ReBirth.dll byte for byte; task-067), so the corpus tests need no `original/`.
 pub fn samples() -> Arc<SampleSet> {
-    let p = root().join("original/ReBirth.dll");
-    let dll = std::fs::read(&p).unwrap_or_else(|err| panic!("{}: {err}", p.display()));
-    Arc::new(SampleSet::from_dll(&dll).unwrap())
+    rbm::standard::builtin_samples()
 }
 
 pub fn sha256(b: &[u8]) -> String {

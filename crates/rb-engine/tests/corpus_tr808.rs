@@ -1,7 +1,7 @@
 //! The TR-808 against the original (task-024): every diagnostic song whose sound is the 808
 //! (with or without the 303s) and the mixer only renders byte-identical to its corpus reference
 //! (`tests/refs/manifest.json`, the WAV's sha256 at the entry's `idle_blocks`), with the built-in
-//! samples of `original/ReBirth.dll` and the engine's delay (task-026, task-049). The references
+//! samples (rb's embedded kit) and the engine's delay (task-026, task-049). The references
 //! were rendered by rbhost in a fresh process per song, so the process-global drum counters start
 //! at 0, as in a new [`rb_engine::process::ProcessState`]. The comparison itself is the golden
 //! test's (`corpus_golden.rs`, task-029); this file keeps the control and the counter test.

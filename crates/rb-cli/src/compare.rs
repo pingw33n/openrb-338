@@ -43,13 +43,12 @@ pub struct Args {
     pub manifest: Option<PathBuf>,
     pub sets: Vec<String>,
     pub idle_blocks: Option<u32>,
-    pub standard_mod: Option<PathBuf>,
     pub mods: ModOpts,
 }
 
 /// Runs the comparison: `Ok(true)` when every song is equal to its reference.
 pub fn run(a: &Args) -> Result<bool, Fail> {
-    let mut r = Renderer::new(a.standard_mod.as_deref(), a.mods.clone());
+    let mut r = Renderer::new(a.mods.clone());
     match (&a.manifest, &a.reference) {
         (Some(m), None) => manifest(a, m, &mut r),
         (None, Some(reference)) => {

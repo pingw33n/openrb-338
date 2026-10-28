@@ -71,8 +71,6 @@ struct Setup {
     mods: PathBuf,
     /// The same mod, not recrypted.
     raw: PathBuf,
-    /// The standard mod (the built-in kit, for the slots a mod lacks).
-    kit: PathBuf,
 }
 
 fn rb() -> Command {
@@ -117,7 +115,6 @@ fn setup() -> Setup {
         dat,
         mods,
         raw,
-        kit: common::standard_mod().to_path_buf(),
     }
 }
 
@@ -131,7 +128,8 @@ fn song(s: &Setup, file: &str, mod_name: &str) -> PathBuf {
     p
 }
 
-/// `rb render song -o out extra...` with the mod environment cleared and the standard mod set.
+/// `rb render song -o out extra...` with the mod environment cleared (the built-in kit is
+/// embedded).
 fn render(s: &Setup, song: &Path, name: &str, extra: &[&OsStr]) -> (Output, PathBuf) {
     let out = s.dir.path().join(name);
     let o = rb()
@@ -140,7 +138,6 @@ fn render(s: &Setup, song: &Path, name: &str, extra: &[&OsStr]) -> (Output, Path
         .arg("-o")
         .arg(&out)
         .args(extra)
-        .env("RB_STANDARD_MOD", &s.kit)
         .output()
         .unwrap();
     (o, out)
@@ -252,7 +249,6 @@ fn mod_overrides_the_song_and_the_environment_gives_the_folders() {
         .arg(&named)
         .arg("-o")
         .arg(&out)
-        .env("RB_STANDARD_MOD", &s.kit)
         .env("RB_MOD_DIR", &s.mods)
         .output()
         .unwrap();
@@ -330,7 +326,6 @@ fn a_mod_that_is_not_recrypted_is_an_error_naming_rb_recrypt() {
         .arg("-o")
         .arg(s.dir.path().join("m.wav"))
         .args(dirs)
-        .env("RB_STANDARD_MOD", &s.kit)
         .env("RB_RB20FUL", &s.dat)
         .output()
         .unwrap();

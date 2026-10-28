@@ -14,16 +14,22 @@
 //! The mod is laid out in the clear and then passed through [`crate::recrypt`], so it is
 //! scrambled against the embedded key window like every mod rb loads: rb reads it without
 //! `RB20FUL.DAT`, and the original reads it with its own.
+//!
+//! rb's built-in kit is one such mod, committed as `assets/Standard.rbm` (task-067, built with
+//! the CD's Rebirth.exe for the splash; `assets/README.md`) and embedded here as [`EMBEDDED`]:
+//! [`builtin_samples`] and [`builtin_file`] read it, so no command needs the original's files.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use rb_engine::samples::{self, Sample, SampleSet, pe};
 
 use crate::{KeyTable, Rbm, RbmError, pack, slot_name};
 
-/// The standard mod's name in the Mods menu. "Standard ReBirth" is the name the original and rb
-/// give the built-in kit itself (`sub_4166E5`), so the mod has a name of its own.
-pub const NAME: &str = "ReBirth Standard Kit";
+/// The standard mod's INFO name: "Standard ReBirth", the name songs give the built-in kit (their
+/// GLOB mod name; the original's `sub_4166E5` compares with the string at 0x4BB2D0). The
+/// embedded mod is rb's built-in kit, so a song made with the built-in kit and the mod name
+/// the same kit (task-067; task-036's form, tried in the original, was "ReBirth Standard Kit").
+pub const NAME: &str = "Standard ReBirth";
 
 /// The numbered panel bitmaps a mod replaces: the exe's `"JPEG"` resources from this ID on (the
 /// IDs below it, 900..=906, are the exe's own splash and about bitmaps).
@@ -36,10 +42,9 @@ pub const SPLASH_ID: u16 = 903;
 /// The number of numbered panel bitmaps in Rebirth.exe 2.01 (and in every shipped mod).
 pub const PANEL_COUNT: usize = 58;
 
-// The text names the command as it was when the mod's bytes were fixed (`rb standard-mod`, now
-// `rb mod pack-standard`); changing it would change the mod's SHA-256 (docs/rbm.md 13.2).
-const INFO_TEXT: &str = "ReBirth Standard Kit\r\n\r\nThe built-in samples and panel of ReBirth RB-338 \
-                         2.01, made into a mod by rb standard-mod from ReBirth.dll and \
+// Changing the text changes the bytes of assets/Standard.rbm (docs/rbm.md 13.2).
+const INFO_TEXT: &str = "Standard ReBirth\r\n\r\nThe built-in samples and panel of ReBirth RB-338 \
+                         2.01, made into a mod by rb mod pack-standard from ReBirth.dll and \
                          Rebirth.exe.";
 const INFO_WEB: &str = "http://www.propellerheads.se/";
 
@@ -126,6 +131,42 @@ pub fn build(dll: &[u8], exe: &[u8]) -> Result<Standard, RbmError> {
     })
 }
 
+/// `assets/Standard.rbm`: the standard mod rb embeds as its built-in kit (task-067).
+pub const EMBEDDED: &[u8] = include_bytes!("../../../assets/Standard.rbm");
+
+/// The embedded standard mod, parsed once, and its key table.
+fn embedded_mod() -> &'static (Rbm, KeyTable) {
+    static M: OnceLock<(Rbm, KeyTable)> = OnceLock::new();
+    M.get_or_init(|| {
+        let r = Rbm::parse(EMBEDDED.to_vec()).expect("assets/Standard.rbm parses");
+        let t = KeyTable::embedded(&r)
+            .filter(|t| r.all_covered(t))
+            .expect("assets/Standard.rbm is recrypted");
+        (r, t)
+    })
+}
+
+/// The built-in drum samples: the 46 samples of the embedded standard mod, loaded once.
+pub fn builtin_samples() -> Arc<SampleSet> {
+    static S: OnceLock<Arc<SampleSet>> = OnceLock::new();
+    S.get_or_init(|| {
+        let (r, t) = embedded_mod();
+        Arc::new(
+            r.load_all_samples(t)
+                .expect("assets/Standard.rbm has every slot"),
+        )
+    })
+    .clone()
+}
+
+/// The embedded file `name` of the built-in kit (case-insensitive, the first; `splash.jpg`,
+/// `12015.jpg`, a sample), decrypted; `None` when the kit has no such file.
+pub fn builtin_file(name: &str) -> Option<Vec<u8>> {
+    let (r, t) = embedded_mod();
+    r.find(name)?;
+    r.file_by_name(name, t).ok()
+}
+
 impl Rbm {
     /// Whether this is a standard mod: its INFO name is [`NAME`].
     pub fn is_standard(&self) -> bool {
@@ -163,6 +204,23 @@ mod tests {
         assert!(i.text.starts_with(NAME));
         assert!(r.is_standard());
         assert!(INFO_TEXT.len() < 600 && NAME.len() < 64);
+    }
+
+    #[test]
+    fn the_embedded_kit_is_the_standard_mod() {
+        let (r, _) = embedded_mod();
+        assert!(r.is_standard());
+        assert_eq!(r.info().unwrap().text, INFO_TEXT);
+        assert_eq!(r.chunks().len(), 108);
+        let s = builtin_samples();
+        assert_eq!(s.get(samples::FIRST_ID).frames(), 72704);
+        assert_eq!(s.get(samples::LAST_ID).frames(), 42458);
+        assert!(
+            builtin_file("Splash.jpg")
+                .unwrap()
+                .starts_with(&[0xFF, 0xD8])
+        );
+        assert!(builtin_file("Demo.rbs").is_none());
     }
 
     #[test]

@@ -1,9 +1,10 @@
 //! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), compares renders
 //! with their references (`rb compare`), plays a song through the audio output with the
 //! real-time player (`rb play`), rewrites a mod to need no RB20FUL.DAT (`rb mod recrypt`), and
-//! builds the standard mod, the built-in kit and panel as a mod (`rb mod pack-standard`), from
-//! which the other commands take the built-in drum samples. `rb mod unpack` and `rb mod pack`
-//! turn a recrypted mod into a folder of its files with a mod.toml and back.
+//! builds the standard mod, the built-in kit and panel as a mod (`rb mod pack-standard`). rb
+//! embeds that mod (`assets/Standard.rbm`) and takes the built-in drum samples from it. `rb mod
+//! unpack` and `rb mod pack` turn a recrypted mod into a folder of its files with a mod.toml and
+//! back.
 //!
 //! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable)
 //! or, for `compare`, a song differs from its reference, 2 a usage error (bad arguments,
@@ -52,17 +53,12 @@ enum Cmd {
         /// original's own export starts from whatever the running app was doing.
         #[arg(long, default_value_t = 9088, value_name = "N")]
         idle_blocks: u32,
-        /// The standard mod (made once by `rb mod pack-standard --rebirth-dll ReBirth.dll`), which
-        /// holds the built-in drum samples. Needed only when a drum machine plays. Without it
-        /// the search is: the RB_STANDARD_MOD environment variable, then Standard.rbm next to
-        /// the rb binary, then a mod named "ReBirth Standard Kit" in the mod folder.
-        #[arg(long, value_name = "PATH")]
-        standard_mod: Option<PathBuf>,
         /// The song's mod is looked up in this folder of .rbm files, by the name in the song
         /// (the mod's INFO name, as the original's Mods menu; a file name also matches).
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
         /// deprecated alias), then a Mods folder next to the rb
-        /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
+        /// binary, then the usual install locations on Windows. "Standard ReBirth", the
+        /// built-in kit, needs none: rb embeds it. A mod's missing samples come from it.
         /// Only recrypted mods (rb mod recrypt) load; a mod that is not is still found by name and
         /// fails with an error that says to run rb mod recrypt on it.
         #[arg(long, value_name = "DIR")]
@@ -87,9 +83,6 @@ enum Cmd {
         /// Stop after this many seconds.
         #[arg(long, value_name = "S")]
         seconds: Option<f64>,
-        /// The standard mod with the built-in drum samples, as in render.
-        #[arg(long, value_name = "PATH")]
-        standard_mod: Option<PathBuf>,
         /// The folder of .rbm mods, as in render.
         #[arg(long, value_name = "DIR")]
         mod_dir: Option<PathBuf>,
@@ -121,14 +114,12 @@ enum Cmd {
         /// entry's own idle_blocks, or 9088 for a single song.
         #[arg(long, value_name = "N")]
         idle_blocks: Option<u32>,
-        /// The standard mod with the built-in drum samples, as in render.
-        #[arg(long, value_name = "PATH")]
-        standard_mod: Option<PathBuf>,
         /// As in render: the song's mod is looked up in this folder of .rbm files, by the name
         /// in the song (the mod's INFO name, as the original's Mods menu; a file name also matches).
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
         /// deprecated alias), then a Mods folder next to the rb
-        /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
+        /// binary, then the usual install locations on Windows. "Standard ReBirth", the
+        /// built-in kit, needs none: rb embeds it.
         /// Only recrypted mods (rb mod recrypt) load; a mod that is not is still found by name and
         /// fails with an error that says to run rb mod recrypt on it.
         #[arg(long, value_name = "DIR")]
@@ -166,10 +157,10 @@ enum ModCmd {
         rb20ful: Option<PathBuf>,
     },
     /// Build the standard mod: the original's built-in kit (the 46 samples of ReBirth.dll) and
-    /// panel (the bitmaps of Rebirth.exe) as a recrypted .rbm named "ReBirth Standard Kit".
-    /// render, compare and play take the built-in kit from it; the original ReBirth loads it
-    /// from its Mods folder like any mod. Run it once; it is the only rb command that reads
-    /// ReBirth.dll.
+    /// panel (the bitmaps of Rebirth.exe) as a recrypted .rbm named "Standard ReBirth". rb
+    /// embeds the one it was built with (assets/Standard.rbm, from the CD's Rebirth.exe), so
+    /// render, compare and play need no ReBirth file; this command rebuilds it. It is the only
+    /// rb command that reads ReBirth.dll and Rebirth.exe.
     PackStandard {
         /// The ReBirth 2.01 ReBirth.dll. Search order: this option, then a ReBirth.dll next to
         /// the rb binary, then the usual install locations on Windows.
@@ -179,10 +170,9 @@ enum ModCmd {
         /// Rebirth.exe next to the ReBirth.dll.
         #[arg(long, value_name = "PATH")]
         rebirth_exe: Option<PathBuf>,
-        /// The mod to write. Default: Standard.rbm next to the rb binary, where render,
-        /// compare and play look for it.
+        /// The mod to write.
         #[arg(short, long, value_name = "FILE")]
-        output: Option<PathBuf>,
+        output: PathBuf,
     },
     /// Unpack a recrypted .rbm mod into a folder: every embedded file under its own name
     /// (decrypted) and mod.toml, which holds the mod's name, version, description, URLs and
@@ -222,7 +212,6 @@ fn main() -> ExitCode {
             quality,
             range,
             idle_blocks,
-            standard_mod,
             mod_dir,
             mod_file,
             standard_kit,
@@ -232,7 +221,6 @@ fn main() -> ExitCode {
             quality,
             range.as_deref(),
             idle_blocks,
-            standard_mod.as_deref(),
             ModOpts {
                 mod_file,
                 mod_dir,
@@ -243,7 +231,6 @@ fn main() -> ExitCode {
             input,
             bar,
             seconds,
-            standard_mod,
             mod_dir,
             mod_file,
             standard_kit,
@@ -251,7 +238,6 @@ fn main() -> ExitCode {
             &input,
             bar,
             seconds,
-            standard_mod.as_deref(),
             ModOpts {
                 mod_file,
                 mod_dir,
@@ -264,7 +250,6 @@ fn main() -> ExitCode {
             manifest,
             sets,
             idle_blocks,
-            standard_mod,
             mod_dir,
             mod_file,
             standard_kit,
@@ -274,7 +259,6 @@ fn main() -> ExitCode {
             manifest,
             sets,
             idle_blocks,
-            standard_mod,
             mods: ModOpts {
                 mod_file,
                 mod_dir,
@@ -297,11 +281,7 @@ fn main() -> ExitCode {
             rebirth_dll,
             rebirth_exe,
             output,
-        }) => standard_mod(
-            rebirth_dll.as_deref(),
-            rebirth_exe.as_deref(),
-            output.as_deref(),
-        ),
+        }) => pack_standard(rebirth_dll.as_deref(), rebirth_exe.as_deref(), &output),
         Cmd::Mod(ModCmd::Unpack {
             input,
             output,
@@ -421,18 +401,9 @@ fn locate_rebirth_exe(explicit: Option<&Path>, dll: &Path) -> Result<PathBuf, Fa
 }
 
 /// `rb mod pack-standard`: the built-in kit and panel as a recrypted mod (task-036).
-fn standard_mod(dll: Option<&Path>, exe: Option<&Path>, output: Option<&Path>) -> Result<(), Fail> {
+fn pack_standard(dll: Option<&Path>, exe: Option<&Path>, output: &Path) -> Result<(), Fail> {
     let dll = locate_rebirth_dll(dll)?;
     let exe = locate_rebirth_exe(exe, &dll)?;
-    let output = match output {
-        Some(o) => o.to_path_buf(),
-        None => mods::default_standard_mod().ok_or_else(|| {
-            fail(
-                1,
-                "cannot tell where the rb binary is; pass -o FILE for the standard mod",
-            )
-        })?,
-    };
     let read = |p: &Path| {
         std::fs::read(p).map_err(|e| fail(1, format!("{}: cannot read: {e}", p.display())))
     };
@@ -442,7 +413,7 @@ fn standard_mod(dll: Option<&Path>, exe: Option<&Path>, output: Option<&Path>) -
             format!("{e} (from {} and {})", dll.display(), exe.display()),
         )
     })?;
-    std::fs::write(&output, &built.bytes)
+    std::fs::write(output, &built.bytes)
         .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
     eprintln!(
         "rb: {}: the standard mod \"{}\": {} samples from {}, {} panel bitmaps from {}, {} bytes",
@@ -463,7 +434,6 @@ fn render(
     quality: f32,
     range: Option<&str>,
     idle_blocks: u32,
-    standard_mod: Option<&Path>,
     mods: ModOpts,
 ) -> Result<(), Fail> {
     let format =
@@ -491,24 +461,11 @@ fn render(
     }
     warn_unsupported(&song);
     let label = input.display().to_string();
-    Renderer::new(standard_mod, mods).render_to_file(
-        &label,
-        &song,
-        idle_blocks,
-        format,
-        quality,
-        output,
-    )
+    Renderer::new(mods).render_to_file(&label, &song, idle_blocks, format, quality, output)
 }
 
 /// `rb play`: the song in the real-time player (`rb-player`) on the default output device.
-fn play(
-    input: &Path,
-    bar: Option<u32>,
-    seconds: Option<f64>,
-    standard_mod: Option<&Path>,
-    mods: ModOpts,
-) -> Result<(), Fail> {
+fn play(input: &Path, bar: Option<u32>, seconds: Option<f64>, mods: ModOpts) -> Result<(), Fail> {
     use rb_player::{Command, Player};
     if let Some(s) = seconds
         && (s.is_nan() || s <= 0.0)
@@ -525,7 +482,7 @@ fn play(
     }
     let song = load_song(input)?;
     let label = input.display().to_string();
-    let mut r = Renderer::new(standard_mod, mods);
+    let mut r = Renderer::new(mods);
     let samples = r.samples(&label, &song)?;
     let (mut player, audio) = Player::new(r.tables.clone(), samples.clone());
     let queue = |_| fail(1, "the player's command queue is full");

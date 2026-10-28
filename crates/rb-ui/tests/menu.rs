@@ -2,8 +2,8 @@
 //! of the panel are saved, the export writes the file `rb render` writes, the mod and the
 //! Vintage flag change and are saved, and the unsaved-changes prompt guards opening and closing.
 //!
-//! The export and mod tests need the standard mod (`RB_STANDARD_MOD`) and, for mods, a folder
-//! of recrypted mods (`RB_MOD_DIR`); they skip when those are not set.
+//! The drum machines play the built-in kit rb embeds (`assets/Standard.rbm`). The mod tests
+//! need a folder of recrypted mods (`RB_MOD_DIR`); they skip when it is not set.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -33,13 +33,9 @@ fn tables() -> Arc<Tables> {
     T.get_or_init(|| Arc::new(Tables::new())).clone()
 }
 
+/// The built-in kit, as the app has it.
 fn samples() -> Arc<SampleSet> {
-    static S: OnceLock<Arc<SampleSet>> = OnceLock::new();
-    S.get_or_init(|| {
-        let dll = std::fs::read(root().join("original/ReBirth.dll")).unwrap();
-        Arc::new(SampleSet::from_dll(&dll).unwrap())
-    })
-    .clone()
+    rbm::standard::builtin_samples()
 }
 
 /// A path from the environment; a relative one is relative to the workspace root (cargo runs
@@ -50,13 +46,9 @@ fn env_path(name: &str) -> Option<PathBuf> {
         .map(|v| root().join(v))
 }
 
-/// The standard mod, or a skip.
-fn standard_mod() -> Option<PathBuf> {
-    let p = env_path("RB_STANDARD_MOD");
-    if p.is_none() {
-        eprintln!("skipped: RB_STANDARD_MOD is not set");
-    }
-    p
+/// The standard mod rb embeds, as a file: `assets/Standard.rbm`.
+fn standard_mod() -> PathBuf {
+    root().join("assets/Standard.rbm")
 }
 
 /// A recrypted mod of `RB_MOD_DIR`, or a skip.
@@ -93,7 +85,6 @@ impl Harness {
         let (link, audio) = Link::new(tables(), Some(samples()));
         let mut app = App::with_link(Panel::new(), link, None);
         app.samples = Some(samples());
-        app.standard_path = env_path("RB_STANDARD_MOD");
         let mut h = Self {
             ctx,
             app,
@@ -248,9 +239,6 @@ fn a_recorded_song_saves_its_tracks() {
 
     // the saved song renders as the source song with the recorded tracks (in the engine's
     // list order) does
-    let Some(std_mod) = standard_mod() else {
-        return;
-    };
     let mut want = load_song(&src).unwrap_or_else(|_| panic!("source"));
     let seq = &h.audio.current_mut().frame.seq;
     for (t, tr) in seq.tracks.iter().enumerate() {
@@ -265,7 +253,7 @@ fn a_recorded_song_saves_its_tracks() {
             .collect();
     }
     let got = load_song(&out).unwrap_or_else(|_| panic!("saved"));
-    let mut r = Renderer::new(Some(&std_mod), ModOpts::default());
+    let mut r = Renderer::new(ModOpts::default());
     let render = |r: &mut Renderer, s| {
         r.render("x", s, DEFAULT_IDLE_BLOCKS)
             .unwrap_or_else(|rb_cli::Fail(_, m)| panic!("{m}"))
@@ -542,9 +530,6 @@ fn the_keyboard_mode_is_set_from_the_menu() {
 /// for the song as saved (and, unedited, for the source file).
 #[test]
 fn export_writes_the_file_rb_render_writes() {
-    let Some(std_mod) = standard_mod() else {
-        return;
-    };
     let dir = tempfile::tempdir().unwrap();
     // a 303 song and a song with the drum machines
     for src in [
@@ -574,7 +559,7 @@ fn export_writes_the_file_rb_render_writes() {
                 "flac" => rb_cli::encode::Format::Flac,
                 _ => rb_cli::encode::Format::Ogg,
             };
-            Renderer::new(Some(&std_mod), ModOpts::default())
+            Renderer::new(ModOpts::default())
                 .render_to_file(
                     "x",
                     &song,
@@ -727,7 +712,7 @@ fn the_menu_bar_sits_above_the_panel_and_opens() {
 
 #[test]
 fn a_mod_changes_the_kit_and_is_saved() {
-    let (Some(_), Some(pbe2)) = (standard_mod(), mod_file("PBE2.rbm")) else {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
         return;
     };
     let src = root().join("tests/songs/diag/songs/drums_kit.rbs");
@@ -795,7 +780,7 @@ fn a_mod_changes_the_kit_and_is_saved() {
         ..ModOpts::default()
     };
     let want = dir.path().join("w.wav");
-    Renderer::new(standard_mod().as_deref(), mods)
+    Renderer::new(mods)
         .render_to_file(
             "x",
             &song,
@@ -822,7 +807,7 @@ fn with_preview(base: &[i16], audio: &[i16]) -> Vec<i16> {
 /// startup sound after the song; off, it does not.
 #[test]
 fn a_mod_change_plays_the_startup_sound_when_the_preference_is_on() {
-    let (Some(_), Some(pbe2)) = (standard_mod(), mod_file("PBE2.rbm")) else {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
         return;
     };
     let src = root().join("tests/songs/diag/songs/drums_kit.rbs");
@@ -874,7 +859,7 @@ fn a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on() {
     assert_eq!(on, with_preview(&off, audio));
 
     // a song on a mod plays that mod's sound
-    let (Some(_), Some(pbe2)) = (standard_mod(), mod_file("PBE2.rbm")) else {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
         return;
     };
     let dir = tempfile::tempdir().unwrap();
@@ -1484,11 +1469,9 @@ fn the_demo_song_of_the_current_mod_opens_as_an_unsaved_song() {
     assert_eq!(h.app.doc.path, None);
 
     // a mod file without a Demo.rbs (the standard mod) is not offered either
-    if let Some(std_mod) = standard_mod() {
-        h.app.doc.kit = Kit::Mod(std_mod);
-        assert!(!h.app.has_demo());
-        h.app.doc.kit = Kit::Standard;
-    }
+    h.app.doc.kit = Kit::Mod(standard_mod());
+    assert!(!h.app.has_demo());
+    h.app.doc.kit = Kit::Standard;
 
     // a mod with one: enabled, and the bytes are a song that parses
     h.app.use_kit(Kit::Mod(pbe2.clone()));
@@ -1656,7 +1639,7 @@ fn the_info_window_opens_centered_and_stays_draggable() {
 /// New on the standard kit play nothing; a mod change and File > New from a mod song do.
 #[test]
 fn the_startup_sound_plays_only_when_the_kit_changes() {
-    let (Some(_), Some(pbe2)) = (standard_mod(), mod_file("PBE2.rbm")) else {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
         return;
     };
     let src = root().join("tests/songs/diag/songs/drums_kit.rbs");

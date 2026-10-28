@@ -40,15 +40,10 @@ pub fn tables() -> Arc<Tables> {
     T.get_or_init(|| Arc::new(Tables::new())).clone()
 }
 
-/// The built-in samples of `original/ReBirth.dll`.
+/// The built-in samples: the kit rb embeds (`assets/Standard.rbm`, the samples of the
+/// original's ReBirth.dll byte for byte).
 pub fn samples() -> Arc<SampleSet> {
-    static S: OnceLock<Arc<SampleSet>> = OnceLock::new();
-    S.get_or_init(|| {
-        let p = root().join("original/ReBirth.dll");
-        let dll = std::fs::read(&p).unwrap_or_else(|err| panic!("{}: {err}", p.display()));
-        Arc::new(SampleSet::from_dll(&dll).unwrap())
-    })
-    .clone()
+    rbm::standard::builtin_samples()
 }
 
 /// A kit of fresh samples (shared with nothing else): the built-in ones with `f` applied to

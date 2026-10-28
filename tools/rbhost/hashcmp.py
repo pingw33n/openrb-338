@@ -1,16 +1,17 @@
 #!/usr/bin/python3
 """rbhost against rb render, by the sha256 of the whole WAV, without downloading the renders.
 
-    tools/rbhost/hashcmp.py [--remote-dir NAME] [--idle-blocks N] [--rb PATH] [--standard-mod PATH]
-                            [--json OUT.json] SONG.rbs...
+    tools/rbhost/hashcmp.py [--remote-dir NAME] [--idle-blocks N] [--rb PATH] [--json OUT.json]
+                            SONG.rbs...
 
 For each song (RBS or ReBirth 1.x; duplicates by content are skipped): the load messages
 (rbsmsg.message_file, tools/rb1x.py for a 1.x song) go to the machine, rbhost renders the export
 there, the machine hashes the WAV (rcs hash), and `rb render --idle-blocks N` renders the same song
 here (into a temporary file, hashed and deleted). Prints one line per song and the count of equal
 ones; --json writes [{"song", "song_sha256", "rbhost_sha256", "rb_sha256", "equal"}]. Built-in mod
-only (no --mod). Holds one permit of redc-win-run like run.py, refuses to run while a Rebirth.exe
-runs, and deletes its remote x.rbhm and x.wav and releases the permit also when it fails.
+only (no --mod; rb embeds the built-in kit, task-067). Holds one permit of redc-win-run like
+run.py, refuses to run while a Rebirth.exe runs, and deletes its remote x.rbhm and x.wav and
+releases the permit also when it fails.
 task-060 ran it over the 129 distinct 1.x songs of the user's collection.
 """
 import argparse
@@ -89,7 +90,6 @@ def main(argv):
     ap.add_argument("--remote-dir", metavar="NAME", help="work in C:\\re\\rb\\NAME (default rbhost)")
     ap.add_argument("--idle-blocks", type=int, default=0, help="for both renders (default 0)")
     ap.add_argument("--rb", default=os.path.join(ROOT, "target", "release", "rb"))
-    ap.add_argument("--standard-mod", default=os.path.join(ROOT, "target", "Standard.rbm"))
     ap.add_argument("--owner", help="locky owner (default: the git branch)")
     ap.add_argument("--json", metavar="OUT.json")
     args = ap.parse_args(argv)
@@ -100,7 +100,7 @@ def main(argv):
 
     def render(p, wav):
         r = subprocess.run([args.rb, "render", "--idle-blocks", str(args.idle_blocks),
-                            "--standard-mod", args.standard_mod, "-o", wav, p], capture_output=True)
+                            "-o", wav, p], capture_output=True)
         return r.returncode == 0
 
     client = rb_export.rcs_client.Client.from_config()

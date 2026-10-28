@@ -124,5 +124,11 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, 
 - Run: `cargo run --release -p rb-cli -- <args>`
 - Golden test: `cargo test --release -p rb-engine --test corpus_golden` renders every corpus entry (diag, app at its fitted N, shipped) and prints each failing song's first difference. A debug `cargo test` skips the shipped songs (24 s in debug).
 - Mods: rb loads only recrypted mods (`rb mod recrypt --rb20ful RB20FUL.DAT IN.rbm -o OUT.rbm`, the one command that reads `RB20FUL.DAT`; docs/rbm.md 12.4). `render`, `compare`, `play` and the mod tests take a folder of recrypted mods (`--mod-dir` / `RB_MOD_DIR`) and no `--rb20ful`.
-- The built-in kit: `render`, `compare` and `play` read the built-in drum samples from the standard mod (`--standard-mod PATH` / `RB_STANDARD_MOD`, or `Standard.rbm` next to the rb binary), made once with `cargo run --release -p rb-cli -- mod pack-standard --rebirth-dll original/ReBirth.dll -o target/Standard.rbm` and then passed with `--standard-mod target/Standard.rbm` in every command (that path is not next to the binary, so the default lookup does not find it) (the one command that reads ReBirth.dll and Rebirth.exe; docs/rbm.md 13).
-- Corpus summary: `cargo run --release -p rb-cli -- compare --manifest tests/refs/manifest.json --standard-mod target/Standard.rbm [--set diag,app,shipped] [NAME...]` prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `rb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.
+- The built-in kit: rb embeds the standard mod `assets/Standard.rbm` ("Standard ReBirth",
+  the 46 drum samples of ReBirth.dll and the panel of the CD's Rebirth.exe; assets/README.md),
+  so `render`, `compare`, `play` and rb-ui need no kit option, variable or file
+  (`--standard-mod` and `RB_STANDARD_MOD` are gone). `rb mod pack-standard --rebirth-dll
+  original/ReBirth.dll --rebirth-exe CD-Rebirth.exe -o assets/Standard.rbm` rebuilds it byte for
+  byte (the one command that reads ReBirth.dll and Rebirth.exe; the gated test takes
+  `RB_CD_REBIRTH_EXE`; docs/rbm.md 13).
+- Corpus summary: `cargo run --release -p rb-cli -- compare --manifest tests/refs/manifest.json [--set diag,app,shipped] [NAME...]` prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `rb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.

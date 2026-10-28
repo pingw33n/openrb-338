@@ -31,8 +31,8 @@ The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte w
 - `rb mod recrypt` rewrites a mod so that it needs only the 2047 bytes of `RB20FUL.DAT` that rb
   embeds; the original loads the result unchanged (section 12).
 - `rb mod pack-standard` builds the built-in kit (ReBirth.dll's 46 AIFF resources) and panel
-  (Rebirth.exe's JPEG resources) into such a mod, "ReBirth Standard Kit", from which rb takes the
-  built-in samples (section 13).
+  (Rebirth.exe's JPEG resources) into such a mod, "Standard ReBirth"; rb embeds the one committed
+  as `assets/Standard.rbm` and takes the built-in samples from it (section 13).
 - The Mods menu changes the mod of an open song in place: song msg 19 `{id}`, which silences the
   808's and the 909's voices and replaces their sample table; the song plays on (section 14).
 - Shown correct on the four shipped mods: every embedded file decodes (JPEGs, the demo songs, the
@@ -314,8 +314,8 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   `rb compare --manifest` includes the sets `mod` and `modapp` by default only when a mod folder
   is given. Since task-063 these commands take no `--rb20ful` and read no `RB20FUL.DAT`: they
   load recrypted mods only (section 12.4). Task-033 had `--rb20ful PATH` / `RB_RB20FUL` here.
-  Since task-036 the built-in kit comes from the standard mod (`--standard-mod`, section 13.4),
-  not from `--rebirth-dll`.
+  Since task-036 the built-in kit comes from the standard mod, not from `--rebirth-dll`; since
+  task-067 from the one rb embeds, with no option (section 13.4).
 - **AIFF rate** [C]: `sub_10001674` (0x100016B2..0x100016DE) converts the 80-bit rate with `fistp`
   under a control word with rounding set to truncate (`| 0xC00`) into a 64-bit slot and keeps the low
   dword; `sub_100016F4` rejects 0. The engine's reader now does the same (a rate below 1 Hz, or
@@ -579,10 +579,11 @@ docs/test_machine.md section 7), and an app export of Fonda Workout from the ins
 
 ## 13. The standard mod: the built-in kit and panel as a mod (task-036, 2026-10-27)
 
-`rb mod pack-standard --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] [-o FILE]`
-(`crates/rbm/src/standard.rs`) builds, from the user's own files, a mod that holds what the
-original has built in. rb's other commands take the built-in drum samples from it (13.4); the
-original loads it like any mod. Nothing of it is committed: the tests build it from `original/`.
+`rb mod pack-standard --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] -o FILE`
+(`crates/rbm/src/standard.rs`) builds a mod that holds what the original has built in. By the
+user's decision of 2026-10-27 (task-067) one build of it is committed as `assets/Standard.rbm`
+(the one file of Propellerhead's in the repository; `assets/README.md`) and embedded in rb as its
+built-in kit (13.4).
 
 ### 13.1 Where the original keeps its standard skin [C]
 
@@ -639,22 +640,40 @@ ReBirth 1.0 Default Song is a file of the installation, not a resource.
   EMBF         splash.jpg: JPEG resource 903
   EMBF x 46    TR808BD.aif .. TR808RS.aif, TR909bd1.aif .. TR909rcy.aif, Startup.aif: ReBirth.dll's
                AIFF resources 1000..1023, 1025..1045, 1024 (the slot order), unchanged
-  INFO  1280   name "ReBirth Standard Kit", version BC 01 00 00 (1.0.0, as PBE2, MSM2, Orbit2),
-               a description, no ftp URL, web http://www.propellerheads.se/
+  INFO  1280   name "Standard ReBirth", version BC 01 00 00 (1.0.0, as PBE2, MSM2, Orbit2),
+               a description naming `rb mod pack-standard`, no ftp URL,
+               web http://www.propellerheads.se/
 ```
 
 108 chunks, 106 EMBF (under the 200 of OB-14, every ordinal under 256). It is laid out in the clear
 and passed through `rbm::recrypt` with an all-zero table (the identity), so it is scrambled against
 the embedded window exactly as `rb mod recrypt` output: both key pages are `W`, rb loads it without
-`RB20FUL.DAT`, the original with its own. From `original/`: 2,574,060 bytes, SHA-256
-`2d732978...f3e5` (the build is deterministic).
+`RB20FUL.DAT`. The build is deterministic:
 
-The menu name is **"ReBirth Standard Kit"**: "Standard ReBirth" is the name the original and rb give
-the built-in kit itself (`sub_4166E5`; GLOB name of a song without a mod), and a mod of that name
-would be confused with it (a song naming "Standard ReBirth" never opens a mod).
+| Built from | Size | SHA-256 |
+|---|---|---|
+| `original/ReBirth.dll` (`4c3a6441...8b12`) and the CD's Rebirth.exe (`e69fef41...7004`): **`assets/Standard.rbm`** | 2,572,792 | `6355b5f14fc2ebfe7ed9e6e42208f97817f96c5e30ed42fdca4205d3cdab5fbe` |
+| `original/ReBirth.dll` and `original/Rebirth.exe` | 2,574,060 | `c8752965...9324` |
+
+The two differ only in `splash.jpg` (13.1). The gated test
+`crates/rb-cli/tests/standard_mod.rs::the_command_reproduces_the_committed_mod`
+(`RB_CD_REBIRTH_EXE` naming the CD's exe, and `original/ReBirth.dll`) rebuilds the asset byte for
+byte.
+
+The menu name is **"Standard ReBirth"** (task-067): the name songs give the built-in kit (the GLOB
+mod name of a song without a mod; the original's `sub_4166E5` pushes the string at 0x4BB2D0
+and `this + 0x63B` and calls `_strcmp` at 0x4A76E0, 0x4166EC..0x4166FA, returning 1 when it
+gives 0 (`test eax, eax` at 0x416702) [C]; 0x4A76E0 is the CRT's _strcmp (equal strings give
+0 at 0x4A7720; the first difference gives -1 or 1 at 0x4A7724)). The committed mod is rb's
+built-in kit, so a song made with the built-in kit and the mod name the same kit, and rb never
+looks the name up in a mod folder. The mod is for rb only and was not tried in the original app
+in this form (where a mod of that name would stand beside the built-in entry of the Mods menu).
+task-036 built it as "ReBirth Standard Kit", with a description naming `rb standard-mod`
+(2,574,060 bytes from `original/`, SHA-256 `2d732978...f3e5`); 13.3 is that form's app check.
 
 ### 13.3 What the original does with it (test machine, 2026-10-27)
 
+This was the task-036 form, named "ReBirth Standard Kit" (13.2).
 A copy of the installation in `C:\re\rb\t036` with only the standard mod in its `Mods`: the app
 started with no extra box, the Mods menu listed `Standard ReBirth` and `ReBirth Standard Kit`, and a
 song whose GLOB names "ReBirth Standard Kit" opened with no Download / Standard dialog, the mod
@@ -667,15 +686,22 @@ equals rb's render with the built-in kit at its own fitted N; the two app WAVs o
 built-in) differ from each other, as two exports of one song do at different start states. What
 was shown is that the samples the app plays from the standard mod give the built-in kit's output.
 
-### 13.4 rb takes the built-in kit from it
+### 13.4 rb's built-in kit is the embedded mod (task-067)
 
-`rb render`, `rb compare` and `rb play` read the 46 built-in samples from the standard mod
-(`--standard-mod PATH`, then `RB_STANDARD_MOD`, then `Standard.rbm` next to the rb binary, then the
-first mod named "ReBirth Standard Kit" in the mod folder), never from ReBirth.dll: `--rebirth-dll`
-and `RB_REBIRTH_DLL` are gone from them, and `rb mod pack-standard` is the one command that reads
-the DLL (and the exe). The mod must be named "ReBirth Standard Kit", be recrypted and have all 46 slots
-(`Rbm::load_all_samples`). A third-party mod's missing slots and `--standard-kit` take the standard
-mod's samples. The corpus is unchanged: 164 of 164 EQUAL, 175 of 175 with `RB_MOD_DIR`.
+`crates/rbm/src/standard.rs` embeds `assets/Standard.rbm` (`include_bytes!`, `EMBEDDED`):
+`builtin_samples()` loads its 46 samples once (`Rbm::load_all_samples` with the embedded key
+window), `builtin_file(name)` gives any of its files (the UI's splash). `rb render`, `rb compare`,
+`rb play` and rb-ui (the panel, the 808's mod window `App::mod_view`, the export) use it and read
+no file for the kit: `--standard-mod` and `RB_STANDARD_MOD` (task-036's lookup: the option, the
+variable, `Standard.rbm` next to the binary, a "ReBirth Standard Kit" mod in the mod folder) are
+gone (a decision of task-067: the kit is part of rb, like its tables; another kit is a song mod).
+`rb mod pack-standard` needs `-o` (there is no place it is looked for any more) and is the one
+command that reads ReBirth.dll and Rebirth.exe. A song whose GLOB names "Standard ReBirth" plays
+the embedded kit; a third-party mod's missing slots and `--standard-kit` take its samples. The
+samples are ReBirth.dll's byte for byte, so the corpus is unchanged: 164 of 164 EQUAL with no kit
+option, 175 of 175 with `RB_MOD_DIR`. The tests (rb-cli, rb-engine's corpus tests, rb-player,
+rb-ui) use the embedded kit and need no `original/`, except those that check the DLL itself or
+build the mod, which task-066 makes skip.
 
 ## 14. Changing the mod of an open song: the Mods menu (task-056, 2026-10-27)
 
@@ -868,7 +894,7 @@ dialog being active is not traced].** The marks are split:
 ## 15. `rb mod`: unpack and pack (task-097, 2026-10-28)
 
 The `rb mod` group holds every command that works on a mod file: `recrypt` (section 12, the one
-command that reads `RB20FUL.DAT`), `pack-standard` (section 13, once `rb standard-mod`), `unpack`
+command that reads `RB20FUL.DAT`), `pack-standard` (section 13, `rb mod pack-standard`), `unpack`
 and `pack`. The code is `crates/rbm/src/pack.rs` (the CLI, `crates/rb-cli/src/modcmd.rs`, only
 reads and writes the files).
 
@@ -942,8 +968,7 @@ load without `RB20FUL.DAT` (`slots_covered`, `all_covered`). Errors (exit 1):
 `pack(unpack(M)) == M` byte for byte for every recrypted mod: the order is the file order, the
 ordinals and so the keys are the same, the pad is rebuilt from the same files, and INFO and HEAD
 are either rebuilt from the fields or carried raw. Checked (`crates/rb-cli/tests/mod_pack.rs`) on
-the standard mod (built from `original/`) and on the four shipped mods, recrypted, in
+the standard mod (`assets/Standard.rbm`) and on the four shipped mods, recrypted, in
 `RB_MOD_DIR`. To edit a mod: unpack, change a file or a field, pack. A mod made so loads in rb
-and, like a recrypted one, in the original (section 12.3). The standard mod's own INFO
-description still says it was made by `rb standard-mod`: its bytes (SHA-256 `2d732978...f3e5`)
-are fixed.
+and, like a recrypted one, in the original (section 12.3). Since task-067 the standard mod's INFO
+description names `rb mod pack-standard` (13.2).

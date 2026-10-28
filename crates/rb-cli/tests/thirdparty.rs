@@ -356,8 +356,6 @@ fn check_song(
         .arg(out)
         .arg("--mod-dir")
         .arg(&e.mods)
-        .arg("--standard-mod")
-        .arg(common::standard_mod())
         .arg("--standard-kit")
         .output()
         .unwrap();

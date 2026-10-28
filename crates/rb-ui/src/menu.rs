@@ -198,14 +198,12 @@ impl App {
         match kit {
             Kit::Standard => Ok(self.samples.clone()),
             Kit::Mod(path) => {
-                let Some(builtin) = &self.samples else {
-                    return Err(
-                        "No drum samples: a mod needs the standard mod (rb-ui --standard-mod \
-                         FILE, or RB_STANDARD_MOD)."
-                            .into(),
-                    );
-                };
-                load_mod(path, builtin)
+                // a mod's missing slots come from the built-in kit
+                let builtin = self
+                    .samples
+                    .clone()
+                    .unwrap_or_else(rbm::standard::builtin_samples);
+                load_mod(path, &builtin)
                     .map(|s| Some(Arc::new(s)))
                     .map_err(|rb_cli::Fail(_, m)| m)
             }
@@ -510,12 +508,11 @@ impl App {
             },
             ..ModOpts::default()
         };
-        let standard = self.standard_path.clone();
         let out = path.to_path_buf();
         let label = self.doc.name();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let mut r = Renderer::new(standard.as_deref(), mods);
+            let mut r = Renderer::new(mods);
             let result = r
                 .render_to_file(
                     &label,

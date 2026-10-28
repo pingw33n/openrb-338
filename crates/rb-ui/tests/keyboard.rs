@@ -16,17 +16,9 @@ use rb_ui::layout::{PANEL_H, PANEL_W};
 use rb_ui::link::{Link, Msg};
 use rb_ui::model::{BAR, Event as Out, Panel};
 
+/// The built-in kit rb embeds.
 fn samples() -> Arc<SampleSet> {
-    static S: OnceLock<Arc<SampleSet>> = OnceLock::new();
-    S.get_or_init(|| {
-        let dll = std::fs::read(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../original/ReBirth.dll"
-        ))
-        .unwrap();
-        Arc::new(SampleSet::from_dll(&dll).unwrap())
-    })
-    .clone()
+    rbm::standard::builtin_samples()
 }
 
 fn tables() -> Arc<Tables> {

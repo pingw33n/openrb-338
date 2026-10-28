@@ -1,14 +1,14 @@
 //! `rb-ui`: the panel window, wired to the real-time player (task-045).
 //!
 //! ```text
-//! rb-ui [SONG.rbs] [--standard-mod FILE] [--demo] [--size WxH] [--ppp S] [--screenshot OUT.png]
+//! rb-ui [SONG.rbs] [--demo] [--size WxH] [--ppp S] [--screenshot OUT.png]
 //! ```
 //! With a song it opens that song, with the mod it names (looked up in the Mods folder of the
 //! settings, `RB_MOD_DIR`, or the default places of `rb render`); without one the panel starts on
 //! a new empty song. The menu bar (task-047, docs/ui_spec.md section 18) opens, saves and exports
 //! songs, chooses the mod and sets the Vintage flag and the keyboard mode. The drum machines play
-//! the built-in kit of the standard mod (`--standard-mod`, `RB_STANDARD_MOD`, or `Standard.rbm`
-//! next to the binary; make it with `rb mod pack-standard`); without it they are silent. `--demo`
+//! the built-in kit "Standard ReBirth", the standard mod rb embeds (`assets/Standard.rbm`), or
+//! the song's mod laid over it. `--demo`
 //! starts the panel in a lively state with no player (a picture). `--size` is the inner size of
 //! the panel in points (default 624x510; the window is as high as the menu bar more), `--ppp`
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
@@ -32,7 +32,7 @@ use rb_ui::settings::Settings;
 
 fn usage() -> ! {
     eprintln!(
-        "usage: rb-ui [SONG.rbs] [--standard-mod FILE] [--demo] [--size WxH] [--ppp S] \
+        "usage: rb-ui [SONG.rbs] [--demo] [--size WxH] [--ppp S] \
          [--browse open|save|export|mod] [--screenshot OUT.png]"
     );
     std::process::exit(2);
@@ -44,13 +44,11 @@ fn main() -> eframe::Result {
     let mut ppp: Option<f32> = None;
     let mut shot: Option<PathBuf> = None;
     let mut song: Option<PathBuf> = None;
-    let mut standard: Option<PathBuf> = None;
     let mut browse: Option<Mode> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--demo" => demo = true,
-            "--standard-mod" => standard = Some(args.next().unwrap_or_else(|| usage()).into()),
             "--size" => {
                 let v = args.next().unwrap_or_else(|| usage());
                 let (w, h) = v.split_once('x').unwrap_or_else(|| usage());
@@ -88,13 +86,7 @@ fn main() -> eframe::Result {
     // keeps the audio stream alive for the whole run
     let mut _stream = None;
     if !demo {
-        let samples = match session::load_standard(standard.as_deref()) {
-            Ok(s) => Some(Arc::new(s)),
-            Err(e) => {
-                eprintln!("rb-ui: no drum samples ({e}); the drum machines are silent");
-                None
-            }
-        };
+        let samples = Some(rbm::standard::builtin_samples());
         app_samples = samples.clone();
         let (l, audio) = Link::new(Arc::new(Tables::new()), samples.clone());
         // The song named on the command line is opened by the app (with its mod).
@@ -137,7 +129,6 @@ fn main() -> eframe::Result {
                 None => App::new(panel, shot),
             };
             app.samples = app_samples;
-            app.standard_path = standard;
             app.menu = true;
             app.settings = Settings::load();
             // the song (or the new empty song) and its mod's startup sound; nothing in the demo,

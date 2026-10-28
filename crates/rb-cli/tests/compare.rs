@@ -7,14 +7,12 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
-use common::{root, standard_mod};
+use common::root;
 
 fn rb(args: &[&OsStr]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rb"))
         .arg("compare")
         .args(args)
-        .arg("--standard-mod")
-        .arg(standard_mod())
         .output()
         .unwrap()
 }
@@ -47,8 +45,6 @@ fn a_song_equals_its_flac_and_its_wav() {
         .arg(&song)
         .arg("-o")
         .arg(&wav)
-        .arg("--standard-mod")
-        .arg(standard_mod())
         .output()
         .unwrap();
     assert!(r.status.success(), "{}", out(&r));

@@ -1,7 +1,8 @@
-//! `rb mod unpack` and `rb mod pack` (task-097): the round trip of the standard mod (built from
-//! `original/`) and of the recrypted mods in `RB_MOD_DIR` (skipped when unset), an edited file,
-//! pack's errors, the refusal of a mod that is not recrypted, and the old command names gone.
-//! Nothing of the original's is committed: the mods are built or read at run time.
+//! `rb mod unpack` and `rb mod pack` (task-097): the round trip of the standard mod (the
+//! committed `assets/Standard.rbm`, task-067) and of the recrypted mods in `RB_MOD_DIR`
+//! (skipped when unset), an edited file, pack's errors, the refusal of a mod that is not
+//! recrypted, and the old command names gone. The shipped mods are not committed: they are read
+//! at run time.
 
 mod common;
 
@@ -46,10 +47,15 @@ fn round_trip(m: &Path, work: &Path) {
 }
 
 #[test]
-fn pack_standard_is_the_old_standard_mod() {
+fn the_standard_mod_is_the_recorded_one() {
+    // assets/README.md and docs/rbm.md 13.2 record this SHA-256
     let bytes = std::fs::read(standard_mod()).unwrap();
     let h = format!("{:x}", Sha256::digest(&bytes));
-    assert!(h.starts_with("2d732978") && h.ends_with("f3e5"), "{h}");
+    assert_eq!(
+        h,
+        "6355b5f14fc2ebfe7ed9e6e42208f97817f96c5e30ed42fdca4205d3cdab5fbe"
+    );
+    assert_eq!(bytes, rbm::standard::EMBEDDED);
 }
 
 #[test]
