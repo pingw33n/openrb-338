@@ -17,8 +17,8 @@ cargo test -p rb-ui-art                      # committed files = generator; rend
 
 ## License and origin
 
-All art is our own work, drawn in code, released under the repository's license (MIT, see
-`Cargo.toml`). It contains no Propellerhead or Roland artwork, logo or mark and no copy of the
+All art is our own work, drawn in code, released under the repository's license (GPL-3.0-only,
+see `Cargo.toml`). It contains no Propellerhead or Roland artwork, logo or mark and no copy of the
 original's bitmaps: the original's screenshots were used for layout only (`docs/ui_spec.md`
 places the controls). Visible texts are generic: the sections carry no product names, the
 effect blocks are PCF, DELAY, DIST and COMP, and the logo is the wordmark "OPENRB-338" (the

@@ -1,0 +1,47 @@
+# Checks on every push and pull request (task-108): nightly rustfmt, clippy and the tests on
+# Linux, Windows and macOS. No secret and no Propellerhead file: the tests that need original/,
+# RB_MOD_DIR or the other non-committed files skip themselves when those are absent.
+name: ci
+
+on:
+  # pushes to main, and pull requests (a push to a PR branch would run twice)
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  fmt:
+    # rustfmt.toml uses unstable options, so formatting is checked with a pinned nightly.
+    # Everything else uses the stable toolchain pinned in rust-toolchain.toml.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install nightly-2026-10-18 --profile minimal --component rustfmt
+      - run: cargo +nightly-2026-10-18 fmt --all --check
+
+  test:
+    name: clippy and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the ALSA headers (cpal)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked

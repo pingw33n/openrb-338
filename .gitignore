@@ -24,3 +24,6 @@ __pycache__/
 # Disassembly listings of the original (llvm-objdump output), local only
 /text.s
 *.asm
+
+# Packages built by scripts/ (task-108)
+/dist/

@@ -5,7 +5,7 @@ members = ["crates/rbs", "crates/rb-engine", "crates/rb-cli", "crates/rbm", "cra
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "GPL-3.0-only"
 publish = false
 
 # The SHA-256 of the 128 MB RB20FUL.DAT (rbm::dat) takes seconds unoptimized: the tests of
