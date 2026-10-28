@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 11:57'
+updated_date: '2026-10-28 12:05'
 labels:
   - ui
 milestone: m-3
@@ -38,3 +39,17 @@ Constraints:
 - [ ] #1 The user ran the session with the Fable model and accepted the changes in the running app
 - [ ] #2 The art is regenerated, the wired/interaction tests pass, and assets/ui/README.md and docs/ui_spec.md record what changed
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The user's list for the session (2026-10-28):
+- Rewrite the app icon (the app_icon part in crates/rb-ui-art/src/parts.rs; it feeds the window icon, the .icns of task-110, the AppImage of task-112 and the installer of task-111).
+- What the user does not like:
+  - TB-303 layout: there is empty space; the 'EDIT STEP' placement doesn't feel right; the leftmost section (pitch mode, clear) has too much padding.
+  - Pattern number and bank buttons: they look too bare without any style, and are maybe too big and too dense.
+  - The on/off buttons in the panel headers: too simplistic, and the 'on' color is too bright. It is also perceived differently depending on the header color (on the red header vs the dirty-green one).
+  - The channel header color: could be better (too dirty).
+  - The pattern header color: too bright, though the user likes that color on the 808's knobs and buttons.
+  - In the channel (mixer) panels: the placement of the DIST, PCF and COMP buttons feels off.
+<!-- SECTION:NOTES:END -->
