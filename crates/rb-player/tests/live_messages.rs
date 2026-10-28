@@ -21,11 +21,12 @@
 //! writes with `--live-replies FILE`; the payloads must equal rb's tracks byte for byte.
 //!
 //! The mod-change sessions (task-076, `docs/rbm.md` section 14.4) play a drum song and switch
-//! its mod with song msg 19 mid-song, `Player::set_mod` here. They need `RB_MOD_DIR`, the
-//! recrypted mods (skipped without it). rbhost loads the original mods (the msg 55 of
-//! `tools/rbm.py msg` with the mod id the session names) with `--mod-msg` (the song's mod) and
-//! `--load-msg` (the others; hex `38 01 9B`, 56 {411}, for the built-in kit), and its `.rbhm`
-//! carries the song's mod id (`rbsmsg.message_file(song, 412)`).
+//! its mod with song msg 19 mid-song, `Player::set_mod` here. They need the recrypted
+//! shipped mods, which `rb-testkit` makes from the CD image (`RB_CD_ISO`; skipped without it).
+//! rbhost loads the original mods (the msg 55 of `tools/rbm.py msg` with the mod id the session
+//! names) with `--mod-msg` (the song's mod) and `--load-msg` (the others; hex `38 01 9B`, 56 {411},
+//! for the built-in kit), and its `.rbhm` carries the song's mod id (`rbsmsg.message_file(song,
+//! 412)`).
 
 mod common;
 
@@ -781,10 +782,10 @@ const BUILTIN: u16 = 411;
 /// The calls of a mod-change session.
 const MOD_CALLS: u32 = 400;
 
-/// A recrypted mod of `RB_MOD_DIR` loaded over the built-in kit, as `rb render` loads it; `None`
-/// (the test is skipped) when `RB_MOD_DIR` is not set.
+/// A recrypted shipped mod (made from the CD image by `rb-testkit`) loaded over the built-in
+/// kit, as `rb render` loads it; `None` (the test is skipped) when `RB_CD_ISO` is not set.
 fn file_mod(file: &str) -> Option<Arc<SampleSet>> {
-    let p = common::env_path("RB_MOD_DIR")?.join(file);
+    let p = rb_testkit::recrypted_mods()?.join(file);
     let data = std::fs::read(&p).unwrap_or_else(|err| panic!("{}: {err}", p.display()));
     let rbm = rbm::Rbm::parse(data).unwrap();
     let table = rbm::KeyTable::embedded(&rbm)
@@ -837,7 +838,7 @@ const RBHOST_MOD_909: &str = "cf414eb6493779e935fa8e12fea27c9fadeaf045beaaa5febb
 #[test]
 fn mods_on_808_and_909() {
     let (Some(pbe), Some(orbit)) = (file_mod("PBE2.rbm"), file_mod("Orbit2.rbm")) else {
-        return eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+        return eprintln!("skipped: the recrypted shipped mods need RB_CD_ISO");
     };
     let s = song(&manifest()["diag"]["drums_kit"]);
     let changes = vec![
@@ -859,7 +860,7 @@ fn mods_on_808_and_909() {
 #[test]
 fn mod_change_808_long_cymbal() {
     let (Some(metal), Some(msm)) = (file_mod("Metallicon.rbm"), file_mod("MSM2.rbm")) else {
-        return eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+        return eprintln!("skipped: the recrypted shipped mods need RB_CD_ISO");
     };
     let s = song(&manifest()["diag"]["808_cymbal"]);
     let changes = vec![(150, 413, msm), (250, BUILTIN, samples())];
@@ -869,7 +870,7 @@ fn mod_change_808_long_cymbal() {
 #[test]
 fn mod_change_909_long_crash() {
     let (Some(orbit), Some(pbe)) = (file_mod("Orbit2.rbm"), file_mod("PBE2.rbm")) else {
-        return eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+        return eprintln!("skipped: the recrypted shipped mods need RB_CD_ISO");
     };
     let s = song(&manifest()["diag"]["909_crash"]);
     let changes = vec![(150, BUILTIN, samples()), (250, 413, pbe)];

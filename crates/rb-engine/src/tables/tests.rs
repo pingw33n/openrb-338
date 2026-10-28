@@ -1,6 +1,7 @@
 //! The generated tables against the original's run-time dumps (`tests/fixtures/tables`, from
 //! rbhost `--dump-tables`), and the static tables and builder constants against the bytes of
-//! `original/ReBirth.dll`, read by file offset.
+//! ReBirth.dll (taken from the CD image, `RB_CD_ISO`, by `rb-testkit`; they skip without it),
+//! read by file offset.
 
 use super::data::*;
 use super::*;
@@ -204,7 +205,7 @@ fn tables_new_builds_everything() {
 
 // ------------------------------------------------------------------ the DLL's bytes
 
-/// `original/ReBirth.dll`, addressed by virtual address through its section table.
+/// ReBirth.dll, addressed by virtual address through its section table.
 struct Dll {
     bytes: Vec<u8>,
     /// (virtual address, virtual size, raw offset, raw size)
@@ -212,9 +213,11 @@ struct Dll {
 }
 
 impl Dll {
-    fn open() -> Self {
-        let p = root().join("../../original/ReBirth.dll");
-        let bytes = std::fs::read(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+    /// The DLL of the CD image (`RB_CD_ISO`, by `rb-testkit`; byte for byte `original/`'s), or
+    /// `None` (a skip with the message) when it is not set.
+    fn open() -> Option<Self> {
+        let cd = rb_testkit::cd_files()?;
+        let bytes = std::fs::read(&cd.dll).unwrap();
         let u16_at = |o: usize| u16::from_le_bytes(bytes[o..o + 2].try_into().unwrap());
         let u32_at = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap());
         let pe = u32_at(0x3C) as usize;
@@ -234,7 +237,7 @@ impl Dll {
                 )
             })
             .collect();
-        Dll { bytes, sections }
+        Some(Dll { bytes, sections })
     }
 
     fn read(&self, va: u32, len: usize) -> &[u8] {
@@ -278,7 +281,9 @@ fn le_bytes<T: Copy, const W: usize>(v: &[T], f: impl Fn(T) -> [u8; W]) -> Vec<u
 
 #[test]
 fn static_tables_match_dll() {
-    let dll = Dll::open();
+    let Some(dll) = Dll::open() else {
+        return;
+    };
     let f32s = |v: &[f32]| le_bytes(v, f32::to_le_bytes);
     let u16s = |v: &[u16]| le_bytes(v, u16::to_le_bytes);
     let i16s = |v: &[i16]| le_bytes(v, i16::to_le_bytes);
@@ -322,7 +327,9 @@ fn static_tables_match_dll() {
 
 #[test]
 fn builder_constants_match_dll() {
-    let dll = Dll::open();
+    let Some(dll) = Dll::open() else {
+        return;
+    };
     let f64s: &[(u32, f64)] = &[
         // TB-303 pitch, sub_10023920
         (0x1015_3A90, C_10153A90),

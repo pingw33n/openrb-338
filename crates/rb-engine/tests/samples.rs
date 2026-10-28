@@ -2,13 +2,17 @@
 //! parsers' errors.
 
 use rb_engine::samples::{self, PADDING, Sample, SampleError, SampleSet};
-use std::path::Path;
 
-fn original(name: &str) -> Vec<u8> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../original")
-        .join(name);
-    std::fs::read(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+/// `ReBirth.dll` or `Rebirth.exe` of the CD image (`RB_CD_ISO`, by `rb-testkit`), or `None` (a
+/// skip with the message) when it is not set. The DLL is byte for byte the one of `original/`.
+fn original(name: &str) -> Option<Vec<u8>> {
+    let cd = rb_testkit::cd_files()?;
+    let p = match name {
+        "ReBirth.dll" => &cd.dll,
+        "Rebirth.exe" => &cd.exe,
+        _ => panic!("{name}: not a file of the CD helper"),
+    };
+    Some(std::fs::read(p).unwrap())
 }
 
 /// (resource ID, frames, sum of all audio samples) of each resource 1000..=1045, read
@@ -34,7 +38,10 @@ const SAMPLES: [(u16, usize, i64); 46] = [
 
 #[test]
 fn all_46_samples_load_with_the_expected_frame_counts() {
-    let set = SampleSet::from_dll(&original("ReBirth.dll")).unwrap();
+    let Some(dll) = original("ReBirth.dll") else {
+        return;
+    };
+    let set = SampleSet::from_dll(&dll).unwrap();
     assert_eq!(samples::COUNT, 46);
     for &(id, frames, sum) in &SAMPLES {
         let s = set.get(id);
@@ -64,7 +71,10 @@ fn all_46_samples_load_with_the_expected_frame_counts() {
 fn the_ssnd_offset_is_skipped() {
     // Resources 1034..=1036 have an SSND offset of 458 bytes; the first samples are the ones
     // the independent reader found after the offset.
-    let set = SampleSet::from_dll(&original("ReBirth.dll")).unwrap();
+    let Some(dll) = original("ReBirth.dll") else {
+        return;
+    };
+    let set = SampleSet::from_dll(&dll).unwrap();
     assert_eq!(&set.get(1034).audio()[..3], &[709, 1258, 412]);
     assert_eq!(&set.get(1035).audio()[..3], &[501, 398, -556]);
     assert_eq!(&set.get(1036).audio()[..3], &[181, 399, 354]);
@@ -190,7 +200,9 @@ fn pe_errors() {
     assert!(matches!(SampleSet::from_dll(&mz), Err(SampleError::Pe(_))));
 
     // A truncated real DLL: the resource directory runs past the end, an error and no panic.
-    let dll = original("ReBirth.dll");
+    let Some(dll) = original("ReBirth.dll") else {
+        return;
+    };
     for cut in [0x200, 0x1000, 0x20000, dll.len() * 3 / 4] {
         assert!(SampleSet::from_dll(&dll[..cut]).is_err(), "cut at {cut}");
     }
@@ -199,6 +211,9 @@ fn pe_errors() {
 #[test]
 fn a_pe_without_aiff_resources_is_rejected() {
     // Rebirth.exe is a real PE with resources, but no "AIFF" type.
-    let e = SampleSet::from_dll(&original("Rebirth.exe")).unwrap_err();
+    let Some(exe) = original("Rebirth.exe") else {
+        return;
+    };
+    let e = SampleSet::from_dll(&exe).unwrap_err();
     assert_eq!(e, SampleError::NoAiffResources, "{e}");
 }

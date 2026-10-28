@@ -3,8 +3,9 @@
 //!
 //! The always-on tests build a small ISO (Joliet and primary-only) and a CAB (MSZIP: the `cab`
 //! crate writes no LZX) in memory. The real image is the gated tests: `RB_CD_ISO` names the
-//! user's ISO of the 2001 reissue CD; `RB_RB20FUL` and `RB_MOD_ORIG_DIR` (the original shipped
-//! mods) add the comparison with the `--rb20ful` form. Without them the gated tests skip.
+//! user's ISO of the 2001 reissue CD, and the files they compare with (the key file, the DLL and
+//! exe, the original and the recrypted shipped mods) are taken from it by `rb-testkit`, against
+//! pinned SHA-256s. Without `RB_CD_ISO` the gated tests skip.
 
 mod common;
 
@@ -12,7 +13,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use common::{env_path, original, standard_mod};
+use common::standard_mod;
 use rb_cli::cd::{self, CdImage, Installer, Iso};
 
 // ---------------------------------------------------------------- synthetic image
@@ -582,11 +583,7 @@ fn the_commands_refuse_a_wrong_image_and_conflicting_options() {
 // ---------------------------------------------------------------- the real image (gated)
 
 fn real_iso() -> Option<PathBuf> {
-    let p = env_path("RB_CD_ISO");
-    if p.is_none() {
-        eprintln!("skipped: RB_CD_ISO (the ReBirth 2001 CD image) is not set");
-    }
-    p
+    rb_testkit::cd_iso()
 }
 
 /// The files read from the image are the known ones.
@@ -605,25 +602,20 @@ fn the_real_image_holds_the_known_files() {
     let dll = cd::read_checked(&inst, "ReBirth.dll", cd::DLL_SHA256).unwrap();
     let exe = cd::read_checked(&inst, "Rebirth.exe", cd::EXE_SHA256).unwrap();
     assert_eq!(exe.len(), 1_606_656);
-    if let Some(p) = original("ReBirth.dll") {
-        assert!(
-            std::fs::read(p).unwrap() == dll,
-            "differs from original/ReBirth.dll"
-        );
-    }
+    // (the DLL's hash is the one of original/ReBirth.dll, checked by read_checked)
+    drop(dll);
     assert_eq!(
         cd::shipped_mods(&inst),
         ["MSM2.rbm", "Metallicon.rbm", "Orbit2.rbm", "PBE2.rbm"]
     );
-    // the shipped mods are the original files
-    if let Some(orig) = env_path("RB_MOD_ORIG_DIR") {
-        for n in cd::shipped_mods(&inst) {
-            let want = std::fs::read(orig.join(&n)).unwrap();
-            assert!(
-                inst.read(&n).unwrap() == want,
-                "{n} differs from RB_MOD_ORIG_DIR"
-            );
-        }
+    // the shipped mods are the original files (docs/test_machine.md 7)
+    for n in cd::shipped_mods(&inst) {
+        let want = rb_testkit::ORIGINAL_MODS
+            .iter()
+            .find(|(m, _)| *m == n)
+            .unwrap_or_else(|| panic!("{n} is no known shipped mod"))
+            .1;
+        assert_eq!(cd::sha256_hex(&inst.read(&n).unwrap()), want, "{n}");
     }
 }
 
@@ -647,22 +639,21 @@ fn pack_standard_from_the_image_equals_the_committed_mod() {
         std::fs::read(&out).unwrap() == std::fs::read(standard_mod()).unwrap(),
         "differs from assets/Standard.rbm"
     );
-    // and the same bytes as the form with files, when the dll is there
-    if let (Some(dll), Some(exe)) = (original("ReBirth.dll"), env_path("RB_CD_REBIRTH_EXE")) {
-        let out2 = tmp.path().join("files.rbm");
-        let o = rb(&[
-            "mod".as_ref(),
-            "pack-standard".as_ref(),
-            "--rebirth-dll".as_ref(),
-            s(&dll),
-            "--rebirth-exe".as_ref(),
-            s(&exe),
-            "-o".as_ref(),
-            s(&out2),
-        ]);
-        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-        assert!(std::fs::read(&out).unwrap() == std::fs::read(&out2).unwrap());
-    }
+    // and the same bytes as the form with files
+    let cd = rb_testkit::cd_files().unwrap();
+    let out2 = tmp.path().join("files.rbm");
+    let o = rb(&[
+        "mod".as_ref(),
+        "pack-standard".as_ref(),
+        "--rebirth-dll".as_ref(),
+        s(&cd.dll),
+        "--rebirth-exe".as_ref(),
+        s(&cd.exe),
+        "-o".as_ref(),
+        s(&out2),
+    ]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(std::fs::read(&out).unwrap() == std::fs::read(&out2).unwrap());
 }
 
 /// `rb mod recrypt --iso` (no input: the shipped mods of the CD) gives the bytes of the
@@ -671,10 +662,8 @@ fn pack_standard_from_the_image_equals_the_committed_mod() {
 #[test]
 fn recrypt_from_the_image_equals_the_rb20ful_form() {
     let Some(iso) = real_iso() else { return };
-    let (Some(orig), Some(dat)) = (env_path("RB_MOD_ORIG_DIR"), env_path("RB_RB20FUL")) else {
-        eprintln!("skipped: RB_MOD_ORIG_DIR and RB_RB20FUL are not both set");
-        return;
-    };
+    let cd = rb_testkit::cd_files().unwrap();
+    let (orig, dat) = (cd.orig_mods.clone(), cd.dat.clone());
     let tmp = tempfile::tempdir().unwrap();
     let from_cd = tmp.path().join("cd");
     let o = rb(&[
@@ -709,6 +698,14 @@ fn recrypt_from_the_image_equals_the_rb20ful_form() {
         let a = std::fs::read(e.path()).unwrap();
         let b = std::fs::read(from_cd.join(e.file_name())).unwrap();
         assert!(a == b, "{:?} differs", e.file_name());
+        // and both are the pinned recrypted mods (docs/test_machine.md 7)
+        let name = e.file_name().to_string_lossy().into_owned();
+        let pinned = rb_testkit::RECRYPTED_MODS.iter().find(|(m, _)| *m == name);
+        assert_eq!(
+            Some(rb_testkit::sha256_hex(&a).as_str()),
+            pinned.map(|p| p.1),
+            "{name}"
+        );
         n += 1;
     }
     assert_eq!(n, 4);

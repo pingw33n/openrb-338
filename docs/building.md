@@ -122,8 +122,11 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
     `cargo test --workspace --locked --no-fail-fast` (one run shows every failure). Some tests
     run `tools/*.py` with Python 3 (every runner has it): `RB_PYTHON` if set, else the first of
     `python3`, `python`, `py -3` on PATH that is Python 3 (`tests/common/python.rs`); none found
-    fails the test with a message naming `RB_PYTHON`. The tests that need `original/`, `RB_MOD_DIR`, `RB_CD_ISO`
-    or `RB_THIRDPARTY_DIR` skip when those are absent (checked locally with all of them unset).
+    fails the test with a message naming `RB_PYTHON`. The tests that need `RB_CD_ISO`,
+    `RB_THIRDPARTY_MODS_DIR` or `RB_THIRDPARTY_SONGS_DIR` (the only external inputs of the
+    tests; AGENTS.md) skip when those are absent (checked locally with all of them unset). The
+    synthetic recrypt tests (`crates/rbm/tests/recrypt_python.rs`, which run `tools/rbm.py`)
+    need none of them.
     Linux installs `libasound2-dev` first.
 - `release.yml`, on a tag `v*` and by hand:
   - `prepare` computes one `SOURCE_DATE_EPOCH` and one `RB_BUILD_BRANCH` (`scripts/release-env.sh`)

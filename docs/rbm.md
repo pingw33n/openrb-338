@@ -7,8 +7,9 @@ files; [G] marks an inference. The reference implementation is `tools/rbm.py` (t
 `tools/rbm_test.py`); `tools/rbhost` loads a mod into the original DLL (`run.py --mod`).
 
 RB20FUL.DAT, its pages, any key table and the mods themselves are Propellerhead material: they stay
-on the user's machine and are never committed. The `rbm` crate's and `rbm.py`'s tests read them from
-`RB_RB20FUL` and `RB_RBM_DIR`; the rb CLI and its tests read only recrypted mods (`RB_MOD_DIR`,
+on the user's machine and are never committed. The tests read them from the CD image (`RB_CD_ISO`:
+the crate `rb-testkit` extracts the DAT and the four shipped mods and recrypts them, each checked
+against a pinned SHA-256; task-121); the rb CLI reads only recrypted mods (`RB_MOD_DIR`,
 section 12.4).
 The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte window of section
 12 is embedded in rb (`crates/rbm/src/rb20ful_window.bin`, `embedded.rs`).
@@ -169,7 +170,8 @@ body, and the stride is `((g_k & 0xFFFFF000) >> 14) - k - 14`, provided the two 
 in their low 14 bits.
 
 Checked on the real `RB20FUL.DAT` (task-030, all 16384 pages `k`; `tools/rbm.py check-dat DAT`,
-and the test `RealDat` of `tools/rbm_test.py` with `RB_RB20FUL` set): `((g_k & 0xFFFFF000) >> 14)
+and the test `RealDat` of `tools/rbm_test.py`, run by the cargo test
+`the_python_tool_tests_pass_on_the_real_files` with the DAT of `RB_CD_ISO`): `((g_k & 0xFFFFF000) >> 14)
 - k == 18` for every `k`, so **stride = 4**, and the 256 words are the 1024 bytes in order. Two more
 uses of the same expression agree: `sub_41FFBC`'s anti-debug branch (an IDT check, 0x41FFE9) sets
 it to 0x12 = 18 directly, and `sub_423048` (the distortion packer) uses it as `X / 18` = index 1.
@@ -277,8 +279,8 @@ The 909 records' stride and the record count are computed through the anti-tampe
 ## 9. The `rbm` crate (task-032, 2026-10-27)
 
 `crates/rbm` implements sections 2 to 5 (`Rbm::parse`, `KeyTable::read` from a reader over
-`RB20FUL.DAT`, `Rbm::file`, `Rbm::load_samples`). Its tests (`RB_RB20FUL`, `RB_RBM_DIR`) compare
-every embedded file and the 46 samples of the four shipped mods with `tools/rbm.py extract`.
+`RB20FUL.DAT`, `Rbm::file`, `Rbm::load_samples`). Its tests (gated on `RB_CD_ISO`)
+compare every embedded file and the 46 samples of the four shipped mods with `tools/rbm.py extract`.
 
 One fact found on the way: 19 of the 46 AIFFs of Metallicon.rbm have a **12-byte COMM chunk** (the
 rate field is 4 bytes, not 10; the SSND chunk follows at once); the other 27 have 18 bytes. [C]
@@ -332,11 +334,24 @@ is in the repository. Mod names and counts only below.
 **The check.** `tools/rbm.py check-dir DIR RB20FUL.DAT [--json]` (the reference: every mod's
 parse, key pages, every embedded file descrambled, the 46 slots' AIFFs, JPEG end markers,
 duplicate INFO names in the original's folder order) and the env-gated cargo test
-`crates/rb-cli/tests/thirdparty.rs` (`RB_THIRDPARTY_DIR` with `Mods/` recrypted, `Mods.orig/` and
-`RB_RB20FUL` for the reference since task-063; run it with
-`cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1`), which compares
-`crates/rbm` with `check-dir --json` (the SHA-256 of every embedded file, the channel-0 PCM of every
-slot) and reads, writes back and renders every distinct song.
+`crates/rb-cli/tests/thirdparty.rs` (`RB_THIRDPARTY_MODS_DIR`, the folder of the recrypted mods, and
+`RB_THIRDPARTY_SONGS_DIR`, the folder of songs; since task-121 the test needs no `Mods.orig/` and
+no DAT; run it with
+`cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1`), whose `mods`
+test compares `crates/rbm` with the committed manifest `tests/refs/thirdparty_mods.json` (the
+output of `check-dir --json` reduced to hashes and names, plus the SHA-256 of each recrypted file:
+the SHA-256 of every embedded file, the channel-0 PCM of every slot) and whose `songs` test reads,
+writes back and renders every distinct song. The manifest is written by
+`tools/thirdparty_mods_manifest.py --orig MODS.ORIG --mods MODS --dat RB20FUL.DAT`
+(on 2026-10-28: 172 mods, 16680 embedded files, 7285 slots, equal to the 2026-10-27 run of the old
+test, which took the originals and the DAT from the environment); regenerate it when the
+collection changes (the test fails on a `.rbm` it does not list). The tool first recrypts the
+originals with the current rb and requires every result to equal the file of `Mods/` byte for
+byte, so the manifest pins what the recryptor makes of the originals (2026-10-28: all 172 equal).
+To re-verify the recryptor on the real collection at any time, without the user's `Mods/`:
+`tools/thirdparty_mods_manifest.py --check --orig MODS.ORIG --dat RB20FUL.DAT` recrypts the
+originals and compares every result with the manifest (exit 1 on a difference). No file content
+is in the manifest.
 
 ### 11.1 Mods
 
@@ -518,7 +533,7 @@ recrypted mod gives the same bytes. Nothing reads such a chunk; no known mod has
 The window is `W = 118280160`, PBE2.rbm's page 0 (section 5.3), a page the original already reads
 for a shipped mod; `crates/rbm/src/rb20ful_window.bin` holds the 2047 bytes and
 `crates/rbm/src/embedded.rs` `W`, their SHA-256 (`2c292d92...56bc`) and the SHA-256 of the DAT
-they came from (`62071e99...2797`), checked against `RB_RB20FUL` by the test
+they came from (`62071e99...2797`), checked against the DAT of `RB_CD_ISO` by the test
 `embedded_window_is_the_dats`. rb's loader (`KeyTable::embedded`, `Rbm::slots_covered`) takes a
 mod whose page offsets are `W` and whose files need no more than the embedded bytes; any other mod
 needs `RB20FUL.DAT`.
@@ -563,11 +578,15 @@ At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `rb mod 
   (exit 1). The decision is "found, fails at load", not "skipped": a skipped mod would turn into
   "mod not found" and hide the fix. The future UI (m-3, task-047's mod chooser) lists such mods the
   same way, marked "needs rb mod recrypt".
-- The env-gated tests take recrypted mods: `corpus_mods.rs` and `rb compare` read `RB_MOD_DIR`
-  (recrypted); `thirdparty.rs` reads `RB_THIRDPARTY_DIR/Mods` (recrypted) with `Mods.orig` and
-  `RB_RB20FUL` as the reference; `corpus_mods.rs`'s `recrypt_of_the_originals_matches_the_references`
-  still runs the recrypt (`RB_MOD_ORIG_DIR`, `RB_RB20FUL`), requires its bytes to equal the files of
-  `RB_MOD_DIR` and renders the 8 songs from them.
+- The env-gated tests take recrypted mods. Since task-121 the tests read three variables only
+  (`RB_CD_ISO`, `RB_THIRDPARTY_MODS_DIR`, `RB_THIRDPARTY_SONGS_DIR`): `corpus_mods.rs` and the
+  other tests that need the shipped mods use the four mods that `rb-testkit` recrypts from the CD
+  image (pinned SHA-256s, docs/test_machine.md 7); `rb compare` still takes `--mod-dir`
+  (`rb mod recrypt --iso "$RB_CD_ISO" -o DIR` makes the folder); `thirdparty.rs` reads
+  `RB_THIRDPARTY_MODS_DIR` (recrypted) against the committed manifest (section 11);
+  `corpus_mods.rs`'s `recrypt_of_the_originals_matches_the_references` still runs the recrypt (the
+  originals and the DAT from the image), requires its bytes to equal the recrypted mods and renders
+  the 8 songs from them.
 
 **Done on 2026-10-27.** The user's 172 third-party mods: `~/rb_stuff/Mods.orig` holds the originals,
 `~/rb_stuff/Mods` the recrypted ones under the same names; all 172 recrypted (0 failures), and
@@ -629,8 +648,14 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/rb-cli/src/recrypt.rs`):
   a wrong-hash file with the right magic and length is rejected before anything is written (also
   through the binary); a damaged AIFF, a JPEG without `FF D8` and a sample whose header is found
   only with the right pages are caught; `--force` and the folder rules; the already-recrypted
-  path over `RB_MOD_DIR`. Gated on the real file (`RB_RB20FUL`, `RB_MOD_ORIG_DIR`): bulk over the
-  shipped originals equals single and the files of `RB_MOD_DIR`.
+  path over the recrypted shipped mods. Gated on the real file (`RB_CD_ISO`): bulk over the
+  shipped originals equals single and the pinned SHA-256s of the recrypted mods.
+  Synthetic, with no input (task-121; `crates/rbm/tests/recrypt_python.rs`): mods built with a
+  stand-in key table (ordinals past 255 where the DLL's byte key and the exe's u16 key differ,
+  payloads of 8 to 3,000,000 bytes around the 1024-byte head, 199 files, duplicate names, foreign
+  chunks, fillers and an earlier pad) are recrypted, and `crates/rbm` and `tools/rbm.py` (the
+  independent decoder, given a key file that holds only the window) must read the same files from
+  the source and from the result.
 
 ## 13. The standard mod: the built-in kit and panel as a mod (task-036, 2026-10-27)
 
@@ -712,7 +737,7 @@ the embedded window exactly as `rb mod recrypt` output: both key pages are `W`, 
 
 The two differ only in `splash.jpg` (13.1). The gated test
 `crates/rb-cli/tests/standard_mod.rs::the_command_reproduces_the_committed_mod`
-(`RB_CD_REBIRTH_EXE` naming the CD's exe, and `original/ReBirth.dll`) rebuilds the asset byte for
+(`RB_CD_ISO`: the CD's exe and the DLL come out of the image) rebuilds the asset byte for
 byte.
 
 The menu name is **"Standard ReBirth"** (task-067): the name songs give the built-in kit (the GLOB
@@ -754,9 +779,10 @@ gone (a decision of task-067: the kit is part of rb, like its tables; another ki
 command that reads ReBirth.dll and Rebirth.exe. A song whose GLOB names "Standard ReBirth" plays
 the embedded kit; a third-party mod's missing slots and `--standard-kit` take its samples. The
 samples are ReBirth.dll's byte for byte, so the corpus is unchanged: 164 of 164 EQUAL with no kit
-option, 175 of 175 with `RB_MOD_DIR`. The tests (rb-cli, rb-engine's corpus tests, rb-player,
-OpenRB-338) use the embedded kit and need no `original/`, except those that check the DLL itself or
-build the mod, which task-066 makes skip.
+option, 175 of 175 with the four recrypted shipped mods (`--mod-dir`). The tests (rb-cli,
+rb-engine's corpus tests, rb-player, OpenRB-338) use the embedded kit and need no `original/`;
+the ones that check the DLL itself or build the mod take the DLL and the exe from the CD image
+(`RB_CD_ISO`, task-121) and skip without it.
 
 ## 14. Changing the mod of an open song: the Mods menu (task-056, 2026-10-27)
 
@@ -1057,7 +1083,7 @@ bytes); it and anything read from it are never committed.
 - **The 32 files of the third CAB:** `Rebirth.exe`, `ReBirth.dll`, `ReWire.dll`, `MSVCRT.DLL`, help
   and manuals, the songs (`ReBirth_1.0_Default_Song.rbs`, `Silent_Default_Song.rbs`, the demo
   songs) and **the four shipped mods `Metallicon.rbm`, `MSM2.rbm`, `Orbit2.rbm`, `PBE2.rbm`**, which
-  are the files of `RB_MOD_ORIG_DIR` byte for byte (the test compares them). The mods are not plain
+  are the originals of the pinned SHA-256s of docs/test_machine.md 7 (the test compares them). The mods are not plain
   files on the CD.
 
 ### 16.2 The commands
@@ -1094,8 +1120,8 @@ bytes); it and anything read from it are never committed.
   ISO and an MSZIP CAB (`cab` cannot write LZX) in memory: names, paths, windows, the decoy
   `MSCF`, unsafe mod names, a truncated installer, the errors, the option conflicts; gated on
   the real image (`RB_CD_ISO`): the DAT's hash, the two
-  files' hashes, the DLL equal to `original/ReBirth.dll`, the shipped mods equal to
-  `RB_MOD_ORIG_DIR`, `pack-standard --iso` equal to `assets/Standard.rbm` (and to the file form),
-  `recrypt --iso` equal to the `--rb20ful` form. `standard_mod.rs`'s reproduction test also takes
-  the exe from `RB_CD_ISO` when `RB_CD_REBIRTH_EXE` is not set. The LZX path is covered only by the
-  gated tests.
+  files' hashes (the DLL's is the hash of `original/ReBirth.dll`), the shipped mods equal to their
+  pinned SHA-256s, `pack-standard --iso` equal to `assets/Standard.rbm` (and to the file form),
+  `recrypt --iso` equal to the `--rb20ful` form and to the pinned SHA-256s of the recrypted mods.
+  `standard_mod.rs`'s reproduction test takes the exe and the DLL from `RB_CD_ISO`. The LZX path is
+  covered only by the gated tests.

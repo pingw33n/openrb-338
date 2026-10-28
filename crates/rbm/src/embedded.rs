@@ -7,7 +7,7 @@
 //! `rb20ful_window.bin` was generated from the RB20FUL.DAT whose SHA-256 is [`DAT_SHA256`]:
 //! `tail -c +$((WINDOW + 1)) RB20FUL.DAT | head -c WINDOW_LEN`. The gated test
 //! `embedded_window_is_the_dats` of `tests/rbm.rs` checks the bytes, [`WINDOW_SHA256`] and
-//! [`DAT_SHA256`] against `RB_RB20FUL`.
+//! [`DAT_SHA256`] against the DAT of the CD image (`RB_CD_ISO`).
 
 /// The offset in `RB20FUL.DAT` of the embedded bytes: the start of PBE2.rbm's page 0
 /// (docs/rbm.md 5.3), a page the original already reads for a shipped mod.

@@ -3373,6 +3373,7 @@ dependencies = [
  "flacenc",
  "rb-engine",
  "rb-player",
+ "rb-testkit",
  "rbm",
  "rbs",
  "serde_json",
@@ -3387,6 +3388,7 @@ version = "0.1.0"
 dependencies = [
  "claxon",
  "libm",
+ "rb-testkit",
  "rbm",
  "rbs",
  "serde_json",
@@ -3399,6 +3401,7 @@ version = "0.1.0"
 dependencies = [
  "cpal",
  "rb-engine",
+ "rb-testkit",
  "rbm",
  "rbs",
  "rtrb",
@@ -3406,6 +3409,15 @@ dependencies = [
  "serde_json",
  "sha2",
  "triple_buffer",
+]
+
+[[package]]
+name = "rb-testkit"
+version = "0.1.0"
+dependencies = [
+ "rb-cli",
+ "rbm",
+ "sha2",
 ]
 
 [[package]]
@@ -3418,6 +3430,7 @@ dependencies = [
  "rb-cli",
  "rb-engine",
  "rb-player",
+ "rb-testkit",
  "rb-ui-art",
  "rbm",
  "rbs",
@@ -3439,6 +3452,8 @@ name = "rbm"
 version = "0.1.0"
 dependencies = [
  "rb-engine",
+ "rb-testkit",
+ "serde_json",
  "sha2",
  "toml",
 ]

@@ -1,6 +1,6 @@
 # Checks on every push and pull request (task-108): nightly rustfmt, clippy and the tests on
-# Linux, Windows and macOS. No secret and no Propellerhead file: the tests that need original/,
-# RB_MOD_DIR or the other non-committed files skip themselves when those are absent.
+# Linux, Windows and macOS. No secret and no Propellerhead file: the tests that need RB_CD_ISO,
+# RB_THIRDPARTY_MODS_DIR or RB_THIRDPARTY_SONGS_DIR skip themselves when those are absent.
 name: ci
 
 on:

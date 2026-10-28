@@ -268,6 +268,15 @@ no Rebirth.exe running, under all permits).
 
 The installation's `Rebirth.exe` and `ReBirth.dll` hashes are in task-001's notes.
 
+**The cargo tests use these hashes (task-121, 2026-10-28).** The first table (the originals) and
+the second (the recrypted mods) are pinned in `crates/rb-testkit/src/lib.rs`: with `RB_CD_ISO`, the
+image of the ReBirth 2.01 CD, the crate extracts the four originals (and `RB20FUL.DAT`,
+`ReBirth.dll`, `Rebirth.exe`) once per test process, checks each against its SHA-256, recrypts the
+four mods and checks the result against the second table. The tests have no other input of the
+original program: no `RB_RB20FUL`, `RB_MOD_DIR`, `RB_MOD_ORIG_DIR` or `RB_CD_REBIRTH_EXE`, and no
+`original/`. The user's third-party files are the other two variables,
+`RB_THIRDPARTY_MODS_DIR` (recrypted mods) and `RB_THIRDPARTY_SONGS_DIR` (songs); see AGENTS.md.
+
 ## 8. The export runner `tools/rb_export.py` (task-008)
 
 `tools/rb_export.py [options] SONG.rbs... -o OUTDIR` runs sections 2 to 4 unattended under all the

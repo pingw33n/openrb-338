@@ -1,6 +1,7 @@
-//! Tests of the `rbm` crate. The synthetic ones always run; the real-file ones read
-//! `RB_RB20FUL` (the user's RB20FUL.DAT) and `RB_RBM_DIR` (a folder of `.rbm` files) and skip with
-//! a message when unset. None of that material is in the repository.
+//! Tests of the `rbm` crate. The synthetic ones always run; the real-file ones take the CD's
+//! RB20FUL.DAT and the four shipped mods from the CD image (`RB_CD_ISO`, by `rb-testkit`) and
+//! skip with a message when it is not set. None of that material is in the repository.
+//! `recrypt_python.rs` checks `recrypt` against `tools/rbm.py` on synthetic mods, with no input.
 
 #[path = "../../../tests/common/python.rs"]
 mod python;
@@ -10,14 +11,6 @@ use std::path::{Path, PathBuf};
 
 use rb_engine::samples::{self, Sample, SampleSet};
 use rbm::*;
-
-/// A path from the environment (`None` when unset or empty); a relative one is relative to the
-/// workspace root, as cargo runs the tests in the crate's directory.
-fn env_path(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name)
-        .filter(|v| !v.is_empty())
-        .map(|v| Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(v))
-}
 
 // ---------------------------------------------------------------- synthetic material
 
@@ -329,19 +322,18 @@ fn malformed_input_does_not_panic() {
 
 // ---------------------------------------------------------------- real files
 
+/// The CD's key file and the four shipped mods (not recrypted), from the CD image
+/// (`RB_CD_ISO`, by `rb-testkit`), or a skip.
 fn real_env() -> Option<(PathBuf, Vec<PathBuf>)> {
-    let (Some(dat), Some(dir)) = (env_path("RB_RB20FUL"), env_path("RB_RBM_DIR")) else {
-        eprintln!("skipped: RB_RB20FUL and RB_RBM_DIR are not both set");
-        return None;
-    };
-    let mut mods: Vec<PathBuf> = std::fs::read_dir(dir)
-        .expect("RB_RBM_DIR is not readable")
+    let cd = rb_testkit::cd_files()?;
+    let mut mods: Vec<PathBuf> = std::fs::read_dir(&cd.orig_mods)
+        .expect("the extracted mods are not readable")
         .map(|e| e.unwrap().path())
         .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rbm")))
         .collect();
     mods.sort();
-    assert!(!mods.is_empty(), "no .rbm in RB_RBM_DIR");
-    Some((dat, mods))
+    assert_eq!(mods.len(), 4, "the four shipped mods");
+    Some((cd.dat.clone(), mods))
 }
 
 /// `tools/rbm.py extract` of the mod into a fresh directory, or None when python is missing.
@@ -618,11 +610,10 @@ fn recrypt_limits_and_coverage() {
 #[test]
 fn embedded_window_is_the_dats() {
     use sha2::{Digest, Sha256};
-    let Some(dat) = env_path("RB_RB20FUL") else {
-        eprintln!("skipped: RB_RB20FUL is not set");
+    let Some(cd) = rb_testkit::cd_files() else {
         return;
     };
-    let bytes = std::fs::read(dat).unwrap();
+    let bytes = std::fs::read(&cd.dat).unwrap();
     assert_eq!(bytes.len() as u64, DAT_HEADER + DAT_BODY);
     let w = embedded::WINDOW as usize;
     assert_eq!(
@@ -669,22 +660,26 @@ fn real_mods_recrypt() {
     recrypt_all(&dat, &mods);
 }
 
-/// The user's third-party collection (`RB_THIRDPARTY_DIR`, docs/rbm.md section 11), read in
-/// place: every ORIGINAL mod (`Mods.orig/`; `Mods/` holds the recrypted ones since task-063)
-/// recrypts and keeps every file and sample.
+/// The real-file tests of `tools/rbm_test.py` (the key file's stride pages, the shipped mods'
+/// key pages, every descrambled file valid), run here with the files of the CD image: the
+/// script takes their paths from `RBM_TEST_DAT` and `RBM_TEST_MODS`, which this test sets for
+/// the child process only.
 #[test]
-fn thirdparty_mods_recrypt() {
-    let (Some(dat), Some(dir)) = (env_path("RB_RB20FUL"), env_path("RB_THIRDPARTY_DIR")) else {
-        eprintln!("skipped: RB_RB20FUL and RB_THIRDPARTY_DIR are not both set");
+fn the_python_tool_tests_pass_on_the_real_files() {
+    let Some(cd) = rb_testkit::cd_files() else {
         return;
     };
-    let dir = Path::new(&dir).join("Mods.orig");
-    let mut mods: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rbm")))
-        .collect();
-    mods.sort();
-    recrypt_all(Path::new(&dat), &mods);
-    eprintln!("{} third-party mods recrypted", mods.len());
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let o = python::python()
+        .current_dir(&root)
+        .args(["-W", "error::ResourceWarning", "-m", "unittest"])
+        .args(["discover", "-s", "tools", "-p", "rbm_test.py"])
+        .env("RBM_TEST_DAT", &cd.dat)
+        .env("RBM_TEST_MODS", &cd.orig_mods)
+        .output()
+        .expect("cannot run python for tools/rbm_test.py");
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(o.status.success(), "{err}");
+    // the real-file classes ran (they are not skipped)
+    assert!(!err.contains("skipped"), "{err}");
 }

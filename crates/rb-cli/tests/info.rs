@@ -1,5 +1,6 @@
 //! `rb info` (task-122): the text form, `--json`'s keys, the errors, a ReBirth 1.x song and the
-//! mod resolution (gated on `RB_MOD_DIR`, the folder of the recrypted mods).
+//! mod resolution (gated on `RB_CD_ISO`: the recrypted shipped mods come out of the image, by
+//! `rb-testkit`).
 
 mod common;
 
@@ -278,8 +279,7 @@ fn mod_resolution_without_and_with_a_folder() {
 
 #[test]
 fn mod_resolved_in_rb_mod_dir() {
-    let Some(dir) = common::env_path("RB_MOD_DIR") else {
-        eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+    let Some(dir) = rb_testkit::recrypted_mods().map(Path::to_path_buf) else {
         return;
     };
     let song = root().join("tests/songs/shipped/Alloy Cowboy Resurrection.rbs");

@@ -5,14 +5,15 @@
 //!
 //! The mods are Propellerhead material and are not in the repository. Since task-063 rb loads
 //! only RECRYPTED mods (`rb mod recrypt`, task-059) and the song tests read no RB20FUL.DAT: they
-//! need `RB_MOD_DIR`, the folder of the recrypted .rbm files (same file names as the originals),
-//! and skip with a message when it is unset. A recrypted mod is the original plus a 1024-byte
-//! pad, so each file is checked against the name and the size the entry records (+ 1032 bytes:
-//! the pad chunk), and its INFO name against the song's.
+//! need the four recrypted shipped mods, which `rb-testkit` makes from the CD image
+//! (`RB_CD_ISO`; task-121) and checks against their pinned SHA-256s, and skip with a message
+//! when it is unset. A recrypted mod is the original plus a 1024-byte pad, so each file is
+//! checked against the name and the size the entry records (+ 1032 bytes: the pad chunk), and
+//! its INFO name against the song's.
 //!
-//! One test still runs the recrypt: with `RB_MOD_ORIG_DIR` (the original, non-recrypted mods)
-//! and `RB_RB20FUL` it recrypts each original in process, requires the bytes to equal the file
-//! in `RB_MOD_DIR`, checks the original against the sha256 the entry records, and renders the
+//! One test still runs the recrypt: with the original, non-recrypted mods and the key file of
+//! the same image it recrypts each original in process, requires the bytes to equal the
+//! recrypted file, checks the original against the sha256 the entry records, and renders the
 //! songs with the result.
 //!
 //! The renders are long (41 minutes of audio for the 8), so the tests are ignored in debug
@@ -36,24 +37,15 @@ use serde_json::Value;
 /// A recrypted mod is the original plus the pad chunk: 8 bytes of header, 1024 of payload.
 const PAD_CHUNK: u64 = 1032;
 
+/// The recrypted shipped mods, from the CD image (`RB_CD_ISO`).
 fn mod_dir() -> Option<PathBuf> {
-    let dir = common::env_path("RB_MOD_DIR");
-    if dir.is_none() {
-        eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
-    }
-    dir
+    rb_testkit::recrypted_mods().map(Path::to_path_buf)
 }
 
-/// The originals and the key file of the recrypt test.
+/// The originals and the key file of the recrypt test, from the CD image.
 fn orig_env() -> Option<(PathBuf, PathBuf)> {
-    let (Some(dir), Some(dat)) = (
-        common::env_path("RB_MOD_ORIG_DIR"),
-        common::env_path("RB_RB20FUL"),
-    ) else {
-        eprintln!("skipped: RB_MOD_ORIG_DIR and RB_RB20FUL are not both set");
-        return None;
-    };
-    Some((dir, dat))
+    let cd = rb_testkit::cd_files()?;
+    Some((cd.orig_mods.clone(), cd.dat.clone()))
 }
 
 /// Renders the entry with its recrypted mod's samples (loaded with the embedded key bytes
@@ -165,8 +157,8 @@ fn modapp_exports_match_at_their_fitted_n() {
     check_set("modapp", 3, false);
 }
 
-/// `rbm::recrypt` of the original mods (RB_MOD_ORIG_DIR, RB_RB20FUL) gives the files of
-/// RB_MOD_DIR, and the 8 mod songs render equal with them.
+/// `rbm::recrypt` of the original mods (from the CD image) gives the recrypted files, and the 8
+/// mod songs render equal with them.
 #[test]
 #[cfg_attr(
     debug_assertions,

@@ -19,3 +19,5 @@ claxon = "0.4.3"
 # The corpus tests' built-in samples: the kit rb embeds (rbm::standard, task-067). A
 # dev-dependency cycle (rbm depends on rb-engine), used by the integration tests only.
 rbm = { path = "../rbm" }
+# The gated tests' external inputs (task-121): the DLL from the CD image. Another cycle.
+rb-testkit = { path = "../rb-testkit" }

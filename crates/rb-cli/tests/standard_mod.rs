@@ -2,8 +2,8 @@
 //! committed `assets/Standard.rbm` it reproduces, and the kit rb embeds, which render, compare
 //! and play use with no option, variable or file of the original.
 //!
-//! The tests that build the mod need `original/` (and the reproduction the CD's Rebirth.exe,
-//! named by `RB_CD_REBIRTH_EXE`); they skip without them.
+//! The tests that build the mod need the CD's `ReBirth.dll` and `Rebirth.exe`, which
+//! `rb-testkit` takes from the CD image (`RB_CD_ISO`); they skip without it.
 
 mod common;
 
@@ -11,7 +11,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use common::{env_path, original, root, standard_mod};
+use common::{original, root, standard_mod};
 use sha2::{Digest, Sha256};
 
 /// The SHA-256 of the CD's Rebirth.exe (docs/rbm.md 13.1), the splash of assets/Standard.rbm.
@@ -63,30 +63,12 @@ fn sha256(b: &[u8]) -> String {
 }
 
 /// `rb mod pack-standard` with the CD's Rebirth.exe gives assets/Standard.rbm byte for byte.
-/// Gated: `RB_CD_REBIRTH_EXE` names the CD's Rebirth.exe (SHA-256 e69fef41...), or `RB_CD_ISO`
-/// the CD image it is read from (task-065), and
-/// `original/ReBirth.dll` is there.
+/// Gated: `RB_CD_ISO` names the CD image; its `ReBirth.dll` and `Rebirth.exe` (SHA-256
+/// e69fef41...) are taken from it by `rb-testkit`.
 #[test]
 fn the_command_reproduces_the_committed_mod() {
     let dir = tempfile::tempdir().unwrap();
-    // the exe: the file named by the variable, else the one inside the CD image (RB_CD_ISO)
-    let exe = match (env_path("RB_CD_REBIRTH_EXE"), env_path("RB_CD_ISO")) {
-        (Some(exe), _) => exe,
-        (None, Some(iso)) => {
-            let mut cd = rb_cli::cd::CdImage::open(&iso).unwrap();
-            let bytes = cd.installer().unwrap().read("Rebirth.exe").unwrap();
-            let p = dir.path().join("Rebirth.exe");
-            std::fs::write(&p, bytes).unwrap();
-            p
-        }
-        (None, None) => {
-            eprintln!(
-                "skipped: RB_CD_REBIRTH_EXE (the CD's Rebirth.exe) and RB_CD_ISO are not set"
-            );
-            return;
-        }
-    };
-    let Some(dll) = original("ReBirth.dll") else {
+    let (Some(dll), Some(exe)) = (original("ReBirth.dll"), original("Rebirth.exe")) else {
         return;
     };
     assert_eq!(sha256(&std::fs::read(&exe).unwrap()), CD_EXE_SHA256);

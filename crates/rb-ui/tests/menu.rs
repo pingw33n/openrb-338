@@ -3,7 +3,8 @@
 //! Vintage flag change and are saved, and the unsaved-changes prompt guards opening and closing.
 //!
 //! The drum machines play the built-in kit rb embeds (`assets/Standard.rbm`). The mod tests
-//! need a folder of recrypted mods (`RB_MOD_DIR`); they skip when it is not set.
+//! need the recrypted shipped mods, which `rb-testkit` makes from the CD image (`RB_CD_ISO`);
+//! they skip when it is not set.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -38,26 +39,14 @@ fn samples() -> Arc<SampleSet> {
     rbm::standard::builtin_samples()
 }
 
-/// A path from the environment; a relative one is relative to the workspace root (cargo runs
-/// the tests in the crate's directory).
-fn env_path(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name)
-        .filter(|v| !v.is_empty())
-        .map(|v| root().join(v))
-}
-
 /// The standard mod rb embeds, as a file: `assets/Standard.rbm`.
 fn standard_mod() -> PathBuf {
     root().join("assets/Standard.rbm")
 }
 
-/// A recrypted mod of `RB_MOD_DIR`, or a skip.
+/// A recrypted shipped mod (made from the CD image, `RB_CD_ISO`, by `rb-testkit`), or a skip.
 fn mod_file(name: &str) -> Option<PathBuf> {
-    let p = env_path("RB_MOD_DIR").map(|d| d.join(name));
-    if p.is_none() {
-        eprintln!("skipped: RB_MOD_DIR is not set");
-    }
-    p
+    rb_testkit::recrypted_mods().map(|d| d.join(name))
 }
 
 fn songs(dir: &str) -> Vec<PathBuf> {
@@ -2174,13 +2163,13 @@ fn a_1x_song_with_unsorted_imports_saves_and_reopens_the_same() {
     assert!(h2.app.notice.is_none(), "{:?}", h2.app.notice);
 }
 
-/// task-125, gated on `RB_THIRDPARTY_DIR` (the user's collection, read in place): every ReBirth
-/// 1.x song of `songs/` saves (the composed song writes), and Razor Topz.RBS, the song of the
-/// report, also after a change to Pitch Black Edition 2.0 (`PBE2.rbm` of `RB_MOD_DIR`).
+/// task-125, gated on `RB_THIRDPARTY_SONGS_DIR` (the user's songs, read in place): every ReBirth
+/// 1.x song of the folder saves (the composed song writes), and Razor Topz.RBS, the song of the
+/// report, also after a change to Pitch Black Edition 2.0 (`PBE2.rbm`, recrypted from the CD
+/// image by `rb-testkit`).
 #[test]
 fn every_1x_song_of_the_collection_saves() {
-    let Some(dir) = env_path("RB_THIRDPARTY_DIR").map(|d| d.join("songs")) else {
-        eprintln!("skipped: RB_THIRDPARTY_DIR is not set");
+    let Some(dir) = rb_testkit::thirdparty_songs() else {
         return;
     };
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)

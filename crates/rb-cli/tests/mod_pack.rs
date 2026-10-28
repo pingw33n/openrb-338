@@ -1,15 +1,15 @@
 //! `rb mod unpack` and `rb mod pack` (task-097): the round trip of the standard mod (the
-//! committed `assets/Standard.rbm`, task-067) and of the recrypted mods in `RB_MOD_DIR`
-//! (skipped when unset), an edited file, pack's errors, the refusal of a mod that is not
-//! recrypted, and the old command names gone. The shipped mods are not committed: they are read
-//! at run time.
+//! committed `assets/Standard.rbm`, task-067) and of the four recrypted shipped mods (from the
+//! CD image, `RB_CD_ISO`, by `rb-testkit`; skipped when unset), an edited file, pack's errors, the
+//! refusal of a mod that is not recrypted, and the old command names gone. The shipped mods are not
+//! committed: they are read at run time.
 
 mod common;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use common::{env_path, standard_mod};
+use common::standard_mod;
 use sha2::{Digest, Sha256};
 
 fn rb(args: &[&str], paths: &[&Path]) -> Output {
@@ -79,8 +79,7 @@ fn the_standard_mod_round_trips() {
 
 #[test]
 fn recrypted_mods_round_trip() {
-    let Some(mods) = env_path("RB_MOD_DIR") else {
-        eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+    let Some(mods) = rb_testkit::recrypted_mods() else {
         return;
     };
     let mut n = 0;
@@ -92,7 +91,7 @@ fn recrypted_mods_round_trip() {
             n += 1;
         }
     }
-    assert!(n > 0, "no .rbm in RB_MOD_DIR");
+    assert_eq!(n, 4, "the four recrypted shipped mods");
     eprintln!("round trip of {n} recrypted mods ran");
 }
 

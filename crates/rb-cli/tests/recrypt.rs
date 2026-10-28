@@ -5,8 +5,11 @@
 //! whose two key pages for each synthetic mod hold bytes that are a function of the offset. It
 //! is not the CD's file, so those tests give `run` the stand-in's own SHA-256 (the option exists
 //! for this); the wrong-hash tests give it the real one. The real key file is the gated test
-//! (`RB_RB20FUL` and `RB_MOD_ORIG_DIR`); the recrypted shipped mods (`RB_MOD_DIR`) are the gated
-//! test of the already-recrypted path, which needs no key file.
+//! (`RB_CD_ISO`: the key file and the original shipped mods come out of the image, by
+//! `rb-testkit`, and the result is checked against the pinned SHA-256s of the recrypted mods);
+//! those recrypted mods are the gated test of the already-recrypted path, which needs no key
+//! file. `crates/rbm/tests/recrypt_python.rs` recrypts more shapes of mod and checks them with
+//! `tools/rbm.py`.
 
 mod common;
 
@@ -15,7 +18,6 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use common::env_path;
 use rb_cli::recrypt::{Options, Outcome, Report, run};
 use rbm::{DAT_BODY, DAT_HEADER, DAT_MAGIC, KeyTable, Rbm, embedded};
 
@@ -627,11 +629,11 @@ fn a_failed_run_creates_no_output_folder() {
     assert!(named.is_file());
 }
 
-/// The recrypted shipped mods (`RB_MOD_DIR`) are recrypted: copied unchanged, no key file.
+/// The recrypted shipped mods (from the CD image, `RB_CD_ISO`) are recrypted: copied unchanged,
+/// no key file.
 #[test]
 fn the_recrypted_shipped_mods_pass_the_checks() {
-    let Some(dir) = env_path("RB_MOD_DIR") else {
-        eprintln!("skipped: RB_MOD_DIR (the recrypted mods) is not set");
+    let Some(dir) = rb_testkit::recrypted_mods().map(Path::to_path_buf) else {
         return;
     };
     let tmp = tempfile::tempdir().unwrap();
@@ -655,15 +657,15 @@ fn the_recrypted_shipped_mods_pass_the_checks() {
     eprintln!("{} recrypted mods checked and copied", r.results.len());
 }
 
-/// Gated (RB_RB20FUL, the CD's file, and RB_MOD_ORIG_DIR, the original shipped mods): bulk over
-/// the originals equals recrypting each alone, hashes the key file once, and equals the
-/// recrypted mods of `RB_MOD_DIR` when that is set.
+/// Gated (`RB_CD_ISO`: the CD's key file and the original shipped mods are taken from it): bulk
+/// over the originals equals recrypting each alone, hashes the key file once, and gives the
+/// pinned SHA-256s of the recrypted mods (docs/test_machine.md 7).
 #[test]
 fn shipped_mods_bulk_equals_single_with_the_real_key_file() {
-    let (Some(orig), Some(dat)) = (env_path("RB_MOD_ORIG_DIR"), env_path("RB_RB20FUL")) else {
-        eprintln!("skipped: RB_MOD_ORIG_DIR and RB_RB20FUL are not both set");
+    let Some(cd) = rb_testkit::cd_files() else {
         return;
     };
+    let (orig, dat) = (cd.orig_mods.clone(), cd.dat.clone());
     let tmp = tempfile::tempdir().unwrap();
     let out = tmp.path().join("bulk");
     let o = Options {
@@ -696,12 +698,14 @@ fn shipped_mods_bulk_equals_single_with_the_real_key_file() {
             std::fs::read(&one).unwrap() == bulk,
             "{name:?}: bulk != single"
         );
-        if let Some(refs) = env_path("RB_MOD_DIR") {
-            assert!(
-                std::fs::read(refs.join(name)).unwrap() == bulk,
-                "{name:?}: != RB_MOD_DIR"
-            );
-        }
+        let pinned = rb_testkit::RECRYPTED_MODS
+            .iter()
+            .find(|(m, _)| std::ffi::OsStr::new(m) == name);
+        assert_eq!(
+            Some(rb_testkit::sha256_hex(&bulk).as_str()),
+            pinned.map(|p| p.1),
+            "{name:?}: != the pinned SHA-256"
+        );
     }
     eprintln!(
         "{} shipped mods: bulk equals single, one hash",

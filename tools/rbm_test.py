@@ -1,10 +1,13 @@
 """Tests of tools/rbm.py: /usr/bin/python3 -m unittest tools/rbm_test.py
 
-The synthetic tests build a mod and a sparse RB20FUL.DAT stand-in. The tests on real files read
-them from the environment and skip with a message when it is not set (Propellerhead material is
-never committed):
-    RB_RB20FUL   path of RB20FUL.DAT from the ReBirth CD
-    RB_RBM_DIR   a folder with the shipped mods (PBE2.rbm, MSM2.rbm, Metallicon.rbm, Orbit2.rbm)
+The synthetic tests build a mod and a sparse RB20FUL.DAT stand-in. The tests on real files skip
+with a message unless the environment names them (Propellerhead material is never committed). The
+user does not set these two variables: the cargo test `the_python_tool_tests_pass_on_the_real_files`
+(crates/rbm/tests/rbm.rs) sets them for this script, with the files it takes out of the CD image
+(`RB_CD_ISO`; task-121):
+    RBM_TEST_DAT    path of RB20FUL.DAT from the ReBirth CD
+    RBM_TEST_MODS   a folder with the shipped mods (PBE2.rbm, MSM2.rbm, Metallicon.rbm,
+                    Orbit2.rbm), as shipped (not recrypted)
 """
 import glob
 import os
@@ -221,14 +224,14 @@ class Container(unittest.TestCase):
         self.assertEqual(y, {8: 0x4000})
 
 
-DAT = os.environ.get("RB_RB20FUL")
-MODS = os.environ.get("RB_RBM_DIR")
+DAT = os.environ.get("RBM_TEST_DAT")
+MODS = os.environ.get("RBM_TEST_MODS")
 # The key pages of the shipped mods (RB20FUL.DAT offsets), from the mods' own bytes (task-030).
 PAGES = {"PBE2.rbm": [118280160, 44302526], "MSM2.rbm": [8878154, 9419548],
          "Metallicon.rbm": [17382559, 49264678], "Orbit2.rbm": [39986275, 69184465]}
 
 
-@unittest.skipUnless(DAT, "RB_RB20FUL not set: no RB20FUL.DAT to check")
+@unittest.skipUnless(DAT, "RBM_TEST_DAT not set: no RB20FUL.DAT to check")
 class RealDat(unittest.TestCase):
     def test_stride_is_4_on_every_page(self):
         # docs/rbm.md 5.2: the parent-window page unk_4DAD78 cancels the API value on every page
@@ -237,11 +240,11 @@ class RealDat(unittest.TestCase):
         self.assertEqual(y, {8: 0x4000})
 
 
-@unittest.skipUnless(MODS, "RB_RBM_DIR not set: no real mods to test")
+@unittest.skipUnless(MODS, "RBM_TEST_MODS not set: no real mods to test")
 class RealMods(unittest.TestCase):
     def mods(self):
         paths = sorted(glob.glob(os.path.join(MODS, "*.rbm")))
-        self.assertTrue(paths, "no .rbm in RB_RBM_DIR")
+        self.assertTrue(paths, "no .rbm in RBM_TEST_MODS")
         return paths
 
     def test_pages(self):
@@ -250,7 +253,7 @@ class RealMods(unittest.TestCase):
             if name in PAGES:
                 self.assertEqual(rbm.key_pages(rbm.read(path)), PAGES[name], name)
 
-    @unittest.skipUnless(DAT, "RB_RB20FUL not set: cannot descramble")
+    @unittest.skipUnless(DAT, "RBM_TEST_DAT not set: cannot descramble")
     def test_descrambled_files_are_valid(self):
         for path in self.mods():
             r = rbm.read(path)

@@ -20,5 +20,7 @@ rubato = { version = "5.0.1", default-features = false }
 rbs = { path = "../rbs" }
 # The recrypted mods of the mod-change sessions (tests/live_messages.rs).
 rbm = { path = "../rbm" }
+# The gated tests' external inputs (task-121).
+rb-testkit = { path = "../rb-testkit" }
 serde_json = "1"
 sha2 = "0.10"

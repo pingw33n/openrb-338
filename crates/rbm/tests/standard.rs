@@ -1,23 +1,21 @@
 //! The standard mod (task-036): the embedded `assets/Standard.rbm` (task-067), and the mod
-//! built from `original/ReBirth.dll` and `original/Rebirth.exe` when they are there (nothing
-//! of them is written to the repository; the built mod lives in memory). The tests that need
-//! `original/` skip without it.
-
-use std::path::PathBuf;
+//! built from the CD's `ReBirth.dll` and `Rebirth.exe` (taken from the CD image, `RB_CD_ISO`, by
+//! `rb-testkit`; nothing of them is written to the repository, and the built mod lives in
+//! memory). The tests that need them skip without the image.
 
 use rb_engine::samples::{self, SampleSet, pe};
 use rbm::*;
 
-/// A file of `original/`, or `None` (a skip) when it is not there.
+/// `ReBirth.dll` or `Rebirth.exe` of the CD image (`RB_CD_ISO`, by `rb-testkit`), or `None` (a
+/// skip with the message) when it is not set.
 fn original(name: &str) -> Option<Vec<u8>> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../original")
-        .join(name);
-    let b = std::fs::read(&p).ok();
-    if b.is_none() {
-        eprintln!("skipped: {} is not there", p.display());
-    }
-    b
+    let cd = rb_testkit::cd_files()?;
+    let p = match name {
+        "ReBirth.dll" => &cd.dll,
+        "Rebirth.exe" => &cd.exe,
+        _ => panic!("{name}: not a file of the CD helper"),
+    };
+    Some(std::fs::read(p).unwrap())
 }
 
 /// The layout every standard mod has (docs/rbm.md 13.2), whatever exe it was built from.

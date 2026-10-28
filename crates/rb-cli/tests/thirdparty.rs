@@ -1,23 +1,31 @@
-//! The check of a third-party collection of mods and songs (task-058): the user's own files,
-//! read in place and never in the repository. Set `RB_THIRDPARTY_DIR` to a folder with `Mods/`
-//! (the RECRYPTED `.rbm` files, `rb mod recrypt`; task-063) and `songs/` (`.rbs` files, any name);
-//! the `mods` test also needs `Mods.orig/` (the originals, same file names) and `RB_RB20FUL`
-//! (the CD's RB20FUL.DAT) for its reference. Each test skips with a message when its inputs are
-//! unset. Run it in release, with the summary shown:
+//! The check of a third-party collection of mods and songs (task-058, task-121): the user's own
+//! files, read in place and never in the repository. Two variables name them, and each test
+//! skips with a message when its input is not set:
+//!
+//! - `RB_THIRDPARTY_MODS_DIR`: a folder of the RECRYPTED `.rbm` files (`rb mod recrypt`; task-063),
+//!   for the `mods` test, and for the `songs` test's mod resolution when it is set;
+//! - `RB_THIRDPARTY_SONGS_DIR`: a folder of songs (`.rbs` files, any name), for the `songs` test.
+//!
+//! Run it in release, with the summary shown:
 //!
 //! ```text
-//! RB_THIRDPARTY_DIR=~/rb_stuff RB_RB20FUL=.../RB20FUL.DAT \
+//! RB_THIRDPARTY_MODS_DIR=~/rb_stuff/Mods RB_THIRDPARTY_SONGS_DIR=~/rb_stuff/songs \
 //!     cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1
 //! ```
 //!
 //! - `mods`: every recrypted `.rbm` through `crates/rbm` (parse, the embedded key bytes, every
-//!   embedded file, the 46 slots with the built-in fallback), compared with `tools/rbm.py check-dir
-//!   --json` over the ORIGINALS and the DAT: the same SHA-256 for every embedded file and the same
-//!   channel-0 PCM for every slot.
+//!   embedded file, the 46 slots with the built-in fallback), compared with the committed manifest
+//!   `tests/refs/thirdparty_mods.json`: the SHA-256 of the recrypted file, of every embedded file
+//!   and of every slot's channel-0 PCM, as `tools/rbm.py` decoded them from the ORIGINAL mods with
+//!   the CD's RB20FUL.DAT. The manifest holds only hashes and names. To regenerate it (only when
+//!   the collection changes), the originals and the key file are arguments of the tool, not
+//!   variables of the test: `tools/thirdparty_mods_manifest.py --orig MODS.ORIG --mods MODS --dat
+//!   RB20FUL.DAT`.
 //! - `songs`: every distinct song (by SHA-256): an RBS 4.2 song is read and written back
-//!   (byte-identical) and rendered with `rb render --mod-dir DIR/Mods --standard-kit`, its mod
-//!   resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`, task-060) is rendered
-//!   too, and its import's message stream (`rb_engine::load::load_1x`) must equal
+//!   (byte-identical) and rendered with `rb render --mod-dir DIR --standard-kit` (DIR is
+//!   `RB_THIRDPARTY_MODS_DIR` when it is set; without it no mod is found and the test says so), its
+//!   mod resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`, task-060) is
+//!   rendered too, and its import's message stream (`rb_engine::load::load_1x`) must equal
 //!   `tools/rb1x.py`'s. No song may panic.
 
 mod common;
@@ -34,26 +42,23 @@ use rb_engine::samples::{self, Sample, SampleSet};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+/// The inputs of the `songs` test.
 struct Env {
-    /// The recrypted mods (`Mods/`): what rb loads.
-    mods: PathBuf,
-    /// The originals (`Mods.orig/`), with `dat`: the reference of the `mods` test only.
-    orig: PathBuf,
+    /// The recrypted mods: what rb loads, when the folder is given.
+    mods: Option<PathBuf>,
     songs: PathBuf,
-    dat: Option<PathBuf>,
 }
 
 fn env() -> Option<Env> {
-    let Some(dir) = common::env_path("RB_THIRDPARTY_DIR") else {
-        eprintln!("skipped: RB_THIRDPARTY_DIR is not set");
-        return None;
-    };
-    Some(Env {
-        mods: dir.join("Mods"),
-        orig: dir.join("Mods.orig"),
-        songs: dir.join("songs"),
-        dat: common::env_path("RB_RB20FUL"),
-    })
+    let songs = rb_testkit::thirdparty_songs()?;
+    let mods = common::env_path("RB_THIRDPARTY_MODS_DIR");
+    if mods.is_none() {
+        eprintln!(
+            "note: RB_THIRDPARTY_MODS_DIR is not set: the songs' mods are not resolved \
+             (the built-in kit plays instead)"
+        );
+    }
+    Some(Env { mods, songs })
 }
 
 fn hex(b: &[u8]) -> String {
@@ -74,30 +79,31 @@ fn builtin() -> SampleSet {
 
 #[test]
 fn mods() {
-    let Some(e) = env() else { return };
-    let Some(dat) = e.dat.clone().filter(|_| e.orig.is_dir()) else {
-        eprintln!("skipped: RB_RB20FUL is not set or RB_THIRDPARTY_DIR/Mods.orig is missing");
+    let Some(dir) = rb_testkit::thirdparty_mods() else {
         return;
     };
-    let out = python::python()
-        .arg(root().join("tools/rbm.py"))
-        .arg("check-dir")
-        .arg(&e.orig)
-        .arg(&dat)
-        .arg("--json")
-        .output()
-        .expect("cannot run tools/rbm.py");
-    let reference: Vec<Value> =
-        serde_json::from_slice(&out.stdout).expect("rbm.py check-dir --json output");
-    assert!(!reference.is_empty(), "no .rbm in {}", e.mods.display());
+    let manifest: Value = serde_json::from_slice(
+        &std::fs::read(root().join("tests/refs/thirdparty_mods.json")).unwrap(),
+    )
+    .expect("tests/refs/thirdparty_mods.json");
+    let reference = manifest["mods"].as_array().unwrap();
+    assert!(!reference.is_empty(), "the manifest has no mod");
 
     let bi = builtin();
     let (mut ok, mut failed, mut partial, mut files_checked, mut slots_checked) = (0, 0, 0, 0, 0);
     let mut problems = Vec::new();
-    for m in &reference {
+    for m in reference {
         let file = m["file"].as_str().unwrap();
-        let path = e.mods.join(file);
-        let parsed = rbm::Rbm::parse(std::fs::read(&path).unwrap());
+        let path = dir.join(file);
+        let Ok(bytes) = std::fs::read(&path) else {
+            problems.push(format!("{file}: not in {}", dir.display()));
+            continue;
+        };
+        if hex(&bytes) != m["sha256"].as_str().unwrap() {
+            problems.push(format!("{file}: differs from the manifest's SHA-256"));
+            continue;
+        }
+        let parsed = rbm::Rbm::parse(bytes);
         let py_err = m["error"].as_str();
         let rbm = match (parsed, py_err) {
             (Err(err), Some(pe)) => {
@@ -137,7 +143,7 @@ fn mods() {
         assert_eq!(ours.len(), py_files.len(), "{file}: EMBF count");
         for (c, p) in ours.iter().zip(py_files) {
             let b = rbm.file(c, &table).unwrap();
-            if c.name.as_deref() != p["name"].as_str() || hex(&b) != p["sha256"] {
+            if c.name.as_deref() != p[0].as_str() || hex(&b) != p[1] {
                 problems.push(format!("{file}: {:?} differs from rbm.py", c.name));
             }
             files_checked += 1;
@@ -145,13 +151,14 @@ fn mods() {
 
         // The 46 slots: the mod's where rbm.py found one, the built-in sample elsewhere.
         let slots = m["slots"].as_object().unwrap();
+        let slot_errors = m["slot_errors"].as_object().unwrap();
         match rbm.load_samples(&table, &bi) {
             Err(err) => problems.push(format!("{file}: load_samples: {err}")),
             Ok(l) => {
                 for id in samples::FIRST_ID..=samples::LAST_ID {
                     let sname = rbm::slot_name(id).unwrap();
-                    match slots.get(sname) {
-                        Some(s) if s.get("error").is_none() => {
+                    match (slots.get(sname), slot_errors.get(sname)) {
+                        (Some(sha), _) => {
                             let pcm: Vec<u8> = l
                                 .set
                                 .get(id)
@@ -159,16 +166,15 @@ fn mods() {
                                 .iter()
                                 .flat_map(|x| x.to_be_bytes())
                                 .collect();
-                            if !l.is_from_mod(id) || hex(&pcm) != s["sha256"] {
+                            if !l.is_from_mod(id) || hex(&pcm) != *sha {
                                 problems.push(format!("{file}: slot {sname} differs from rbm.py"));
                             }
                             slots_checked += 1;
                         }
-                        Some(s) => problems.push(format!(
-                            "{file}: rb loads {sname}, rbm.py says {}",
-                            s["error"]
-                        )),
-                        None => {
+                        (None, Some(why)) => {
+                            problems.push(format!("{file}: rb loads {sname}, rbm.py says {why}"))
+                        }
+                        (None, None) => {
                             if l.is_from_mod(id) || l.set.get(id) != bi.get(id) {
                                 problems.push(format!("{file}: slot {sname} should be built in"));
                             }
@@ -177,30 +183,43 @@ fn mods() {
                 }
             }
         }
-        let notes: Vec<&str> = m["notes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(Value::as_str)
-            .collect();
-        if slots.len() < samples::COUNT {
+        if slots.len() + slot_errors.len() < samples::COUNT {
             partial += 1;
         }
         println!(
-            "OK   {file}: {:?}, {} files, {}/46 slots{}{}",
+            "OK   {file}: {:?}, {} files, {}/46 slots",
             name.unwrap_or_default(),
             ours.len(),
-            slots.len(),
-            if notes.is_empty() { "" } else { "; " },
-            notes.join("; ")
+            slots.len() + slot_errors.len(),
         );
         ok += 1;
     }
+    // a mod of the folder the manifest does not know: the collection grew, regenerate the
+    // manifest (tools/thirdparty_mods_manifest.py)
+    let known: std::collections::HashSet<&str> = reference
+        .iter()
+        .map(|m| m["file"].as_str().unwrap())
+        .collect();
+    let mut extra: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|f| f.to_ascii_lowercase().ends_with(".rbm") && !known.contains(f.as_str()))
+        .collect();
+    extra.sort();
     println!(
         "mods: {} checked, {ok} load, {failed} fail; {partial} keep built-in slots; \
-         {files_checked} embedded files and {slots_checked} slots equal rbm.py's",
+         {files_checked} embedded files and {slots_checked} slots equal the manifest's",
         reference.len()
     );
+    if !extra.is_empty() {
+        problems.push(format!(
+            "{} .rbm in the folder are not in tests/refs/thirdparty_mods.json (regenerate it \
+             with tools/thirdparty_mods_manifest.py): {}",
+            extra.len(),
+            extra.join(", ")
+        ));
+    }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
@@ -254,7 +273,7 @@ fn resolution(mods: &[(String, Option<String>)], name: &str) -> String {
 #[test]
 fn songs() {
     let Some(e) = env() else { return };
-    let mods = info_names(&e.mods);
+    let mods = e.mods.as_deref().map(info_names).unwrap_or_default();
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&e.songs)
         .unwrap()
         .map(|x| x.unwrap().path())
@@ -350,16 +369,14 @@ fn check_song(
     } else if !data.starts_with(b"MThd") {
         return ("OTHER".into(), "neither RBS 4.2 nor a MIDI file".into());
     }
-    let o = Command::new(env!("CARGO_BIN_EXE_rb"))
-        .arg("render")
-        .arg(path)
-        .arg("-o")
-        .arg(out)
-        .arg("--mod-dir")
-        .arg(&e.mods)
-        .arg("--standard-kit")
-        .output()
-        .unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_rb"));
+    cmd.arg("render").arg(path).arg("-o").arg(out);
+    match &e.mods {
+        Some(mods) => cmd.arg("--mod-dir").arg(mods),
+        // no mod folder: the mod of the child's own environment must not matter
+        None => cmd.env_remove("RB_MOD_DIR").env_remove("RB_RBM_DIR"),
+    };
+    let o = cmd.arg("--standard-kit").output().unwrap();
     let stderr = String::from_utf8_lossy(&o.stderr);
     let warnings: Vec<&str> = stderr
         .lines()

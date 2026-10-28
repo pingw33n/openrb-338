@@ -15,8 +15,8 @@
 //! Out of this file: the 8 shipped songs that use another mod than "Standard ReBirth" (the sets
 //! `mod`, rbhost with the mod, and `modapp`, 3 app exports; task-031) are checked by
 //! `crates/rb-cli/tests/corpus_mods.rs` (task-033), which needs the `rbm` crate and the user's
-//! recrypted `.rbm` files (`RB_MOD_DIR`; task-063). The two pattern-mode Default Songs
-//! cannot be exported (`docs/test_machine.md` section 8).
+//! recrypted shipped mods (made from the CD image, `RB_CD_ISO`, by `rb-testkit`; task-121). The two
+//! pattern-mode Default Songs cannot be exported (`docs/test_machine.md` section 8).
 //! `shipped_songs_out_of_the_corpus_are_mod_or_pattern_mode` checks that these are the only songs
 //! left out of `shipped`, and that each modded one is in `mod`.
 //!

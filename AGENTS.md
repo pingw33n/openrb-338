@@ -131,7 +131,24 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, 
   so `render`, `compare`, `play` and OpenRB-338 (the UI) need no kit option, variable or file
   (`--standard-mod` and `RB_STANDARD_MOD` are gone). `rb mod pack-standard --rebirth-dll
   original/ReBirth.dll --rebirth-exe CD-Rebirth.exe -o assets/Standard.rbm` rebuilds it byte for
-  byte (the one command that reads ReBirth.dll and Rebirth.exe; the gated test takes
-  `RB_CD_REBIRTH_EXE`; docs/rbm.md 13).
+  byte (the one command that reads ReBirth.dll and Rebirth.exe; `--iso` reads them from the CD
+  image, and the gated test takes them from it; docs/rbm.md 13).
+- External test inputs: the tests read exactly three variables, and every test that needs one
+  skips with a message when it is not set (CI sets none). `RB_CD_ISO` is the ReBirth 2.01 CD
+  image: the crate `rb-testkit` takes from it, once per test process, the DAT, `ReBirth.dll`,
+  `Rebirth.exe` and the four shipped mods (each checked against its pinned SHA-256) and the four
+  mods recrypted (pinned too), so no test needs `original/`, `RB20FUL.DAT` or a mod folder.
+  `RB_THIRDPARTY_MODS_DIR` is the user's folder of RECRYPTED third-party mods and
+  `RB_THIRDPARTY_SONGS_DIR` the user's folder of songs, both read in place (docs/rbm.md 11):
+  `cargo test --release -p rb-cli --test thirdparty -- --nocapture`. The mods test checks the
+  folder against the committed hash manifest `tests/refs/thirdparty_mods.json` and fails on a
+  `.rbm` the manifest does not list, so regenerate it when the collection changes with
+  `tools/thirdparty_mods_manifest.py --orig MODS.ORIG --mods MODS --dat RB20FUL.DAT` (it first
+  recrypts the originals with the current rb and requires them to equal MODS byte for byte; the
+  originals and the DAT are arguments, not variables). To re-verify the recryptor on the real
+  collection, run `tools/thirdparty_mods_manifest.py --check --orig MODS.ORIG --dat RB20FUL.DAT`
+  (recrypts the originals and compares with the manifest; exit 1 on a difference). Not test
+  inputs: `RB_LIVE_OUT` (rb-player's live_messages: an output folder) and `RBM_TEST_DAT` /
+  `RBM_TEST_MODS` (set by a cargo test for its child process only, `tools/rbm_test.py`).
 - Song metadata: `rb info SONG.rbs [--mod-dir DIR] [--json]` prints the facts File > Info shows (format and version, title, text, web page, copyright, the mod and whether it is the built-in kit, a file of `--mod-dir` / `RB_MOD_DIR`, missing, or not checked, tempo, shuffle, mode, loop, synth sound) for an RBS 4.x or a ReBirth 1.x song; `--json` keys are in `rb info --help`. The code is `crates/rb-cli/src/info.rs`, shared with rb-ui.
-- Corpus summary: `cargo run --release -p rb-cli -- compare --manifest tests/refs/manifest.json [--set diag,app,shipped] [NAME...]` prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `rb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.
+- Corpus summary: `cargo run --release -p rb-cli -- compare --manifest tests/refs/manifest.json [--mod-dir DIR] [--set diag,app,shipped] [NAME...]` (the 11 mod songs need `--mod-dir` with the four recrypted shipped mods; `rb mod recrypt --iso "$RB_CD_ISO" -o DIR` makes them from the CD image) prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `rb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.

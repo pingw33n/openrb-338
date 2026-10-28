@@ -1,6 +1,7 @@
 //! Shared by the CLI tests: the repository root and the standard mod, the committed
 //! `assets/Standard.rbm` that rb embeds as its built-in kit (task-067; none of the tests needs
-//! `original/`, except those that build the mod, which skip without it).
+//! `original/` or the CD; those that build the mod take the CD's files from the CD image, by
+//! `rb-testkit`, and skip without `RB_CD_ISO`).
 
 #![allow(dead_code)]
 
@@ -24,13 +25,14 @@ pub fn standard_mod() -> &'static Path {
     MOD.get_or_init(|| root().join("assets/Standard.rbm"))
 }
 
-/// A file of `original/`, or `None` (with a "skipped" line) when it is not there.
+/// `ReBirth.dll` or `Rebirth.exe` of the CD image (`RB_CD_ISO`, extracted once per process by
+/// `rb-testkit`), or `None` (with the "skipped" line) when it is not set. The DLL is byte for
+/// byte the one of `original/`; the exe is the CD's, not the patched one of `original/`.
 pub fn original(name: &str) -> Option<PathBuf> {
-    let p = root().join("original").join(name);
-    if p.is_file() {
-        Some(p)
-    } else {
-        eprintln!("skipped: {} is not there", p.display());
-        None
+    let cd = rb_testkit::cd_files()?;
+    match name {
+        "ReBirth.dll" => Some(cd.dll.clone()),
+        "Rebirth.exe" => Some(cd.exe.clone()),
+        _ => panic!("{name}: not a file of the CD helper"),
     }
 }

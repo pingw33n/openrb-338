@@ -1001,7 +1001,7 @@ would read back right after the load. It does not copy `load_1x`'s buffers, whic
 `compose` takes only the mod's name, and the save failed without a mod change too. Checked by
 `crates/rb-ui/tests/menu.rs`:
 - `a_1x_song_with_unsorted_imports_saves_and_reopens_the_same`: a synthetic song.
-- `every_1x_song_of_the_collection_saves`, gated on `RB_THIRDPARTY_DIR`: 131 files (129
+- `every_1x_song_of_the_collection_saves`, gated on `RB_THIRDPARTY_SONGS_DIR`: 131 files (129
   distinct) save, and reopen with the import's lists in the order above. Razor Topz.RBS plays the
   same, 200 engine calls, after the save, and saves after a change to Pitch Black Edition 2.0.
 
