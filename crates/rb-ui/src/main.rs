@@ -12,7 +12,7 @@
 //! starts the panel in a lively state with no player (a picture). `--size` is the inner size of
 //! the panel in points (default 624x510; the window is as high as the menu bar more), `--ppp`
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
-//! quits. Ctrl+O opens the in-app file browser (task-046) to open a song, Ctrl+S saves;
+//! quits. Ctrl/Cmd+O opens the in-app file browser (task-046) to open a song, Ctrl/Cmd+S saves;
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
 //! settings file (`rb/ui.conf` in the configuration folder, or `$RB_UI_CONFIG`).
 

@@ -19,7 +19,7 @@
 //! every file with "All files"), navigates by mouse (click, double click, the Up button, the
 //! places and the recent folders on the left) and by keyboard (Up/Down/PageUp/PageDown/Home/End
 //! select, Enter opens a folder or accepts a file, Backspace and Alt+Up go to the parent,
-//! Ctrl+L edits the path, typing a letter jumps to the next name that starts with it, Esc
+//! Ctrl/Cmd+L edits the path, typing a letter jumps to the next name that starts with it, Esc
 //! cancels). The save and export modes have a name field and ask before replacing a file; every
 //! problem (a folder that cannot be read, a bad name, a missing folder, a mod rb cannot load) is
 //! shown in the dialog. A mod that is not recrypted is listed and marked "needs rb recrypt"
@@ -35,6 +35,7 @@ use eframe::egui::{
 };
 
 use crate::settings::{self, Settings};
+use crate::shortcuts;
 
 // The art's palette (crates/rb-ui-art/src/svg.rs `pal`).
 const SLATE: Color32 = Color32::from_rgb(0x3b, 0x46, 0x56);
@@ -640,7 +641,7 @@ impl Browser {
             {
                 self.up();
             }
-            if key(Key::L, Modifiers::COMMAND) {
+            if ctx.input_mut(|i| i.consume_shortcut(&shortcuts::EDIT_PATH)) {
                 ctx.memory_mut(|m| m.request_focus(path_id));
             }
             if key(Key::Enter, Modifiers::NONE) {
@@ -750,7 +751,11 @@ impl Browser {
                     .id(path_id)
                     .desired_width(f32::INFINITY),
             );
-            r.on_hover_text("Ctrl+L edits the path; Enter goes there");
+            let tip = format!(
+                "{} edits the path; Enter goes there",
+                shortcuts::text(ui.ctx(), &shortcuts::EDIT_PATH)
+            );
+            r.on_hover_text(tip);
         });
     }
 

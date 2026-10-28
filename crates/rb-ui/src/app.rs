@@ -27,6 +27,7 @@ use crate::link::Link;
 use crate::menu::{Job, MENU_H, ModEntry, Then};
 use crate::model::Panel;
 use crate::settings::Settings;
+use crate::shortcuts;
 
 /// The panel's background and the letterbox color.
 const BG: Color32 = Color32::from_rgb(0x1d, 0x21, 0x27);
@@ -123,7 +124,7 @@ pub struct App {
     pub notice: Option<String>,
     /// What was done, shown at the bottom when there is no error ("Saved ...").
     pub status: Option<String>,
-    /// The Options menu's keyboard mode (Ctrl+F / Ctrl+G).
+    /// The Options menu's keyboard mode (Ctrl/Cmd+F / +G).
     pub key_mode: KeyMode,
     /// Whether the window draws the menu bar (the window of `rb-ui` does; the headless tests of
     /// the panel at 1:1 do not).
@@ -167,7 +168,7 @@ impl App {
         }
     }
 
-    /// Opens the file browser for `mode` over the panel (the menu calls this). Ctrl+O opens it
+    /// Opens the file browser for `mode` over the panel (the menu calls this). Ctrl/Cmd+O opens it
     /// for a song.
     pub fn open_browser(&mut self, mode: Mode) {
         self.notice = None;
@@ -275,22 +276,20 @@ impl App {
         // While the file browser or the prompt is open the panel takes no keys and no clicks
         // of its own.
         if self.browser.is_none() && self.prompt.is_none() {
-            if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::N)) {
+            if shortcuts::consume(ui, &shortcuts::NEW) {
                 self.new_song();
-            } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::O)) {
+            } else if shortcuts::consume(ui, &shortcuts::OPEN) {
                 self.open_browser(Mode::OpenSong);
-            } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::S)) {
+            } else if shortcuts::consume(ui, &shortcuts::SAVE) {
                 self.save();
             } else {
-                // Ctrl+F / Ctrl+G: the Options menu's two keyboard modes.
-                ui.input_mut(|i| {
-                    if i.consume_key(egui::Modifiers::COMMAND, Key::F) {
-                        self.key_mode = KeyMode::Synth;
-                    }
-                    if i.consume_key(egui::Modifiers::COMMAND, Key::G) {
-                        self.key_mode = KeyMode::Patterns;
-                    }
-                });
+                // Ctrl/Cmd+F and +G: the Options menu's two keyboard modes.
+                if shortcuts::consume(ui, &shortcuts::KEYS_SYNTH) {
+                    self.key_mode = KeyMode::Synth;
+                }
+                if shortcuts::consume(ui, &shortcuts::KEYS_PATTERNS) {
+                    self.key_mode = KeyMode::Patterns;
+                }
                 self.keyboard(ui);
                 self.focus_click(ui, &view);
             }

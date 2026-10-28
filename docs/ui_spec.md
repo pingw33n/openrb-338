@@ -712,7 +712,7 @@ report it, or a scancode egui does not know) falls back to its logical key, whic
 the layout. Auto-repeat events and keys with Ctrl/Cmd are ignored; a key press acts like a mouse
 down on its button (`App::keyboard`), the button shows pressed while the key is down, and a held
 tempo, bar, rewind or fast forward key repeats on the mouse's schedule. The panel takes no key
-while a browser is open. Ctrl+F / Ctrl+G set `App::key_mode` (default Program Synth).
+while a browser is open. Ctrl+F / Ctrl+G (Cmd on macOS) set `App::key_mode` (default Program Synth).
 
 egui 0.37 cannot tell numpad keys from the keys they share a name with (egui-winit's
 `key_from_key_code`: `Numpad0..9` = `Num0..9`, `NumpadEnter` = `Enter`, `NumpadSubtract` =
@@ -892,7 +892,7 @@ starts with it open. The panel takes no key or click while a browser is open. Th
 
 - **Keys.** Up/Down/PageUp/PageDown/Home/End select; Enter enters a folder or accepts the file
   (in the name field: accepts the typed name); Backspace and Alt+Up go to the parent (the folder
-  left is selected); Ctrl+L edits the path (Enter goes there; `~` is the home folder); a typed
+  left is selected); Ctrl+L (Cmd+L on macOS) edits the path (Enter goes there; `~` is the home folder); a typed
   letter jumps to the next name that starts with it; Esc cancels (in the overwrite question it
   answers no). Mouse: click selects, double click opens, the Up button, the Places and Recent
   folders on the left.
@@ -926,15 +926,15 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 
 | Menu | Item | What it does |
 |---|---|---|
-| File | New (Ctrl+N, Cmd+N) | the state of a start without a song argument: the empty Untitled song on the standard mod, unmodified, stopped, the panel at its start values; the startup sound follows the preference (18.1); the settings are kept; playback stops (`Link::load_new`); with unsaved changes the prompt first (task-091; the original's File New opens a template song, section 12) |
-| File | Open... (Ctrl+O) | the browser for a song; with unsaved changes the prompt first |
-| File | Save (Ctrl+S) | writes the song's file; a song with none goes to Save As |
+| File | New (Ctrl+N, Cmd+N on macOS) | the state of a start without a song argument: the empty Untitled song on the standard mod, unmodified, stopped, the panel at its start values; the startup sound follows the preference (18.1); the settings are kept; playback stops (`Link::load_new`); with unsaved changes the prompt first (task-091; the original's File New opens a template song, section 12) |
+| File | Open... (Ctrl+O, Cmd+O on macOS) | the browser for a song; with unsaved changes the prompt first |
+| File | Save (Ctrl+S, Cmd+S on macOS) | writes the song's file; a song with none goes to Save As |
 | File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, one entry per mod of the Mods folder, Choose file... | the song's kit (below) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
-| Options | Program Synth (Ctrl+F), Select Patterns (Ctrl+G) | `App::key_mode` (section 10, task-070) |
+| Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
 
 - **Save** (`document::compose`). The original saves by asking every device for its data block
   (`sub_43920E` .. `sub_43A1F4`, `docs/song_load.md` section 4.10) and passing them to the RBS

@@ -12,10 +12,10 @@ use eframe::egui::Key;
 /// The Options menu's keyboard mode (docs/ui_spec.md section 10): one setting, two values.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum KeyMode {
-    /// "Program Synth from Keyboard" (Ctrl+F): the focused row's synth and tap keys.
+    /// "Program Synth from Keyboard" (Ctrl/Cmd+F): the focused row's synth and tap keys.
     #[default]
     Synth,
-    /// "Select Patterns from Keyboard" (Ctrl+G): the four rows' pattern buttons.
+    /// "Select Patterns from Keyboard" (Ctrl/Cmd+G): the four rows' pattern buttons.
     Patterns,
 }
 

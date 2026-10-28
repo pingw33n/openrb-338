@@ -2,8 +2,9 @@
 //! and the keyboard mode, with the unsaved-changes prompt. Nothing else of the original's menu.
 //!
 //! What each item does (docs/ui_spec.md section 18):
-//! - **File**: New (Ctrl+N: the state of the app's start), Open (Ctrl+O), Save (Ctrl+S; a song
-//!   that was never saved goes to Save As), Save As, Export loop as audio file. The browser
+//! - **File**: New (Ctrl/Cmd+N: the state of the app's start), Open (Ctrl/Cmd+O), Save
+//!   (Ctrl/Cmd+S; the texts come from [`crate::shortcuts`]; a song that was never saved goes
+//!   to Save As), Save As, Export loop as audio file. The browser
 //!   (task-046) returns paths only; the writes happen here and their errors are shown in the
 //!   notice line.
 //! - **Mods**: "Standard ReBirth", the mods of the Mods folder (one entry per INFO menu name, as
@@ -14,7 +15,7 @@
 //!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays, as it
 //!   does when a song is opened and at the start ([`App::start`]).
 //! - **Options**: the Vintage ReBirth Synth Sound flag (GLOB byte 482; Edit menu item 323 of the
-//!   original) and the keyboard mode (Ctrl+F, Ctrl+G; docs/ui_spec.md section 10).
+//!   original) and the keyboard mode (Ctrl/Cmd+F, Ctrl/Cmd+G; docs/ui_spec.md section 10).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -35,6 +36,7 @@ use crate::browser::{ExportFormat, Mode};
 use crate::document::{self, Document};
 use crate::keys::KeyMode;
 use crate::session;
+use crate::shortcuts;
 
 /// The height of the menu bar in points.
 pub const MENU_H: f32 = 22.0;
@@ -709,16 +711,16 @@ impl App {
                 ui.add_enabled_ui(enabled, |ui| {
                     egui::MenuBar::new().ui(ui, |ui| {
                         ui.menu_button("File", |ui| {
-                            if item(ui, "New", "Ctrl+N") {
+                            if item(ui, "New", Some(&shortcuts::NEW)) {
                                 cmd = Some(Cmd::New);
                             }
-                            if item(ui, "Open...", "Ctrl+O") {
+                            if item(ui, "Open...", Some(&shortcuts::OPEN)) {
                                 cmd = Some(Cmd::Open);
                             }
-                            if item(ui, "Save", "Ctrl+S") {
+                            if item(ui, "Save", Some(&shortcuts::SAVE)) {
                                 cmd = Some(Cmd::Save);
                             }
-                            if item(ui, "Save As...", "") {
+                            if item(ui, "Save As...", None) {
                                 cmd = Some(Cmd::SaveAs);
                             }
                             ui.separator();
@@ -766,7 +768,7 @@ impl App {
                                 }
                             }
                             ui.separator();
-                            if item(ui, "Choose file...", "") {
+                            if item(ui, "Choose file...", None) {
                                 cmd = Some(Cmd::ChooseModFile);
                             }
                         });
@@ -786,18 +788,21 @@ impl App {
                                 ui.close();
                             }
                             ui.separator();
-                            if ui
-                                .radio(self.key_mode == KeyMode::Synth, "Program Synth (Ctrl+F)")
-                                .clicked()
-                            {
+                            let ctx = ui.ctx().clone();
+                            let synth = format!(
+                                "Program Synth ({})",
+                                shortcuts::text(&ctx, &shortcuts::KEYS_SYNTH)
+                            );
+                            let patterns = format!(
+                                "Select Patterns ({})",
+                                shortcuts::text(&ctx, &shortcuts::KEYS_PATTERNS)
+                            );
+                            if ui.radio(self.key_mode == KeyMode::Synth, synth).clicked() {
                                 cmd = Some(Cmd::SetKeyMode(KeyMode::Synth));
                                 ui.close();
                             }
                             if ui
-                                .radio(
-                                    self.key_mode == KeyMode::Patterns,
-                                    "Select Patterns (Ctrl+G)",
-                                )
+                                .radio(self.key_mode == KeyMode::Patterns, patterns)
                                 .clicked()
                             {
                                 cmd = Some(Cmd::SetKeyMode(KeyMode::Patterns));
@@ -814,10 +819,10 @@ impl App {
 }
 
 /// A menu item with its shortcut; true when clicked (the menu closes).
-fn item(ui: &mut Ui, text: &str, shortcut: &str) -> bool {
+fn item(ui: &mut Ui, text: &str, shortcut: Option<&egui::KeyboardShortcut>) -> bool {
     let mut b = egui::Button::new(text);
-    if !shortcut.is_empty() {
-        b = b.shortcut_text(shortcut);
+    if let Some(sc) = shortcut {
+        b = b.shortcut_text(shortcuts::text(ui.ctx(), sc));
     }
     let clicked = ui.add(b).clicked();
     if clicked {
