@@ -1,10 +1,11 @@
 ---
 id: TASK-108
-title: 'Linux and Windows builds: local scripts and GitHub Actions'
+title: 'Linux, Windows and macOS builds: local scripts and GitHub Actions'
 status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 09:34'
+updated_date: '2026-10-28 10:12'
 labels:
   - tools
   - cli
@@ -50,7 +51,13 @@ What:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 scripts/ builds release packages of rb and rb-ui for Linux x86_64 and Windows x86_64 from this Mac (and the macOS host build); tool requirements and limits are documented; the produced packages are listed in the notes
-- [ ] #2 .github/workflows/ci.yml runs fmt, clippy and tests on Linux, Windows and macOS, and release.yml builds and uploads the packages; both are validated (actionlint or act) and need no secrets or non-committed files
-- [ ] #3 AGENTS.md and docs/building.md describe the scripts and workflows; cargo test and clippy pass
+- [ ] #1 .github/workflows/ci.yml runs fmt, clippy and tests on Linux, Windows and macOS, and release.yml builds and uploads the packages; both are validated (actionlint or act) and need no secrets or non-committed files
+- [ ] #2 AGENTS.md and docs/building.md describe the scripts and workflows; cargo test and clippy pass
+- [ ] #3 scripts/ builds release packages of rb and rb-ui for Linux x86_64, Windows x86_64 and macOS (aarch64 and x86_64, or universal) from this Mac; tool requirements and limits are documented; the produced packages are listed in the notes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Scope widened by the user (2026-10-28): macOS is a first-class target. scripts/ also builds macOS packages for aarch64-apple-darwin and x86_64-apple-darwin (both from this Mac; a universal binary via lipo if cheap, else two packages), as .tar.gz of rb and rb-ui; release.yml builds them on macos runners too. The .dmg with an .app bundle and the Windows installer .exe are separate tasks (task-110, task-111) that build on this task's scripts and workflows.
+<!-- SECTION:NOTES:END -->
