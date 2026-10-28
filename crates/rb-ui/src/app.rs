@@ -206,7 +206,13 @@ impl App {
             return;
         };
         let mode = b.mode();
-        match b.show(ctx, &mut self.settings) {
+        let mods_dir = self.settings.mods_dir.clone();
+        let poll = b.show(ctx, &mut self.settings);
+        // the browser's "Use as mods folder" (task-101)
+        if self.settings.mods_dir != mods_dir {
+            self.refresh_mods();
+        }
+        match poll {
             Poll::Open => {}
             Poll::Cancelled => {
                 self.browser = None;

@@ -114,7 +114,12 @@ impl Harness {
         h
     }
 
-    fn frame(&mut self, mut events: Vec<Event>) {
+    fn frame(&mut self, events: Vec<Event>) {
+        self.frame_shapes(events);
+    }
+
+    /// A frame; the debug text of the shapes it painted (the labels drawn show in it).
+    fn frame_shapes(&mut self, mut events: Vec<Event>) -> String {
         self.time += 0.016;
         events.insert(0, Event::ModifiersChanged(Modifiers::NONE));
         let input = RawInput {
@@ -129,6 +134,7 @@ impl Harness {
         let app = &mut self.app;
         let mut out = self.ctx.run_ui(input, |ui| app.show(ui));
         out.textures_delta.clear();
+        format!("{:?}", out.shapes)
     }
 
     /// `n` engine calls, then a UI frame that takes the snapshot.
@@ -1026,6 +1032,100 @@ fn the_mods_menu_lists_the_mods_folder() {
     assert!(h.app.notice.as_deref().unwrap().contains("No Such Mod"));
     assert_eq!(h.app.doc.kit, Kit::Standard);
     assert_eq!(h.app.doc.mod_name, "No Such Mod");
+}
+
+/// task-101: the Mods menu's list is read at start, by Mods > Refresh List and when the Mods
+/// folder changes; drawing the menu reads no folder, and a song open does not fill the list;
+/// the refresh also clears the demo answer kept for the current mod file.
+#[test]
+fn refresh_list_reads_the_mods_folder_again() {
+    let (Some(pbe2), Some(msm2)) = (mod_file("PBE2.rbm"), mod_file("MSM2.rbm")) else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("mods");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::copy(&pbe2, folder.join("PBE2.rbm")).unwrap();
+    let names = |h: &Harness| -> Vec<std::path::PathBuf> {
+        h.app
+            .mods()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|e| e.path.clone())
+            .collect()
+    };
+
+    let mut h = Harness::with_menu();
+    assert!(h.app.mods().is_none());
+    h.app.settings.mods_dir = Some(folder.clone());
+    h.app.start(None);
+    assert_eq!(names(&h), vec![folder.join("PBE2.rbm")]);
+
+    // a mod added to the folder is not seen by drawing the Mods menu: find the "Mods" title
+    // by clicking along the bar until the menu with "Refresh List" is open, close it, add the
+    // mod, and open it again
+    std::fs::copy(&msm2, folder.join("MSM2.rbm")).unwrap();
+    let mut mods_at = None;
+    for x in (10..200).step_by(6) {
+        let p = Pos2::new(x as f32, MENU_H / 2.0);
+        h.frame(vec![Event::PointerMoved(p)]);
+        let down = |pressed| Event::PointerButton {
+            pos: p,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        h.frame(vec![down(true)]);
+        h.frame(vec![down(false)]);
+        let text = h.frame_shapes(vec![]);
+        if text.contains("Refresh List") {
+            mods_at = Some(p);
+            break;
+        }
+    }
+    let mods_at = mods_at.expect("the Mods menu did not open");
+    // the menu is open and drawn over a folder that changed: the list stays
+    h.frame(vec![]);
+    assert!(h.frame_shapes(vec![]).contains("Refresh List"));
+    assert_eq!(names(&h), vec![folder.join("PBE2.rbm")]);
+    // closed and opened again: still the list read at start
+    h.click(mods_at);
+    h.click(mods_at);
+    assert!(h.frame_shapes(vec![]).contains("Refresh List"));
+    assert_eq!(names(&h), vec![folder.join("PBE2.rbm")]);
+    h.click(mods_at);
+    // a song open resolves its mod in the folder but does not fill the list
+    let song = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    h.app.doc.modified = false;
+    h.open(&song);
+    assert_eq!(names(&h), vec![folder.join("PBE2.rbm")]);
+    // Refresh List sees it
+    h.app.command(Cmd::RefreshMods);
+    let mut got = names(&h);
+    got.sort();
+    assert_eq!(got, vec![folder.join("MSM2.rbm"), folder.join("PBE2.rbm")]);
+
+    // the demo answer of the current mod is kept until the refresh
+    h.app.use_kit(Kit::Mod(folder.join("PBE2.rbm")));
+    assert!(h.app.has_demo());
+    std::fs::remove_file(folder.join("PBE2.rbm")).unwrap();
+    h.calls(2);
+    assert!(h.app.has_demo());
+    assert_eq!(names(&h).len(), 2);
+    // a mod removed: Refresh List drops it, and the demo answer is read again
+    h.app.command(Cmd::RefreshMods);
+    assert_eq!(names(&h), vec![folder.join("MSM2.rbm")]);
+    assert!(!h.app.has_demo());
+
+    // a changed Mods folder setting is read by the browser path; here the refresh it calls
+    let other = dir.path().join("other");
+    std::fs::create_dir(&other).unwrap();
+    h.app.settings.mods_dir = Some(other);
+    assert_eq!(names(&h).len(), 1);
+    h.app.refresh_mods();
+    assert!(names(&h).is_empty());
 }
 
 /// task-093: the Mods menu checks the current song's mod: by the song's mod name, following a

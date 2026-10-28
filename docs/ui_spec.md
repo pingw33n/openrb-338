@@ -936,6 +936,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, a mod per file, Choose file... | the song's kit, checked (below) |
 | Mods | Demo Song | opens the `Demo.rbs` of the current song's mod (below); enabled only when that mod file has one, so never for "Standard ReBirth" (task-094) |
+| Mods | Refresh List | reads the Mods folder again (the list cache, below; task-101) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
@@ -981,6 +982,16 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   default as the original's (the preferences' constructor `sub_41CAA4` sets prefs `+536` = 1 at
   0x41CB13, the app's constructor `sub_40D1D2` app `+0x533` = 1 at 0x40D338), stored in the
   settings file as `startup_sound=0|1`. The Options menu's checkbox "Play Mod Startup Sound" switches it (task-086, task-089).
+- **The mod list cache** (task-101). The Mods menu's list (`App::mod_list`) is read from the
+  Mods folder by `App::refresh_mods` and only there: at the app's start (`App::start`), by Mods >
+  Refresh List, and when the browser's "Use as mods folder" changes the setting. Drawing the menu
+  reads no folder and only `refresh_mods` fills the list; a mod added to or removed from the
+  folder shows after Refresh List. A song open still resolves its mod in the folder
+  (`mods::find_in_dir`) but does not touch the list. A read error stays in the menu as the
+  list's one line. Refresh List also clears the caches that depend on the folder's files: the
+  demo answer (`App::demo_cache`) and the splash picture of the 808's mod window
+  (`App::splash`). The demo answer of the current mod is read once per mod file, when "Demo
+  Song" is first drawn for it.
 - **The checked mod** (task-093). The Mods menu checks the item of the current song's mod:
   "Standard ReBirth" when the kit is the built-in one under that name, else the entry whose file
   is the song's resolved kit (`App::mod_checks`), so a mod found by file name is checked and a

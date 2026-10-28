@@ -85,6 +85,8 @@ pub enum Cmd {
     UseKit(Kit),
     /// "Demo Song" of the Mods menu: the current mod's `Demo.rbs`.
     DemoSong,
+    /// "Refresh List" of the Mods menu: reads the Mods folder again (task-101).
+    RefreshMods,
     ToggleVintage,
     /// "Play Mod Startup Sound" of the Options menu (the original's Edit > Preferences).
     ToggleStartupSound,
@@ -134,6 +136,21 @@ impl App {
                 seen.insert(name.clone()).then_some(ModEntry { path, name })
             })
             .collect())
+    }
+
+    /// Reads the Mods folder again (task-101): the Mods menu's list is read here and nowhere
+    /// else, at the app's start, by Mods > Refresh List and when the Mods folder setting
+    /// changes. The caches that depend on the folder's files go with it: the demo answer of
+    /// the current mod and the splash picture of the mod window.
+    pub fn refresh_mods(&mut self) {
+        self.mod_list = Some(self.list_mods());
+        self.demo_cache = None;
+        self.splash = None;
+    }
+
+    /// The Mods menu's list as last read by [`App::refresh_mods`]; None before the first read.
+    pub fn mods(&self) -> Option<&Result<Vec<ModEntry>, String>> {
+        self.mod_list.as_ref()
     }
 
     /// What the Mods menu checks for the current song (task-093): whether "Standard ReBirth" is
@@ -343,7 +360,6 @@ impl App {
             kit,
         };
         self.events_seen = 0;
-        self.mod_list = None;
     }
 
     /// The app's start (`sub_480AA0`, docs/ui_spec.md section 18): the song named on the
@@ -352,6 +368,7 @@ impl App {
     /// (`sub_40A50D` -> `sub_40A581` -> `sub_426CA8`, `sub_426C67` at 0x426D48) when the
     /// preference is on.
     pub fn start(&mut self, song: Option<(PathBuf, session::Opened)>) {
+        self.refresh_mods();
         match song {
             Some((path, opened)) => self.adopt(&path, opened),
             None => self.fresh(),
@@ -627,6 +644,7 @@ impl App {
             Cmd::ChooseModFile => self.open_browser(Mode::ChooseMod),
             Cmd::UseKit(kit) => self.use_kit(kit),
             Cmd::DemoSong => self.demo_song(),
+            Cmd::RefreshMods => self.refresh_mods(),
             Cmd::ToggleVintage => {
                 let on = !self.panel.vintage;
                 self.panel.set_vintage(on);
@@ -814,7 +832,6 @@ impl App {
     pub fn menu_bar(&mut self, ui: &mut Ui) {
         let mut cmd: Option<Cmd> = None;
         let enabled = !self.browsing() && !self.prompting();
-        let mods_open = std::cell::Cell::new(false);
         egui::Panel::top("rb_menu")
             .exact_size(MENU_H)
             .show(ui, |ui| {
@@ -850,11 +867,7 @@ impl App {
                                 ui.close();
                             }
                         });
-                        let r = ui.menu_button("Mods", |ui| {
-                            mods_open.set(true);
-                            if self.mod_list.is_none() {
-                                self.mod_list = Some(self.list_mods());
-                            }
+                        ui.menu_button("Mods", |ui| {
                             let (std_on, checked) = match &self.mod_list {
                                 Some(Ok(l)) => self.mod_checks(l),
                                 _ => self.mod_checks(&[]),
@@ -893,11 +906,10 @@ impl App {
                                 cmd = Some(Cmd::DemoSong);
                                 ui.close();
                             }
+                            if item(ui, "Refresh List", None) {
+                                cmd = Some(Cmd::RefreshMods);
+                            }
                         });
-                        // the list is read again the next time the menu opens
-                        if r.inner.is_none() && !mods_open.get() {
-                            self.mod_list = None;
-                        }
                         ui.menu_button("Options", |ui| {
                             let mut v = self.panel.vintage;
                             if ui.checkbox(&mut v, "Vintage ReBirth Synth Sound").clicked() {
