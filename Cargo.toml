@@ -7,3 +7,8 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 publish = false
+
+# The SHA-256 of the 128 MB RB20FUL.DAT (rbm::dat) takes seconds unoptimized: the tests of
+# `rb mod recrypt` hash a stand-in file several times.
+[profile.dev.package.sha2]
+opt-level = 3

@@ -577,6 +577,61 @@ originals. The four shipped mods on the test machine: the originals are backed u
 docs/test_machine.md section 7), and an app export of Fonda Workout from the installation equals
 `rb compare` with the recrypted MSM2 at one N of 3400..3707 (3600).
 
+### 12.5 `rb mod recrypt`: the key file's SHA-256, the file checks, bulk mode (task-064, 2026-10-28)
+
+Until task-064 `rb mod recrypt` checked only the DAT's magic and length. A different or corrupt
+`RB20FUL.DAT` with the right header decrypted to garbage, which was scrambled again against the
+embedded window; the internal round trip passed because it used the same wrong key, and the mod
+played noise. Now (`crates/rbm/src/dat.rs`, `crates/rb-cli/src/recrypt.rs`):
+
+- **The key file is verified.** Before any mod is written, the SHA-256 of the whole file is
+  compared with `embedded::DAT_SHA256` (`62071e99...2797`, 134,217,984 bytes: the 2001 reissue
+  CD's file). A mismatch is an error naming the expected and the actual hash, and saying whether
+  the 2047 bytes at `embedded::WINDOW` equal the embedded ones (they differ: another edition of
+  the CD; they equal: the file differs elsewhere, modified or corrupt). **Only that one edition's
+  `RB20FUL.DAT` is supported yet; another edition is not**, because no other is known and the
+  embedded window comes from this one. The size and magic are checked first, with their own
+  messages. The hash is part of a 0.8 s wall-clock run of one mod (release build, macOS, the
+  128 MB file in the page cache); the file is found, hashed and opened once per run, when
+  the first mod that is not recrypted needs it, and each mod then reads only its two key pages
+  (2 x 2048 bytes). A run in which every mod is recrypted never reads the file.
+- **The files are checked.** Each embedded file of the input, decrypted, must be well formed: a
+  slot sample or any `.aif` / `.aiff` must parse with the engine's AIFF reader
+  (`rb_engine::samples::Sample::from_aiff`, the DLL's reader rules of sections 7.4 of
+  `initial_investigation.md` and 11.2 above for the stale SSND size), and a `.jpg` must
+  start with `FF D8`; other files (the demo song) are not checked. A failure is an error naming the
+  mod file and the embedded name, and nothing is written for that mod. This finds damaged files; it
+  is **not** a wrong-key detector: the first 1024 bytes of every file are never scrambled and
+  the AIFF and JPEG headers lie there (only a sample whose chunks follow the audio would fail with
+  a wrong key). The SHA-256 is the key file's check. The result of the recrypt is checked the
+  same way with the embedded bytes. Measured: the 172 third-party originals recrypt in one run
+  with the real file (0 failed, byte-identical to the recrypted set of 12.4), and the 172
+  recrypted ones and the four recrypted shipped mods (already recrypted) pass the checks too (no
+  false positives).
+- **Bulk.** `rb mod recrypt IN.rbm... DIR... -o OUTDIR [--force]` takes any number of mod files
+  and folders (every `.rbm` directly in a folder) and writes each mod under its own file name into
+  `OUTDIR`. The single-file form `rb mod recrypt IN.rbm -o OUT.rbm` stays: one existing input
+  file and an `-o` that is not an existing folder and ends in `.rbm`. An `-o` ending in `.rbm`
+  that is not an existing folder is a file name and never becomes a folder: a missing input or
+  several inputs with it are a usage error (exit 2). `OUTDIR` is created only when the first mod
+  is written, so a run in which nothing passes (a bad key file, missing inputs) leaves nothing
+  behind. `OUTDIR` must not be the folder of an input (exit 2). An output that exists is a failure
+  of that mod unless `--force`, **in the single-file form too** (before task-064 it was
+  overwritten silently); a second input with the same file name fails. A mod that fails does
+  not stop the others; the summary (`N recrypted, N already recrypted (copied), N failed`, then
+  one line per failure) goes to stderr and the exit code is 1 if any failed. A mod that is
+  **already recrypted** is checked with the embedded bytes and **copied unchanged**
+  (recrypting it again gives the same bytes, so the copy is the cheaper form of the same
+  thing).
+- **Tests.** `crates/rb-cli/tests/recrypt.rs`: a stand-in key file (sparse, with the magic and the
+  pages of the synthetic mods) and `Options::expected_sha256` for its hash; bulk over a folder
+  and over a list equal recrypting each mod alone and hash the file once (`Report::dat_hashes`);
+  a wrong-hash file with the right magic and length is rejected before anything is written (also
+  through the binary); a damaged AIFF, a JPEG without `FF D8` and a sample whose header is found
+  only with the right pages are caught; `--force` and the folder rules; the already-recrypted
+  path over `RB_MOD_DIR`. Gated on the real file (`RB_RB20FUL`, `RB_MOD_ORIG_DIR`): bulk over the
+  shipped originals equals single and the files of `RB_MOD_DIR`.
+
 ## 13. The standard mod: the built-in kit and panel as a mod (task-036, 2026-10-27)
 
 `rb mod pack-standard --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] -o FILE`

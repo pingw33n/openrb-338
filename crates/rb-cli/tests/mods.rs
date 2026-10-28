@@ -6,7 +6,9 @@
 //!
 //! The synthetic key file is the right size with the right magic and zeros after it, so its
 //! key table is zeros and the scrambling is the identity: the mod is built in the clear. The
-//! setup recrypts it with `rb mod recrypt --rb20ful` into `mods/`; `raw/` keeps the original.
+//! setup recrypts it in process into `mods/`; `raw/` keeps the original. (`rb mod recrypt`
+//! itself checks the key file's SHA-256, task-064, so it rejects this stand-in; the CLI's
+//! recrypt is tested in tests/recrypt.rs.)
 
 mod common;
 
@@ -100,16 +102,11 @@ fn setup() -> Setup {
     f.seek(std::io::SeekFrom::Start(0)).unwrap();
     f.write_all(&rbm::DAT_MAGIC.to_be_bytes()).unwrap();
     drop(f);
-    let o = rb()
-        .args(["mod", "recrypt"])
-        .arg(raw.join("tm.rbm"))
-        .arg("-o")
-        .arg(mods.join("tm.rbm"))
-        .arg("--rb20ful")
-        .arg(&dat)
-        .output()
-        .unwrap();
-    ok(&o);
+    // `rb mod recrypt` checks the key file's SHA-256 (task-064), which this stand-in cannot
+    // pass: recrypt in process, with the stand-in's table.
+    let rbm = rbm::Rbm::parse(std::fs::read(raw.join("tm.rbm")).unwrap()).unwrap();
+    let table = rbm::KeyTable::read(&rbm, &mut std::fs::File::open(&dat).unwrap()).unwrap();
+    std::fs::write(mods.join("tm.rbm"), rbm::recrypt(&rbm, &table).unwrap()).unwrap();
     Setup {
         dir,
         dat,
@@ -370,14 +367,16 @@ fn rb_recrypt_is_the_one_command_that_needs_the_key_file() {
     assert_eq!(o.status.code(), Some(1), "{err}");
     assert!(err.contains("RB20FUL.DAT"), "{err}");
     assert!(!re.exists());
-    ok(&recrypt(&[os("--rb20ful"), s.dat.as_os_str()]));
-    let back = rbm::Rbm::parse(std::fs::read(&re).unwrap()).unwrap();
-    assert!(rbm::KeyTable::embedded(&back).is_some_and(|t| back.all_covered(&t)));
-    // the same bytes as the setup's
-    assert_eq!(
-        std::fs::read(&re).unwrap(),
-        std::fs::read(s.mods.join("tm.rbm")).unwrap()
-    );
+    // the stand-in key file is found and then rejected by its SHA-256 (task-064): nothing is
+    // written. (The accepting path is tests/recrypt.rs.)
+    let rejected = |o: &Output, dat: &Path| {
+        let err = String::from_utf8_lossy(&o.stderr).into_owned();
+        assert_eq!(o.status.code(), Some(1), "{err}");
+        assert!(err.contains(&dat.display().to_string()), "{err}");
+        assert!(err.contains("SHA-256") && err.contains("expected"), "{err}");
+        assert!(!re.exists());
+    };
+    rejected(&recrypt(&[os("--rb20ful"), s.dat.as_os_str()]), &s.dat);
 
     // a key file that is not one
     let junk = s.dir.path().join("junk.dat");
@@ -396,11 +395,13 @@ fn rb_recrypt_is_the_one_command_that_needs_the_key_file() {
         .env("RB_RB20FUL", &s.dat)
         .output()
         .unwrap();
-    ok(&o);
-    std::fs::copy(&s.dat, s.raw.join("RB20FUL.DAT")).unwrap();
-    ok(&recrypt(&[]));
+    rejected(&o, &s.dat);
+    let beside = s.raw.join("RB20FUL.DAT");
+    std::fs::copy(&s.dat, &beside).unwrap();
+    rejected(&recrypt(&[]), &beside);
 
     // the recrypted mod renders with no key file anywhere, found by its INFO name
+    std::fs::copy(s.mods.join("tm.rbm"), &re).unwrap();
     let (o, c) = render(&s, &named, "c.wav", &[os("--mod-dir"), re_dir.as_os_str()]);
     ok(&o);
     let (o, a) = render(&s, &named, "a.wav", &[os("--mod"), re.as_os_str()]);

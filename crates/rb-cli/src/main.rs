@@ -18,8 +18,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use rb_cli::encode::Format;
-use rb_cli::mods::{self, ModOpts};
-use rb_cli::render::{Renderer, load_song, read_mod, warn_unsupported};
+use rb_cli::mods::ModOpts;
+use rb_cli::render::{Renderer, load_song, warn_unsupported};
 use rb_cli::{Fail, fail};
 use rb_engine::song::{MAX_TICK, TICKS_PER_BAR};
 
@@ -139,17 +139,31 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum ModCmd {
-    /// Rewrite a .rbm mod so that it needs no RB20FUL.DAT: rb then loads it with the 2047 key
-    /// bytes it embeds, and the original ReBirth loads it unchanged (it reads the same bytes of
-    /// its own RB20FUL.DAT). Needs the key file once, unless the mod is already recrypted. This
-    /// is the only rb command that reads RB20FUL.DAT: render, compare and play load recrypted
-    /// mods only.
+    /// Rewrite .rbm mods so that they need no RB20FUL.DAT: rb then loads them with the 2047 key
+    /// bytes it embeds, and the original ReBirth loads them unchanged (it reads the same bytes
+    /// of its own RB20FUL.DAT). Needs the key file, unless every mod is already recrypted (such
+    /// a mod is checked and copied unchanged). This is the only rb command that reads
+    /// RB20FUL.DAT: render, compare and play load recrypted mods only.
+    ///
+    /// The key file must be the 2001 reissue CD's: its SHA-256 is checked once per run, before
+    /// anything is written (another edition is not supported yet). Every decrypted sample must
+    /// parse as AIFF and every JPEG must start with FF D8, else that mod is not written.
+    ///
+    /// One mod: `rb mod recrypt IN.rbm -o OUT.rbm`. Several mods or folders (every .rbm in a
+    /// folder): `rb mod recrypt IN.rbm... DIR... -o OUTDIR`, which writes the mods under their
+    /// names; OUTDIR must not be an input folder. A mod that fails does not stop the others;
+    /// the summary lists the failures and the exit code is 1 if any failed.
     Recrypt {
-        /// The mod, an .rbm file.
-        input: PathBuf,
-        /// The recrypted mod to write.
+        /// The mods (.rbm files) and folders of them.
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// The recrypted mod to write (one input file, a path ending in .rbm), else the folder
+        /// to write the mods into (created).
         #[arg(short, long)]
         output: PathBuf,
+        /// Overwrite output files that exist.
+        #[arg(long)]
+        force: bool,
         /// The CD's RB20FUL.DAT. Search order: this option, the RB_RB20FUL environment
         /// variable, then an RB20FUL.DAT in the folder of the input mod (or its parent), next
         /// to the rb binary, or in the usual install locations on Windows.
@@ -273,10 +287,11 @@ fn main() -> ExitCode {
             }
         }),
         Cmd::Mod(ModCmd::Recrypt {
-            input,
+            inputs,
             output,
+            force,
             rb20ful,
-        }) => recrypt(&input, &output, rb20ful),
+        }) => recrypt(&inputs, &output, rb20ful, force),
         Cmd::Mod(ModCmd::PackStandard {
             rebirth_dll,
             rebirth_exe,
@@ -534,56 +549,26 @@ fn play(input: &Path, bar: Option<u32>, seconds: Option<f64>, mods: ModOpts) -> 
     Ok(())
 }
 
-fn read_key_table(rbm: &rbm::Rbm, key_file: &Path) -> Result<rbm::KeyTable, Fail> {
-    let mut dat = std::fs::File::open(key_file)
-        .map_err(|e| fail(1, format!("{}: cannot read: {e}", key_file.display())))?;
-    rbm::KeyTable::read(rbm, &mut dat).map_err(|e| fail(1, format!("{}: {e}", key_file.display())))
-}
-
-/// `rb mod recrypt`: rewrites a mod to need only the key bytes rb embeds (task-059).
-fn recrypt(input: &Path, output: &Path, rb20ful: Option<PathBuf>) -> Result<(), Fail> {
-    let rbm = read_mod(input)?;
-    let table = match rbm::KeyTable::embedded(&rbm).filter(|t| rbm.all_covered(t)) {
-        Some(t) => t,
-        None => {
-            let key_file =
-                mods::find_rb20ful(rb20ful.as_deref(), input).map_err(|Fail(c, m)| {
-                    fail(
-                        c,
-                        format!(
-                            "{}: recrypting needs the key file once; {m}",
-                            input.display()
-                        ),
-                    )
-                })?;
-            read_key_table(&rbm, &key_file)?
-        }
-    };
-    let out =
-        rbm::recrypt(&rbm, &table).map_err(|e| fail(1, format!("{}: {e}", input.display())))?;
-    let chunks = rbm::Rbm::parse(out.clone())
-        .map(|r| r.chunks().len())
-        .map_err(|e| {
-            fail(
-                1,
-                format!(
-                    "{}: internal: the recrypted mod does not parse: {e}",
-                    input.display()
-                ),
-            )
-        })?;
-    let before = std::fs::metadata(input)
-        .map(|m| m.len())
-        .map_err(|e| fail(1, format!("{}: {e}", input.display())))?;
-    std::fs::write(output, &out)
-        .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
-    eprintln!(
-        "rb: {} -> {}: {} -> {} chunks, {before} -> {} bytes",
-        input.display(),
-        output.display(),
-        rbm.chunks().len(),
-        chunks,
-        out.len()
-    );
-    Ok(())
+/// `rb mod recrypt`: rewrites mods to need only the key bytes rb embeds (task-059, task-064).
+fn recrypt(
+    inputs: &[PathBuf],
+    output: &Path,
+    rb20ful: Option<PathBuf>,
+    force: bool,
+) -> Result<(), Fail> {
+    let report = rb_cli::recrypt::run(&rb_cli::recrypt::Options {
+        inputs,
+        output,
+        rb20ful: rb20ful.as_deref(),
+        force,
+        expected_sha256: rbm::embedded::DAT_SHA256,
+    })?;
+    eprintln!("rb: {}", report.summary());
+    match report.failed() {
+        0 => Ok(()),
+        n => Err(fail(
+            1,
+            format!("{n} of {} mods failed", report.results.len()),
+        )),
+    }
 }

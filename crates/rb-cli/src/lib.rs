@@ -4,6 +4,7 @@
 
 pub mod encode;
 pub mod mods;
+pub mod recrypt;
 pub mod render;
 
 /// A failed command: the exit code (1 the song or the output failed, 2 a usage error) and the

@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 use rb_engine::samples::{self, Sample, SampleSet};
 
+pub mod dat;
 pub mod embedded;
 pub mod pack;
 mod recrypt;

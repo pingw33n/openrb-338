@@ -9,7 +9,5 @@ publish.workspace = true
 rb-engine = { path = "../rb-engine" }
 # mod.toml of an unpacked mod (rbm::pack).
 toml = "=0.9.12"
-
-[dev-dependencies]
-# The gated check of the embedded key bytes against the user's RB20FUL.DAT.
+# The SHA-256 of RB20FUL.DAT (rbm::dat, task-064) and the gated check of the embedded bytes.
 sha2 = "0.10"
