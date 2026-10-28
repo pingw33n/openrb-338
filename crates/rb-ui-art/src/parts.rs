@@ -33,7 +33,7 @@ pub struct KnobDesign {
     pub track: &'static str,
 }
 
-pub const KNOBS: [KnobDesign; 6] = [
+pub const KNOBS: [KnobDesign; 5] = [
     KnobDesign {
         name: "knob_303",
         w: 30.0,
@@ -102,23 +102,6 @@ pub const KNOBS: [KnobDesign; 6] = [
         arc: pal::RED,
         track: "#00000022",
     },
-    KnobDesign {
-        name: "knob_sel",
-        w: 38.0,
-        h: 38.0,
-        cx: 19.0,
-        cy: 19.0,
-        ring_r: 0.0,
-        ring_w: 0.0,
-        body_r: 16.5,
-        ptr0: 4.0,
-        ptr1: 14.5,
-        ptr_w: 2.4,
-        body: pal::BLACK,
-        pointer: pal::RED,
-        arc: pal::ORANGE,
-        track: "#00000000",
-    },
     // The mixer's and the effects' knobs.
     KnobDesign {
         name: "knob_22",
@@ -142,19 +125,13 @@ pub const KNOBS: [KnobDesign; 6] = [
 fn knobs(out: &mut Vec<Part>) {
     for k in &KNOBS {
         out.push(Part::new(format!("{}_body", k.name), k.w, k.h, |s| {
-            if k.ring_r > 0.0 {
-                s.path_stroke(
-                    &arc_path(k.cx, k.cy, k.ring_r, -KNOB_SWEEP, KNOB_SWEEP),
-                    k.track,
-                    k.ring_w,
-                );
-            }
+            s.path_stroke(
+                &arc_path(k.cx, k.cy, k.ring_r, -KNOB_SWEEP, KNOB_SWEEP),
+                k.track,
+                k.ring_w,
+            );
             s.circle(k.cx, k.cy, k.body_r, k.body);
             s.circle_stroke(k.cx, k.cy, k.body_r - 0.6, "#ffffff2a", 0.5);
-            if k.ring_r == 0.0 {
-                // The selector knob: a darker cap inside the rim.
-                s.circle(k.cx, k.cy, k.body_r - 3.5, "#2c2c2e");
-            }
         }));
         out.push(Part::new(format!("{}_pointer", k.name), k.w, k.h, |s| {
             // Drawn pointing up; the app rotates it around (cx, cy).
@@ -895,8 +872,8 @@ const LEVEL_808: [f32; 12] = [
 const NAMES_808: [&str; 12] = [
     "AC", "BD", "SD", "LT", "MT", "HT", "RS", "CP", "CB", "CY", "OH", "CH",
 ];
-/// The center of the 808's instrument selector, in the space right of the legend.
-pub const SELECTOR_808: (f32, f32) = (320.0, 57.0);
+/// The mod's window (x, y, w, h) in the 808's space right of the legend.
+pub const MOD_VIEW_808: (f32, f32, f32, f32) = (278.0, 5.0, 84.0, 105.0);
 
 fn tr808_bg(out: &mut Vec<Part>) {
     out.push(Part::new("bg_tr808", 366.0, 115.0, |s| {
@@ -932,17 +909,13 @@ fn tr808_bg(out: &mut Vec<Part>) {
             s.rect(x + 0.5, 71.0, 21.0, 14.0, 2.0, "#1c1d1f");
             label(s, x + 11.0, 78.0, 3.8, ink, name);
         }
-        // The instrument selector's ring of 12 positions, at the angles its pointer snaps
-        // to (the knob's -135..135 sweep), centered right of the legend.
-        let (cx, cy) = SELECTOR_808;
-        for (i, name) in NAMES_808.into_iter().enumerate() {
-            let a = -KNOB_SWEEP + i as f32 * 2.0 * KNOB_SWEEP / 11.0;
-            let (x0, y0) = polar(cx, cy, 20.0, a);
-            let (x1, y1) = polar(cx, cy, 22.5, a);
-            s.line(x0, y0, x1, y1, pal::INK_DIM, 0.9);
-            let (tx, ty) = polar(cx, cy, 28.0, a);
-            label(s, tx, ty, 3.2, ink, name);
-        }
+    }));
+    // The mod's window right of the legend: a dark well for the mod's splash.jpg and its
+    // name, which the app paints into it (MOD_VIEW_808).
+    let (_, _, w, h) = MOD_VIEW_808;
+    out.push(Part::new("mod_view", w, h, move |s| {
+        s.rect(0.0, 0.0, w, h, 2.0, "#101216");
+        s.rect_stroke(0.25, 0.25, w - 0.5, h - 0.5, 2.0, "#000000", 0.5);
     }));
 }
 

@@ -212,7 +212,7 @@ tr808.slot4_switch	tr808	vswitch	switch_808_1	193	335	11	17
 tr808.slot5_switch	tr808	vswitch	switch_808_1	215	335	11	17
 tr808.slot6_switch	tr808	vswitch	switch_808_1	236	335	11	17
 tr808.slot7_switch	tr808	vswitch	switch_808_1	259	335	11	17
-tr808.selector	tr808	knob	knob_sel	391	318	38	38
+tr808.mod_view	tr808	modview	mod_view	368	285	84	105
 tr808.select_bd	tr808	area	sel_22x14	122	351	22	14
 tr808.step1	tr808	steps	step808_red_on	104	371	16	17
 tr808.step2	tr808	steps	step808_red_off	120	371	16	17

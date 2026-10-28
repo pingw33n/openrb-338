@@ -13,11 +13,8 @@ pub const FADER_TRAVEL: f32 = 43.0;
 const FADER_K: i32 = 232;
 
 /// Pixels of vertical drag for the knob's full range, by control id
-/// (the ctor's fourth argument): TB-303 62, TR-808 36 (selector 40), TR-909 41, others 64.
+/// (the ctor's fourth argument): TB-303 62, TR-808 36, TR-909 41, others 64.
 pub fn knob_span(id: &str) -> f32 {
-    if id == "tr808.selector" {
-        return 40.0;
-    }
     match id.split('.').next().unwrap_or("") {
         "tb303_1" | "tb303_2" => 62.0,
         "tr808" => 36.0,
@@ -122,16 +119,6 @@ pub fn tr909_step_value(c: u8, accent_row: bool, flam_on: bool, m: Mods) -> u8 {
     }
 }
 
-/// The TR-808 instrument selected by the instrument selector knob's value 0..=127.
-pub fn selector_instrument(v: i32) -> usize {
-    ((11 * v + 63) / 127) as usize
-}
-
-/// The selector knob's value 0..=127 that shows instrument `i`.
-pub fn selector_value(i: usize) -> i32 {
-    (127 * i as i32 + 5) / 11
-}
-
 /// The TR-808 instrument under a point of its section, from the legend row
 /// (x 10..274, y 71..85: 12 cells of 22 px) or the upper labels (x 78..184, y 43..55: the
 /// slots 3..7).
@@ -219,7 +206,6 @@ mod tests {
         assert!(knob_drag(500, 0.0, 10.0, 64.0, false) < 500);
         assert_eq!(knob_span("tb303_2.tune"), 62.0);
         assert_eq!(knob_span("tr808.bd_level"), 36.0);
-        assert_eq!(knob_span("tr808.selector"), 40.0);
         assert_eq!(knob_span("tr909.flam"), 41.0);
         assert_eq!(knob_span("mixer3.pan"), 64.0);
         assert_eq!(knob_span("transport.shuffle"), 64.0);
@@ -308,9 +294,6 @@ mod tests {
 
     #[test]
     fn instrument_selection() {
-        for i in 0..12 {
-            assert_eq!(selector_instrument(selector_value(i)), i);
-        }
         assert_eq!(tr808_hit(10.0, 75.0), Some(0));
         assert_eq!(tr808_hit(273.0, 75.0), Some(11));
         assert_eq!(tr808_hit(274.0, 75.0), None);

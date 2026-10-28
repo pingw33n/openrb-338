@@ -54,21 +54,30 @@ pub fn mod_has_demo(path: &Path) -> bool {
 /// The bytes of the `Demo.rbs` of a recrypted mod. An error says why there are none (no demo,
 /// not a mod, not recrypted).
 pub fn mod_demo(path: &Path) -> Result<Vec<u8>, String> {
+    mod_file(path, DEMO)
+}
+
+/// The name of the mod's splash picture (`Splash.jpg`, id 12999; docs/rbm.md 12.1).
+pub const SPLASH: &str = "splash.jpg";
+
+/// The bytes of the embedded file `name` (case-insensitive, the first) of a recrypted mod. An
+/// error says why there are none (no such file, not a mod, not recrypted).
+pub fn mod_file(path: &Path, name: &str) -> Result<Vec<u8>, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: cannot read: {e}", path.display()))?;
     let rbm = rbm::Rbm::parse(bytes).map_err(|e| format!("{}: not a mod: {e}", path.display()))?;
-    if rbm.find(DEMO).is_none() {
-        return Err(format!("{}: the mod has no {DEMO}", path.display()));
+    if rbm.find(name).is_none() {
+        return Err(format!("{}: the mod has no {name}", path.display()));
     }
     let table = rbm::KeyTable::embedded(&rbm)
         .filter(|t| rbm.slots_covered(t))
         .ok_or_else(|| {
             format!(
-                "{}: the mod is not recrypted for rb (`rb mod recrypt`); its {DEMO} cannot be read",
+                "{}: the mod is not recrypted for rb (`rb mod recrypt`); its {name} cannot be read",
                 path.display()
             )
         })?;
-    rbm.file_by_name(DEMO, &table)
-        .map_err(|e| format!("{}: {DEMO}: {e}", path.display()))
+    rbm.file_by_name(name, &table)
+        .map_err(|e| format!("{}: {name}: {e}", path.display()))
 }
 
 /// Reads and converts an `.rbs` song.

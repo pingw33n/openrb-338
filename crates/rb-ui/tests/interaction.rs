@@ -326,9 +326,6 @@ fn instrument_legends_select_and_drag_keeps_selecting() {
     h.move_to(Pos2::new(100.0 + 22.0 * 11.0 + 5.0, 358.0));
     assert_eq!(h.app.panel.inst808, 11);
     h.up();
-    // The selector knob follows.
-    let v = rb_ui::behavior::knob_send(h.app.panel.knob("tr808.selector"));
-    assert_eq!(rb_ui::behavior::selector_instrument(v), 11);
     // The 909 legend, AC included; the area under AC's level knob no longer selects.
     h.move_to(Pos2::new(90.0 + 10.0, 395.0 + 50.0));
     h.down(Modifiers::NONE);

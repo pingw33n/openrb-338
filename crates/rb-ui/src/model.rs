@@ -345,7 +345,6 @@ impl Panel {
                 "knob" => {
                     let v = match c.name() {
                         "shuffle" | "delay" => 0,
-                        "selector" => behavior::knob_from_engine(behavior::selector_value(1)),
                         _ => 500,
                     };
                     p.knobs.insert(c.id, v);
@@ -494,14 +493,9 @@ impl Panel {
         self.knobs.get(id).copied().unwrap_or(0)
     }
 
-    /// Sets a knob position and sends the value when it changed; the 808 selector also
-    /// selects its instrument and snaps to it.
+    /// Sets a knob position and sends the value when it changed.
     pub fn set_knob(&mut self, id: &str, p: i32) {
         let p = p.clamp(0, KNOB_MAX);
-        if id == "tr808.selector" {
-            self.select_instrument(true, behavior::selector_instrument(behavior::knob_send(p)));
-            return;
-        }
         let old = self.knobs.insert(id.into(), p).unwrap_or(-1);
         let changed = old < 0 || behavior::knob_send(old) != behavior::knob_send(p);
         if changed {
@@ -545,13 +539,10 @@ impl Panel {
         self.set_event(id, v as i32);
     }
 
-    /// Selects a TR-808 / TR-909 instrument from a legend click; the 808's selector knob
-    /// follows.
+    /// Selects a TR-808 / TR-909 instrument from a legend click.
     pub fn select_instrument(&mut self, machine808: bool, i: usize) {
         if machine808 {
             self.inst808 = i;
-            let p = behavior::knob_from_engine(behavior::selector_value(i));
-            self.knobs.insert("tr808.selector".into(), p);
         } else {
             self.inst909 = i;
         }
@@ -575,7 +566,7 @@ impl Panel {
         {
             self.rows[r].enabled = v != 0;
         } else if let Some(p) = self.knobs.get_mut(id) {
-            if id != "tr808.selector" && behavior::knob_send(*p) != v {
+            if behavior::knob_send(*p) != v {
                 *p = behavior::knob_from_engine(v);
             }
         } else if let Some(p) = self.faders.get_mut(id) {
@@ -1322,24 +1313,11 @@ mod tests {
     }
 
     #[test]
-    fn selector_knob_and_legend_agree() {
+    fn the_legend_selects_the_instrument() {
         let mut p = Panel::new();
         assert_eq!(p.inst808, 1);
         p.select_instrument(true, 7);
         assert_eq!(p.inst808, 7);
-        assert_eq!(
-            behavior::selector_instrument(behavior::knob_send(p.knob("tr808.selector"))),
-            7
-        );
-        p.set_knob("tr808.selector", 1000);
-        assert_eq!(p.inst808, 11);
-        // between two drums the knob snaps to the nearer one
-        p.set_knob("tr808.selector", 140);
-        assert_eq!(p.inst808, 2);
-        assert_eq!(
-            p.knob("tr808.selector"),
-            behavior::knob_from_engine(behavior::selector_value(2))
-        );
     }
 
     #[test]

@@ -102,10 +102,6 @@ are in `KNOBS` (`src/parts.rs`) and below:
 | `knob_808_white` | 13 x 13 | (6.5, 6.5) | 5.9 / 0.9 | `#f08a24` | drum machine A tone, tuning, decay |
 | `knob_909` | 12 x 12 | (6, 6) | 5.4 / 0.9 | `#e2413b` | drum machine B knobs and flam |
 | `knob_22` | 22 x 22 | (11, 11) | 10.1 / 1.4 | `#ffb000` | shuffle, pan, delay send, effect knobs |
-| `knob_sel` | 38 x 38 | (19, 19) | none | none | the instrument selector (12 positions) |
-
-The selector has no arc; its 12 positions (-135 + 270 i / 11 degrees, the pointer's own sweep) are
-printed in `bg_tr808`, and the pointer snaps to the selected drum.
 
 ### Faders and switches
 
@@ -161,6 +157,9 @@ printed in `bg_tr808`, and the pointer snaps to the selected drum.
 - `meter_8x14_`, `meter_15x56_` + `0` .. `10`: level meters (the mixer channels' and effects'
   header meters, bare segments; master left and right, in a dark well) with 10 segments and 11
   states; the app maps the engine's meter byte to the state.
+- `mod_view`: 84 x 105, the dark well right of drum machine A's legend (control
+  `tr808.mod_view`, kind `modview`). The app paints the kit's `splash.jpg` in the 76 x 76
+  square at the top and the mod's name under it.
 
 ## How the app composes them
 

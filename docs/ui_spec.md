@@ -430,7 +430,10 @@ UI state (BD at start: observed, the steps showed the BD column and a drag paint
 - Mouse down on a legend selects; dragging over the legends keeps selecting while the button is
   held (`sub_4432F9` loops while `sub_492E05`, button down).
 - Selector knob: a knob (span 40) whose value v maps to instrument `(11 * v + 63) / 127`; the
-  knob shows `(127 * i + 5) / 11` for the selected instrument i (`sub_441E79`).
+  knob shows `(127 * i + 5) / 11` for the selected instrument i (`sub_441E79`). rb has no
+  selector knob (the user's change of 2026-10-28): the legend selects, and the knob's place
+  right of the legend shows the mod's window, the `splash.jpg` of the kit that plays (the
+  standard mod's for the built-in kit) above the song's mod name (`App::mod_view`).
 
 **Shared slots [C].** The switch of slots 3..7 is a vertical two-position switch: the top half
 gives 0, the bottom half 1. 0 plays the sound of the upper label (LC, MC, HC, CL, MA), non-zero

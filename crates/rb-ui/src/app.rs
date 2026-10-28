@@ -135,6 +135,8 @@ pub struct App {
     pub(crate) mod_list: Option<Result<Vec<ModEntry>, String>>,
     /// Whether a mod file has a `Demo.rbs`, for the file last asked (the Mods menu's item).
     pub(crate) demo_cache: Option<(PathBuf, bool)>,
+    /// The splash picture of the kit last shown in the 808's mod window (`App::mod_view`).
+    pub(crate) splash: Option<(rb_cli::mods::Kit, Option<egui::TextureHandle>)>,
     /// Whether the File > Info window is open (`App::info_ui`).
     pub(crate) info_open: bool,
     /// What the info window drew last (`App::info_shown`).
@@ -166,6 +168,7 @@ impl App {
             export: None,
             mod_list: None,
             demo_cache: None,
+            splash: None,
             info_open: false,
             info_shown: None,
             events_seen: 0,
@@ -467,6 +470,10 @@ impl App {
         let rect = view.rect(c.x, c.y, c.w, c.h);
         match c.kind.as_str() {
             "area" | "steps" => {}
+            "modview" => {
+                paint_part(ui, &c.part, rect);
+                self.mod_view(ui, view, c);
+            }
             "knob" => self.knob(ui, view, c, rect),
             "fader" => self.fader(ui, view, c, rect),
             "display" => {
@@ -502,6 +509,50 @@ impl App {
                 paint_part(ui, &name, rect);
             }
         }
+    }
+
+    /// The 808's mod window: the current kit's `splash.jpg` (the standard mod's for the built-in
+    /// kit) in a square at the top, the song's mod name under it.
+    fn mod_view(&mut self, ui: &Ui, view: &View, c: &Ctl) {
+        const PAD: f32 = 4.0;
+        let side = c.w - 2.0 * PAD;
+        if self.splash.as_ref().is_none_or(|(k, _)| *k != self.doc.kit) {
+            let tex = self.load_splash(ui.ctx());
+            self.splash = Some((self.doc.kit.clone(), tex));
+        }
+        if let Some((_, Some(tex))) = &self.splash {
+            let r = view.rect(c.x + PAD, c.y + PAD, side, side);
+            Image::new((tex.id(), r.size())).paint_at(ui, r);
+        }
+        let top = c.y + 2.0 * PAD + side;
+        let r = view.rect(c.x + 2.0, top, c.w - 4.0, c.y + c.h - top - 1.0);
+        let galley = ui.painter().layout(
+            self.doc.mod_name.clone(),
+            egui::FontId::proportional(7.0 * view.scale),
+            Color32::from_rgb(0xd8, 0xd8, 0xd0),
+            r.width(),
+        );
+        let pos = Pos2::new(r.center().x - galley.size().x / 2.0, r.min.y);
+        ui.painter()
+            .with_clip_rect(r)
+            .galley(pos, galley, Color32::WHITE);
+    }
+
+    /// The splash picture of the kit that plays, as a texture; None when there is none.
+    fn load_splash(&self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
+        let path = match &self.doc.kit {
+            rb_cli::mods::Kit::Mod(p) => p.clone(),
+            rb_cli::mods::Kit::Standard => {
+                crate::session::locate_standard_mod(self.standard_path.as_deref()).ok()?
+            }
+        };
+        let bytes = crate::session::mod_file(&path, crate::session::SPLASH).ok()?;
+        let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
+            .ok()?
+            .to_rgba8();
+        let size = [img.width() as usize, img.height() as usize];
+        let color = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+        Some(ctx.load_texture("mod-splash", color, egui::TextureOptions::LINEAR))
     }
 
     fn hit(&self, ui: &mut Ui, c: &Ctl, rect: Rect) -> Response {

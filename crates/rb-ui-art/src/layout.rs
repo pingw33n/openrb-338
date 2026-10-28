@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::parts::{
-    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOBS, KNOBS_909, SELECTOR_808, STEPS_Y_909, WHITE_303,
+    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOBS, KNOBS_909, MOD_VIEW_808, STEPS_Y_909, WHITE_303,
     column_909, knob_y_909,
 };
 use crate::svg::{Part, Svg, arc_path, n, pal};
@@ -153,8 +153,7 @@ const KNOB_303: usize = 0;
 const KNOB_808_RED: usize = 1;
 const KNOB_808_WHITE: usize = 2;
 const KNOB_909: usize = 3;
-const KNOB_SEL: usize = 4;
-const KNOB_22: usize = 5;
+const KNOB_22: usize = 4;
 
 /// The control rectangles of the whole panel, with the demo state used for
 /// the composed preview (pattern mode off, song mode, playing).
@@ -351,9 +350,8 @@ fn tr808(b: &mut Builder) {
             55.0,
         );
     }
-    let (cx, cy) = SELECTOR_808;
-    let sel = &KNOBS[KNOB_SEL];
-    b.knob("selector", KNOB_SEL, cx - sel.cx, cy - sel.cy, 1.0 / 11.0);
+    let (x, y, _, _) = MOD_VIEW_808;
+    b.part("mod_view", "modview", "mod_view", x, y);
     b.part("select_bd", "area", "sel_22x14", 32.0, 71.0);
     let colors = ["red", "orange", "yellow", "white"];
     for i in 0..16 {

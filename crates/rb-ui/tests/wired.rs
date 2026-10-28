@@ -336,7 +336,7 @@ fn param_controls() -> Vec<(String, Device, u8)> {
 
 /// The controls with no message: UI state, a display, a meter, or sent by other paths (listed in
 /// the test that checks them).
-const OTHER: &[&str] = &["tr808.selector", "tr909.flam_button", "tr909.flam"];
+const OTHER: &[&str] = &["tr808.mod_view", "tr909.flam_button", "tr909.flam"];
 
 /// The live byte index of a device's controller in the snapshot's live block.
 fn live_index(d: Device, ctrl: u8) -> usize {
@@ -423,14 +423,14 @@ fn every_knob_fader_and_switch_sends_its_device_message_and_the_engine_takes_it(
 }
 
 #[test]
-fn the_flam_knob_the_selector_and_the_flam_button() {
+fn the_flam_knob_the_mod_view_and_the_flam_button() {
     let mut h = Harness::new();
     // The 909 flam knob is controller 29 of the 909.
     h.drag("tr909.flam", 10.0);
     let v = rb_ui::behavior::knob_send(h.app.panel.knob("tr909.flam"));
     assert_eq!(h.take_log(), vec![dev(Device::Tr909, 74, &[29, v as u8])]);
-    // The selector knob and the Flam button are UI state: nothing is sent.
-    h.drag("tr808.selector", 10.0);
+    // The mod's window and the Flam button are UI state: nothing is sent.
+    h.click("tr808.mod_view");
     h.click("tr909.flam_button");
     assert_eq!(h.take_log(), vec![]);
 }
