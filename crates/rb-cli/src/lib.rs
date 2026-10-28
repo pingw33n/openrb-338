@@ -2,6 +2,7 @@
 //! share, and what the UI's menu (task-047) reuses so that its export writes the file `rb render`
 //! writes: the song loader, the mod lookup, the renderer and the encoders.
 
+pub mod cd;
 pub mod encode;
 pub mod mods;
 pub mod recrypt;

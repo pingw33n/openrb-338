@@ -6,8 +6,10 @@
 
 use std::collections::HashSet;
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
+use crate::cd::{self, CdImage};
 use crate::mods;
 use crate::{Fail, fail};
 
@@ -21,6 +23,9 @@ pub struct Options<'a> {
     pub output: &'a Path,
     /// `--rb20ful`; see [`mods::find_rb20ful`] for the search.
     pub rb20ful: Option<&'a Path>,
+    /// `--iso`: the ReBirth CD image. `RB20FUL.DAT` is read from it (not searched for), and with
+    /// no `inputs` the shipped mods of its installer are the inputs (task-065).
+    pub iso: Option<&'a Path>,
     /// Overwrite existing outputs.
     pub force: bool,
     /// The SHA-256 the key file must have: [`rbm::embedded::DAT_SHA256`] (a test passes
@@ -85,17 +90,43 @@ impl Report {
     }
 }
 
+/// What the key file is read through: a file or a window of the CD image.
+enum KeyFile {
+    File(File),
+    Image(cd::Window),
+}
+
+impl Read for KeyFile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            KeyFile::File(f) => f.read(buf),
+            KeyFile::Image(w) => w.read(buf),
+        }
+    }
+}
+
+impl Seek for KeyFile {
+    fn seek(&mut self, to: SeekFrom) -> std::io::Result<u64> {
+        match self {
+            KeyFile::File(f) => f.seek(to),
+            KeyFile::Image(w) => w.seek(to),
+        }
+    }
+}
+
 /// The key file, found and verified at the first use.
 struct Dat<'a> {
     explicit: Option<&'a Path>,
+    /// The CD image the key file is read from instead.
+    iso: Option<CdImage>,
     expected: &'a str,
     first_input: &'a Path,
-    opened: Option<Result<File, String>>,
+    opened: Option<Result<KeyFile, String>>,
     hashes: usize,
 }
 
 impl Dat<'_> {
-    fn file(&mut self) -> Result<&mut File, String> {
+    fn file(&mut self) -> Result<&mut KeyFile, String> {
         if self.opened.is_none() {
             let r = self.open();
             self.opened = Some(r);
@@ -107,7 +138,15 @@ impl Dat<'_> {
         }
     }
 
-    fn open(&mut self) -> Result<File, String> {
+    fn open(&mut self) -> Result<KeyFile, String> {
+        if let Some(iso) = self.iso.as_mut() {
+            let mut w = iso.rb20ful()?;
+            let at = format!("{} in {}", cd::DAT, iso.path().display());
+            eprintln!("rb: checking {at} (SHA-256)");
+            self.hashes += 1;
+            rbm::dat::verify_dat(&mut w, self.expected).map_err(|e| format!("{at}: {e}"))?;
+            return Ok(KeyFile::Image(w));
+        }
         let path = mods::find_rb20ful(self.explicit, self.first_input)
             .map_err(|Fail(_, m)| format!("recrypting needs the key file once; {m}"))?;
         let mut f =
@@ -116,7 +155,7 @@ impl Dat<'_> {
         self.hashes += 1;
         rbm::dat::verify_dat(&mut f, self.expected)
             .map_err(|e| format!("{}: {e}", path.display()))?;
-        Ok(f)
+        Ok(KeyFile::File(f))
     }
 }
 
@@ -149,9 +188,64 @@ fn same_path(a: &Path, b: &Path) -> bool {
 
 /// One mod to do: its input and output, and whether an earlier input has the same output name.
 struct Job {
+    /// The input file, or the name of a mod on the CD image (`IMAGE:NAME`).
     input: PathBuf,
+    /// The bytes of a mod read from the CD image; else `input` is read.
+    bytes: Option<Vec<u8>>,
     output: PathBuf,
     dup: bool,
+}
+
+/// The jobs of a run with no input: the shipped mods in the installer of the CD image.
+fn cd_jobs(iso: &mut CdImage, output: &Path) -> Result<Vec<Job>, Fail> {
+    if !output.is_dir() && has_rbm_ext(output) {
+        return Err(fail(
+            2,
+            format!(
+                "{} is a file name: with no input mod the shipped mods of the CD are recrypted, \
+                 and -o must name the folder to write them into",
+                output.display()
+            ),
+        ));
+    }
+    let image = iso.path().display().to_string();
+    eprintln!(
+        "rb: reading the shipped mods from {} ({})",
+        image,
+        cd::INSTALLER
+    );
+    let inst = iso.installer().map_err(|m| fail(1, m))?;
+    let names = cd::shipped_mods(&inst);
+    if names.is_empty() {
+        return Err(fail(
+            1,
+            format!(
+                "{image}: no .rbm mod in {} (another edition of the CD?)",
+                cd::INSTALLER
+            ),
+        ));
+    }
+    let mut jobs = Vec::new();
+    // a name from the image becomes a file name under `output`: a plain one only
+    if let Some(bad) = names.iter().find(|n| !rbm::pack::safe_path(n)) {
+        return Err(fail(
+            1,
+            format!(
+                "{image}: the mod name {bad:?} in {} is not a plain file name",
+                cd::INSTALLER
+            ),
+        ));
+    }
+    for n in names {
+        let bytes = inst.read(&n).map_err(|m| fail(1, m))?;
+        jobs.push(Job {
+            input: PathBuf::from(format!("{image}:{n}")),
+            bytes: Some(bytes),
+            output: output.join(&n),
+            dup: false,
+        });
+    }
+    Ok(jobs)
 }
 
 /// The jobs of a run.
@@ -177,6 +271,7 @@ fn plan(o: &Options) -> Result<Vec<Job>, Fail> {
         }
         return Ok(vec![Job {
             input: o.inputs[0].clone(),
+            bytes: None,
             output: o.output.to_path_buf(),
             dup: false,
         }]);
@@ -218,6 +313,7 @@ fn plan(o: &Options) -> Result<Vec<Job>, Fail> {
         let dup = !seen.insert(name.to_string_lossy().to_lowercase());
         jobs.push(Job {
             input: m,
+            bytes: None,
             output: out,
             dup,
         });
@@ -237,7 +333,10 @@ fn one(dat: &mut Dat, job: &Job, force: bool) -> Result<Outcome, String> {
             output.display()
         ));
     }
-    let bytes = std::fs::read(input).map_err(|e| format!("cannot read the mod: {e}"))?;
+    let bytes = match &job.bytes {
+        Some(b) => b.clone(),
+        None => std::fs::read(input).map_err(|e| format!("cannot read the mod: {e}"))?,
+    };
     let rbm = rbm::Rbm::parse(bytes.clone()).map_err(|e| e.to_string())?;
     let embedded = rbm::KeyTable::embedded(&rbm).filter(|t| rbm.all_covered(t));
     let (out, outcome) = if let Some(t) = embedded {
@@ -274,9 +373,17 @@ fn one(dat: &mut Dat, job: &Job, force: bool) -> Result<Outcome, String> {
 /// Runs `rb mod recrypt`. `Err` is a usage error (no input, the output folder is an input
 /// folder); a failing mod is an [`Outcome::Failed`] in the report.
 pub fn run(o: &Options) -> Result<Report, Fail> {
-    let jobs = plan(o)?;
+    let mut iso = o
+        .iso
+        .map(|p| CdImage::open(p).map_err(|m| fail(1, m)))
+        .transpose()?;
+    let jobs = match (o.inputs.is_empty(), iso.as_mut()) {
+        (true, Some(iso)) => cd_jobs(iso, o.output)?,
+        _ => plan(o)?,
+    };
     let mut dat = Dat {
         explicit: o.rb20ful,
+        iso,
         expected: o.expected_sha256,
         first_input: &jobs[0].input,
         opened: None,

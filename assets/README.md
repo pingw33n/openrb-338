@@ -28,4 +28,6 @@ rb mod pack-standard --rebirth-dll original/ReBirth.dll --rebirth-exe CD/Rebirth
 The CD's exe gives the splash without the Steinberg logo that `original/Rebirth.exe` (patched,
 installed) carries; the 58 panel bitmaps are the same in both. The build is deterministic: with
 `RB_CD_REBIRTH_EXE` naming the CD's exe, `cargo test --release -p rb-cli --test standard_mod`
-rebuilds the file and checks it byte for byte.
+rebuilds the file and checks it byte for byte. `rb mod pack-standard --iso CD.iso -o FILE`
+(task-065, docs/rbm.md 16) reads both files straight from the CD image and gives the same bytes;
+with `RB_CD_ISO` naming the image the test takes the exe from it.

@@ -153,9 +153,13 @@ enum ModCmd {
     /// folder): `rb mod recrypt IN.rbm... DIR... -o OUTDIR`, which writes the mods under their
     /// names; OUTDIR must not be an input folder. A mod that fails does not stop the others;
     /// the summary lists the failures and the exit code is 1 if any failed.
+    ///
+    /// `--iso CD.iso` reads RB20FUL.DAT from the ReBirth CD image itself (nothing is extracted);
+    /// with no input mod, the four mods shipped on the CD (inside its installer) are recrypted
+    /// into the folder given with -o.
     Recrypt {
-        /// The mods (.rbm files) and folders of them.
-        #[arg(required = true)]
+        /// The mods (.rbm files) and folders of them. None with --iso: the CD's shipped mods.
+        #[arg(required_unless_present = "iso")]
         inputs: Vec<PathBuf>,
         /// The recrypted mod to write (one input file, a path ending in .rbm), else the folder
         /// to write the mods into (created).
@@ -167,23 +171,34 @@ enum ModCmd {
         /// The CD's RB20FUL.DAT. Search order: this option, the RB_RB20FUL environment
         /// variable, then an RB20FUL.DAT in the folder of the input mod (or its parent), next
         /// to the rb binary, or in the usual install locations on Windows.
-        #[arg(long, value_name = "PATH")]
+        #[arg(long, value_name = "PATH", conflicts_with = "iso")]
         rb20ful: Option<PathBuf>,
+        /// The ReBirth 2.01 CD as an ISO 9660 image (.iso). RB20FUL.DAT is read from its root.
+        /// Its SHA-256 is checked as for --rb20ful.
+        #[arg(long, value_name = "CD.iso")]
+        iso: Option<PathBuf>,
     },
     /// Build the standard mod: the original's built-in kit (the 46 samples of ReBirth.dll) and
     /// panel (the bitmaps of Rebirth.exe) as a recrypted .rbm named "Standard ReBirth". rb
     /// embeds the one it was built with (assets/Standard.rbm, from the CD's Rebirth.exe), so
     /// render, compare and play need no ReBirth file; this command rebuilds it. It is the only
     /// rb command that reads ReBirth.dll and Rebirth.exe.
+    ///
+    /// `--iso CD.iso` reads both files from the installer on the ReBirth CD image (nothing is
+    /// extracted); the result is byte for byte assets/Standard.rbm.
     PackStandard {
         /// The ReBirth 2.01 ReBirth.dll. Search order: this option, then a ReBirth.dll next to
         /// the rb binary, then the usual install locations on Windows.
-        #[arg(long, value_name = "PATH")]
+        #[arg(long, value_name = "PATH", conflicts_with = "iso")]
         rebirth_dll: Option<PathBuf>,
         /// The ReBirth 2.01 Rebirth.exe, which holds the panel bitmaps. Default: the
         /// Rebirth.exe next to the ReBirth.dll.
-        #[arg(long, value_name = "PATH")]
+        #[arg(long, value_name = "PATH", conflicts_with = "iso")]
         rebirth_exe: Option<PathBuf>,
+        /// The ReBirth 2.01 CD as an ISO 9660 image (.iso): ReBirth.dll and Rebirth.exe are
+        /// read from the CABs inside "Install ReBirth RB-338.exe" and checked by SHA-256.
+        #[arg(long, value_name = "CD.iso")]
+        iso: Option<PathBuf>,
         /// The mod to write.
         #[arg(short, long, value_name = "FILE")]
         output: PathBuf,
@@ -291,12 +306,17 @@ fn main() -> ExitCode {
             output,
             force,
             rb20ful,
-        }) => recrypt(&inputs, &output, rb20ful, force),
+            iso,
+        }) => recrypt(&inputs, &output, rb20ful, iso, force),
         Cmd::Mod(ModCmd::PackStandard {
             rebirth_dll,
             rebirth_exe,
+            iso,
             output,
-        }) => pack_standard(rebirth_dll.as_deref(), rebirth_exe.as_deref(), &output),
+        }) => match iso {
+            Some(iso) => pack_standard_iso(&iso, &output),
+            None => pack_standard(rebirth_dll.as_deref(), rebirth_exe.as_deref(), &output),
+        },
         Cmd::Mod(ModCmd::Unpack {
             input,
             output,
@@ -422,12 +442,35 @@ fn pack_standard(dll: Option<&Path>, exe: Option<&Path>, output: &Path) -> Resul
     let read = |p: &Path| {
         std::fs::read(p).map_err(|e| fail(1, format!("{}: cannot read: {e}", p.display())))
     };
-    let built = rbm::standard::build(&read(&dll)?, &read(&exe)?).map_err(|e| {
-        fail(
-            1,
-            format!("{e} (from {} and {})", dll.display(), exe.display()),
-        )
-    })?;
+    write_standard(
+        &read(&dll)?,
+        &read(&exe)?,
+        &dll.display().to_string(),
+        &exe.display().to_string(),
+        output,
+    )
+}
+
+/// `rb mod pack-standard --iso`: ReBirth.dll and Rebirth.exe from the CD image's installer.
+fn pack_standard_iso(iso: &Path, output: &Path) -> Result<(), Fail> {
+    use rb_cli::cd;
+    let mut cd_image = cd::CdImage::open(iso).map_err(|m| fail(1, m))?;
+    let inst = cd_image.installer().map_err(|m| fail(1, m))?;
+    let dll = cd::read_checked(&inst, "ReBirth.dll", cd::DLL_SHA256).map_err(|m| fail(1, m))?;
+    let exe = cd::read_checked(&inst, "Rebirth.exe", cd::EXE_SHA256).map_err(|m| fail(1, m))?;
+    let at = |n: &str| format!("{}:{n}", iso.display());
+    write_standard(&dll, &exe, &at("ReBirth.dll"), &at("Rebirth.exe"), output)
+}
+
+fn write_standard(
+    dll: &[u8],
+    exe: &[u8],
+    dll_name: &str,
+    exe_name: &str,
+    output: &Path,
+) -> Result<(), Fail> {
+    let built = rbm::standard::build(dll, exe)
+        .map_err(|e| fail(1, format!("{e} (from {dll_name} and {exe_name})")))?;
     std::fs::write(output, &built.bytes)
         .map_err(|e| fail(1, format!("{}: cannot write: {e}", output.display())))?;
     eprintln!(
@@ -435,9 +478,9 @@ fn pack_standard(dll: Option<&Path>, exe: Option<&Path>, output: &Path) -> Resul
         output.display(),
         rbm::standard::NAME,
         rb_engine::samples::COUNT,
-        dll.display(),
+        dll_name,
         built.jpegs,
-        exe.display(),
+        exe_name,
         built.bytes.len()
     );
     Ok(())
@@ -554,12 +597,14 @@ fn recrypt(
     inputs: &[PathBuf],
     output: &Path,
     rb20ful: Option<PathBuf>,
+    iso: Option<PathBuf>,
     force: bool,
 ) -> Result<(), Fail> {
     let report = rb_cli::recrypt::run(&rb_cli::recrypt::Options {
         inputs,
         output,
         rb20ful: rb20ful.as_deref(),
+        iso: iso.as_deref(),
         force,
         expected_sha256: rbm::embedded::DAT_SHA256,
     })?;

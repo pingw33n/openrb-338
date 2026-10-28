@@ -188,6 +188,7 @@ fn opts<'a>(f: &'a Fixture, inputs: &'a [PathBuf], output: &'a Path, force: bool
         inputs,
         output,
         rb20ful: Some(&f.dat),
+        iso: None,
         force,
         expected_sha256: &f.sha,
     }
@@ -375,6 +376,7 @@ fn a_dat_with_the_wrong_hash_is_rejected_before_anything_is_written() {
     let ins = [f.mods.clone()];
     let o = Options {
         rb20ful: Some(&blank),
+        iso: None,
         expected_sha256: embedded::DAT_SHA256,
         ..opts(&f, &ins, &out, false)
     };
@@ -426,6 +428,7 @@ fn a_dat_with_the_wrong_hash_is_rejected_before_anything_is_written() {
     let ins = [f.mods.join("a.rbm")];
     let o = Options {
         rb20ful: Some(&short),
+        iso: None,
         ..opts(&f, &ins, &out, false)
     };
     let why = failure(&run(&o).unwrap(), "a.rbm");
@@ -495,6 +498,7 @@ fn an_already_recrypted_mod_is_checked_and_copied_unchanged() {
     let ins = [first.clone()];
     let o = Options {
         rb20ful: None,
+        iso: None,
         ..opts(&f, &ins, &second, false)
     };
     let r = run(&o).unwrap();
@@ -609,6 +613,7 @@ fn a_failed_run_creates_no_output_folder() {
     drop(blank_dat(&blank));
     let o = Options {
         rb20ful: Some(&blank),
+        iso: None,
         expected_sha256: embedded::DAT_SHA256,
         ..opts(&f, std::slice::from_ref(&f.mods), &out, false)
     };
@@ -635,6 +640,7 @@ fn the_recrypted_shipped_mods_pass_the_checks() {
         inputs: std::slice::from_ref(&dir),
         output: &out,
         rb20ful: None,
+        iso: None,
         force: false,
         expected_sha256: embedded::DAT_SHA256,
     };
@@ -664,6 +670,7 @@ fn shipped_mods_bulk_equals_single_with_the_real_key_file() {
         inputs: &[orig],
         output: &out,
         rb20ful: Some(&dat),
+        iso: None,
         force: false,
         expected_sha256: embedded::DAT_SHA256,
     };

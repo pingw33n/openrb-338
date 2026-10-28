@@ -1027,3 +1027,74 @@ the standard mod (`assets/Standard.rbm`) and on the four shipped mods, recrypted
 `RB_MOD_DIR`. To edit a mod: unpack, change a file or a field, pack. A mod made so loads in rb
 and, like a recrypted one, in the original (section 12.3). Since task-067 the standard mod's INFO
 description names `rb mod pack-standard` (13.2).
+
+## 16. The CD image: `--iso` (task-065, 2026-10-28)
+
+`rb mod recrypt --iso CD.iso` and `rb mod pack-standard --iso CD.iso` read what they need from the
+ReBirth CD as an ISO 9660 image, in place: nothing is extracted to disk and no Windows code runs.
+The code is `crates/rb-cli/src/cd.rs`. The image is the user's (the 2001 reissue, 570,923,008
+bytes); it and anything read from it are never committed.
+
+### 16.1 What is on the CD [C, read from the user's image]
+
+- **The image.** 2048-byte sectors, a primary volume descriptor and a Joliet one (UCS-2BE long
+  names; the primary names are 8.3 with `;1`). rb's own reader (about 150 lines) takes the Joliet
+  tree when there is one, else the primary one; names are compared without case; a multi-extent
+  file,
+  a block size other than 2048 or a raw 2352-byte image is refused. The root holds `Autorun.inf`,
+  `Install ModPacker.exe`, `Install ReBirth RB-338.exe` (20,151,808), `RB20FUL.DAT` (134,217,984),
+  `RB20UPD.DAT`, `rebirth.ico`, `ReadMe.wri` and the folders `Acrobat Reader 5.0`, `DirectX`, `HLD`,
+  `Sounds Good promo`.
+- **The installer** is a Wise for Windows package: three CAB archives are appended to the exe, at
+  file offsets 0x12BE4 (13 files, the Windows Installer redistributable, 1,422,335 bytes),
+  0x17E4E8 (the same 13 files again) and **0x30266C** (16,773,032 bytes, LZX window 21, one
+  folder, **32 files**).
+  `Install ModPacker.exe` has its own CABs (unpacked mod parts, not used). (The exe also holds
+  `MSCF` bytes at 0x893E and 0x8D70 and their copies: not cabinets, so the scan checks
+  reserved1 = 0,
+  version 1.3, a file count and that `cbCabinet` fits the file.)
+- **The 32 files of the third CAB:** `Rebirth.exe`, `ReBirth.dll`, `ReWire.dll`, `MSVCRT.DLL`, help
+  and manuals, the songs (`ReBirth_1.0_Default_Song.rbs`, `Silent_Default_Song.rbs`, the demo
+  songs) and **the four shipped mods `Metallicon.rbm`, `MSM2.rbm`, `Orbit2.rbm`, `PBE2.rbm`**, which
+  are the files of `RB_MOD_ORIG_DIR` byte for byte (the test compares them). The mods are not plain
+  files on the CD.
+
+### 16.2 The commands
+
+- **`rb mod recrypt --iso CD.iso [IN... ] -o OUT`**: `RB20FUL.DAT` is read through a window of the
+  image (the SHA-256 of task-064 applies, 0.9 s for the four mods); `--iso` and `--rb20ful` exclude
+  each other. With **no input mod** the four shipped mods of the third CAB are the inputs and `-o`
+  must be a folder (a name ending in `.rbm` is a usage error). With input mods only the key file
+  comes from the image. The result is byte for byte the `--rb20ful` form over the original mods
+  (and the `recrypted-mods` set of 12.4).
+- **`rb mod pack-standard --iso CD.iso -o FILE`**: `ReBirth.dll` and `Rebirth.exe` are unpacked from
+  the third CAB in memory (0.5 s) and **checked by SHA-256** (`4c3a6441...8b12`, `e69fef41...7004`);
+  another hash is an error that says it is another edition of the CD. The result is
+  `assets/Standard.rbm` byte for byte (`6355b5f1...5fbe`). `--iso` excludes `--rebirth-dll` and
+  `--rebirth-exe`.
+- **Unknown images** are reported: not an ISO 9660 image (no `CD001` at sector 16, too short, a
+  block size); an ISO without `RB20FUL.DAT` or the installer at its root ("not the ReBirth 2.01
+  CD", with the names the root holds); a CAB set without the file (another edition of the CD?);
+  a hash that
+  differs (the `RB20FUL.DAT` message of 12.5, the two hashes above). Only the 2001 reissue is
+  known; the 1998 original CD has not been seen, so whether its layout differs is **not confirmed**.
+- **CAB reader.** `cab` 0.6.0 (pure Rust, MIT, 2024-04-05; its `unsafe` is in test code only; the
+  LZX decoder is `lzxd` 0.2.7, 2026-06-25, MIT or Apache-2.0), pinned exactly (`cab = "=0.6.0"`).
+  It was chosen over writing an LZX decoder: it reads the CAB with its header reserve and the
+  LZX folder of the real installer: the files it gives have the SHA-256 that `bsdtar` and Windows
+  `expand` gave (ReBirth.dll, Rebirth.exe) and the mods are the originals.
+  Its other new dependencies (`time`, `deranged`, `num-conv`, `powerfmt`, `time-core`) are pinned
+  by `Cargo.lock`, all published more than two weeks before this task.
+- **Names from the image** that become output files (the CD's mods) must pass
+  `rbm::pack::safe_path` (no separator, `..`, drive, device name); any other name is an error and
+  nothing is written. The `cab` and `lzxd` crates are not hardened against malformed CAB bytes (a
+  panic is possible, not memory unsafety); the image is the user's own.
+- **Tests** (`crates/rb-cli/tests/cd_image.rs`): always on, a synthetic Joliet and a primary-only
+  ISO and an MSZIP CAB (`cab` cannot write LZX) in memory: names, paths, windows, the decoy
+  `MSCF`, unsafe mod names, a truncated installer, the errors, the option conflicts; gated on
+  the real image (`RB_CD_ISO`): the DAT's hash, the two
+  files' hashes, the DLL equal to `original/ReBirth.dll`, the shipped mods equal to
+  `RB_MOD_ORIG_DIR`, `pack-standard --iso` equal to `assets/Standard.rbm` (and to the file form),
+  `recrypt --iso` equal to the `--rb20ful` form. `standard_mod.rs`'s reproduction test also takes
+  the exe from `RB_CD_ISO` when `RB_CD_REBIRTH_EXE` is not set. The LZX path is covered only by the
+  gated tests.
