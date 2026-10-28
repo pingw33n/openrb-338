@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 09:34'
-updated_date: '2026-10-28 10:12'
+updated_date: '2026-10-28 10:19'
 labels:
   - tools
   - cli
@@ -51,13 +51,15 @@ What:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 .github/workflows/ci.yml runs fmt, clippy and tests on Linux, Windows and macOS, and release.yml builds and uploads the packages; both are validated (actionlint or act) and need no secrets or non-committed files
-- [ ] #2 AGENTS.md and docs/building.md describe the scripts and workflows; cargo test and clippy pass
-- [ ] #3 scripts/ builds release packages of rb and rb-ui for Linux x86_64, Windows x86_64 and macOS (aarch64 and x86_64, or universal) from this Mac; tool requirements and limits are documented; the produced packages are listed in the notes
+- [ ] #1 AGENTS.md and docs/building.md describe the scripts and workflows; cargo test and clippy pass
+- [ ] #2 scripts/ builds release packages of rb and rb-ui for Linux x86_64, Windows x86_64 and macOS (aarch64 and x86_64, or universal) from this Mac; tool requirements and limits are documented; the produced packages are listed in the notes
+- [ ] #3 release.yml builds rb and rb-ui packages for all six targets (Linux, Windows, macOS x amd64, arm64); the local scripts build every pair practical from this Mac and document the skipped ones; tool requirements are documented; the produced packages are listed in the notes
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Scope widened by the user (2026-10-28): macOS is a first-class target. scripts/ also builds macOS packages for aarch64-apple-darwin and x86_64-apple-darwin (both from this Mac; a universal binary via lipo if cheap, else two packages), as .tar.gz of rb and rb-ui; release.yml builds them on macos runners too. The .dmg with an .app bundle and the Windows installer .exe are separate tasks (task-110, task-111) that build on this task's scripts and workflows.
+
+Targets decided by the user (2026-10-28): every OS has an amd64 and an arm64 variant: x86_64/aarch64-unknown-linux-gnu, x86_64/aarch64-pc-windows-msvc (or -gnu/-gnullvm for arm64 if msvc is impractical; say which), x86_64/aarch64-apple-darwin. GitHub Actions builds all six, on native runners where they exist (ubuntu-24.04-arm, windows-11-arm, macos-14 for arm64; ubuntu-latest, windows-latest, macos-13 for amd64) or by cross-compiling. The local scripts may skip pairs that are hard to build from this Mac; list which are skipped and why. No code signing anywhere (the user, 2026-10-28).
 <!-- SECTION:NOTES:END -->

@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 10:12'
+updated_date: '2026-10-28 10:19'
 labels:
   - tools
   - ui
@@ -39,6 +40,12 @@ What:
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 A local script produces OpenRB-338-<version>.dmg with a universal OpenRB-338.app (Info.plist, .icns from app_icon) and the CLI; the app launches from the mounted image
-- [ ] #2 release.yml builds and uploads the .dmg on a macos runner; signing/notarization steps exist but are skipped without secrets; the unsigned-app behavior is documented
-- [ ] #3 docs/building.md describes it; validated with actionlint (or act)
+- [ ] #2 docs/building.md describes it; validated with actionlint (or act)
+- [ ] #3 release.yml builds and uploads the .dmg on a macos runner; no signing or notarization (ad-hoc codesign only where launch needs it); the unsigned-app behavior is documented
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+User decisions (2026-10-28): no signing or notarization at all: drop the signing hooks, keep only ad-hoc codesign if the app needs it to launch on Apple Silicon (it does for arm64 binaries), and document Gatekeeper's right-click > Open. Both architectures: the universal app covers amd64 and arm64 in one .dmg; if a universal binary is impractical, make two .dmgs (-arm64, -x86_64).
+<!-- SECTION:NOTES:END -->

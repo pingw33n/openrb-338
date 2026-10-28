@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 10:12'
+updated_date: '2026-10-28 10:19'
 labels:
   - tools
   - ui
@@ -41,6 +42,12 @@ What:
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 A local script produces OpenRB-338-<version>-setup.exe (NSIS) that installs the UI (no console window, icon) and the CLI with Start menu entry, optional PATH and an uninstaller
-- [ ] #2 release.yml builds and uploads the installer; a signing step exists but is skipped without secrets; SmartScreen behavior is documented
-- [ ] #3 The installer was run (silent install, app start, rb --help, uninstall) on the test machine or the reason it was not is recorded; docs/building.md describes it
+- [ ] #2 The installer was run (silent install, app start, rb --help, uninstall) on the test machine or the reason it was not is recorded; docs/building.md describes it
+- [ ] #3 release.yml builds and uploads the x64 and arm64 installers; no signing; SmartScreen behavior is documented
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+User decisions (2026-10-28): no Authenticode signing: drop the signing step, document SmartScreen. Two installers, one per architecture: OpenRB-338-<version>-x64-setup.exe and -arm64-setup.exe, from task-108's x86_64 and aarch64 Windows builds. If the arm64 one cannot be built from this Mac, build it only in GitHub Actions (windows-11-arm or cross) and say so.
+<!-- SECTION:NOTES:END -->
