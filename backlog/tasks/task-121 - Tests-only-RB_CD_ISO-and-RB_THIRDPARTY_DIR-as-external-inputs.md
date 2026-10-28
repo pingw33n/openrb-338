@@ -1,9 +1,13 @@
 ---
 id: TASK-121
-title: 'Tests: only RB_CD_ISO and RB_THIRDPARTY_DIR as external inputs'
+title: >-
+  Tests: only RB_CD_ISO, RB_THIRDPARTY_MODS_DIR and RB_THIRDPARTY_SONGS_DIR as
+  external inputs
 status: To Do
-assignee: []
+assignee:
+  - '@agent-worker'
 created_date: '2026-10-28 13:51'
+updated_date: '2026-10-28 16:10'
 labels:
   - tests
   - rbm
@@ -67,3 +71,14 @@ What:
 - [ ] #3 Synthetic recrypt tests (ordinals >= 256, size edges, 199 files, duplicate names, foreign/filler chunks, old pad) pass against both crates/rbm and tools/rbm.py with no env var
 - [ ] #4 The tests run without original/ (DLL and exe from the ISO, or skipped); AGENTS.md and docs name only the two variables; cargo test and clippy pass
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+User change (2026-10-28): RB_THIRDPARTY_DIR is split into two variables, RB_THIRDPARTY_MODS_DIR (a folder of RECRYPTED .rbm, today ~/rb_stuff/Mods) and RB_THIRDPARTY_SONGS_DIR (a folder of songs, today ~/rb_stuff/songs). The user typed 'RB_THRIDPARTY' and 'RB_THIRDPART_SONGS_DIR'; the intended spelling is RB_THIRDPARTY_*. RB_THIRDPARTY_DIR goes away; don't keep it as an alias.
+- The songs test needs only RB_THIRDPARTY_SONGS_DIR. It also uses RB_THIRDPARTY_MODS_DIR for mod resolution when that is set, and says so when it isn't.
+- The mods manifest check needs RB_THIRDPARTY_MODS_DIR.
+- Regenerating the manifest uses the originals (Mods.orig) and the DAT, passed as explicit arguments to the regeneration command, not as test variables.
+- The external test inputs are then RB_CD_ISO, RB_THIRDPARTY_MODS_DIR and RB_THIRDPARTY_SONGS_DIR.
+- The task's acceptance criteria and docs read with this split.
+<!-- SECTION:NOTES:END -->
