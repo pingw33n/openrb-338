@@ -861,6 +861,7 @@ fn part_size(name: &str) -> (f32, f32) {
     match name {
         "wood" => (16.0, 510.0),
         "bg_transport" => (592.0, 50.0),
+        "logo" => (134.0, 48.0),
         "bg_pattern" | "bg_mixer" => (70.0, 115.0),
         "bg_tb303" | "bg_tr808" | "bg_tr909" => (366.0, 115.0),
         "bg_master" => (82.0, 98.0),

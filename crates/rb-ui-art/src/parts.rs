@@ -779,25 +779,68 @@ fn transport_bg(out: &mut Vec<Part>) {
         label(s, 342.5, 21.5, 3.4, dim, "START");
         label(s, 385.5, 21.5, 3.4, dim, "LENGTH");
         s.line(263.0, 8.0, 263.0, 42.0, pal::SLATE_LINE, 1.0);
-        // The logo: our own wordmark.
-        s.g_at(458.0, 1.0);
-        let cap = 14.0;
-        let x0 = 8.0;
-        text(s, x0, 17.0, cap, Anchor::Start, pal::INK, "OPENRB-");
-        let x1 = x0 + font::text_width(cap, "OPENRB-") + font::gap(cap);
-        text(s, x1, 17.0, cap, Anchor::Start, pal::ORANGE, "338");
+    }));
+}
+
+/// The size of the logo parts, and of the logo's click area (`layout::on_logo` of rb-ui).
+pub const LOGO_W: f32 = 134.0;
+pub const LOGO_H: f32 = 48.0;
+/// Where the logo sits on the panel (the transport section is at x = 16, the logo at 458 in it).
+pub const LOGO_X: f32 = 474.0;
+pub const LOGO_Y: f32 = 1.0;
+/// The pieces of the logo, each on the whole `LOGO_W` x `LOGO_H` canvas: every piece is placed
+/// at (0, 0) of the logo, so an animation only offsets or fades a piece.
+pub const LOGO_PIECES: [&str; 4] = ["logo_open", "logo_rb338", "logo_line", "logo_sub"];
+
+/// Our own wordmark, `OPENRB-338`: the whole, and its pieces (`LOGO_PIECES`) for task-114.
+fn logo(out: &mut Vec<Part>) {
+    let cap = 14.0;
+    let x0 = 8.0;
+    // 'OPEN' and 'RB-' are one INK run in the whole word: each piece draws its glyphs of that
+    // run (`text_range`), so the pieces sit exactly where the whole put them.
+    let x_338 = x0 + font::text_width(cap, "OPENRB-") + font::gap(cap);
+    let run = |s: &mut Svg, from, to| {
+        font::text_range(
+            s,
+            x0,
+            17.0,
+            cap,
+            Anchor::Start,
+            pal::INK,
+            "OPENRB-",
+            from..to,
+        );
+    };
+    let open = |s: &mut Svg| run(s, 0, 4);
+    let rb338 = |s: &mut Svg| {
+        run(s, 4, 7);
+        text(s, x_338, 17.0, cap, Anchor::Start, pal::ORANGE, "338");
+    };
+    let line = |s: &mut Svg| {
         s.rect(8.0, 28.0, 118.0, 1.5, 0.75, pal::ORANGE);
+    };
+    let sub = |s: &mut Svg| {
+        let y = 37.0;
         text(
             s,
             8.0,
-            37.0,
+            y,
             3.4,
             Anchor::Start,
-            dim,
+            pal::INK_DIM,
             "BASS LINE AND DRUM MACHINE",
         );
-        s.end_g();
+    };
+    out.push(Part::new("logo", LOGO_W, LOGO_H, |s| {
+        open(s);
+        rb338(s);
+        line(s);
+        sub(s);
     }));
+    out.push(Part::new("logo_open", LOGO_W, LOGO_H, open));
+    out.push(Part::new("logo_rb338", LOGO_W, LOGO_H, rb338));
+    out.push(Part::new("logo_line", LOGO_W, LOGO_H, line));
+    out.push(Part::new("logo_sub", LOGO_W, LOGO_H, sub));
 }
 
 fn pattern_bg(out: &mut Vec<Part>) {
@@ -1090,6 +1133,7 @@ pub fn all_parts() -> Vec<Part> {
     let mut v = Vec::new();
     wood(&mut v);
     transport_bg(&mut v);
+    logo(&mut v);
     pattern_bg(&mut v);
     tb303_bg(&mut v);
     tr808_bg(&mut v);

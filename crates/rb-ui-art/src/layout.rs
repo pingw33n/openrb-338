@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use crate::parts::{
-    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOBS, KNOBS_909, MOD_VIEW_808, STEPS_Y_909, WHITE_303,
-    column_909, knob_y_909,
+    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOBS, KNOBS_909, LOGO_X, LOGO_Y, MOD_VIEW_808, STEPS_Y_909,
+    WHITE_303, column_909, knob_y_909,
 };
 use crate::svg::{Part, Svg, arc_path, n, pal};
 
@@ -190,6 +190,10 @@ pub fn layout(parts: &[Part]) -> Layout {
 
 fn transport(b: &mut Builder) {
     b.section("transport", "bg_transport", 16.0, 0.0);
+    // the wordmark over the transport background (its pieces are not drawn here)
+    b.layout
+        .backgrounds
+        .push(("logo".to_string(), LOGO_X, LOGO_Y));
     // centered with its label in the space left of the tempo display (0..44)
     b.knob("shuffle", KNOB_22, 11.0, 10.3, 0.3);
     b.display("tempo", 44.0, 27.0, 27.0, 3, "140");

@@ -63,6 +63,7 @@ pub fn backgrounds() -> Vec<(&'static str, f32, f32)> {
         ("wood", 0.0, 0.0),
         ("wood", 608.0, 0.0),
         ("bg_transport", 16.0, 0.0),
+        ("logo", 474.0, 1.0),
     ];
     for r in 0..4 {
         let y = 50.0 + 115.0 * r as f32;
@@ -156,5 +157,10 @@ mod tests {
         assert!(on_logo(474.0, 1.0) && on_logo(607.9, 48.9));
         assert!(!on_logo(473.9, 10.0) && !on_logo(608.0, 10.0));
         assert!(!on_logo(500.0, 0.9) && !on_logo(500.0, 49.0));
+        // the logo part covers exactly the click area
+        use rb_ui_art::parts::{LOGO_H, LOGO_W, LOGO_X, LOGO_Y};
+        assert_eq!((LOGO_X, LOGO_Y), (474.0, 1.0));
+        assert!(on_logo(LOGO_X, LOGO_Y) && on_logo(LOGO_X + LOGO_W - 0.1, LOGO_Y + LOGO_H - 0.1));
+        assert!(!on_logo(LOGO_X + LOGO_W, LOGO_Y) && !on_logo(LOGO_X, LOGO_Y + LOGO_H));
     }
 }

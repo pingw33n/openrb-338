@@ -9,6 +9,12 @@ use crate::art;
 const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
 const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 
+/// The wordmark part of the panel (`assets/ui`), its native size and the scale it is shown at.
+pub const LOGO_PART: &str = "logo";
+const LOGO_W: f32 = 134.0;
+const LOGO_H: f32 = 48.0;
+const LOGO_SCALE: f32 = 2.0;
+
 /// The name of the app.
 pub const NAME: &str = "OpenRB-338";
 /// The project page.
@@ -61,10 +67,12 @@ impl App {
             .default_pos(ctx.content_rect().center())
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    let logo = art::part("app_icon").expect("app_icon part");
+                    // the panel's wordmark, 2x its native size; it is SVG, so the loader
+                    // rasterizes it at the window's pixel density
+                    let logo = art::part(LOGO_PART).expect("logo part");
                     ui.add(
                         egui::Image::from_bytes(logo.uri, logo.svg)
-                            .fit_to_exact_size(egui::vec2(96.0, 96.0)),
+                            .fit_to_exact_size(egui::vec2(LOGO_W, LOGO_H) * LOGO_SCALE),
                     );
                     ui.add_space(6.0);
                     ui.label(RichText::new(NAME).size(20.0).strong().color(INK));
@@ -76,5 +84,26 @@ impl App {
         if !open {
             self.about_open = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The About window shows the panel's own wordmark part, at its aspect ratio.
+    #[test]
+    fn the_logo_part_is_the_panels_wordmark() {
+        let part = art::part(LOGO_PART).expect("the logo part");
+        let svg = std::str::from_utf8(part.svg).unwrap();
+        let want =
+            format!("width=\"{LOGO_W}\" height=\"{LOGO_H}\" viewBox=\"0 0 {LOGO_W} {LOGO_H}\"");
+        assert!(svg.contains(&want), "{want} in the part's header");
+        // the panel draws the same part over its transport background
+        assert!(
+            crate::layout::backgrounds()
+                .iter()
+                .any(|b| b.0 == LOGO_PART)
+        );
     }
 }

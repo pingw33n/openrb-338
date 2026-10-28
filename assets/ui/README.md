@@ -55,7 +55,9 @@ Place each at its section origin (panel pixels).
 | Part | Size | Origin in the panel | Used for |
 |---|---|---|---|
 | `wood` | 16 x 510 | (0, 0) and (608, 0) | left and right side wood |
-| `bg_transport` | 592 x 50 | (16, 0) | transport, with the logo at (458, 1) |
+| `bg_transport` | 592 x 50 | (16, 0) | transport (no logo: it is its own part) |
+| `logo` | 134 x 48 | (474, 1) | the wordmark, over `bg_transport`; the click area of the logo |
+| `logo_open`, `logo_rb338`, `logo_line`, `logo_sub` | 134 x 48 | (474, 1) | the pieces of `logo` |
 | `bg_pattern` | 70 x 115 | (16, 50 + 115 r) | pattern section of row r = 0..3 |
 | `focus_off`, `focus_on` | 4 x 115 | (86, 50 + 115 r) | the row's focus bar (lit orange) |
 | `bg_tb303` | 366 x 115 | (90, 50) and (90, 165) | the two bass synths |
@@ -73,6 +75,16 @@ backgrounds (808: 12 cells of 22 px at (10, 71); 909: the 12 instrument chips of
 (4, 4) with the edges of `EDGES_909` in `parts.rs`, and the name row at (26, 74)). The 303's key
 band (`BAND_303`) is three sections: pitch mode and clear, the keys on gray, and one row of the
 flags and note/rest under the edit step display.
+
+The logo is the wordmark `OPENRB-338`, its orange underline and the subtitle `BASS LINE AND
+DRUM MACHINE`. `logo` is the whole (the panel draws it at (474, 1) after `bg_transport`, and
+Help > About draws it scaled up, crisp because it is SVG). `logo_open` ('OPEN'), `logo_rb338`
+('RB-' in ink and '338' in orange), `logo_line` (the 118 x 1.5 underline) and `logo_sub` (the
+subtitle) are its pieces for an animation (task-114): each is on the whole 134 x 48 canvas and
+is placed at the same (474, 1), so an offset or an opacity moves it with no placement math
+(`LOGO_PIECES` in `parts.rs`; `logo` is exactly the four in that order, and `logo` renders
+pixel for pixel like the single run the transport background used to hold). The app draws
+`logo`; the pieces are generated but unused until task-114.
 
 `app_icon` (64 x 64) is not part of the panel: the app renders it as the window icon.
 

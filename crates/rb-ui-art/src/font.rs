@@ -132,6 +132,22 @@ pub fn text_width(cap: f32, text: &str) -> f32 {
 
 /// Draws `text` with cap height `cap`, its vertical center at `yc`.
 pub fn text(s: &mut Svg, x: f32, yc: f32, cap: f32, anchor: Anchor, color: &str, text: &str) {
+    text_range(s, x, yc, cap, anchor, color, text, 0..text.chars().count());
+}
+
+/// Draws only the glyphs `range` (character indices) of `text`, laid out exactly as `text`
+/// lays them out: the pieces of one run drawn apart add up to the run, pixel for pixel.
+#[allow(clippy::too_many_arguments)]
+pub fn text_range(
+    s: &mut Svg,
+    x: f32,
+    yc: f32,
+    cap: f32,
+    anchor: Anchor,
+    color: &str,
+    text: &str,
+    range: std::ops::Range<usize>,
+) {
     let scale = cap / 6.0;
     let w = units(cap, text) * scale;
     let x0 = match anchor {
@@ -148,9 +164,9 @@ pub fn text(s: &mut Svg, x: f32, yc: f32, cap: f32, anchor: Anchor, color: &str,
         n(stroke)
     ));
     let mut dx = 0.0;
-    for c in text.chars() {
+    for (i, c) in text.chars().enumerate() {
         let (gw, d) = glyph(c).unwrap();
-        if !d.is_empty() {
+        if !d.is_empty() && range.contains(&i) {
             s.raw(&format!(
                 r#"<path transform="translate({})" d="{d}"/>"#,
                 n(dx)
