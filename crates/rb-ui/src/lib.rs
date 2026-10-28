@@ -5,6 +5,7 @@
 //! takes the player's snapshot back into the panel (task-045); `session` opens songs and the
 //! built-in kit; `behavior` is the widgets' interaction math; `app` is the window.
 
+pub mod about;
 pub mod app;
 pub mod art;
 pub mod behavior;
@@ -19,3 +20,4 @@ pub mod model;
 pub mod session;
 pub mod settings;
 pub mod shortcuts;
+pub mod version;

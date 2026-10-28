@@ -143,6 +143,10 @@ pub struct App {
     /// The number of the info window's opens; it is in the window's id, so that each open
     /// starts with no stored place and egui centers it (`App::info_ui`).
     pub(crate) info_serial: u32,
+    /// Whether the Help > About window is open, and the number of its opens (its id, as
+    /// `info_serial`; `App::about_ui`).
+    pub(crate) about_open: bool,
+    pub(crate) about_serial: u32,
     /// What the info window drew last (`App::info_shown`).
     pub(crate) info_shown: Option<crate::info::SongInfo>,
     pub(crate) events_seen: usize,
@@ -176,6 +180,8 @@ impl App {
             splash: None,
             info_open: false,
             info_serial: 0,
+            about_open: false,
+            about_serial: 0,
             info_shown: None,
             events_seen: 0,
             allow_close: false,
@@ -360,6 +366,7 @@ impl App {
         self.browse(&ctx);
         self.prompt_ui(&ctx);
         self.info_ui(&ctx);
+        self.about_ui(&ctx);
         self.poll_export(&ctx);
         self.update_title(&ctx);
         self.close_if_allowed(&ctx);

@@ -1634,6 +1634,69 @@ fn the_info_window_opens_centered_and_stays_draggable() {
     );
 }
 
+/// task-102: Help > About opens a window centered in the app window (each open again), shows
+/// the logo, the version and the link, and Escape and the close button close it.
+#[test]
+fn the_about_window_opens_centered_and_closes() {
+    let mut h = Harness::with_menu();
+    let rect = |h: &Harness| h.ctx.memory(|m| m.area_rect(h.app.about_id()));
+    let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(PANEL_W, h.height));
+    let esc = || Event::Key {
+        key: egui::Key::Escape,
+        physical_key: Some(egui::Key::Escape),
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    assert!(!h.app.about_is_open());
+    egui_extras::install_image_loaders(&h.ctx);
+    // an image is a rect shape with a texture brush
+    let images = |s: &str| s.matches("brush: Some(").count();
+    let before = images(&h.frame_shapes(vec![]));
+
+    h.app.command(Cmd::About);
+    assert!(h.app.about_is_open());
+    let mut shapes = String::new();
+    for _ in 0..4 {
+        shapes = h.frame_shapes(vec![]);
+    }
+    let r = rect(&h).expect("the window is drawn");
+    let off = (r.center() - screen.center()).abs();
+    assert!(off.x < 3.0 && off.y < 3.0, "centered: {r:?} in {screen:?}");
+    assert!(shapes.contains("OpenRB-338"), "the name is drawn");
+    assert!(
+        shapes.contains(rb_ui::about::VERSION),
+        "the version is drawn"
+    );
+    assert!(shapes.contains(rb_ui::about::URL), "the link is drawn");
+    // the logo: one more image than without the window
+    assert_eq!(images(&shapes), before + 1, "the logo image is drawn");
+    // the version is `<time> (<git>)`
+    let v = rb_ui::about::VERSION;
+    assert!(
+        v.len() > 21 && v.as_bytes()[19] == b' ' && v.ends_with(')'),
+        "{v}"
+    );
+
+    // Escape closes it: its area is no longer drawn after the next frame
+    h.frame(vec![esc()]);
+    assert!(!h.app.about_is_open());
+
+    // opened again: a new id, centered again; the close button closes it
+    h.app.command(Cmd::About);
+    for _ in 0..4 {
+        h.frame(vec![]);
+    }
+    let r = rect(&h).expect("drawn again");
+    let off = (r.center() - screen.center()).abs();
+    assert!(off.x < 3.0 && off.y < 3.0, "centered again: {r:?}");
+    // the close button is at the right end of the title bar
+    let close = Pos2::new(r.max.x - 12.0, r.min.y + 10.0);
+    h.click(close);
+    h.frame(vec![]);
+    assert!(!h.app.about_is_open(), "the close button closes it");
+}
+
 /// task-099: the startup sound plays only when the kit that plays after the change differs
 /// from the one before: a song open on the same mod, Demo Song of the current mod and File >
 /// New on the standard kit play nothing; a mod change and File > New from a mod song do.

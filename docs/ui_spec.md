@@ -940,6 +940,29 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
+| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the logo (the `app_icon` part), the name, `Version <UTC build time> (<git>)` and the link https://github.com/pingw33n/open-rb-338 (task-102; below) |
+
+The Help menu is last in the bar. Its items are the list `HELP_ITEMS` in `menu.rs`, so a new item
+(Keyboard Shortcuts, task-105) is one more entry.
+
+- **Help > About and the version string** (task-102; `crates/rb-ui/src/about.rs`, `version.rs`,
+  `build.rs`). The window is centered as File > Info is (pivot CENTER_CENTER, `default_pos` at
+  the content center, a fresh id per open: `App::about_serial`). The version is
+  `<UTC build time> (<git>)`, computed by `build.rs` into `RB_UI_VERSION` (the pure formatting
+  is `version.rs`, unit-tested): the time is `YYYY-MM-DD HH:MM:SS` UTC, from
+  `SOURCE_DATE_EPOCH` when set, else the time the script runs. `<git>` is
+  `git rev-parse --short HEAD`, prefixed `dev-` when the build is not of main and suffixed
+  `-dirty` when `git status --porcelain --untracked-files=no` is not empty (untracked files do
+  not count, as with `git describe --dirty`); `(unknown)` when git or the repository is
+  absent (the build never fails for it). Main is decided by, in order: `RB_BUILD_BRANCH` (main
+  or anything else; for release builds, whose tag builds are on a detached HEAD), the branch
+  `git rev-parse --abbrev-ref HEAD` reports, `GITHUB_REF_NAME` on a detached HEAD, else not
+  main. The script reruns on a change of HEAD, the branch ref, `packed-refs` (each watched only
+  when the file exists: cargo treats a missing path as always stale and would rerun every
+  build), the index, any file under `crates/rb-ui` or `assets/ui`, and the three variables. So
+  a commit, a branch switch, a stage or an edit of the UI updates the string; an edit of
+  another crate or of a doc is seen once staged (the index changes), and until then leaves the
+  dirty flag and the time as they were.
 
 - **Save** (`document::compose`). The original saves by asking every device for its data block
   (`sub_43920E` .. `sub_43A1F4`, `docs/song_load.md` section 4.10) and passing them to the RBS
