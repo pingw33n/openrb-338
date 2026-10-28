@@ -1108,16 +1108,20 @@ fn the_mode_switch_changes_mode_while_playing_and_space_plays_and_stops() {
     assert!(!h.snap().playing);
 }
 
+/// task-090: a song loaded while another plays stops it and becomes current at once, stopped
+/// (the player's own pending-song path is tested in rb-player).
 #[test]
-fn a_song_loaded_while_another_plays_waits_for_play() {
+fn a_song_loaded_while_another_plays_stops_it() {
     let mut h = Harness::with_song("tests/songs/shipped/Calm.rbs");
     h.click("transport.play");
     h.calls(20);
     let g = h.snap().generation;
     h.load("tests/songs/shipped/Fast Forward.rbs");
+    h.calls(3);
     let s = h.snap();
-    assert!(s.pending && s.playing && s.generation == g);
-    // the panel shows the new song (the commands address it); Play switches
+    assert!(!s.pending && !s.playing && s.generation == g + 1);
+    assert_eq!(s.tick, 0);
+    // the panel shows the new song; Play starts it
     let tempo = h.app.panel.transport.tempo;
     h.click("transport.play");
     h.calls(3);

@@ -1033,6 +1033,20 @@ the open file reloads it and plays the sound. Tests (crates/rb-ui/tests/menu.rs)
 `a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on` (the built-in kit's and a
 mod's sound, mixed as the player mixes it, none with the preference off) and
 `the_start_plays_the_startup_sound_when_the_preference_is_on` (with and without a song, once).
+- **An open stops the playing song** (task-090, the user's requirement, 2026-10-28). Opening a
+  song (File Open, the start's command-line song, and any later path that replaces the song)
+  while the open song plays leaves the transport stopped and the new song at its start. The stop
+  is in `Link::load` (every `App::adopt` passes it): `Command::Stop` is queued after the node
+  pool accepted the new song and before `Command::Load`, so the player's `activate` finds the
+  current song stopped and makes the new one current at once (docs/export_state.md section 3).
+  An open that is refused leaves the song playing: the unsaved prompt cancelled, a file that
+  does not read or parse, and the node pool refusal (`Link::load` returns before the stop).
+  Where rb differs, as far as docs/export_state.md section 3 supports: the engine makes a new
+  song current at once only when the current one is stopped, otherwise it waits as the pending
+  song until its Play (msg 53 / `sub_1001BDA4`); rb stops the open song first. [G] that the
+  original's UI neither stops the open song on an open nor keeps it playing in a window of its
+  own; the UI code was not traced. Test (crates/rb-ui/tests/menu.rs):
+  `opening_a_song_while_playing_stops_it_and_a_refused_open_does_not`.
 - **The Vintage flag** is song message 35 id 21 (`Command::Vintage`); the menu item shows the
   engine's byte and a change marks the song modified.
 - **Unsaved changes.** The song is modified by any edit of the panel that the save writes (not by

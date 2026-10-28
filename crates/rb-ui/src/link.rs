@@ -362,10 +362,11 @@ impl Link {
     // ---- loading ------------------------------------------------------------------------
 
     /// Opens `song`: builds it and queues it as the newest song, and resets the panel to its
-    /// values (the data blocks as the pattern mode shows them: a song that is already playing
-    /// keeps playing, and the new one starts when Play is pressed). The song's own drum samples
-    /// are `samples`. A song the node pool refuses ([`LoadRefused`]) is not opened: the current
-    /// song, the panel and the kit stay as they were.
+    /// values (the data blocks as the pattern mode shows them). A song that is playing is
+    /// stopped first: the new song is current at once, stopped, and starts when Play is
+    /// pressed. The song's own drum samples are `samples`. A song the node pool refuses
+    /// ([`LoadRefused`]) is not opened: the current song, the panel and the kit stay as they
+    /// were.
     pub fn load(
         &mut self,
         song: &Song,
@@ -376,6 +377,9 @@ impl Link {
         // what the panel did before is sent first (the panel is replaced below)
         self.forward(panel);
         self.kit = samples;
+        // the open song stops first (task-090): the new song then becomes current at once, at
+        // its start, stopped, instead of waiting as the pending song behind a playing one
+        self.backlog.push_back(Command::Stop);
         self.backlog.push_back(Command::Load(engine));
         self.recorded = None;
         self.recorded_at = None;

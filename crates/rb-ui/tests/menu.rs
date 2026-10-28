@@ -1080,6 +1080,85 @@ fn a_song_the_node_pool_refuses_is_not_opened() {
     assert_eq!(s.app.doc.path, None);
 }
 
+/// task-090: opening a song while another plays stops the playback and leaves the new song
+/// stopped at its start; an open that is cancelled (the unsaved prompt) or fails (unreadable
+/// file, node pool refusal) leaves the song playing.
+#[test]
+fn opening_a_song_while_playing_stops_it_and_a_refused_open_does_not() {
+    let a = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let b = root().join("tests/songs/diag/songs/303_saw_lowcut.rbs");
+    let play = |h: &mut Harness| {
+        h.app.panel.press("transport.play", 0.0);
+        h.frame(vec![]);
+        h.calls(40);
+        assert!(h.app.panel.transport.playing);
+        assert!(h.app.panel.transport.position > 0);
+    };
+
+    // a successful open
+    let mut h = Harness::new();
+    h.open(&a);
+    play(&mut h);
+    h.app.open_song(&b);
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    h.calls(4);
+    assert_eq!(h.app.doc.path.as_deref(), Some(b.as_path()));
+    assert!(!h.app.panel.transport.playing, "stopped");
+    assert_eq!(h.app.panel.transport.position, 0, "at its start");
+    h.calls(40);
+    assert!(!h.app.panel.transport.playing, "and it stays stopped");
+    assert_eq!(h.app.panel.transport.position, 0);
+
+    // a failed read: the song keeps playing
+    let mut h = Harness::new();
+    h.open(&a);
+    play(&mut h);
+    h.app
+        .open_song(&root().join("tests/songs/diag/songs/no_such_song.rbs"));
+    assert!(h.app.notice.is_some());
+    h.calls(4);
+    assert!(h.app.panel.transport.playing);
+    assert_eq!(h.app.doc.path.as_deref(), Some(a.as_path()));
+
+    // a cancelled unsaved prompt: the song keeps playing
+    let mut h = Harness::new();
+    h.open(&a);
+    h.app.panel.set_knob("tb303_1.cutoff", 700);
+    h.frame(vec![]);
+    play(&mut h);
+    h.app.open_song(&b);
+    assert!(h.app.prompting());
+    h.app.answer(Answer::Cancel);
+    h.calls(4);
+    assert!(h.app.panel.transport.playing);
+    assert_eq!(h.app.doc.path.as_deref(), Some(a.as_path()));
+
+    // a node pool refusal: the song keeps playing
+    let events = |n: u32, ctrls: [u8; 2]| -> Vec<rbs::Event> {
+        (0..n)
+            .map(|i| rbs::Event {
+                pos: i / 2,
+                ctrl: ctrls[(i % 2) as usize],
+                value: (i / 2 % 2) as u8 + 1,
+            })
+            .collect()
+    };
+    let mut big = rbs::Song::empty();
+    big.tracks[5].events = events(60_000, [3, 4]);
+    big.tracks[6].events = events(41_000, [1, 2]);
+    let dir = tempfile::tempdir().unwrap();
+    let big_path = dir.path().join("big.rbs");
+    std::fs::write(&big_path, big.write().unwrap()).unwrap();
+    let mut h = Harness::new();
+    h.open(&a);
+    play(&mut h);
+    h.app.open_song(&big_path);
+    assert!(h.app.notice.is_some());
+    h.calls(4);
+    assert!(h.app.panel.transport.playing);
+    assert_eq!(h.app.doc.path.as_deref(), Some(a.as_path()));
+}
+
 /// task-089: the Options menu's "Play Mod Startup Sound" flips the preference and saves the
 /// settings file at once; a save error goes to the notice line.
 #[test]
