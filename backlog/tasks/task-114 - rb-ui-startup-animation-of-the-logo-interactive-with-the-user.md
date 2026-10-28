@@ -5,10 +5,12 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 11:15'
+updated_date: '2026-10-28 12:13'
 labels:
   - ui
 milestone: m-3
-dependencies: []
+dependencies:
+  - TASK-116
 references:
   - crates/rb-ui-art/src/parts.rs
   - crates/rb-ui/src/app.rs
@@ -44,6 +46,12 @@ Notes for the implementer:
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 At start the logo shows RB-338 with a matching underline, OPEN slides in with the underline to the final position in 1-2 s, then the subtitle fades in over 0.5 s; the final state equals today's wordmark
-- [ ] #2 The animation runs once per start, does not block input, and --screenshot and the tests see the final state
-- [ ] #3 The user approved the look in the running app
+- [ ] #2 The user approved the look in the running app
+- [ ] #3 On the panel the animation runs once per start without blocking input; in Help > About it runs every time the window opens; --screenshot and the tests see the final state
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Addition from the user (2026-10-28): the animation also plays in the Help > About window, every time the window opens (not only once per app start as on the panel). task-116 makes the About window show the panel's wordmark as its own part (or pieces), which this task animates in both places.
+<!-- SECTION:NOTES:END -->
