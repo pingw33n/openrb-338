@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 09:06'
+updated_date: '2026-10-28 09:07'
 labels:
   - ui
 milestone: m-3
@@ -30,15 +31,14 @@ What:
   - any other field Settings has by then (tasks 101-106 may add some).
 - Reading never fails: a missing or damaged file gives the defaults, as now, and a damaged file is not overwritten until the next save.
 - Unknown keys are ignored on read, so older and newer versions coexist. Saving writes the whole file atomically (write a temp file, then rename).
-- Migration: when ui.toml does not exist but the old ui.conf does, read the old format once. The next save writes ui.toml. Leave ui.conf in place and say so in the docs.
--  names the TOML file.
+- No migration: the user decided (2026-10-28) that an existing ui.conf is ignored. Remove the old format's reader and writer; rb-ui neither reads nor deletes ui.conf.
+- $RB_UI_CONFIG names the TOML file.
 - Update the module doc and docs/ui_spec.md wherever the settings file is described.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Settings are read from and saved to rb/ui.toml (TOML; fields as described); a missing or damaged file gives the defaults; unknown keys are ignored
-- [ ] #2 An existing ui.conf is migrated: its values load when ui.toml is absent and the next save writes ui.toml
-- [ ] #3 Tests cover the round trip, a damaged file, unknown keys and the migration (temp dirs via RB_UI_CONFIG or a path parameter)
-- [ ] #4 docs updated; cargo test and cargo clippy --all-targets -- -D warnings pass
+- [ ] #2 docs updated; cargo test and cargo clippy --all-targets -- -D warnings pass
+- [ ] #3 Tests cover the round trip, a damaged file and unknown keys (temp dirs via RB_UI_CONFIG or a path parameter); an existing ui.conf is ignored
 <!-- AC:END -->
