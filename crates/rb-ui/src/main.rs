@@ -1,7 +1,8 @@
-//! `rb-ui`: the panel window, wired to the real-time player (task-045).
+//! `OpenRB-338`: the panel window, wired to the real-time player (task-045). The binary has this
+//! name (crate `rb-ui`) because the macOS Dock and Activity Monitor show the executable's name.
 //!
 //! ```text
-//! rb-ui [SONG.rbs] [--demo] [--size WxH] [--ppp S] [--screenshot OUT.png]
+//! OpenRB-338 [SONG.rbs] [--demo] [--size WxH] [--ppp S] [--screenshot OUT.png]
 //! ```
 //! With a song it opens that song, with the mod it names (looked up in the Mods folder of the
 //! settings, `RB_MOD_DIR`, or the default places of `rb render`); without one the panel starts on
@@ -32,7 +33,7 @@ use rb_ui::settings::Settings;
 
 fn usage() -> ! {
     eprintln!(
-        "usage: rb-ui [SONG.rbs] [--demo] [--size WxH] [--ppp S] \
+        "usage: OpenRB-338 [SONG.rbs] [--demo] [--size WxH] [--ppp S] \
          [--browse open|save|export|mod] [--screenshot OUT.png]"
     );
     std::process::exit(2);
@@ -94,21 +95,22 @@ fn main() -> eframe::Result {
             match session::open_song(path) {
                 Ok(o) => startup = Some((path.clone(), o)),
                 Err(e) => {
-                    eprintln!("rb-ui: {e}");
+                    eprintln!("OpenRB-338: {e}");
                     std::process::exit(1);
                 }
             }
         }
         match rb_player::output::start(audio) {
             Ok(s) => _stream = Some(s),
-            Err(e) => eprintln!("rb-ui: audio output: {e}; the panel runs without sound"),
+            Err(e) => eprintln!("OpenRB-338: audio output: {e}; the panel runs without sound"),
         }
         link = Some(l);
     }
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("rb")
+            .with_title("OpenRB-338")
+            .with_app_id("OpenRB-338")
             .with_icon(Arc::new(rb_ui::art::app_icon(256)))
             // the menu bar is above the panel
             .with_inner_size([size[0], size[1] + MENU_H])
@@ -117,7 +119,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "rb-ui",
+        "OpenRB-338",
         options,
         Box::new(move |cc| {
             if let Some(ppp) = ppp {

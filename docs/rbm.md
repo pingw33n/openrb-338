@@ -746,8 +746,8 @@ was shown is that the samples the app plays from the standard mod give the built
 `crates/rbm/src/standard.rs` embeds `assets/Standard.rbm` (`include_bytes!`, `EMBEDDED`):
 `builtin_samples()` loads its 46 samples once (`Rbm::load_all_samples` with the embedded key
 window), `builtin_file(name)` gives any of its files (the UI's splash). `rb render`, `rb compare`,
-`rb play` and rb-ui (the panel, the 808's mod window `App::mod_view`, the export) use it and read
-no file for the kit: `--standard-mod` and `RB_STANDARD_MOD` (task-036's lookup: the option, the
+`rb play` and OpenRB-338 (the panel, the 808's mod window `App::mod_view`, the export) use it and
+read no file for the kit: `--standard-mod` and `RB_STANDARD_MOD` (task-036's lookup: the option, the
 variable, `Standard.rbm` next to the binary, a "ReBirth Standard Kit" mod in the mod folder) are
 gone (a decision of task-067: the kit is part of rb, like its tables; another kit is a song mod).
 `rb mod pack-standard` needs `-o` (there is no place it is looked for any more) and is the one
@@ -755,7 +755,7 @@ command that reads ReBirth.dll and Rebirth.exe. A song whose GLOB names "Standar
 the embedded kit; a third-party mod's missing slots and `--standard-kit` take its samples. The
 samples are ReBirth.dll's byte for byte, so the corpus is unchanged: 164 of 164 EQUAL with no kit
 option, 175 of 175 with `RB_MOD_DIR`. The tests (rb-cli, rb-engine's corpus tests, rb-player,
-rb-ui) use the embedded kit and need no `original/`, except those that check the DLL itself or
+OpenRB-338) use the embedded kit and need no `original/`, except those that check the DLL itself or
 build the mod, which task-066 makes skip.
 
 ## 14. Changing the mod of an open song: the Mods menu (task-056, 2026-10-27)
@@ -853,7 +853,7 @@ without the change, the drums go silent at once with a silent kit and sound agai
 built-in one); `no_alloc.rs` (the change twice while playing, the first kit freed on the UI side
 before the voices retrigger). The startup sound after the change (msg 58, the preview player)
 is `Player::startup_sound` / `Command::Preview` (task-074, docs/export_state.md section 8),
-which rb-ui sends after `Player::set_mod` when its preference is on, and after a song's open
+which OpenRB-338 sends after `Player::set_mod` when its preference is on, and after a song's open
 and at the start (docs/ui_spec.md section 18.1, task-087). The check against the DLL
 itself is section 14.4.
 
@@ -881,9 +881,10 @@ otherwise in rb (the test checks it), so the changes are audible: the mod swap w
 and from the built-in kit and between two file mods all do in rb what they do in the DLL. Not
 covered: the startup sound (msg 58, task-074) and more than one open song (14.5).
 
-rb-ui's Mods menu (task-047, docs/ui_spec.md section 18) is this change: `Link::set_mod` forwards the
-panel's pending events and sends `Player::set_mod`; the song is marked modified, and a save writes
-the mod's INFO name (GLOB) and URLs. The mod's panel bitmaps are not applied (rb draws its own art).
+OpenRB-338's Mods menu (task-047, docs/ui_spec.md section 18) is this change: `Link::set_mod`
+forwards the panel's pending events and sends `Player::set_mod`; the song is marked modified, and
+a save writes the mod's INFO name (GLOB) and URLs. The mod's panel bitmaps are not applied (rb
+draws its own art).
 
 ### 14.5 Several song windows open: the msg 53 round trip (task-075, 2026-10-27)
 

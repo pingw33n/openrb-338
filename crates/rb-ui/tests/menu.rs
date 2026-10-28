@@ -1701,3 +1701,14 @@ fn the_startup_sound_plays_only_when_the_kit_changes() {
     h.app.settings.startup_sound = false;
     assert!(!sounds(&mut h, &|h| h.app.use_kit(Kit::Mod(pbe2.clone()))));
 }
+
+#[test]
+fn the_window_title_is_the_app_name_the_song_and_the_modified_mark() {
+    let mut h = Harness::new();
+    h.frame(vec![]);
+    assert_eq!(h.app.title, "OpenRB-338 - Untitled");
+    h.app.panel.set_knob("tb303_1.cutoff", 900);
+    h.frame(vec![]);
+    assert!(h.app.doc.modified);
+    assert_eq!(h.app.title, "OpenRB-338 - Untitled *");
+}

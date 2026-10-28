@@ -813,7 +813,7 @@ impl App {
     /// The window's title: the song's name, marked when modified.
     pub fn update_title(&mut self, ctx: &Context) {
         let title = format!(
-            "rb - {}{}",
+            "OpenRB-338 - {}{}",
             self.doc.name(),
             if self.doc.modified { " *" } else { "" }
         );

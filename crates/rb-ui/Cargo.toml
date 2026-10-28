@@ -9,8 +9,9 @@ description = "The desktop UI: the panel drawn from the SVG art set (assets/ui) 
 [lib]
 path = "src/lib.rs"
 
+# The file name is the process name the macOS Dock and Activity Monitor show (task-104).
 [[bin]]
-name = "rb-ui"
+name = "OpenRB-338"
 path = "src/main.rs"
 
 [dependencies]

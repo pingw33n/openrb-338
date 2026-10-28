@@ -127,8 +127,8 @@ pub struct App {
     pub status: Option<String>,
     /// The Options menu's keyboard mode (Ctrl/Cmd+F / +G).
     pub key_mode: KeyMode,
-    /// Whether the window draws the menu bar (the window of `rb-ui` does; the headless tests of
-    /// the panel at 1:1 do not).
+    /// Whether the window draws the menu bar (the window of OpenRB-338 does; the headless tests
+    /// of the panel at 1:1 do not).
     pub menu: bool,
     pub(crate) prompt: Option<Then>,
     pub(crate) after_save: Option<Then>,
@@ -147,7 +147,8 @@ pub struct App {
     pub(crate) info_shown: Option<crate::info::SongInfo>,
     pub(crate) events_seen: usize,
     pub(crate) allow_close: bool,
-    pub(crate) title: String,
+    /// The window title last sent (`App::update_title`).
+    pub title: String,
     holds: Vec<Hold>,
     ctls: Vec<Ctl>,
     shot: Option<Shot>,

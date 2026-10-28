@@ -126,7 +126,7 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, 
 - Mods: rb loads only recrypted mods (`rb mod recrypt --rb20ful RB20FUL.DAT IN.rbm -o OUT.rbm`, the one command that reads `RB20FUL.DAT`; docs/rbm.md 12.4). `render`, `compare`, `play` and the mod tests take a folder of recrypted mods (`--mod-dir` / `RB_MOD_DIR`) and no `--rb20ful`.
 - The built-in kit: rb embeds the standard mod `assets/Standard.rbm` ("Standard ReBirth",
   the 46 drum samples of ReBirth.dll and the panel of the CD's Rebirth.exe; assets/README.md),
-  so `render`, `compare`, `play` and rb-ui need no kit option, variable or file
+  so `render`, `compare`, `play` and OpenRB-338 (the UI) need no kit option, variable or file
   (`--standard-mod` and `RB_STANDARD_MOD` are gone). `rb mod pack-standard --rebirth-dll
   original/ReBirth.dll --rebirth-exe CD-Rebirth.exe -o assets/Standard.rbm` rebuilds it byte for
   byte (the one command that reads ReBirth.dll and Rebirth.exe; the gated test takes

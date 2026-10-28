@@ -757,7 +757,7 @@ clears is unknown, section 15).
   0x42A2B5`), and Rewind (0x42A091), Fast forward (0x42A0E8), Bar up/down (0x42A13E, 0x42A171),
   Record (0x42A1C7), Loop start up/down (0x42A1FC, 0x42A22F) and Loop length up/down (0x42A261,
   0x42A294) are all inside that block; the loop switch (0x42A2B5 on) and the tempo arrows are
-  outside it. rb-ui's `Panel::arrow` (mouse and numpad keys) does nothing for them in pattern
+  outside it. OpenRB-338's `Panel::arrow` (mouse and numpad keys) does nothing for them in pattern
   mode.
 - **Song mode** (byte 0 = 1): the song plays from the song position; the transport shows the bar
   (1..999), the loop start and the loop length in bars; the loop (when on) repeats bars
@@ -889,7 +889,7 @@ the art's slate palette) for four modes: open a song (`*.rbs`), save a song (`*.
 format button row that rewrites the name's extension) and choose a mod (`*.rbm`). It is a component
 for the menu (task-047): `Browser::new(mode, &settings)`, then `show(ctx, &mut settings)` each frame
 returns `Poll::Open`, `Chosen(path)` or `Cancelled`. `App::open_browser(mode)` opens one over the
-panel; Ctrl+O opens a song through it (`App::open_song`), `rb-ui --browse open|save|export|mod`
+panel; Ctrl+O opens a song through it (`App::open_song`), `OpenRB-338 --browse open|save|export|mod`
 starts with it open. The panel takes no key or click while a browser is open. The menu (section
 18) acts on the paths: `App::chosen(mode, path)`.
 
@@ -1075,7 +1075,7 @@ disassembly (IDA's cross references, each re-read with llvm-objdump on `original
   `sub_481050` opens a file through `sub_49381B` and slot 13 was not traced past `sub_49381B`.]
 - The Benchmark song (`sub_4269CE`) opens `dword_4DA788` (0x426B1D) and sends no msg 58.
 
-rb (`App::adopt`, `App::start`, crates/rb-ui/src/menu.rs): rb-ui has one song, and its Open
+rb (`App::adopt`, `App::start`, crates/rb-ui/src/menu.rs): OpenRB-338 has one song, and its Open
 asks the unsaved prompt that is the original's close, so the open song is closed and the new
 one is its mod's only user: a song that opens plays its mod's startup sound when
 `Settings::startup_sound` is on and the kit changed (`Link::startup_sound` after `Link::load`;

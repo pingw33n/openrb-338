@@ -4,7 +4,7 @@ title: 'Rename the project to OpenRB-338: binary orb, ORB_ environment variables
 status: To Do
 assignee: []
 created_date: '2026-10-27 11:27'
-updated_date: '2026-10-28 09:11'
+updated_date: '2026-10-28 11:48'
 labels:
   - cli
   - tools
@@ -46,3 +46,9 @@ Crate prefix: "openrb-338-" is awkward; "orb-" (the binary's name) or "openrb-" 
 - [ ] #3 AGENTS.md, the agent brief, .claude/agents, docs and open tasks name the project OpenRB-338 and the command orb; Done tasks and history are untouched; a git grep review lists only deliberate keeps
 - [ ] #4 cargo test --release, clippy, fmt, the Python tests and orb compare (164/164, 175/175) pass; the final summary lists what renaming the GitHub repo and the local folder would change
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+task-104 already named the desktop UI OpenRB-338 (binary, window title, app name, app_id); the rest of the rename is still here.
+<!-- SECTION:NOTES:END -->

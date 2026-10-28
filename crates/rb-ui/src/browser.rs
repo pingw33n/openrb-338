@@ -572,7 +572,7 @@ impl Browser {
             settings.note_recent(dir);
             if let Err(e) = settings.save() {
                 // The choice stands; the failed note is not worth blocking it.
-                eprintln!("rb-ui: settings: {e}");
+                eprintln!("OpenRB-338: settings: {e}");
             }
         }
         Poll::Chosen(path)

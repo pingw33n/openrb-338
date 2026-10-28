@@ -10,7 +10,8 @@ A recrypted ReBirth mod named "Standard ReBirth": the 46 built-in drum samples o
 panel JPEG resources and its splash, resource 903). It is Propellerhead's material, committed by
 the user's decision of 2026-10-27 as the one exception to the rule that nothing of the original
 is in the repository. `crates/rbm/src/standard.rs` embeds it (`include_bytes!`): `rb render`,
-`rb compare`, `rb play` and rb-ui take the built-in kit from it and need no file of the original.
+`rb compare`, `rb play` and OpenRB-338 take the built-in kit from it and need no file of the
+original.
 
 Made with:
 
