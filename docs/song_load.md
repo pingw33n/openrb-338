@@ -545,7 +545,7 @@ offsets.
 `[track, u32 first, u32 last]` (`sub_423928`), then for each accepted event `[99, u32 tick, ctrl, value]`
 (`sub_423A37`), where `first` and `last` count accepted events before and after the batch. A batch
 with no accepted event is not sent. Each batch waits for the reply; `'K'` throws out of memory. The
-DLL appends them with `sub_10021010` (song msg 37, 0x100127EB), which refuses a batch longer than
+DLL inserts them with `sub_10021010` (song msg 37, 0x100127EB; each in tick order, section 12.6), which refuses a batch longer than
 the node pool's free count (section 5.2).
 
 **The 808 track before 4.2 (`sub_436F5A`) [C] (task-018).** The tom tuning `v/2 + 32` (`sub_432E1B`,
@@ -951,3 +951,60 @@ version below 3.1, a bad sysex, no sysex) or one that reaches OB-15 is an error.
 - [G] The app showed no song-information box on opening `cut this air.rbs`, whose show-on-open
   byte is 1 but whose title, text and web page are empty (so `rb_export.py`, which waits for the
   box when the byte is set, timed out on it); the rule the app uses was not traced.
+
+### 12.6 The track order, and the save of a 1.x song [C] (task-125)
+
+**The import's buffers are not in tick order.** Each buffer of section 12.2 is filled in the
+order of the MIDI tracks: the 909's starts with `(0, 0, 0)` (0x430CFA), and the mixer's takes the
+level, pan and send events of MIDI tracks 2, 3 and 4 and then the distortion and PCF channel
+events of MIDI track 5 (0x430E47, 0x430ED2), each MIDI track in its own time order. So a mixer
+event of MIDI track 5 at an early tick follows one of MIDI track 2 at a later tick, in the buffer
+and in the msg-37 batch.
+
+**The DLL sorts as it inserts.** Msg 37 (`sub_10021010`) inserts each event of a batch with
+`sub_10014750`, in the batch's order:
+- The tick is quantised (`sub_100146E4`), and dropped above 0xBB4FF (0x1001477B).
+- The walk 0x10014794..0x100147A2 (`cmp eax, [next+4]; jg`) moves on while the new tick is greater
+  than the next node's, so it stops before the first node whose tick is not below the new one.
+- Among the nodes of that tick it looks for the same controller (+8, 0x100147B4..0x100147E3); one
+  found takes the value (+9, 0x10014820).
+- Otherwise a node from `sub_10014434` (0x1001480F) is linked in at that place (0x10014818..0x1001481C).
+
+So every list is sorted by tick whatever the order of the batches. Among the events of one tick, a
+new controller goes before those already there, so a later insert comes first, and a repeated
+(tick, controller) keeps its place and takes the last value. rb's engine stores them the same way:
+`seq::insert_into` (`partition_point(|e| t > e.tick)`, the replace on tick and controller), and the
+1.x renders equal the DLL's (section 12.5, 129 of 129 through rbhost).
+
+**What the original saves.** The TRAK writer `sub_437CFF` asks the DLL for each track in batches
+of 1284 (song msg 22 `{track, from, from + 0x504}`, 0x437DE6) until a reply is shorter
+(0x437EF4). The DLL's reply `sub_10020EC0` walks the list in order (`ebp = [ebp]`, 0x10020FB3),
+with the tick at +4 (`sub_1000DEE0`), the controller at +8 and the value at +9. For each event the
+writer computes `pos = (tick << 3) / 0xC0` (`shl eax, 3; cdq; idiv`, 0x437E93..0x437E9E). It writes
+`pos` less the position before it (`var_20`, 0x437EA4) as a VLQ (`sub_4A10CC`), then the
+controller and value. The event count (`var_18`) is written at the chunk's start afterwards
+(0x437F25..0x437F49). The lists are sorted, so no delta is negative. A 1.x song saved by the
+original is a valid 4.2 file with the DLL's lists: sorted by tick, the song constructor's tick-0
+events of every controller included (section 4.9), and the DLL's order within a tick. This is not a
+defect.
+
+**The reopened file.** An RBS load inserts the file's events in file order (section 5), so each
+tick's events come out reversed, except where an event replaces a node already there. At tick 0
+every event of a 1.x import replaces a constructor node, because the import's controllers are all
+among the constructor's. So a save and a reopen give the import's lists with each tick's events
+reversed, tick 0 excepted. The original does the same.
+
+**rb.** rb-ui gives a 1.x song's document the tracks of the engine it built
+(`Link::loaded_tracks`, `document::set_engine_tracks`, `App::adopt_as`), which is what msg 22
+would read back right after the load. It does not copy `load_1x`'s buffers, which made
+`rbs::Track::build` refuse the save ("events not sorted by position"). The mod does not matter:
+`compose` takes only the mod's name, and the save failed without a mod change too. Checked by
+`crates/rb-ui/tests/menu.rs`:
+- `a_1x_song_with_unsorted_imports_saves_and_reopens_the_same`: a synthetic song.
+- `every_1x_song_of_the_collection_saves`, gated on `RB_THIRDPARTY_DIR`: 131 files (129
+  distinct) save, and reopen with the import's lists in the order above. Razor Topz.RBS plays the
+  same, 200 engine calls, after the save, and saves after a change to Pitch Black Edition 2.0.
+
+[G] The original's Save of a 1.x song was not run on the test machine. What it writes is read
+from the disassembly above. That rb's lists equal the DLL's after a load rests on the msg-22
+comparison of task-057 (RBS songs) and on the 1.x renders.

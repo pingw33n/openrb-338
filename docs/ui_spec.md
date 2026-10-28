@@ -1001,8 +1001,10 @@ is one more entry.
   song, `tests/menu.rs`). An older file
   (4.0, 4.1) is saved as a 4.2 file with the values the load made of it: the tom tunings of the
   808's controllers and track events, every mixer channel enabled in a 4.1 file; it loads to the
-  same engine song. A ReBirth 1.x song has no `rbs` file: the empty song stands in, with its
-  track events. A new song is saved from the empty 4.2 song (`rbs::Song::empty`) and the panel.
+  same engine song. A ReBirth 1.x song has no `rbs` file: the empty song stands in, with the
+  tracks the engine holds after the load (`Link::loaded_tracks`: sorted by tick, the song
+  constructor's tick-0 events included), as the original's save writes them (task-125,
+  `docs/song_load.md` section 12.6). A new song is saved from the empty 4.2 song (`rbs::Song::empty`) and the panel.
   The file is written next to itself and renamed over it; an error is shown in the notice line.
 - **Export** uses `rb render`'s code (`rb_cli::render`, the `rb-cli` library: `Renderer::render_to_file`,
   the same encoders, 9088 idle blocks, Ogg quality 0.5): the song as saved (composed, written, parsed

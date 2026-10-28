@@ -30,6 +30,7 @@ use rb_cli::mods::{self, Kit, ModOpts, STANDARD};
 use rb_cli::render::{DEFAULT_IDLE_BLOCKS, DEFAULT_QUALITY, Renderer, load_mod};
 use rb_engine::frame::LoadRefused;
 use rb_engine::samples::SampleSet;
+use rb_engine::song::LoadForm;
 
 use crate::app::App;
 use crate::browser::{ExportFormat, Mode};
@@ -328,7 +329,13 @@ impl App {
         // the song document's constructor `sub_425C4D` opens the mod, then `sub_426C67`
         // (0x425FAB for a 1.x song, 0x426400 for an RBS song): the old song was closed first
         // (the unsaved prompt is the close's), so this song is its mod's only user
-        self.settle(path, opened.source, mod_name, kit);
+        let mut source = opened.source;
+        if opened.engine.form == LoadForm::Rb1x {
+            // a 1.x song has no TRAK chunks to keep: it saves the tracks the engine holds, as
+            // the original does (task-125)
+            document::set_engine_tracks(&mut source, link.loaded_tracks());
+        }
+        self.settle(path, source, mod_name, kit);
     }
 
     /// Whether the current song's mod has a `Demo.rbs` (the Mods menu's "Demo Song"): never for

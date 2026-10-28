@@ -1,10 +1,11 @@
 ---
 id: TASK-125
 title: 'rb-ui: Save As of a 1.x song fails: events not sorted by position'
-status: To Do
+status: Done
 assignee:
   - '@agent-complex'
 created_date: '2026-10-28 15:26'
+updated_date: '2026-10-28 15:42'
 labels:
   - ui
   - re
@@ -52,7 +53,57 @@ Tests:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Save As of a 1.x song with interleaved device events (Razor Topz.RBS with any mod) writes a valid .rbs; reopening it gives the same tracks (order of equal ticks as the original's song holds), documented with addresses
-- [ ] #2 The DLL's handling of unsorted msg-37 events and the original's TRAK writer behavior for such a song are documented in docs/song_load.md (and docs/original_bugs.md if a defect); the engine's storage matches the DLL's or a follow-up task exists
-- [ ] #3 Tests: a synthetic 1.x song saves and reloads equal; a gated RB_THIRDPARTY_DIR check writes every 1.x song; cargo +nightly fmt --check, clippy, cargo test (debug rb-ui and release workspace) and the corpus (175/175) pass
+- [x] #1 Save As of a 1.x song with interleaved device events (Razor Topz.RBS with any mod) writes a valid .rbs; reopening it gives the same tracks (order of equal ticks as the original's song holds), documented with addresses
+- [x] #2 The DLL's handling of unsorted msg-37 events and the original's TRAK writer behavior for such a song are documented in docs/song_load.md (and docs/original_bugs.md if a defect); the engine's storage matches the DLL's or a follow-up task exists
+- [x] #3 Tests: a synthetic 1.x song saves and reloads equal; a gated RB_THIRDPARTY_DIR check writes every 1.x song; cargo +nightly fmt --check, clippy, cargo test (debug rb-ui and release workspace) and the corpus (175/175) pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Confirm in the disassembly: the DLL insert sub_10014750 (sorted, before the first node of equal tick, same tick+ctrl replaces), the msg-22 reply sub_10020EC0 (list order), the TRAK writer sub_437CFF (delta = 8*tick/192 - previous).
+2. rb-ui: Link::load keeps the tracks of the engine it built (what msg 22 would read back right after the load). App::adopt_as gives a 1.x song's document those tracks; source_of_1x no longer copies the import's unsorted per-device lists.
+3. Tests: a synthetic 1.x song with two MIDI tracks feeding the mixer out of tick order: Save As succeeds, the reopened song's engine tracks equal the import's apart from the same-tick reversal the DLL insert makes, and both render the same. A gated RB_THIRDPARTY_DIR test: every 1.x song of songs/ composes and writes.
+4. docs/song_load.md 12.x: the unsorted batches, the save of a 1.x song, why the mod change does not matter. original_bugs.md only if a defect.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-aefd3b75ae7151b4b
+
+IDA (read-only copies in the scratchpad, closed save=false), 2026-10-28:
+- DLL sub_10014750: tick quantised (sub_100146E4), dropped if > 0xBB4FF (0x1001477B); walk 0x10014794..0x100147A2 'cmp eax,[next+4]; jg' advances while the new tick is greater, so it stops before the first node whose tick is >= the new one; 0x100147B4..0x100147E3 scans the nodes of equal tick for the same controller (+8) and stores the value (+9, 0x10014820); else a node from sub_10014434 (0x1001480F) is linked in there (0x10014818..0x1001481C). So the batch order does not matter for the tick order: every list is sorted by tick at all times; among equal ticks a new controller goes in front of the ones already there (a later insert comes first), and a repeat of (tick, ctrl) replaces the value in place (last write wins). rb's seq::insert_into models exactly this (partition_point(t > e.tick), replace on tick+ctrl).
+- DLL sub_10020EC0 (msg 22): from..to clamped to the count (sub_10014670), node walk ebp = [ebp] (0x10020FB3), tick [node+4] (sub_1000DEE0), ctrl +8, value +9: the list order.
+- Exe sub_437CFF: batches of 0x504 (msg 22 at 0x437DE6) until a reply shorter than 1284 (0x437EF4); per event pos = (tick << 3) / 0xC0 signed idiv (0x437E93..0x437E9E), delta = pos - previous pos (var_20, 0x437EA4), VLQ sub_4A10CC; the event count var_18 is written after (0x437F25..0x437F49, back-patched at the saved stream position). As the lists are sorted the deltas are never negative: the original saves a valid file with the DLL's order.
+- The rb-ui failure is rb's: source_of_1x copied load_1x's per-buffer lists (import order: buffer 4 gets the 909 off at tick 0 first, then MIDI tracks 2..5 each append to the mixer buffer), and rbs Track::build refuses a decreasing position. compose() does not depend on the mod, so the mod change in the report is incidental (checked by test below).
+
+Fix (rb-ui): Link::load keeps the built engine's track lists (Link::loaded_tracks); App::adopt_as gives a 1.x song's document those tracks (document::set_engine_tracks, shared with the recorded-tracks path of compose); source_of_1x no longer copies load_1x's buffers. No engine change.
+Not a defect of the original: its save writes the DLL's sorted lists. Not added to original_bugs.md.
+Reopen order: an RBS load inserts in file order, so each tick's events come out reversed, except replacements; every 1.x tick-0 event replaces a constructor node (checked on all 131 files of the collection), so a reopen gives the import's lists with each tick>0 group reversed, as the original does.
+Tests (2026-10-28):
+- crates/rb-ui/tests/menu.rs a_1x_song_with_unsorted_imports_saves_and_reopens_the_same: the import's mixer ticks are unsorted (asserted); Save As writes the engine's lists exactly; reopened lists = reopened_order(lists); 60 engine calls of play equal and audible.
+- every_1x_song_of_the_collection_saves (RB_THIRDPARTY_DIR=~/rb_stuff, RB_MOD_DIR=recrypted mods): 131 1.x files (129 distinct) save and reopen with the import's lists in that order; Razor Topz.RBS plays equal for 200 calls after the save; saves after the change to PBE2 (Pitch Black Edition 2.0).
+- cargo +nightly fmt --all --check clean; clippy -D warnings clean; cargo test -p rb-ui (debug) all pass; cargo test --release -q 553 pass, 0 fail; rb-cli thirdparty (gated) 2 pass; corpus compare 175 of 175 equal.
+Test machine not used: the original's Save is read from the disassembly ([G] in song_load.md 12.6 that it was not run).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Save As of a ReBirth 1.x song now writes a valid .rbs. The cause was rb-ui copying load_1x's per-device buffers into the document. Those are in MIDI-track order, not tick order: MIDI tracks 2..5 all feed the mixer. rbs Track::build refused them. The mod change in the report was incidental.
+
+The original (disassembly, docs/song_load.md 12.6):
+- The DLL's msg-37 insert sub_10014750 keeps every list sorted by tick (walk 0x10014794..0x100147A2). Within a tick a new controller goes first, and a repeated tick and controller replaces the value (0x10014820). rb's seq::insert_into already models this, so the engine is unchanged.
+- The TRAK writer sub_437CFF reads the lists back with msg 22 (sub_10020EC0, list order) and writes pos = (tick<<3)/0xC0 deltas (0x437E9E, 0x437EA4). No delta is ever negative, so the original's file is valid. This is not a defect.
+
+rb: rb-ui gives a 1.x document the tracks of the engine it built (Link::loaded_tracks, document::set_engine_tracks, App::adopt_as). That is what the original saves: sorted, with the constructor's tick-0 events. A reopen gives the same lists with each tick>0 group reversed, which the original's load does too.
+
+Branch worktree-agent-aefd3b75ae7151b4b, one commit.
+
+Tests:
+- A synthetic unsorted 1.x song saves, reopens and plays the same.
+- Gated on RB_THIRDPARTY_DIR: 131 files (129 distinct) save and reopen. Razor Topz plays the same after a save and saves after the change to PBE2.
+- fmt and clippy are clean. rb-ui debug tests pass; the release workspace has 553 passing; thirdparty passes.
+- The corpus is 175 of 175 equal.
+<!-- SECTION:FINAL_SUMMARY:END -->

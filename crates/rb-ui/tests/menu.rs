@@ -2037,3 +2037,224 @@ fn the_window_title_is_the_app_name_the_song_and_the_modified_mark() {
     assert!(h.app.doc.modified);
     assert_eq!(h.app.title, "OpenRB-338 - Untitled *");
 }
+
+/// A ReBirth 1.x song (a MIDI file, docs/song_load.md section 12) whose import gives the mixer
+/// track out of tick order: MIDI track 2 (the 303 #1) sets the mixer's level and pan at time 8
+/// (tick 192), then MIDI track 5 sets the PCF's channel (mixer controller 2) at time 2 (tick 48)
+/// and the distortion's at time 8 (four mixer events at tick 192). The 909 buffer starts with
+/// the import's `(0, 0, 0)`.
+fn song_1x_unsorted() -> Vec<u8> {
+    use rbs::rb1x::{BLOCK_LEN, Block, Event as MidiEvent, Kind, Song1x};
+    let mut b = Box::new([0u8; BLOCK_LEN]);
+    b[..5].copy_from_slice(&[0xBC, 3, 1, 0, 0]);
+    b[5..9].copy_from_slice(b"TinY");
+    b[9] = 90;
+    b[14..18].copy_from_slice(&4u32.to_be_bytes());
+    b[0x12] = 1;
+    b[0x2A..0x2E].copy_from_slice(&128_000u32.to_be_bytes());
+    for j in 0..3 {
+        let r = 0x100 + 32 * j;
+        b[r + 2..r + 5].copy_from_slice(&[100, 64, 20]);
+        b[r + 7] = 0x3F;
+        b[r + 0x17] = 1;
+    }
+    // a 303 #1 pattern with notes, so that the song plays
+    for s in 0..16 {
+        b[352 + 30 + 4 * s] = (s % 12) as u8 + 1;
+    }
+    let cc = |time, ctrl, value| MidiEvent {
+        time,
+        kind: Kind::Cc { ctrl, value },
+    };
+    Song1x {
+        format: 1,
+        division: 32,
+        tracks: vec![
+            vec![MidiEvent {
+                time: 0,
+                kind: Kind::Meta {
+                    kind: 2,
+                    data: b"File version 3.1.0".to_vec(),
+                },
+            }],
+            vec![MidiEvent {
+                time: 0,
+                kind: Kind::Sysex(Block(b).encode()),
+            }],
+            vec![cc(8, 7, 80), cc(8, 10, 30), cc(16, 7, 120)],
+            vec![],
+            vec![],
+            vec![cc(2, 31, 1), cc(8, 17, 0), cc(12, 31, 3)],
+        ],
+        version: (3, 1),
+    }
+    .write()
+}
+
+/// The engine's tracks of the open song, in list order.
+fn track_lists(h: &mut Harness) -> Vec<Vec<(i32, u8, u8)>> {
+    let seq = &h.audio.current_mut().frame.seq;
+    (0..seq.tracks.len())
+        .map(|t| {
+            seq.events(t)
+                .iter()
+                .map(|e| (e.tick, e.ctrl, e.value))
+                .collect()
+        })
+        .collect()
+}
+
+/// A list with the order of each tick's events reversed, the tick-0 events excepted: what a
+/// save and a reopen make of a list whose tick-0 events all replace the song constructor's
+/// (the load inserts each event before those of its tick, `sub_10014750`).
+fn reopened_order(list: &[(i32, u8, u8)]) -> Vec<(i32, u8, u8)> {
+    let mut out = Vec::new();
+    for group in list.chunk_by(|a, b| a.0 == b.0) {
+        if group[0].0 == 0 {
+            out.extend_from_slice(group);
+        } else {
+            out.extend(group.iter().rev());
+        }
+    }
+    out
+}
+
+/// task-125: Save As of a 1.x song whose import interleaves the events of several MIDI tracks
+/// on one device writes the tracks the engine holds (sorted by tick, as the original's save
+/// reads them back from the DLL), and the reopened file plays the same.
+#[test]
+fn a_1x_song_with_unsorted_imports_saves_and_reopens_the_same() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("old.rbs");
+    std::fs::write(&src, song_1x_unsorted()).unwrap();
+    // the import's mixer list is out of tick order
+    let opened = session::open_song(&src).unwrap();
+    let mixer: Vec<u32> = opened.engine.tracks[0].iter().map(|e| e.tick).collect();
+    assert!(!mixer.is_sorted(), "{mixer:?}");
+
+    let play = |h: &mut Harness| {
+        h.app.panel.press("transport.play", 0.0);
+        h.frame(vec![]);
+        h.calls(60)
+    };
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.open(&src);
+    let lists = track_lists(&mut h);
+    let saved = dir.path().join("saved.rbs");
+    h.app.save_to(&saved);
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    // the file holds the engine's lists as they are
+    let s = read_rbs(&saved);
+    for (t, list) in lists.iter().enumerate() {
+        let got: Vec<_> = s.tracks[t]
+            .events
+            .iter()
+            .map(|e| (e.pos as i32 * 24, e.ctrl, e.value))
+            .collect();
+        assert_eq!(&got, list, "track {t}");
+    }
+    // the mixer has the import's events, sorted, and the constructor's tick-0 events
+    assert!(lists[0].contains(&(48, 2, 2)) && lists[0].contains(&(192, 6, 80)));
+    assert!(lists[4].contains(&(0, 0, 0)));
+
+    let mut h2 = Harness::new();
+    h2.app.settings.startup_sound = false;
+    h2.open(&saved);
+    let reopened = track_lists(&mut h2);
+    for (t, list) in lists.iter().enumerate() {
+        assert_eq!(reopened[t], reopened_order(list), "track {t}");
+    }
+    let out = play(&mut h);
+    assert!(out.iter().any(|&x| x != 0), "the song is silent");
+    assert_eq!(play(&mut h2), out, "the reopened song plays differently");
+    // and saving the reopened song again writes its lists
+    let again = dir.path().join("again.rbs");
+    h2.app.save_to(&again);
+    assert!(h2.app.notice.is_none(), "{:?}", h2.app.notice);
+}
+
+/// task-125, gated on `RB_THIRDPARTY_DIR` (the user's collection, read in place): every ReBirth
+/// 1.x song of `songs/` saves (the composed song writes), and Razor Topz.RBS, the song of the
+/// report, also after a change to Pitch Black Edition 2.0 (`PBE2.rbm` of `RB_MOD_DIR`).
+#[test]
+fn every_1x_song_of_the_collection_saves() {
+    let Some(dir) = env_path("RB_THIRDPARTY_DIR").map(|d| d.join("songs")) else {
+        eprintln!("skipped: RB_THIRDPARTY_DIR is not set");
+        return;
+    };
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        // the rule of `crates/rb-cli/tests/thirdparty.rs` (a name like "x.rbs copy" counts)
+        .filter(|p| {
+            p.is_file()
+                && p.file_name()
+                    .is_some_and(|f| f.to_string_lossy().to_lowercase().contains(".rbs"))
+        })
+        .collect();
+    paths.sort();
+    let tmp = tempfile::tempdir().unwrap();
+    let saved = tmp.path().join("saved.rbs");
+    let mut h = Harness::new();
+    let mut h2 = Harness::new();
+    h.app.settings.startup_sound = false;
+    h2.app.settings.startup_sound = false;
+    let mut n = 0;
+    for p in &paths {
+        let bytes = std::fs::read(p).unwrap();
+        if !rbs::rb1x::is_1x(&bytes) {
+            continue;
+        }
+        h.open(p);
+        h.app.save_to(&saved);
+        assert!(
+            h.app.notice.is_none(),
+            "{}: {:?}",
+            p.display(),
+            h.app.notice
+        );
+        // the saved song reopens with the import's tracks, a tick's events reversed
+        let lists = track_lists(&mut h);
+        h2.open(&saved);
+        let reopened = track_lists(&mut h2);
+        for (t, list) in lists.iter().enumerate() {
+            assert_eq!(
+                reopened[t],
+                reopened_order(list),
+                "{}: track {t}",
+                p.display()
+            );
+        }
+        n += 1;
+    }
+    eprintln!("{n} 1.x songs save and reopen with their tracks");
+    assert!(n > 0, "no 1.x song in {}", dir.display());
+
+    let razor = dir.join("Razor Topz.RBS");
+    if !razor.exists() {
+        return;
+    }
+    // the song of the report: saved without the mod change, it plays as the import does
+    h.open(&razor);
+    h.app.save_to(&saved);
+    h2.open(&saved);
+    let play = |h: &mut Harness| {
+        h.app.panel.press("transport.play", 0.0);
+        h.frame(vec![]);
+        h.calls(200)
+    };
+    let out = play(&mut h);
+    assert!(out.iter().any(|&x| x != 0), "Razor Topz is silent");
+    assert_eq!(play(&mut h2), out, "the saved Razor Topz plays differently");
+    // and with the mod change of the report
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
+        return;
+    };
+    h.open(&razor);
+    h.app.command(Cmd::UseKit(Kit::Mod(pbe2)));
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    h.app.save_to(&saved);
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    assert_eq!(read_rbs(&saved).glob.mod_name, h.app.doc.mod_name);
+}

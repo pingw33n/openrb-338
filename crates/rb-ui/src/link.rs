@@ -299,6 +299,9 @@ pub struct Link {
     /// The first player generation that can be the open song: a copy of an older song's tracks
     /// is not the open song's.
     tracks_from: u32,
+    /// The tracks of the song [`Link::load`] built last, as the engine holds them after the
+    /// load (task-125).
+    loaded: [Vec<TrackEvent>; 9],
 }
 
 impl Link {
@@ -327,6 +330,7 @@ impl Link {
             recorded: None,
             recorded_at: None,
             tracks_from: 0,
+            loaded: Default::default(),
         };
         (link, audio)
     }
@@ -336,6 +340,14 @@ impl Link {
     /// original's save writes the tracks it reads back from the DLL (`sub_437CFF`).
     pub fn recorded_tracks(&self) -> Option<&[Vec<TrackEvent>; 9]> {
         self.recorded.as_ref()
+    }
+
+    /// The tracks of the song [`Link::load`] opened last, as the engine holds them right after
+    /// the load: what the original's TRAK writer `sub_437CFF` would read back from the DLL
+    /// with song msg 22 then (sorted by tick, the song constructor's tick-0 events included;
+    /// `docs/song_load.md` section 12.6). A ReBirth 1.x song's document takes them.
+    pub fn loaded_tracks(&self) -> &[Vec<TrackEvent>; 9] {
+        &self.loaded
     }
 
     /// Which copy [`Link::recorded_tracks`] is (the player's generation and track revision): it
@@ -374,6 +386,8 @@ impl Link {
         panel: &mut Panel,
     ) -> Result<(), LoadRefused> {
         let engine = self.player.build(song, samples.clone())?;
+        let seq = &engine.frame.seq;
+        self.loaded = std::array::from_fn(|t| seq.events(t).to_vec());
         self.queue_song(engine, samples, panel);
         let g = &song.globals;
         *panel = Panel::new();

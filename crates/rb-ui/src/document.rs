@@ -17,6 +17,7 @@
 use std::path::PathBuf;
 
 use rb_cli::mods::{Kit, STANDARD};
+use rb_engine::seq::Event as TrackEvent;
 use rb_engine::song::{Device, Song as EngineSong};
 
 use crate::link::{self, Link, ROW_DEVICES};
@@ -65,13 +66,32 @@ impl Default for Document {
 }
 
 /// The `rbs` song of a song loaded from a ReBirth 1.x file: the 1.x format has no `rbs::Song`,
-/// so the empty song stands in, with the engine song's track events and mod name (the devices
-/// come from the panel when the song is saved).
+/// so the empty song stands in, with the engine song's mod name (the devices come from the
+/// panel when the song is saved). Its tracks are empty here: the import's lists are in the
+/// order of the MIDI tracks, not of the ticks (several MIDI tracks feed the mixer), and the
+/// document takes the tracks the engine holds after the load instead ([`set_engine_tracks`]
+/// with [`Link::loaded_tracks`], `App::adopt_as`), as the original's save writes them.
 pub fn source_of_1x(engine: &EngineSong) -> rbs::Song {
     let mut s = rbs::Song::empty();
     s.glob.mod_name = engine.mod_name.clone();
-    set_tracks(&mut s, engine);
     s
+}
+
+/// Puts the engine's tracks into `s`: the TRAK writer `sub_437CFF` reads each track back from
+/// the DLL (song msg 22, 0x437DE6, in list order, `sub_10020EC0`) and writes each tick as
+/// `8 * tick / 192` (0x437E9E) after the one before (0x437EA4). The DLL's lists are sorted by
+/// tick (`sub_10014750`), so the positions never go back.
+pub fn set_engine_tracks(s: &mut rbs::Song, tracks: &[Vec<TrackEvent>; 9]) {
+    for (t, events) in tracks.iter().enumerate() {
+        s.tracks[t].events = events
+            .iter()
+            .map(|e| rbs::Event {
+                pos: e.tick as u32 / 24,
+                ctrl: e.ctrl,
+                value: e.value,
+            })
+            .collect();
+    }
 }
 
 /// The track events the load accepted (converted, as an older file's values are), as the file
@@ -105,19 +125,8 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
         set_tracks(&mut s, e);
     }
     if let Some(tracks) = link.recorded_tracks() {
-        // a recorded song: the tracks as the engine holds them, as the original's TRAK writer
-        // `sub_437CFF` reads them back from the DLL (song msg 22, 0x437DE6) and writes each tick
-        // as `8 * tick / 192` (0x437E9E)
-        for (t, events) in tracks.iter().enumerate() {
-            s.tracks[t].events = events
-                .iter()
-                .map(|e| rbs::Event {
-                    pos: e.tick as u32 / 24,
-                    ctrl: e.ctrl,
-                    value: e.value,
-                })
-                .collect();
-        }
+        // a recorded song: the tracks as the engine holds them, as the original's save does
+        set_engine_tracks(&mut s, tracks);
     }
     s.head.major = 4;
     s.head.minor = 2;
