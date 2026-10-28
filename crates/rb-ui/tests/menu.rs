@@ -2486,3 +2486,97 @@ fn the_last_event_row_follows_a_recording_and_save() {
         assert_eq!(read_rbs(&saved).tracks, h.app.doc.source.tracks, "{name}");
     }
 }
+
+/// task-131: Save twice (the second Save takes the first file's bytes as its base), then change
+/// a knob, a fader and a switch, put each back, and Save a third time: the three files are the
+/// same bytes. Returns the file.
+fn saves_are_identical(src: &Path, mods_dir: Option<&Path>, what: &str) -> Vec<u8> {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("out.rbs");
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.app.settings.mods_dir = mods_dir.map(Path::to_path_buf);
+    h.open(src);
+    h.app.save_to(&out);
+    assert!(h.app.errors.is_empty(), "{what}: {:?}", h.app.errors);
+    let first = std::fs::read(&out).unwrap();
+    // (a 4.2 file is read back)
+    assert_eq!(read_rbs(&out).head.minor, 2, "{what}");
+
+    h.app.save_to(&out);
+    assert!(h.app.errors.is_empty(), "{what}: {:?}", h.app.errors);
+    let diff = |a: &[u8], b: &[u8]| {
+        let at = a.iter().zip(b).position(|(x, y)| x != y);
+        format!(
+            "{what}: {} / {} bytes, first difference at {at:?}",
+            a.len(),
+            b.len()
+        )
+    };
+    let second = std::fs::read(&out).unwrap();
+    assert!(first == second, "second Save: {}", diff(&first, &second));
+
+    let knob = h.app.panel.knob("tb303_1.cutoff");
+    let fader = h.app.panel.fader("master.fader");
+    let mode = h.app.panel.switch("transport.mode");
+    h.app.panel.set_knob("tb303_1.cutoff", 900 - knob / 2);
+    h.app.panel.set_fader("master.fader", 400 + fader / 2);
+    h.app.panel.set_switch("transport.mode", 1 - mode);
+    h.frame(vec![]);
+    assert!(h.app.doc.modified, "{what}: the edit is not seen");
+    h.app.panel.set_knob("tb303_1.cutoff", knob);
+    h.app.panel.set_fader("master.fader", fader);
+    h.app.panel.set_switch("transport.mode", mode);
+    h.frame(vec![]);
+    h.app.save_to(&out);
+    assert!(h.app.errors.is_empty(), "{what}: {:?}", h.app.errors);
+    let third = std::fs::read(&out).unwrap();
+    assert!(
+        first == third,
+        "Save after a reverted edit: {}",
+        diff(&first, &third)
+    );
+    first
+}
+
+#[test]
+fn a_second_save_of_a_4_1_song_is_byte_identical() {
+    // the 8 songs of the four shipped mods need the recrypted mods (RB_CD_ISO)
+    let mods = rb_testkit::recrypted_mods();
+    let mut n = 0;
+    for path in &songs("tests/songs/shipped") {
+        let a = read_rbs(path);
+        if (a.head.major, a.head.minor) != (4, 1) {
+            continue;
+        }
+        if a.glob.mod_name != STANDARD && mods.is_none() {
+            continue;
+        }
+        saves_are_identical(path, mods, &path.display().to_string());
+        n += 1;
+    }
+    let want = if mods.is_some() { 17 } else { 9 };
+    eprintln!(
+        "{n} RBS 4.1 songs ({})",
+        if mods.is_some() {
+            "with the CD's mods"
+        } else {
+            "built-in kit only, RB_CD_ISO unset"
+        }
+    );
+    assert_eq!(n, want);
+}
+
+#[test]
+fn a_second_save_of_a_1x_song_is_byte_identical() {
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in [
+        ("unsorted", song_1x_unsorted()),
+        ("with_info", song_1x_with_info()),
+    ] {
+        let src = dir.path().join(format!("{name}.rbs"));
+        std::fs::write(&src, &bytes).unwrap();
+        assert!(rbs::rb1x::is_1x(&bytes));
+        saves_are_identical(&src, None, name);
+    }
+}
