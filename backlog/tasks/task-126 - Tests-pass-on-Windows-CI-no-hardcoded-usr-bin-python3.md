@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 15:43'
-updated_date: '2026-10-28 15:59'
+updated_date: '2026-10-28 16:49'
 labels:
   - tests
   - tools
@@ -56,7 +56,7 @@ What:
 <!-- AC:BEGIN -->
 - [x] #1 No test hardcodes an interpreter path; RB_PYTHON or python3/python/py on PATH is used through one helper
 - [x] #2 CI's test step uses --no-fail-fast; the Unix-only tests are cfg-gated or portable; fixtures compared byte for byte are protected from CRLF conversion
-- [ ] #3 The workspace tests pass on Windows (the test machine, or the supervisor's CI run recorded in the notes); cargo +nightly fmt --check, clippy and cargo test pass on macOS
+- [x] #3 The workspace tests pass on Windows (the test machine, or the supervisor's CI run recorded in the notes); cargo +nightly fmt --check, clippy and cargo test pass on macOS
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -73,6 +73,8 @@ Branch: worktree-agent-a7f26ec3d173bc1da
 Helper: tests/common/python.rs (RB_PYTHON, else python3/python/py -3; Python 3 check; -I built in; panics naming RB_PYTHON), included by path attribute in the tests of rbs, rbm, rb-cli, rb-engine (6 call sites). Audit: rb-ui chmod and non-UTF8 path tests are already cfg(unix); no symlinks. .gitattributes: png/bin binary, text=auto eol=lf; git add --renormalize changed no file. ci.yml: --no-fail-fast. Docs: building.md, AGENTS.md. Checks: fmt, clippy, cargo test --release all ok, debug run of the 5 touched test binaries ok, RB_PYTHON=/nonexistent fails with a clear message, actionlint ok. cargo xwin test --no-run for x86_64-pc-windows-msvc: all test binaries compile (needs CL=-Wno-incompatible-pointer-types and llvm on PATH, per building.md). Not run on the Windows test machine: it needs Python 3 and the whole repo copied; left to CI.
 
 Review round 1: moved the text-auto block to the top of .gitattributes (last match wins) and added binary lines for dll exe jpg jpeg ttf otf ico icns zip gz dmg ogg. git check-attr -a: original/ReBirth.dll, tests/refs/diag/303_two_voices.flac and assets/Standard.rbm are each binary set, text unset. RB_PYTHON accepts a program path (tried whole, so spaces in a path work) or a command split on whitespace (py -3); verified with a two-word value (corpus test passes). Commit Result line reworded; diag build.py and gen_specs.py shebangs use env python3. fmt, clippy, touched tests pass.
+
+Supervisor, 2026-10-28: CI run https://github.com/pingw33n/rb/actions/runs/40725883315 (push of 7431a39) is green on windows-latest, ubuntu-latest, macos-latest and fmt. The Windows job, with --no-fail-fast, ran 548 passed, 0 failed, 7 ignored. AC #3's Windows part is verified.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
