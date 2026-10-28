@@ -132,4 +132,5 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, 
   original/ReBirth.dll --rebirth-exe CD-Rebirth.exe -o assets/Standard.rbm` rebuilds it byte for
   byte (the one command that reads ReBirth.dll and Rebirth.exe; the gated test takes
   `RB_CD_REBIRTH_EXE`; docs/rbm.md 13).
+- Song metadata: `rb info SONG.rbs [--mod-dir DIR] [--json]` prints the facts File > Info shows (format and version, title, text, web page, copyright, the mod and whether it is the built-in kit, a file of `--mod-dir` / `RB_MOD_DIR`, missing, or not checked, tempo, shuffle, mode, loop, synth sound) for an RBS 4.x or a ReBirth 1.x song; `--json` keys are in `rb info --help`. The code is `crates/rb-cli/src/info.rs`, shared with rb-ui.
 - Corpus summary: `cargo run --release -p rb-cli -- compare --manifest tests/refs/manifest.json [--set diag,app,shipped] [NAME...]` prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `rb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.

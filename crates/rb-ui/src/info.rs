@@ -3,6 +3,7 @@
 //! player); editing the song information is not done.
 
 use eframe::egui::{self, Color32, Context, Key, Modifiers, RichText};
+use rb_cli::info::SongFacts;
 use rb_cli::mods::{Kit, STANDARD};
 
 use crate::app::App;
@@ -65,7 +66,8 @@ pub struct SongInfo {
 impl SongInfo {
     /// The information of a document.
     pub fn of(doc: &Document) -> Self {
-        let s = &doc.source;
+        // the facts are those of `rb info` (rb_cli::info)
+        let f = SongFacts::of_source(&doc.source);
         let mod_state = match &doc.kit {
             Kit::Mod(_) => ModState::Loaded,
             Kit::Standard if doc.mod_name == STANDARD => ModState::Standard,
@@ -78,20 +80,20 @@ impl SongInfo {
                 .as_ref()
                 .and_then(|p| p.parent())
                 .map(|d| d.display().to_string()),
-            window_title: s.usri.window_title.clone(),
-            text: s.usri.text.replace("\r\n", "\n").replace('\r', "\n"),
-            web_page: s.usri.web_page.clone(),
+            window_title: f.window_title,
+            text: f.text,
+            web_page: f.web_page,
             mod_name: doc.mod_name.clone(),
             mod_state,
-            mod_ftp: s.glob.mod_ftp.clone(),
-            mod_www: s.glob.mod_www.clone(),
-            version: s.head.version(),
-            copyright: s.head.copyright.clone(),
-            bpm: s.glob.tempo as f64 / 1000.0,
-            song_mode: s.glob.song_mode != 0,
-            looping: s.glob.loop_on != 0,
-            shuffle: s.glob.shuffle,
-            vintage: s.glob.vintage != 0,
+            mod_ftp: f.mod_ftp,
+            mod_www: f.mod_www,
+            version: f.version,
+            copyright: f.copyright,
+            bpm: f.bpm,
+            song_mode: f.song_mode,
+            looping: f.looping,
+            shuffle: f.shuffle,
+            vintage: f.vintage,
         }
     }
 }

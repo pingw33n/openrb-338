@@ -1,10 +1,10 @@
 //! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), compares renders
 //! with their references (`rb compare`), plays a song through the audio output with the
-//! real-time player (`rb play`), rewrites a mod to need no RB20FUL.DAT (`rb mod recrypt`), and
-//! builds the standard mod, the built-in kit and panel as a mod (`rb mod pack-standard`). rb
-//! embeds that mod (`assets/Standard.rbm`) and takes the built-in drum samples from it. `rb mod
-//! unpack` and `rb mod pack` turn a recrypted mod into a folder of its files with a mod.toml and
-//! back.
+//! real-time player (`rb play`), prints a song's metadata (`rb info`), rewrites a mod to need no
+//! RB20FUL.DAT (`rb mod recrypt`), and builds the standard mod, the built-in kit and panel as a mod
+//! (`rb mod pack-standard`). rb embeds that mod (`assets/Standard.rbm`) and takes the built-in drum
+//! samples from it. `rb mod unpack` and `rb mod pack` turn a recrypted mod into a folder of its
+//! files with a mod.toml and back.
 //!
 //! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable)
 //! or, for `compare`, a song differs from its reference, 2 a usage error (bad arguments,
@@ -92,6 +92,35 @@ enum Cmd {
         /// When the song's mod is not found, play with the built-in kit, as in render.
         #[arg(long)]
         standard_kit: bool,
+    },
+    /// Print a song's metadata, as File > Info of the UI shows it: the format and version, the
+    /// window title, the more text, the web page, the copyright, the mod and where it resolves
+    /// (the built-in kit, a file of the mod folder, missing, or not checked), the tempo, the
+    /// shuffle, the mode (song or pattern), the loop (start bar and length in bars) and the
+    /// synth sound. Reads RBS 4.x files and ReBirth 1.x MIDI-file songs. One `Label: value`
+    /// per line; a text of several lines is indented below its label.
+    ///
+    /// `--json` prints one object with stable keys: file, format ("rbs" or "rb1x"), version,
+    /// title, text, web_page, copyright, mod_name, mod_resolution ("builtin", "file", "missing"
+    /// or "not_checked"), mod_file (path or null), mod_web, mod_ftp, tempo_bpm, shuffle, mode
+    /// ("song" or "pattern"), loop_on, loop_start_bar, loop_bars (bars counted from 0, as in
+    /// render --range), synth_sound ("vintage" or "rebirth2"), last_event_bar (the 1-based bar
+    /// of the latest track event, null when there are none) and last_event_tick.
+    ///
+    /// An .rbs song has no length field: the original plays to the end of bar 999 (tick
+    /// 767231, 0x1001F484) unless the loop is on, so "Last event" is the nearest thing to the
+    /// song's length. "none" means a song with no track events. A 1.x song has no copyright
+    /// or mod addresses (empty). Exit codes as render's: 1 for an unreadable or invalid song.
+    Info {
+        /// The song, an .rbs file.
+        input: PathBuf,
+        /// Look the song's mod up in this folder of .rbm files, as in render (default: the
+        /// RB_MOD_DIR environment variable). With neither, the mod is "not checked".
+        #[arg(long, value_name = "DIR")]
+        mod_dir: Option<PathBuf>,
+        /// Print JSON instead of text.
+        #[arg(long)]
+        json: bool,
     },
     /// Render songs and compare each with its reference, byte for byte as a WAV: prints EQUAL
     /// or the first difference (frame, time, bar, channel, both values) per song, and exits 1
@@ -273,6 +302,19 @@ fn main() -> ExitCode {
                 standard_kit,
             },
         ),
+        Cmd::Info {
+            input,
+            mod_dir,
+            json,
+        } => rb_cli::info::run(
+            &input,
+            &ModOpts {
+                mod_dir,
+                ..Default::default()
+            },
+            json,
+        )
+        .map(|out| print!("{out}")),
         Cmd::Compare {
             names,
             reference,

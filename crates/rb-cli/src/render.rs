@@ -22,8 +22,27 @@ pub const DEFAULT_IDLE_BLOCKS: u32 = 9088;
 /// The default Ogg Vorbis quality.
 pub const DEFAULT_QUALITY: f32 = 0.5;
 
+/// A song file as parsed, before the engine converts it.
+pub enum Parsed {
+    /// An RBS 4.x file.
+    Rbs(Box<rbs::Song>),
+    /// A ReBirth 1.x MIDI file.
+    Rb1x(Box<rbs::rb1x::Song1x>),
+}
+
+/// A song file read: what it parsed to and the engine's song.
+pub struct Loaded {
+    pub parsed: Parsed,
+    pub song: Song,
+}
+
 /// Reads and converts an `.rbs` song: an RBS 4.x file or a ReBirth 1.x MIDI file.
 pub fn load_song(input: &Path) -> Result<Song, Fail> {
+    read_song(input).map(|l| l.song)
+}
+
+/// [`load_song`] that also keeps the parsed file (for `rb info`); the messages are render's.
+pub fn read_song(input: &Path) -> Result<Loaded, Fail> {
     let data = std::fs::read(input)
         .map_err(|e| fail(1, format!("{}: cannot read the song: {e}", input.display())))?;
     if rbs::rb1x::is_1x(&data) {
@@ -34,8 +53,12 @@ pub fn load_song(input: &Path) -> Result<Song, Fail> {
                 format!("{}: not a valid ReBirth 1.x song: {e}", input.display()),
             )
         })?;
-        return rb_engine::load::convert_1x(&parsed)
-            .map_err(|e| fail(1, format!("{}: cannot load the song: {e}", input.display())));
+        let song = rb_engine::load::convert_1x(&parsed)
+            .map_err(|e| fail(1, format!("{}: cannot load the song: {e}", input.display())))?;
+        return Ok(Loaded {
+            parsed: Parsed::Rb1x(Box::new(parsed)),
+            song,
+        });
     }
     let parsed = rbs::Song::parse(&data).map_err(|e| {
         fail(
@@ -43,11 +66,15 @@ pub fn load_song(input: &Path) -> Result<Song, Fail> {
             format!("{}: not a valid .rbs song: {e}", input.display()),
         )
     })?;
-    rb_engine::load::convert(&parsed).map_err(|e| {
+    let song = rb_engine::load::convert(&parsed).map_err(|e| {
         fail(
             1,
             format!("{}: cannot load the song: {e:?}", input.display()),
         )
+    })?;
+    Ok(Loaded {
+        parsed: Parsed::Rbs(Box::new(parsed)),
+        song,
     })
 }
 
