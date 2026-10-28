@@ -7,7 +7,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 10:33'
-updated_date: '2026-10-28 19:42'
+updated_date: '2026-10-28 20:07'
 labels:
   - tools
 milestone: m-4
@@ -63,4 +63,6 @@ What:
 Addition from the user (2026-10-28): every binary of a release has the same build time, the tag's. A first job parses the tag (v-YYYY_MM_DD_HH_MM_SS, UTC) into a Unix time and passes it to every build job as SOURCE_DATE_EPOCH (job outputs, then env), which task-102's build script uses for the version string. The same job sets RB_BUILD_BRANCH=main when the tagged commit is on main (git merge-base --is-ancestor with origin/main, after a full fetch), else the tag's branch is not main and RB_BUILD_BRANCH is left unset (so the version shows dev-). Check: the version strings printed by the built binaries (e.g. rb-ui --version or an equivalent the build exposes; add a --version flag to rb-ui if there is none) are identical across all packages and equal the tag's time, e.g. tag v-2026_10_28_10_10_22 -> '2026-10-28 10:10:22 (7bd8876)'. Record it in docs/building.md.
 
 From task-110 (user decision 2026-10-28): the version of every package is the UTC build time, never the Cargo version (0.1.0). File names use scripts/version.sh = YYYY_MM_DD_HH_MM_SS from SOURCE_DATE_EPOCH, e.g. OpenRB-338-2026_10_28_19_30_00-x64-setup.exe or ...-x86_64.AppImage (the release-tag form of task-113); human text uses '2026-10-28 19:30:00 UTC'; where a format wants numbers (Windows file version, macOS plist) use YYYY.MMDD.HHMMSS style numeric parts. scripts/version.sh is the single source. The built-in kit may ship in public packages. Scheme and examples: docs/building.md, 'The version is the build time'. The macOS bundle id is net.emphased.openrb338 (the Windows and Linux ids should follow that domain).
+
+User, 2026-10-28: the release tag is v + the version YYYY.MMDD.HHMM, e.g. v2026.1028.1930; regex ^v[0-9]{4}\.[0-9]{4}\.[0-9]{4}$. This replaces v-YYYY_MM_DD_HH_MM_SS. Task-133 applies the version form everywhere; follow it.
 <!-- SECTION:NOTES:END -->
