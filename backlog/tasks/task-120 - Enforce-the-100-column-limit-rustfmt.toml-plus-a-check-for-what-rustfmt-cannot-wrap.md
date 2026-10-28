@@ -1,12 +1,11 @@
 ---
 id: TASK-120
-title: >-
-  Enforce the 100-column limit: rustfmt.toml plus a check for what rustfmt
-  cannot wrap
+title: Enforce the 100-column limit with nightly rustfmt
 status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 13:27'
+updated_date: '2026-10-28 13:37'
 labels:
   - tools
   - tests
@@ -23,26 +22,36 @@ ordinal: 140000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Why: the user asked (2026-10-28) that the 100-column line limit be a rule in rustfmt.toml. Reviews keep catching lines over 100 columns, for example a 114-column raw string in crates/rb-ui-art/tests/logo.rs in task-116.
+Why: the user asked (2026-10-28) that the 100-column line limit be a rule in rustfmt.toml, enforced by nightly rustfmt; it is already installed here. Reviews keep catching lines over 100 columns, for example a 114-column raw string in crates/rb-ui-art/tests/logo.rs (task-116).
 
 Facts:
-- rustfmt.toml has only edition = "2024".
-- rustfmt's max_width defaults to 100, so rustfmt already wraps code at 100.
-- rustfmt does not break string literals or comments, and rustfmt also gives up silently on some long expressions.
-- The options that would report or wrap those (error_on_line_overflow, error_on_unformatted, wrap_comments, comment_width) are unstable. On the pinned stable toolchain (rust-toolchain.toml, 1.99.1) rustfmt prints "can't set error_on_line_overflow = true, unstable features are only available in nightly channel" and ignores them.
+- The workspace builds with the pinned stable toolchain (rust-toolchain.toml, 1.99.1), and that stays.
+- Only formatting moves to nightly rustfmt. It is installed here as the toolchain nightly-aarch64-apple-darwin, rustfmt 1.11.0-nightly (b6eeb93c99 2026-10-18), and runs as `cargo +nightly fmt`.
+- Stable rustfmt ignores the unstable options and prints "can't set ..., unstable features are only available in nightly channel".
+- rustfmt's max_width already defaults to 100. Strings and comments are what it doesn't wrap or report on stable.
 - `git ls-files '*.rs' | xargs awk 'length > 100'` finds 31 lines today, most of them comments and strings, for example in crates/rb-ui-art/src/font.rs.
 
 What:
-1. rustfmt.toml: set max_width = 100 explicitly, with a comment that the limit is the project's rule and why the overflow options are not set on stable. Also set any stable option that helps, for example use_small_heuristics if it keeps wrapping consistent; check that cargo fmt --all then changes nothing unexpected, or reformat in this one commit.
-2. A check for what rustfmt cannot enforce: a workspace test, for example crates/rb-cli/tests/line_width.rs or a small tools/ script run by a test, that fails on any line over 100 columns in tracked .rs and .toml files. Count columns in chars, not bytes, and name each offending file:line. Exclude generated files, such as assets/ui/*.svg and target/, and say what else is excluded and why.
-3. Fix the 31 existing lines: rewrap comments; split long strings with concat! or \ continuations.
-4. Put the rule in AGENTS.md's standing rules: "lines at most 100 columns; cargo test checks it". GitHub Actions' ci.yml (task-108) runs cargo test, so it covers this automatically.
-- Markdown docs (docs/*.md) keep their long table rows. Prose lines there are not checked by this task; say so in AGENTS.md.
+1. rustfmt.toml:
+   - max_width = 100 (explicit);
+   - error_on_line_overflow = true;
+   - wrap_comments = true and comment_width = 100, so nightly rewraps comments itself;
+   - any other unstable option that helps without churn; say which, and why format_strings is or isn't set. It is known to be buggy and doesn't touch raw strings, so prefer splitting long strings by hand.
+   Add a comment saying the file needs nightly rustfmt.
+2. Run `cargo +nightly fmt --all` once and commit the result in this task's one commit. Review the diff: comment rewraps should not reflow tables, ASCII diagrams, doc-test code or URLs badly. Protect any such blocks (for example with `// rustfmt::skip` items, or by keeping them in doc lists rustfmt won't wrap), and say what was protected.
+3. Fix by hand what nightly still reports, such as long string literals: use concat! or \ continuations. `cargo +nightly fmt --all --check` must pass with no overflow error.
+4. Pin the nightly for CI: name a dated nightly (the installed one's date, nightly-2026-10-18, or a nearby one that has rustfmt) in docs/building.md and AGENTS.md. Task-108's ci.yml must run `cargo +nightly-<date> fmt --all --check` (rustup toolchain install nightly-<date> --component rustfmt). If ci.yml does not exist yet, record this in task-108's notes through the backlog CLI so its agent adds it.
+5. AGENTS.md:
+   - Build and test: Format becomes `cargo +nightly fmt --all`, check `--check`.
+   - Standing rules: lines at most 100 columns, enforced by nightly rustfmt.
+   - Say that plain `cargo fmt` (stable) still formats but does not enforce the limit and warns about the unstable options.
+   Also update the agent brief if it names cargo fmt: backlog doc-001, through the backlog CLI.
+- Markdown docs (docs/*.md) are not covered; their long table rows stay as they are.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 rustfmt.toml sets max_width = 100 with the reason the overflow checks are not enabled on stable; cargo fmt --all --check passes
-- [ ] #2 A test fails on any tracked .rs/.toml line over 100 columns (naming file:line); the 31 existing lines are fixed and the test passes
-- [ ] #3 AGENTS.md states the rule and the check; cargo test and cargo clippy --all-targets -- -D warnings pass
+- [ ] #1 rustfmt.toml sets max_width = 100, error_on_line_overflow, wrap_comments and comment_width = 100 (commented as nightly-only); cargo +nightly fmt --all --check passes with no overflow error
+- [ ] #2 The existing over-long lines are fixed (comments rewrapped by nightly, strings split by hand); no tracked .rs line exceeds 100 columns (awk check in the notes)
+- [ ] #3 AGENTS.md, docs/building.md (or the agent brief) name the pinned nightly and the fmt commands; CI runs the nightly fmt check (or task-108's notes say to); cargo test and cargo clippy --all-targets -- -D warnings pass
 <!-- AC:END -->
