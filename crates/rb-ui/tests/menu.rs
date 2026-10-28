@@ -1429,3 +1429,29 @@ fn the_demo_song_of_the_current_mod_opens_as_an_unsaved_song() {
     h.app.demo_song();
     assert!(!h.app.prompting());
 }
+
+/// task-095: the info window shows the open song, follows an open of another song, and closes
+/// with Escape.
+#[test]
+fn the_info_window_follows_the_song_and_escape_closes_it() {
+    let dir = root().join("tests/songs/diag/songs");
+    let (a, b) = ("303_saw_lowcut.rbs", "303_saw_highcut.rbs");
+    let mut h = Harness::with_menu();
+    h.open(&dir.join(a));
+    h.app.show_info();
+    h.frame(vec![]);
+    assert!(h.app.info_is_open());
+    assert_eq!(h.app.info_shown().unwrap().name, a);
+    h.open(&dir.join(b));
+    h.frame(vec![]);
+    assert!(h.app.info_is_open());
+    assert_eq!(h.app.info_shown().unwrap().name, b);
+    h.frame(vec![Event::Key {
+        key: egui::Key::Escape,
+        physical_key: Some(egui::Key::Escape),
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert!(!h.app.info_is_open());
+}

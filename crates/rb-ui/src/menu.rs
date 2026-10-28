@@ -4,7 +4,7 @@
 //! What each item does (docs/ui_spec.md section 18):
 //! - **File**: New (Ctrl/Cmd+N: the state of the app's start), Open (Ctrl/Cmd+O), Save
 //!   (Ctrl/Cmd+S; the texts come from [`crate::shortcuts`]; a song that was never saved goes
-//!   to Save As), Save As, Export loop as audio file. The browser
+//!   to Save As), Save As, Info ([`crate::info`]), Export loop as audio file. The browser
 //!   (task-046) returns paths only; the writes happen here and their errors are shown in the
 //!   notice line.
 //! - **Mods**: "Standard ReBirth", the mods of the Mods folder (one entry per INFO menu name, as
@@ -76,6 +76,8 @@ pub enum Cmd {
     Save,
     SaveAs,
     Export,
+    /// File > Info: the current song's information window.
+    Info,
     /// "Choose file..." of the Mods menu: the browser for a mod.
     ChooseModFile,
     /// A kit from the Mods menu (or a mod file the browser chose).
@@ -609,6 +611,7 @@ impl App {
                     );
                 }
             }
+            Cmd::Info => self.show_info(),
             Cmd::ChooseModFile => self.open_browser(Mode::ChooseMod),
             Cmd::UseKit(kit) => self.use_kit(kit),
             Cmd::DemoSong => self.demo_song(),
@@ -817,6 +820,9 @@ impl App {
                             }
                             if item(ui, "Save As...", None) {
                                 cmd = Some(Cmd::SaveAs);
+                            }
+                            if item(ui, "Info...", None) {
+                                cmd = Some(Cmd::Info);
                             }
                             ui.separator();
                             let ok = self.panel.transport.song_mode && !self.exporting();

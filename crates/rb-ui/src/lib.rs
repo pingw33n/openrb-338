@@ -10,6 +10,7 @@ pub mod art;
 pub mod behavior;
 pub mod browser;
 pub mod document;
+pub mod info;
 pub mod keys;
 pub mod layout;
 pub mod link;

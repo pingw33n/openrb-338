@@ -993,7 +993,9 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   original compares mod objects, rb compares the kit's mod file with the entry's file.
 - **Demo Song** (task-094). Every shipped mod carries an embedded `Demo.rbs`, the standard mod
   and the built-in kit none (`docs/rbm.md` 13.1; the original only enables a button of the mod
-  info dialog, `sub_417000` at 0x417000, `sub_41A0C5`, that saves it, so rb's menu item is new).
+  info dialog, `sub_417000` at 0x417000, `sub_41A0C5` (the instruction at
+  0x41A3E0 in it), that saves it (docs/rbm.md 13.1, the Demo.rbs paragraph), so rb's menu item
+  is new).
   The item is below "Choose file..." and is enabled when the current song's resolved kit (`doc.kit`)
   is a mod file with that chunk (`App::has_demo`, the answer kept per mod file). Choosing it opens
   the demo through the open path: the unsaved-changes prompt (`Then::Demo`), the same load as
@@ -1001,7 +1003,20 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   alert). The demo is read from the recrypted mod (`session::mod_demo`) and opens as a song
   with no file, so it is Untitled, not modified, and Save goes to Save As: it never writes into
   the mod. Its mod is the mod it came from, whatever its GLOB names: the kit is that file, the
-  name and URLs are the mod's INFO.
+  name and URLs are the mod's INFO. Opening the demo plays the mod's startup sound by the
+  preference, as any open does (18.1): it goes through `App::adopt_as` -> `settle` ->
+  `mod_opened`.
+- **File > Info** (task-095). Below "Save As...", a closable window "Song Information"
+  (`crates/rb-ui/src/info.rs`; the close button or Escape closes it). It is read-only and shows
+  the current document each frame, so it follows an open of another song. It lists the file
+  name and folder (Untitled for a song with no file), the song info chunk's window title, more
+  text (0x0d shown as a line break) and web page (a link), the mod's name with its state
+  (built-in kit, loaded, or missing with the built-in kit playing) and the mod's web and ftp
+  addresses, the format version and copyright of the file as read, and the tempo, mode, loop,
+  shuffle and synth sound of the file. `SongInfo::of` builds the facts from the document
+  without a player. Editing the song information is not done. "Show song info on open" (the
+  USRI flag, `docs/RBS42.txt`) is not done either: the window opens only from the menu. The
+  original shows these in its Song Information dialog; its layout is not copied.
 - **The startup sound of an open and of the start** (task-087). Below.
 
 ### 18.1 When the original plays the mod's startup sound (task-087) [C unless marked]

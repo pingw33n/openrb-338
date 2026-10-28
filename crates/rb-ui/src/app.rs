@@ -135,6 +135,10 @@ pub struct App {
     pub(crate) mod_list: Option<Result<Vec<ModEntry>, String>>,
     /// Whether a mod file has a `Demo.rbs`, for the file last asked (the Mods menu's item).
     pub(crate) demo_cache: Option<(PathBuf, bool)>,
+    /// Whether the File > Info window is open (`App::info_ui`).
+    pub(crate) info_open: bool,
+    /// What the info window drew last (`App::info_shown`).
+    pub(crate) info_shown: Option<crate::info::SongInfo>,
     pub(crate) events_seen: usize,
     pub(crate) allow_close: bool,
     pub(crate) title: String,
@@ -162,6 +166,8 @@ impl App {
             export: None,
             mod_list: None,
             demo_cache: None,
+            info_open: false,
+            info_shown: None,
             events_seen: 0,
             allow_close: false,
             title: String::new(),
@@ -338,6 +344,7 @@ impl App {
         let ctx = ui.ctx().clone();
         self.browse(&ctx);
         self.prompt_ui(&ctx);
+        self.info_ui(&ctx);
         self.poll_export(&ctx);
         self.update_title(&ctx);
         self.close_if_allowed(&ctx);
