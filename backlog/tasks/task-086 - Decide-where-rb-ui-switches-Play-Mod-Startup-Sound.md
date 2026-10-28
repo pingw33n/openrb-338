@@ -1,10 +1,11 @@
 ---
 id: TASK-086
 title: 'Decide: where rb-ui switches ''Play Mod Startup Sound'''
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-27 19:58'
+updated_date: '2026-10-28 05:41'
 labels:
   - decision
   - ui
@@ -31,3 +32,9 @@ Options:
 
 Recommendation: option 1. It is one line in menu.rs (Cmd::ToggleStartupSound: flip Settings::startup_sound and Settings::save, the error to the notice line), it sits with the other sound option, and the logo click (which plays the sound whatever the preference, as sub_42A799 does) stays as it is.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by the user on 2026-10-28: option 1, an Options menu checkbox 'Play Mod Startup Sound' next to 'Vintage ReBirth Synth Sound', a toggle that flips Settings::startup_sound and saves the settings file at once (a save error goes to the notice line). The logo click keeps playing the sound whatever the preference. Implemented by task-089.
+<!-- SECTION:FINAL_SUMMARY:END -->
