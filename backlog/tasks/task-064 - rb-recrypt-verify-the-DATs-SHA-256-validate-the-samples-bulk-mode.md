@@ -5,9 +5,11 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-27 09:59'
+updated_date: '2026-10-28 09:33'
 labels:
   - rbm
   - cli
+milestone: m-2
 dependencies:
   - TASK-059
 references:

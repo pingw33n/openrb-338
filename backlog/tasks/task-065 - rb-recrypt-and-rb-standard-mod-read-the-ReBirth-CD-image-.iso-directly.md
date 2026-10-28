@@ -4,9 +4,11 @@ title: rb recrypt and rb standard-mod read the ReBirth CD image (.iso) directly
 status: To Do
 assignee: []
 created_date: '2026-10-27 10:02'
+updated_date: '2026-10-28 09:33'
 labels:
   - rbm
   - cli
+milestone: m-2
 dependencies:
   - TASK-036
   - TASK-064
