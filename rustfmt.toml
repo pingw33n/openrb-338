@@ -1,1 +1,8 @@
+# This file needs NIGHTLY rustfmt (pinned: nightly-2026-10-18; run `cargo +nightly fmt --all`).
+# Stable rustfmt ignores the unstable options below and warns about them.
 edition = "2024"
+max_width = 100
+# Unstable (nightly only):
+error_on_line_overflow = true
+wrap_comments = true
+comment_width = 100

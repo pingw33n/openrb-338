@@ -5,9 +5,9 @@
 //! (slot 1, 0x100253A0) plays the current pattern on the sequencer's ticks: note-on 0x10023CD4,
 //! note-off 0x10023C74. The audio (slot 14, 0x10023F10) runs one of two sound engines, chosen by
 //! the song's sound-model byte (`song+0x16D`, tested at 0x10023F2D):
-//! - zero, "ReBirth 2.0 sound": `sub_100248C4`, control values once per 64-sample block, the
-//!   filter coefficients interpolated between two resonance rows (`sub_10023800`) and ramped
-//!   every 2 samples;
+//! - zero, "ReBirth 2.0 sound": `sub_100248C4`, control values once per 64-sample block, the filter
+//!   coefficients interpolated between two resonance rows (`sub_10023800`) and ramped every 2
+//!   samples;
 //! - non-zero, "Vintage": the code inline in 0x10023F10, control values every 4 samples from one
 //!   resonance row.
 //!
@@ -76,9 +76,10 @@ const ACC_DECAY: f32 = f32::from_bits(0x3F7F_EBAF); // 0.99969
 /// Note-on, 2.0 sound (0x10023E3D: `esi` = 1.0, `edi` = 0).
 const AMP_ON_20: (f32, f32) = (1.0, 0.0);
 /// Note-on and note-off, Vintage (0x10023E25, 0x10023C9B).
-const AMP_VINTAGE: (f32, f32) = (f32::from_bits(0x3DCC_CCCD), f32::from_bits(0x3F66_6666)); // 0.1, 0.9
-/// Note-off, 2.0 sound (0x10023CB3).
-const AMP_OFF_20: (f32, f32) = (f32::from_bits(0x3D81_0625), f32::from_bits(0x3F6F_DF3B)); // 0.063, 0.937
+/// The values are 0.1 and 0.9.
+const AMP_VINTAGE: (f32, f32) = (f32::from_bits(0x3DCC_CCCD), f32::from_bits(0x3F66_6666));
+/// Note-off, 2.0 sound (0x10023CB3). The values are 0.063 and 0.937.
+const AMP_OFF_20: (f32, f32) = (f32::from_bits(0x3D81_0625), f32::from_bits(0x3F6F_DF3B));
 
 // The audio. The Vintage engine's constants are at 0x10153B78..0x10153BDC, the 2.0 engine's at
 // 0x10153BE0..0x10153C50; the values are the same except the resonance scale.

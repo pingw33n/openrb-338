@@ -96,7 +96,8 @@ fn range_changes_the_length() {
         assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
         wav_samples(&std::fs::read(&wav).unwrap()).len() / 2
     };
-    // one bar at 120 BPM is 2 s; the export's chunk arithmetic (ftol truncation, export::chunk_sizes) gives 88199
+    // one bar at 120 BPM is 2 s; the export's chunk arithmetic (ftol truncation,
+    // export::chunk_sizes) gives 88199
     assert_eq!(frames("0:1"), 88199);
     assert_eq!(frames("0:2"), 176400);
 }

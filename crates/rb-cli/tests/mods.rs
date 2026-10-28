@@ -201,7 +201,8 @@ fn a_mods_missing_slots_come_from_the_standard_mod() {
 fn the_info_name_match_is_case_sensitive_and_mod_warns_on_a_mismatch() {
     let s = setup();
     let standard = song(&s, "std.rbs", "Standard ReBirth");
-    let lower = song(&s, "lower.rbs", "test mod"); // not the INFO name "Test Mod", no file "test mod"
+    // Not the INFO name "Test Mod", no file "test mod".
+    let lower = song(&s, "lower.rbs", "test mod");
     let dirs = [os("--mod-dir"), s.mods.as_os_str()];
     let (o, _) = render(&s, &lower, "l.wav", &dirs);
     let err = String::from_utf8_lossy(&o.stderr);

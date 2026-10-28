@@ -68,8 +68,10 @@ fn to_json(s: &Song) -> Value {
         "usri": {"window_title": s.usri.window_title, "text": s.usri.text,
             "web_page": s.usri.web_page, "show_on_open": s.usri.show_on_open},
         "mixer": {"master": s.mixer.master, "comp_id": s.mixer.comp_id, "pcf_id": s.mixer.pcf_id,
-            "channels": s.mixer.channels.iter().map(|c| json!({"enabled": c.enabled, "level": c.level,
-                "pan": c.pan, "delay_send": c.delay_send, "dist": c.dist})).collect::<Vec<_>>()},
+            "channels": s.mixer.channels.iter().map(|c| json!({
+                "enabled": c.enabled, "level": c.level,
+                "pan": c.pan, "delay_send": c.delay_send, "dist": c.dist
+            })).collect::<Vec<_>>()},
         "delay": plain(&s.delay, &DELAY_PARAMS),
         "pcf": plain(&s.pcf, &PCF_PARAMS),
         "dist": plain(&s.dist, &DIST_PARAMS),

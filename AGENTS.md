@@ -99,6 +99,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
   - An engine change is checked against the reference corpus.
   - Edit source with Edit/Write, not python or sed.
   - Spell "color" the American way.
+  - Lines of Rust are at most 100 columns, enforced by nightly rustfmt (`rustfmt.toml`). Long string literals are split by hand (`\` continuation or `concat!`); rustfmt does not wrap them.
 
 ## Commit messages
 
@@ -120,7 +121,7 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, 
 - Build: `cargo build --release`
 - Test: `cargo test`
 - Lint: `cargo clippy --all-targets -- -D warnings`
-- Format: `cargo fmt --all`
+- Format: `cargo +nightly fmt --all`; check: `cargo +nightly fmt --all --check`. `rustfmt.toml` uses unstable options (the 100-column limit, comment wrapping), so formatting needs nightly rustfmt. CI pins `nightly-2026-10-18` (`rustup toolchain install nightly-2026-10-18 --profile minimal --component rustfmt`, then `cargo +nightly-2026-10-18 fmt --all --check`); any recent nightly with rustfmt gives the same result locally. Plain `cargo fmt` (stable) still formats, but does not enforce the limit and warns about the unstable options. Only formatting uses nightly; the build and clippy use the pinned stable toolchain.
 - Run: `cargo run --release -p rb-cli -- <args>`
 - Golden test: `cargo test --release -p rb-engine --test corpus_golden` renders every corpus entry (diag, app at its fitted N, shipped) and prints each failing song's first difference. A debug `cargo test` skips the shipped songs (24 s in debug).
 - Mods: rb loads only recrypted mods (`rb mod recrypt --rb20ful RB20FUL.DAT IN.rbm -o OUT.rbm`, the one command that reads `RB20FUL.DAT`; docs/rbm.md 12.4). `render`, `compare`, `play` and the mod tests take a folder of recrypted mods (`--mod-dir` / `RB_MOD_DIR`) and no `--rb20ful`.

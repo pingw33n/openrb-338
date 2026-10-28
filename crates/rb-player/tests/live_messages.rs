@@ -24,8 +24,8 @@
 //! its mod with song msg 19 mid-song, `Player::set_mod` here. They need `RB_MOD_DIR`, the
 //! recrypted mods (skipped without it). rbhost loads the original mods (the msg 55 of
 //! `tools/rbm.py msg` with the mod id the session names) with `--mod-msg` (the song's mod) and
-//! `--load-msg` (the others; hex `38 01 9B`, 56 {411}, for the built-in kit), and its `.rbhm` carries the
-//! song's mod id (`rbsmsg.message_file(song, 412)`).
+//! `--load-msg` (the others; hex `38 01 9B`, 56 {411}, for the built-in kit), and its `.rbhm`
+//! carries the song's mod id (`rbsmsg.message_file(song, 412)`).
 
 mod common;
 
@@ -252,7 +252,8 @@ fn session(pat: [u8; 4]) -> Vec<(u32, Command)> {
             bytes: pat808.into_boxed_slice(),
         },
     );
-    // the 909: the permuted levels 20..22, flam, the extra byte 31; steps with flam; a step; a header
+    // the 909: the permuted levels 20..22, flam, the extra byte 31; steps with flam; a step; a
+    // header
     at(80, param(D::Tr909, 20, 120));
     at(80, param(D::Tr909, 21, 30));
     at(80, param(D::Tr909, 22, 60));

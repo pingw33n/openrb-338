@@ -7,10 +7,10 @@
 //!   `--idle-blocks` (default 9088).
 //! - `rb compare --manifest tests/refs/manifest.json [--set diag,app,shipped] [NAME...]`: the
 //!   entries of a corpus manifest (all of the sets' entries when no NAME is given; a NAME is an
-//!   entry name or `set/name`), each at its own `idle_blocks` unless `--idle-blocks` is given.
-//!   Song paths are relative to the repository root (the manifest's directory's grandparent),
-//!   FLAC paths to the manifest's directory. Shipped entries have no audio committed, so a
-//!   difference there is reported by the sha256 and the frame count only.
+//!   entry name or `set/name`), each at its own `idle_blocks` unless `--idle-blocks` is given. Song
+//!   paths are relative to the repository root (the manifest's directory's grandparent), FLAC paths
+//!   to the manifest's directory. Shipped entries have no audio committed, so a difference there is
+//!   reported by the sha256 and the frame count only.
 
 use std::path::{Path, PathBuf};
 

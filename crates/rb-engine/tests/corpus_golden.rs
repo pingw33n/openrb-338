@@ -3,14 +3,14 @@
 //! byte-exact WAV (the sha256 of the whole file, header included, against `wav_sha256`).
 //!
 //! - `diag`: the 145 diagnostic songs, rbhost at 9088 idle blocks, FLAC references.
-//! - `app`: the 11 exports of the original app itself, each at the N at which rbhost reproduces
-//!   it (`docs/export_state.md` section 13), FLAC references. The strongest check: no host of
-//!   ours between the original and the reference.
-//! - `shipped`: the 8 shipped songs that use the built-in kit ("Standard ReBirth"), rbhost at
-//!   9088, sha256 and frame count only (no audio committed). They render 41 minutes of audio
-//!   (108170728 frames), measured at 1.5 s in a release build but 24 s in a debug one (10 cores;
-//!   the longest song, TGV's KiloMix '98 at 15 minutes, runs on one thread), so the test is
-//!   ignored in debug builds: `cargo test --release` runs it, as does `cargo test -- --ignored`.
+//! - `app`: the 11 exports of the original app itself, each at the N at which rbhost reproduces it
+//!   (`docs/export_state.md` section 13), FLAC references. The strongest check: no host of ours
+//!   between the original and the reference.
+//! - `shipped`: the 8 shipped songs that use the built-in kit ("Standard ReBirth"), rbhost at 9088,
+//!   sha256 and frame count only (no audio committed). They render 41 minutes of audio (108170728
+//!   frames), measured at 1.5 s in a release build but 24 s in a debug one (10 cores; the longest
+//!   song, TGV's KiloMix '98 at 15 minutes, runs on one thread), so the test is ignored in debug
+//!   builds: `cargo test --release` runs it, as does `cargo test -- --ignored`.
 //!
 //! Out of this file: the 8 shipped songs that use another mod than "Standard ReBirth" (the sets
 //! `mod`, rbhost with the mod, and `modapp`, 3 app exports; task-031) are checked by

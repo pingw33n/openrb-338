@@ -92,7 +92,8 @@ impl Svg {
         let (x, y, w, h, r, sw) = (n(x), n(y), n(w), n(h), n(r), n(sw));
         let _ = write!(
             self.s,
-            r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{r}" fill="none" stroke="{stroke}" stroke-width="{sw}"/>"#
+            "<rect x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" rx=\"{r}\" fill=\"none\" \
+             stroke=\"{stroke}\" stroke-width=\"{sw}\"/>"
         );
         self
     }
@@ -110,7 +111,8 @@ impl Svg {
         let (cx, cy, r, sw) = (n(cx), n(cy), n(r), n(sw));
         let _ = write!(
             self.s,
-            r#"<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{stroke}" stroke-width="{sw}"/>"#
+            "<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\" fill=\"none\" \
+             stroke=\"{stroke}\" stroke-width=\"{sw}\"/>"
         );
         self
     }
@@ -119,7 +121,8 @@ impl Svg {
         let (x1, y1, x2, y2, sw) = (n(x1), n(y1), n(x2), n(y2), n(sw));
         let _ = write!(
             self.s,
-            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="{sw}" stroke-linecap="round"/>"#
+            "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"{stroke}\" \
+             stroke-width=\"{sw}\" stroke-linecap=\"round\"/>"
         );
         self
     }
@@ -133,7 +136,8 @@ impl Svg {
         let sw = n(sw);
         let _ = write!(
             self.s,
-            r#"<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{sw}" stroke-linecap="round" stroke-linejoin="round"/>"#
+            "<path d=\"{d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\" \
+             stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
         );
         self
     }
@@ -212,7 +216,8 @@ impl Part {
     pub fn to_svg(&self) -> String {
         let (w, h) = (n(self.w), n(self.h));
         format!(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\">{}</svg>\n",
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" \
+             viewBox=\"0 0 {w} {h}\">{}</svg>\n",
             self.body
         )
     }

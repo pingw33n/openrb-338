@@ -6,10 +6,10 @@
 //! unarmed UI side in between: transport, song and pattern mode, loop, tempo, shuffle, Vintage,
 //! device controllers, the mixer's master and mutes, a data block, the panel's device and
 //! pattern messages (task-055, a whole pattern's box included), the mod change (task-056),
-//! the preview player's startup sound, its replacement, stop and end (task-074), songs loaded over a stopped
-//! song, over a playing one (pending) and switched to by Play, through the direct 44.1 kHz path
-//! and the resampled one, with stereo, mono and six-channel devices. The callback's songs play
-//! the drum machines, the 303s and every effect (the corpus song `full_mix`).
+//! the preview player's startup sound, its replacement, stop and end (task-074), songs loaded over
+//! a stopped song, over a playing one (pending) and switched to by Play, through the direct 44.1
+//! kHz path and the resampled one, with stereo, mono and six-channel devices. The callback's songs
+//! play the drum machines, the 303s and every effect (the corpus song `full_mix`).
 //!
 //! Locks: the callback's code uses no `Mutex`, `RwLock` or `Condvar` (the engine's process
 //! globals are atomics, `rb_engine::process`; the queues are `rtrb`'s and `triple_buffer`'s

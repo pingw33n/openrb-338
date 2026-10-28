@@ -110,7 +110,10 @@ pub fn contact_sheet(parts: &[Part]) -> String {
     }
     let h = y + row_h + 4.0;
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\"><rect width=\"{}\" height=\"{}\" fill=\"#2b2f36\"/>{}</svg>\n",
+        concat!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" ",
+            "viewBox=\"0 0 {} {}\"><rect width=\"{}\" height=\"{}\" fill=\"#2b2f36\"/>{}</svg>\n",
+        ),
         n(W),
         n(h),
         n(W),

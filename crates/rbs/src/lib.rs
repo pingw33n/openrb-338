@@ -14,13 +14,13 @@
 //! # Round trip and leniency
 //!
 //! The reader is lenient on purpose, because user files will be rendered: RB40 items in any order
-//! (RBS42.txt line 78: the order at RB40 level is not fixed), non-minimal (non-canonical) delta encodings, a TRAK with zero events or a first
-//! event after position 0, and bytes after the last event of a TRAK (kept in the model). The
-//! writer is canonical by design: the RB40 order is HEAD, GLOB, USRI, DEVL, TRKL, deltas are
-//! minimal. So `write(parse(x)) == x` byte for byte for canonical files (all shipped and corpus
-//! songs are), and any other file is normalized: it re-parses to the same model but its bytes
-//! change. Unknown chunks inside DEVL or TRKL are an error (RBS42.txt fixes their order); unknown
-//! chunks directly under RB40 are kept.
+//! (RBS42.txt line 78: the order at RB40 level is not fixed), non-minimal (non-canonical) delta
+//! encodings, a TRAK with zero events or a first event after position 0, and bytes after the last
+//! event of a TRAK (kept in the model). The writer is canonical by design: the RB40 order is HEAD,
+//! GLOB, USRI, DEVL, TRKL, deltas are minimal. So `write(parse(x)) == x` byte for byte for
+//! canonical files (all shipped and corpus songs are), and any other file is normalized: it
+//! re-parses to the same model but its bytes change. Unknown chunks inside DEVL or TRKL are an
+//! error (RBS42.txt fixes their order); unknown chunks directly under RB40 are kept.
 //!
 //! # Field meanings
 //!

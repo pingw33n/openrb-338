@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 09:34'
-updated_date: '2026-10-28 10:19'
+updated_date: '2026-10-28 13:45'
 labels:
   - tools
   - cli
@@ -62,4 +62,6 @@ What:
 Scope widened by the user (2026-10-28): macOS is a first-class target. scripts/ also builds macOS packages for aarch64-apple-darwin and x86_64-apple-darwin (both from this Mac; a universal binary via lipo if cheap, else two packages), as .tar.gz of rb and rb-ui; release.yml builds them on macos runners too. The .dmg with an .app bundle and the Windows installer .exe are separate tasks (task-110, task-111) that build on this task's scripts and workflows.
 
 Targets decided by the user (2026-10-28): every OS has an amd64 and an arm64 variant: x86_64/aarch64-unknown-linux-gnu, x86_64/aarch64-pc-windows-msvc (or -gnu/-gnullvm for arm64 if msvc is impractical; say which), x86_64/aarch64-apple-darwin. GitHub Actions builds all six, on native runners where they exist (ubuntu-24.04-arm, windows-11-arm, macos-14 for arm64; ubuntu-latest, windows-latest, macos-13 for amd64) or by cross-compiling. The local scripts may skip pairs that are hard to build from this Mac; list which are skipped and why. No code signing anywhere (the user, 2026-10-28).
+
+From task-120: formatting is enforced by nightly rustfmt (rustfmt.toml has unstable options). ci.yml must add a fmt job: rustup toolchain install nightly-2026-10-18 --profile minimal --component rustfmt, then cargo +nightly-2026-10-18 fmt --all --check. Build, clippy and tests stay on the pinned stable toolchain. Also name the pinned nightly in docs/building.md when this task writes it (AGENTS.md already names it).
 <!-- SECTION:NOTES:END -->

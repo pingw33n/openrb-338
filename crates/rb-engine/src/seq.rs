@@ -461,19 +461,19 @@ impl Track {
     }
 
     /// `sub_1001F520(track, t)`, the merge of the recording into the track:
-    /// - the first list is walked while its tick is at most `t`; every recorded node whose
-    ///   tick is at most the walked node's marks its controller; the walked node's value is
-    ///   the controller's value so far, and a walked node of a marked controller is removed
+    /// - the first list is walked while its tick is at most `t`; every recorded node whose tick is
+    ///   at most the walked node's marks its controller; the walked node's value is the
+    ///   controller's value so far, and a walked node of a marked controller is removed
     ///   (`sub_10014B30`) unless its tick is 0; the recorded nodes up to `t` mark theirs too
     ///   (0x1001F649);
-    /// - every marked controller `c`, ascending, gets its value so far back at `round_up(t + 1)`
-    ///   of its quantisation unless the track has a node of `c` there (`sub_10014840`): after
-    ///   the recorded span the controller returns to the track's automation (0xFF, the value of
-    ///   a controller with no node up to `t`, goes in as it is);
-    /// - every recorded node up to `t` is inserted into the first list (a node of the same tick
-    ///   and controller takes its value);
-    /// - the whole recording list is freed, the nodes above `t` too (`sub_100149A0`, OB-18),
-    ///   and the hold mask is cleared (0x1001F767).
+    /// - every marked controller `c`, ascending, gets its value so far back at `round_up(t + 1)` of
+    ///   its quantisation unless the track has a node of `c` there (`sub_10014840`): after the
+    ///   recorded span the controller returns to the track's automation (0xFF, the value of a
+    ///   controller with no node up to `t`, goes in as it is);
+    /// - every recorded node up to `t` is inserted into the first list (a node of the same tick and
+    ///   controller takes its value);
+    /// - the whole recording list is freed, the nodes above `t` too (`sub_100149A0`, OB-18), and
+    ///   the hold mask is cleared (0x1001F767).
     ///
     /// The applied pointer `+0x228` is not touched: when its own node is removed it dangles in
     /// the DLL (OB-19); here it moves to the node before. Every caller but record off in

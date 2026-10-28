@@ -13,10 +13,10 @@
 //!   original.
 //! - Float to integer conversions truncate toward zero (`as i32` / `as i64` on in-range values).
 //! - The original's transcendentals (`fcos`, `fsin`, `f2xm1` + `fscale`, and the CRT `pow`) run at
-//!   x87 extended precision. They are used only to build tables at init, and every table is
-//!   stored as `f32`. [`tables`] generates them with the pure-Rust `libm` crate (pinned, the
-//!   same on every platform; task-048); every entry is
-//!   bit-identical to dumps of the original's tables (task-019), so none is embedded.
+//!   x87 extended precision. They are used only to build tables at init, and every table is stored
+//!   as `f32`. [`tables`] generates them with the pure-Rust `libm` crate (pinned, the same on every
+//!   platform; task-048); every entry is bit-identical to dumps of the original's tables
+//!   (task-019), so none is embedded.
 
 pub mod comp;
 pub mod compare;

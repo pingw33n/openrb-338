@@ -7,9 +7,9 @@
 //!
 //! - [`Player`], the UI side: it builds songs ([`Player::load`]), sends [`Command`]s, drops what
 //!   the callback hands back, and reads the [`Snapshot`] the callback publishes.
-//! - [`Audio`], the callback side: [`Audio::render_i16`] and [`Audio::render_f32`] are the body
-//!   of the audio callback at 44.1 kHz; [`output::start`] runs them in a cpal output stream
-//!   (resampled when the device does not offer 44.1 kHz).
+//! - [`Audio`], the callback side: [`Audio::render_i16`] and [`Audio::render_f32`] are the body of
+//!   the audio callback at 44.1 kHz; [`output::start`] runs them in a cpal output stream (resampled
+//!   when the device does not offer 44.1 kHz).
 //!
 //! The halves share nothing but three lock-free single-producer single-consumer channels, all
 //! allocated up front: the command queue and the garbage queue (`rtrb`), and the snapshot

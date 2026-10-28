@@ -11,13 +11,13 @@
 //! ```
 //!
 //! - `mods`: every recrypted `.rbm` through `crates/rbm` (parse, the embedded key bytes, every
-//!   embedded file, the 46 slots with the built-in fallback), compared with `tools/rbm.py
-//!   check-dir --json` over the ORIGINALS and the DAT: the same SHA-256 for every embedded file
-//!   and the same channel-0 PCM for every slot.
+//!   embedded file, the 46 slots with the built-in fallback), compared with `tools/rbm.py check-dir
+//!   --json` over the ORIGINALS and the DAT: the same SHA-256 for every embedded file and the same
+//!   channel-0 PCM for every slot.
 //! - `songs`: every distinct song (by SHA-256): an RBS 4.2 song is read and written back
 //!   (byte-identical) and rendered with `rb render --mod-dir DIR/Mods --standard-kit`, its mod
-//!   resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`, task-060) is
-//!   rendered too, and its import's message stream (`rb_engine::load::load_1x`) must equal
+//!   resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`, task-060) is rendered
+//!   too, and its import's message stream (`rb_engine::load::load_1x`) must equal
 //!   `tools/rb1x.py`'s. No song may panic.
 
 mod common;
@@ -196,8 +196,8 @@ fn mods() {
         ok += 1;
     }
     println!(
-        "mods: {} checked, {ok} load, {failed} fail; {partial} keep built-in slots; {files_checked} \
-         embedded files and {slots_checked} slots equal rbm.py's",
+        "mods: {} checked, {ok} load, {failed} fail; {partial} keep built-in slots; \
+         {files_checked} embedded files and {slots_checked} slots equal rbm.py's",
         reference.len()
     );
     assert!(problems.is_empty(), "{}", problems.join("\n"));
@@ -416,7 +416,9 @@ import os, struct, sys
 sys.path.insert(0, os.path.join(sys.argv[1], "tools"))
 import rb1x
 msgs = rb1x.read_song(sys.argv[2]).load_messages()
-sys.stdout.buffer.write(struct.pack("<I", len(msgs)) + b"".join(struct.pack("<I", len(m)) + m for m in msgs))
+out = struct.pack("<I", len(msgs))
+out += b"".join(struct.pack("<I", len(m)) + m for m in msgs)
+sys.stdout.buffer.write(out)
 "#;
     let o = Command::new("/usr/bin/python3")
         .arg("-I")

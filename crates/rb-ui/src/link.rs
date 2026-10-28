@@ -3,16 +3,16 @@
 //! [`Link`] owns the UI half of an [`rb_player::Player`] and sits between it and the
 //! [`Panel`] model:
 //!
-//! - **Out.** The model's events (`Panel::events`) become the messages the original's panel
-//!   sends ([`Msg`]: song msg 35 `{id, v}` and the device messages of msg 41, the senders listed
-//!   in `docs/song_load.md` section 4.10), and each message becomes the player's [`Command`]
-//!   that stands for it. The messages are kept in [`Link::log`] when asked, which is what the
-//!   tests compare with the original's wire format.
-//! - **In.** After each engine call the snapshot the audio callback publishes moves the panel:
-//!   the transport (position, play, mode, loop, tempo), every control's live value (so the
-//!   song's automation moves the knobs), the pattern each section selects, the running lights of
-//!   the drum machines and the meters. The panel shows the engine's values, as the original's
-//!   does (`docs/ui_spec.md` section 11).
+//! - **Out.** The model's events (`Panel::events`) become the messages the original's panel sends
+//!   ([`Msg`]: song msg 35 `{id, v}` and the device messages of msg 41, the senders listed in
+//!   `docs/song_load.md` section 4.10), and each message becomes the player's [`Command`] that
+//!   stands for it. The messages are kept in [`Link::log`] when asked, which is what the tests
+//!   compare with the original's wire format.
+//! - **In.** After each engine call the snapshot the audio callback publishes moves the panel: the
+//!   transport (position, play, mode, loop, tempo), every control's live value (so the song's
+//!   automation moves the knobs), the pattern each section selects, the running lights of the drum
+//!   machines and the meters. The panel shows the engine's values, as the original's does
+//!   (`docs/ui_spec.md` section 11).
 //!
 //! # Timing
 //!

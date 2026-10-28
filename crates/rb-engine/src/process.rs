@@ -6,10 +6,10 @@
 //! - The drum counters live in BSS (0 when the DLL loads) and change only on drum hits, so an
 //!   export depends on every snare and bass-drum hit since the process started.
 //! - The delay line `flt_10054794` (131072 f32) and its gate `byte_10054790` are BSS too (0 when
-//!   the DLL loads). Every delay object reads and writes the one line; it is refilled with 1e-6
-//!   by the delay's slot 6 (0x100100E0: a song switch, msg 53, and msg 33 through slot 5
-//!   0x1000F4F0) and once when a disabled delay runs (0x1000FAD1), so an export depends on what
-//!   the delays wrote since the last refill.
+//!   the DLL loads). Every delay object reads and writes the one line; it is refilled with 1e-6 by
+//!   the delay's slot 6 (0x100100E0: a song switch, msg 53, and msg 33 through slot 5 0x1000F4F0)
+//!   and once when a disabled delay runs (0x1000FAD1), so an export depends on what the delays
+//!   wrote since the last refill.
 //!
 //! [`ProcessState`] is the engine's handle on them: the song's devices share one handle
 //! ([`crate::frame::Devices::process`]), and a caller that reproduces a capture made in a

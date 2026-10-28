@@ -110,8 +110,8 @@ fn fabs(x: f32) -> f32 {
 }
 
 /// An amount or shape byte clamped to 127. The exe's track load accepts only 0..127 for them
-/// (`docs/song_load.md` section 5), and the DLL does not check: a larger byte would read past the grid
-/// (`flt_10151AB8`), the level curve (`flt_10054550`) and the shaper (`flt_100D47A4`) into
+/// (`docs/song_load.md` section 5), and the DLL does not check: a larger byte would read past the
+/// grid (`flt_10151AB8`), the level curve (`flt_10054550`) and the shaper (`flt_100D47A4`) into
 /// adjacent memory, which the engine cannot reproduce, so it clamps instead.
 fn clamp_param(x: u8) -> u8 {
     x.min(127)

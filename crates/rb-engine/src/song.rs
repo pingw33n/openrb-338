@@ -216,7 +216,9 @@ macro_rules! param_block {
 
 param_block!(
     /// The delay (`docs/song_load.md` section 4.2). Byte 5 is 0.
-    Delay, 6, [
+    Delay,
+    6,
+    [
         ENABLED = 0,
         /// 1..32.
         STEPS = 1,
@@ -229,7 +231,9 @@ param_block!(
 
 param_block!(
     /// The PCF (`docs/song_load.md` section 4.3). Byte 7 is 0.
-    Pcf, 8, [
+    Pcf,
+    8,
+    [
         ENABLED = 0,
         FREQUENCY = 1,
         RESONANCE = 2,
@@ -243,13 +247,17 @@ param_block!(
 
 param_block!(
     /// The distortion (`docs/song_load.md` section 4.4). Byte 3 is 0.
-    Distortion, 4, [ENABLED = 0, AMOUNT = 1, SHAPE = 2]
+    Distortion,
+    4,
+    [ENABLED = 0, AMOUNT = 1, SHAPE = 2]
 );
 
 param_block!(
     /// The compressor (`docs/song_load.md` section 4.5). Bytes 3 and 4 are always 127 and 0
     /// (the exe's defaults, `sub_42311F`); no file field or controller sets them.
-    Compressor, 5, [ENABLED = 0, AMOUNT = 1, THRESHOLD = 2]
+    Compressor,
+    5,
+    [ENABLED = 0, AMOUNT = 1, THRESHOLD = 2]
 );
 
 /// A TB-303 step as the DLL stores it: six bytes, each 0 or 1 except the note.

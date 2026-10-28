@@ -1,6 +1,6 @@
 //! Helpers of the corpus tests (`corpus_golden.rs`, `corpus_tb303.rs`, `corpus_tr808.rs`,
-//! `corpus_tr909.rs`, `corpus_effects.rs`, `corpus_pcf_comp.rs`): the manifest, the songs, the samples and the
-//! render.
+//! `corpus_tr909.rs`, `corpus_effects.rs`, `corpus_pcf_comp.rs`): the manifest, the songs, the
+//! samples and the render.
 //!
 //! Every song of the diagnostic corpus has the delay enabled, and an enabled delay adds its
 //! output (about 1e-6 at idle, plus 1e-6 x the channels D samples later) into the master, so the

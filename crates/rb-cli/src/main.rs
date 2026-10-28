@@ -115,8 +115,8 @@ enum Cmd {
         #[arg(long, value_name = "N")]
         idle_blocks: Option<u32>,
         /// As in render: the song's mod is looked up in this folder of .rbm files, by the name
-        /// in the song (the mod's INFO name, as the original's Mods menu; a file name also matches).
-        /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
+        /// in the song (the mod's INFO name, as the original's Mods menu; a file name also
+        /// matches). Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
         /// deprecated alias), then a Mods folder next to the rb
         /// binary, then the usual install locations on Windows. "Standard ReBirth", the
         /// built-in kit, needs none: rb embeds it.
@@ -428,7 +428,8 @@ fn locate_rebirth_exe(explicit: Option<&Path>, dll: &Path) -> Result<PathBuf, Fa
             fail(
                 1,
                 format!(
-                    "no Rebirth.exe next to {} (it holds the panel bitmaps). Pass --rebirth-exe PATH",
+                    "no Rebirth.exe next to {} (it holds the panel bitmaps). \
+                     Pass --rebirth-exe PATH",
                     dll.display()
                 ),
             )

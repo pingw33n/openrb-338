@@ -82,7 +82,8 @@ pub fn parse(d: &[u8]) -> Result<Vec<i16>, SampleError> {
 
     if comm.len() < 18 {
         return Err(bad(
-            "the COMM chunk is shorter than 18 bytes and the file ends before 18 bytes of it are available",
+            "the COMM chunk is shorter than 18 bytes and the file ends before 18 bytes of it \
+             are available",
         ));
     }
     let channels = u16::from_be_bytes([comm[0], comm[1]]) as usize;

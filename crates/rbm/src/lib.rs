@@ -9,8 +9,9 @@
 //! user's file). Only those two pages are read.
 //!
 //! The one exception (task-059, the user's decisions of 2026-10-27): [`embedded`] holds one
-//! 2047-byte window of the file, and [`recrypt`] rewrites a mod so that those bytes are all it needs; such a mod
-//! loads with [`KeyTable::embedded`] and no `RB20FUL.DAT`, in rb and in the original.
+//! 2047-byte window of the file, and [`recrypt`] rewrites a mod so that those bytes are all it
+//! needs; such a mod loads with [`KeyTable::embedded`] and no `RB20FUL.DAT`, in rb and in the
+//! original.
 //!
 //! ```no_run
 //! # use rbm::*; use rb_engine::samples::SampleSet;

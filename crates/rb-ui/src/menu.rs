@@ -2,20 +2,18 @@
 //! and the keyboard mode, with the unsaved-changes prompt. Nothing else of the original's menu.
 //!
 //! What each item does (docs/ui_spec.md section 18):
-//! - **File**: New (Ctrl/Cmd+N: the state of the app's start), Open (Ctrl/Cmd+O), Save
-//!   (Ctrl/Cmd+S; the texts come from [`crate::shortcuts`]; a song that was never saved goes
-//!   to Save As), Save As, Info ([`crate::info`]), Export loop as audio file. The browser
-//!   (task-046) returns paths only; the writes happen here and their errors are shown in the
-//!   notice line.
+//! - **File**: New (Ctrl/Cmd+N: the state of the app's start), Open (Ctrl/Cmd+O), Save (Ctrl/Cmd+S;
+//!   the texts come from [`crate::shortcuts`]; a song that was never saved goes to Save As), Save
+//!   As, Info ([`crate::info`]), Export loop as audio file. The browser (task-046) returns paths
+//!   only; the writes happen here and their errors are shown in the notice line.
 //! - **Mods**: "Standard ReBirth", the mods of the Mods folder (one entry per INFO menu name, as
 //!   the original's Mods menu: `sub_40C163`, docs/rbm.md section 14), and a file picked in the
-//!   browser. A choice is the original's `sub_42D80D` -> `sub_426FB3`: the song is marked
-//!   modified, the new kit goes to the player as song msg 19 ([`Link::set_mod`]) and a save
-//!   writes the new name. With the preference "Play Mod Startup Sound" on
-//!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays, as it
-//!   does when a song is opened and at the start ([`App::start`]), but only when the kit
-//!   changes (task-099).
-//!   "Demo Song" opens the `Demo.rbs` of the current mod as an unsaved song (task-094).
+//!   browser. A choice is the original's `sub_42D80D` -> `sub_426FB3`: the song is marked modified,
+//!   the new kit goes to the player as song msg 19 ([`Link::set_mod`]) and a save writes the new
+//!   name. With the preference "Play Mod Startup Sound" on
+//!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays, as it does
+//!   when a song is opened and at the start ([`App::start`]), but only when the kit changes
+//!   (task-099). "Demo Song" opens the `Demo.rbs` of the current mod as an unsaved song (task-094).
 //! - **Options**: the Vintage ReBirth Synth Sound flag (GLOB byte 482; Edit menu item 323 of the
 //!   original) and the keyboard mode (Ctrl/Cmd+F, Ctrl/Cmd+G; docs/ui_spec.md section 10).
 

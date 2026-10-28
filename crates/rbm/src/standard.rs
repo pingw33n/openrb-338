@@ -1,13 +1,13 @@
 //! The standard mod (task-036, docs/rbm.md section 13): the original's built-in kit and panel
 //! as a mod, built at run time from the user's own `ReBirth.dll` and `Rebirth.exe`.
 //!
-//! - The 46 samples are the DLL's `"AIFF"` resources 1000..=1045, embedded byte for byte under
-//!   the 46 names the exe looks up (docs/rbm.md section 3).
+//! - The 46 samples are the DLL's `"AIFF"` resources 1000..=1045, embedded byte for byte under the
+//!   46 names the exe looks up (docs/rbm.md section 3).
 //! - The panel is the exe's `"JPEG"` resources: the 58 numbered bitmaps 12015..=12571 a mod
 //!   replaces, embedded as `<id>.jpg`, and resource 903, the built-in kit's splash, as
-//!   `splash.jpg`. `sub_41703A` asks an open mod for `%d.jpg` (`Splash.jpg` for id 12999) and
-//!   falls back to the exe's resource of that id (903 for the built-in splash, 905 for a mod
-//!   without one).
+//!   `splash.jpg`. `sub_41703A` asks an open mod for `%d.jpg` (`Splash.jpg` for id 12999) and falls
+//!   back to the exe's resource of that id (903 for the built-in splash, 905 for a mod without
+//!   one).
 //! - No `Demo.rbs`: the built-in kit has none, and the mod info dialog only enables its "save the
 //!   demo song" button when a mod carries one (`sub_417000`).
 //!
