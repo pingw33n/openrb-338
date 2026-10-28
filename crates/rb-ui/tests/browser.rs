@@ -445,7 +445,7 @@ fn unreadable_folders_and_missing_paths_are_errors() {
 #[test]
 fn settings_round_trip_and_recent_folders_are_capped() {
     let d = tempfile::tempdir().unwrap();
-    let file = d.path().join("cfg/ui.conf");
+    let file = d.path().join("cfg/ui.toml");
     let mut s = Settings::load_from(&file);
     assert_eq!(s.recent.len(), 0);
     s.songs_dir = Some(PathBuf::from("/songs"));

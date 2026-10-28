@@ -1305,18 +1305,18 @@ fn opening_a_song_while_playing_stops_it_and_a_refused_open_does_not() {
 fn the_startup_sound_checkbox_flips_the_preference_and_saves_it() {
     let dir = std::env::temp_dir().join(format!("rb-ui-startup-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let file = dir.join("settings.txt");
+    let file = dir.join("ui.toml");
     let mut h = Harness::new();
     h.app.settings.file = Some(file.clone());
     assert!(h.app.settings.startup_sound);
     h.app.command(Cmd::ToggleStartupSound);
     assert!(!h.app.settings.startup_sound);
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(text.contains("startup_sound=0\n"), "{text}");
+    assert!(text.contains("startup_sound = false\n"), "{text}");
     h.app.command(Cmd::ToggleStartupSound);
     assert!(h.app.settings.startup_sound);
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(text.contains("startup_sound=1\n"), "{text}");
+    assert!(text.contains("startup_sound = true\n"), "{text}");
     assert!(h.app.notice.is_none());
     // a file that cannot be written: the error is on the notice line
     h.app.settings.file = Some(file.join("x"));

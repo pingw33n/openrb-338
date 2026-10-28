@@ -1,11 +1,11 @@
 ---
 id: TASK-107
 title: 'rb-ui: the settings file is TOML'
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 09:06'
-updated_date: '2026-10-28 09:07'
+updated_date: '2026-10-28 13:08'
 labels:
   - ui
 milestone: m-3
@@ -38,7 +38,34 @@ What:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Settings are read from and saved to rb/ui.toml (TOML; fields as described); a missing or damaged file gives the defaults; unknown keys are ignored
-- [ ] #2 docs updated; cargo test and cargo clippy --all-targets -- -D warnings pass
-- [ ] #3 Tests cover the round trip, a damaged file and unknown keys (temp dirs via RB_UI_CONFIG or a path parameter); an existing ui.conf is ignored
+- [x] #1 Settings are read from and saved to rb/ui.toml (TOML; fields as described); a missing or damaged file gives the defaults; unknown keys are ignored
+- [x] #2 docs updated; cargo test and cargo clippy --all-targets -- -D warnings pass
+- [x] #3 Tests cover the round trip, a damaged file and unknown keys (temp dirs via RB_UI_CONFIG or a path parameter); an existing ui.conf is ignored
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. settings.rs: serialize a Stored struct (songs_dir, mods_dir, recent, startup_sound) with serde+toml; read via toml::Table field by field so one wrong-typed field keeps the rest and unknown keys are ignored; default file rb/ui.toml; drop the key=value reader/writer; atomic temp+rename kept.
+2. Add serde (derive) and toml =0.9.12 to rb-ui.
+3. Rewrite tests/settings.rs: round trip, damaged file (bytes, bad TOML, wrong types), unknown keys, ui.conf ignored, RB_UI_CONFIG.
+4. Update docs/ui_spec.md.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-a80b04b9885b91814
+
+Settings::load_from parses a toml::Table and reads each key leniently (wrong-typed key skipped, others kept; unparsable file gives defaults and is not touched); save serializes a Stored struct with serde+toml, then temp file + rename. Reader/writer of key=value removed; ui.conf is never opened. Existing tests menu.rs/browser.rs adjusted to the TOML text and ui.toml name. cargo clippy --all-targets -D warnings clean; cargo test --release -q: 534 pass, 0 fail.
+
+Review round 1: save now skips non-UTF-8 paths (recent entry dropped; songs_dir/mods_dir omitted; never lossy) so the save succeeds; documented in module doc and ui_spec; tests for non-UTF-8 recent+songs_dir (unix) and for no temp file left after a failed rename; Cargo.toml spacing; menu test temp name; empty RB_UI_CONFIG treated as unset. cargo test --release: 536 pass.
+
+Review round 2: rewrapped the over-long line in docs/ui_spec.md (settings paragraph); checked all added lines with awk 'length > 100': none.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+rb-ui settings are now TOML in rb/ui.toml (or $RB_UI_CONFIG, empty counts as unset): songs_dir, mods_dir, recent, startup_sound. Lenient read (missing/damaged file gives defaults and stays untouched until save; wrong-typed keys skipped; unknown keys ignored), atomic whole-file save; a non-UTF-8 path is left out at save (never stored lossy) so the save succeeds. The key=value reader/writer is removed; ui.conf is neither read nor deleted. Docs: module doc, docs/ui_spec.md, main.rs. Tests in crates/rb-ui/tests/settings.rs cover round trip, damaged files, wrong types, unknown keys, non-UTF-8 paths, failed rename, ui.conf ignored, RB_UI_CONFIG. Branch worktree-agent-a80b04b9885b91814, one commit. cargo test --release 536 pass; clippy clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

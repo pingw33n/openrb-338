@@ -1,14 +1,22 @@
 //! The UI's small settings file: the songs folder, the mods folder and the recent folders of
 //! the file browser (task-046), and the startup sound preference (task-074).
 //!
-//! It is a plain text file of `key=value` lines (`songs=`, `mods=`, `recent=` once per folder,
-//! newest first, `startup_sound=0|1`), so it needs no extra crate and can be edited by hand. Where it lives:
-//! `$RB_UI_CONFIG` if set; else `rb/ui.conf` in the platform's configuration folder
-//! (`$XDG_CONFIG_HOME`, or `~/.config` on Linux, `~/Library/Application Support` on macOS,
-//! `%APPDATA%` on Windows). Reading never fails (a missing or damaged file gives the defaults);
-//! writing errors are returned for the browser to show.
+//! It is a TOML file (task-107) with the keys `songs_dir` and `mods_dir` (paths, absent when
+//! unset), `recent` (an array of paths, newest first) and `startup_sound` (a bool), so it can
+//! be edited by hand. Where it lives: `$RB_UI_CONFIG` if set; else `rb/ui.toml` in the
+//! platform's configuration folder (`$XDG_CONFIG_HOME`, or `~/.config` on Linux,
+//! `~/Library/Application Support` on macOS, `%APPDATA%` on Windows). Reading never fails: a
+//! missing or damaged file gives the defaults (a damaged file stays as it is until the next
+//! save), a key of the wrong type is skipped and the others kept, and unknown keys are
+//! ignored. Saving writes the whole file through a temporary file and a rename, and returns
+//! its errors for the browser to show. A path that is not valid UTF-8 cannot be stored in
+//! TOML (and a lossy string would name another folder), so a save leaves it out: a `recent`
+//! entry is dropped, `songs_dir` and `mods_dir` are omitted and fall back to the default. An
+//! empty `$RB_UI_CONFIG` counts as unset. The old `ui.conf` is neither read nor deleted.
 
 use std::path::{Path, PathBuf};
+
+use serde::Serialize;
 
 /// How many recent folders are kept.
 pub const MAX_RECENT: usize = 8;
@@ -17,7 +25,7 @@ pub const MAX_RECENT: usize = 8;
 pub struct Settings {
     /// The original's preference "Play Mod Startup Sound" (on by default: the preferences'
     /// constructor `sub_41CAA4` sets it, 0x41CB13): a mod change plays the mod's startup
-    /// sound. Stored as `startup_sound=0` or `1`.
+    /// sound. Stored as the bool `startup_sound`.
     pub startup_sound: bool,
     /// Where songs are opened from and saved to by default (`None`: the documents folder).
     pub songs_dir: Option<PathBuf>,
@@ -66,7 +74,7 @@ pub fn home_dir() -> Option<PathBuf> {
 
 /// The settings file's default place (see the module text).
 pub fn default_file() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("RB_UI_CONFIG") {
+    if let Some(p) = std::env::var_os("RB_UI_CONFIG").filter(|p| !p.is_empty()) {
         return Some(PathBuf::from(p));
     }
     let base = if cfg!(windows) {
@@ -78,7 +86,29 @@ pub fn default_file() -> Option<PathBuf> {
     } else {
         home().map(|h| h.join(".config"))
     };
-    base.map(|b| b.join("rb").join("ui.conf"))
+    base.map(|b| b.join("rb").join("ui.toml"))
+}
+
+/// What the file holds, in the file's order.
+#[derive(Serialize)]
+struct Stored<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    songs_dir: Option<&'a Path>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mods_dir: Option<&'a Path>,
+    startup_sound: bool,
+    recent: Vec<&'a Path>,
+}
+
+/// The path when TOML can hold it (valid UTF-8). A lossy string would name another folder, so
+/// any other path is left out of the file.
+fn storable(p: &Path) -> Option<&Path> {
+    p.to_str().map(|_| p)
+}
+
+/// A path value of the table: a non-empty string.
+fn path_of(v: &toml::Value) -> Option<PathBuf> {
+    v.as_str().filter(|s| !s.is_empty()).map(PathBuf::from)
 }
 
 impl Settings {
@@ -100,30 +130,19 @@ impl Settings {
         let Ok(text) = std::fs::read_to_string(file) else {
             return s;
         };
-        for line in text.lines() {
-            let Some((k, v)) = line.split_once('=') else {
-                continue;
-            };
-            if v.is_empty() {
-                continue;
-            }
-            let k = k.trim();
-            if k == "startup_sound" {
-                match v.trim() {
-                    "0" => s.startup_sound = false,
-                    "1" => s.startup_sound = true,
-                    _ => {}
+        let Ok(table) = text.parse::<toml::Table>() else {
+            return s;
+        };
+        if let Some(b) = table.get("startup_sound").and_then(|v| v.as_bool()) {
+            s.startup_sound = b;
+        }
+        s.songs_dir = table.get("songs_dir").and_then(path_of);
+        s.mods_dir = table.get("mods_dir").and_then(path_of);
+        if let Some(list) = table.get("recent").and_then(|v| v.as_array()) {
+            for p in list.iter().filter_map(path_of) {
+                if s.recent.len() < MAX_RECENT && !s.recent.contains(&p) {
+                    s.recent.push(p);
                 }
-                continue;
-            }
-            let v = PathBuf::from(v);
-            match k {
-                "songs" => s.songs_dir = Some(v),
-                "mods" => s.mods_dir = Some(v),
-                "recent" if s.recent.len() < MAX_RECENT && !s.recent.contains(&v) => {
-                    s.recent.push(v)
-                }
-                _ => {}
             }
         }
         s
@@ -134,24 +153,13 @@ impl Settings {
         let Some(file) = &self.file else {
             return Ok(());
         };
-        let mut text = String::new();
-        let mut line = |k: &str, v: &Path| {
-            // A path with a line break cannot be stored in this format.
-            let v = v.to_string_lossy();
-            if !v.contains('\n') && !v.contains('\r') {
-                text.push_str(&format!("{k}={v}\n"));
-            }
-        };
-        if let Some(p) = &self.songs_dir {
-            line("songs", p);
-        }
-        if let Some(p) = &self.mods_dir {
-            line("mods", p);
-        }
-        for p in &self.recent {
-            line("recent", p);
-        }
-        text.push_str(&format!("startup_sound={}\n", self.startup_sound as u8));
+        let text = toml::to_string(&Stored {
+            songs_dir: self.songs_dir.as_deref().and_then(storable),
+            mods_dir: self.mods_dir.as_deref().and_then(storable),
+            startup_sound: self.startup_sound,
+            recent: self.recent.iter().filter_map(|p| storable(p)).collect(),
+        })
+        .map_err(|e| format!("{}: cannot encode: {e}", file.display()))?;
         if let Some(dir) = file.parent() {
             std::fs::create_dir_all(dir)
                 .map_err(|e| format!("{}: cannot create: {e}", dir.display()))?;

@@ -3422,7 +3422,9 @@ dependencies = [
  "rbm",
  "rbs",
  "resvg 0.45.1",
+ "serde",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

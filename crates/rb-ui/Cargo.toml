@@ -23,6 +23,9 @@ rbs = { path = "../rbs" }
 rbm = { path = "../rbm" }
 # The export and the mod lookup of `rb render` (task-047).
 rb-cli = { path = "../rb-cli" }
+# The settings file (task-107).
+serde = { version = "1", features = ["derive"] }
+toml = "=0.9.12"
 eframe = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["svg"] }
 # Renders the window icon; the version egui_extras' SVG loader uses.

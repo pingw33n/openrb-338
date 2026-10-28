@@ -16,7 +16,7 @@
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
 //! quits. Ctrl/Cmd+O opens the in-app file browser (task-046) to open a song, Ctrl/Cmd+S saves;
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
-//! settings file (`rb/ui.conf` in the configuration folder, or `$RB_UI_CONFIG`).
+//! settings file (`rb/ui.toml` in the configuration folder, or `$RB_UI_CONFIG`).
 
 use std::path::PathBuf;
 use std::sync::Arc;

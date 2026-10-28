@@ -914,10 +914,15 @@ starts with it open. The panel takes no key or click while a browser is open. Th
   (songs, export) or the mods folder (mods) of the settings, else the documents folder
   (`~/Documents`, else the home folder). "Use as songs/mods folder" in the dialog sets them to the
   folder shown. The last 8 folders a file was chosen in are the recent folders. All of it is a
-  text file of `songs=`, `mods=`, `recent=` lines at `$RB_UI_CONFIG`, else `rb/ui.conf` in
-  `$XDG_CONFIG_HOME` (Linux `~/.config`, macOS `~/Library/Application Support`, Windows
-  `%APPDATA%`); it is rewritten when a path is chosen or a folder set, and a missing or damaged
-  file means the defaults. egui's own persistence is not used.
+  TOML file (task-107) of `songs_dir`, `mods_dir`, `recent` (an array) and `startup_sound` at
+  `$RB_UI_CONFIG`, else `rb/ui.toml` in `$XDG_CONFIG_HOME` (Linux `~/.config`, macOS
+  `~/Library/Application Support`, Windows `%APPDATA%`); it is rewritten whole, through a
+  temporary file and a rename, when a path is chosen or a folder set. A missing or damaged file
+  means the defaults (a damaged one stays until the next save), a key of the wrong type is
+  skipped, unknown keys are ignored. A path that is not valid UTF-8 is left out of the file on
+  save (a `recent` entry is dropped; `songs_dir`, `mods_dir` are omitted and so fall back to the
+  default), never stored lossy. An empty `$RB_UI_CONFIG` counts as unset. The old `ui.conf` is
+  neither read nor deleted. egui's own persistence is not used.
 
 ## 18. The menu (task-047)
 
@@ -1020,7 +1025,8 @@ is one more entry.
   task-074) when the preference "Play Mod Startup Sound" is on: `Settings::startup_sound`, on by
   default as the original's (the preferences' constructor `sub_41CAA4` sets prefs `+536` = 1 at
   0x41CB13, the app's constructor `sub_40D1D2` app `+0x533` = 1 at 0x40D338), stored in the
-  settings file as `startup_sound=0|1`. The Options menu's checkbox "Play Mod Startup Sound" switches it (task-086, task-089).
+  settings file as the bool `startup_sound`. The Options menu's checkbox "Play Mod Startup
+  Sound" switches it (task-086, task-089).
 - **The mod list cache** (task-101). The Mods menu's list (`App::mod_list`) is read from the
   Mods folder by `App::refresh_mods` and only there: at the app's start (`App::start`), by Mods >
   Refresh List, and when the browser's "Use as mods folder" changes the setting. Drawing the menu
