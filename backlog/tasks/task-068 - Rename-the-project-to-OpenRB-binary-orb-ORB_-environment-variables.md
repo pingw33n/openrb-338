@@ -4,7 +4,7 @@ title: 'Rename the project to OpenRB-338: binary orb, ORB_ environment variables
 status: To Do
 assignee: []
 created_date: '2026-10-27 11:27'
-updated_date: '2026-10-28 11:48'
+updated_date: '2026-10-28 11:53'
 labels:
   - cli
   - tools
@@ -51,4 +51,6 @@ Crate prefix: "openrb-338-" is awkward; "orb-" (the binary's name) or "openrb-" 
 
 <!-- SECTION:NOTES:BEGIN -->
 task-104 already named the desktop UI OpenRB-338 (binary, window title, app name, app_id); the rest of the rename is still here.
+
+The user (2026-10-28): the CLI binary is exactly `orb`, never `orb-cli` or any other suffix, whatever the crate that builds it is called (the crate may be orb-cli; its [[bin]] name is orb). The desktop app's binary is already OpenRB-338 (task-104) and stays so.
 <!-- SECTION:NOTES:END -->
