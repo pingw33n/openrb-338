@@ -4,7 +4,7 @@
 //! sha256 of the whole WAV.
 //!
 //! The mods are Propellerhead material and are not in the repository. Since task-063 rb loads
-//! only RECRYPTED mods (`rb recrypt`, task-059) and the song tests read no RB20FUL.DAT: they
+//! only RECRYPTED mods (`rb mod recrypt`, task-059) and the song tests read no RB20FUL.DAT: they
 //! need `RB_MOD_DIR`, the folder of the recrypted .rbm files (same file names as the originals),
 //! and skip with a message when it is unset. A recrypted mod is the original plus a 1024-byte
 //! pad, so each file is checked against the name and the size the entry records (+ 1032 bytes:

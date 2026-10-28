@@ -248,7 +248,7 @@ Mods (`C:\ReBirth RB-338\Mods`, not committed; the rcs copies are in `C:\re\rb\i
 
 **The installation's Mods are recrypted (task-063, 2026-10-27).** At the user's explicit request (the one
 exception to "never write into the installation", for these four files only) the files in
-`C:\ReBirth RB-338\Mods` were replaced by their `rb recrypt` form (docs/rbm.md section 12), after the
+`C:\ReBirth RB-338\Mods` were replaced by their `rb mod recrypt` form (docs/rbm.md section 12), after the
 originals were copied to **`C:\re\rb\mods_orig`** (`robocopy`, hashes equal to the table above; never
 delete it). The table above is the ORIGINALS' (also the committed manifest's); the installation now has:
 

@@ -409,7 +409,7 @@ See OB-8 for the unclean buffer.
 - **Effect.** Entry 200 starts at the count word itself, so the 201st name overwrites the count
   and later entries land at an index taken from the name's bytes, past the object [G: not run].
 - **Corpus.** None: every known mod has at most 106 EMBF chunks (docs/rbm.md 11.1).
-- **rb.** `rb recrypt` refuses a result with more than 200 EMBF chunks (`rbm::MAX_EMBF`); the
+- **rb.** `rb mod recrypt` refuses a result with more than 200 EMBF chunks (`rbm::MAX_EMBF`); the
   reader parses any count, as it should for files the original never opens.
 - **Home.** `docs/rbm.md` section 12.
 

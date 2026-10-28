@@ -1,5 +1,5 @@
 //! Shared by the CLI tests: the repository root and the standard mod, built once per test
-//! binary by `rb standard-mod` from `original/ReBirth.dll` and `original/Rebirth.exe` into
+//! binary by `rb mod pack-standard` from `original/ReBirth.dll` and `original/Rebirth.exe` into
 //! cargo's temporary directory for integration tests (task-036).
 
 #![allow(dead_code)]
@@ -20,7 +20,7 @@ pub fn env_path(name: &str) -> Option<PathBuf> {
         .map(|v| root().join(v))
 }
 
-/// The standard mod, made by `rb standard-mod` the first time it is asked for.
+/// The standard mod, made by `rb mod pack-standard` the first time it is asked for.
 pub fn standard_mod() -> &'static Path {
     static MOD: OnceLock<PathBuf> = OnceLock::new();
     MOD.get_or_init(|| {
@@ -33,7 +33,7 @@ pub fn standard_mod() -> &'static Path {
             std::process::id()
         ));
         let o = Command::new(env!("CARGO_BIN_EXE_rb"))
-            .arg("standard-mod")
+            .args(["mod", "pack-standard"])
             .arg("--rebirth-dll")
             .arg(root().join("original/ReBirth.dll"))
             .arg("-o")
@@ -42,7 +42,7 @@ pub fn standard_mod() -> &'static Path {
             .unwrap();
         assert!(
             o.status.success(),
-            "rb standard-mod: {}",
+            "rb mod pack-standard: {}",
             String::from_utf8_lossy(&o.stderr)
         );
         std::fs::rename(&tmp, &path).unwrap();

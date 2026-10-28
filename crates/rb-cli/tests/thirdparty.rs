@@ -1,6 +1,6 @@
 //! The check of a third-party collection of mods and songs (task-058): the user's own files,
 //! read in place and never in the repository. Set `RB_THIRDPARTY_DIR` to a folder with `Mods/`
-//! (the RECRYPTED `.rbm` files, `rb recrypt`; task-063) and `songs/` (`.rbs` files, any name);
+//! (the RECRYPTED `.rbm` files, `rb mod recrypt`; task-063) and `songs/` (`.rbs` files, any name);
 //! the `mods` test also needs `Mods.orig/` (the originals, same file names) and `RB_RB20FUL`
 //! (the CD's RB20FUL.DAT) for its reference. Each test skips with a message when its inputs are
 //! unset. Run it in release, with the summary shown:

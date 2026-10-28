@@ -1,7 +1,7 @@
 //! What the window needs to open: a song file and the built-in drum samples.
 //!
 //! The song loader is that of `rb play` (`crates/rb-cli/src/main.rs`): an RBS 4.x file or a
-//! ReBirth 1.x MIDI-file song. The samples come from the standard mod (`rb standard-mod`,
+//! ReBirth 1.x MIDI-file song. The samples come from the standard mod (`rb mod pack-standard`,
 //! docs/rbm.md section 13), found as `rb` finds it: `--standard-mod`, the `RB_STANDARD_MOD`
 //! environment variable, or `Standard.rbm` next to the binary. The song's own mod is applied by
 //! the window (`App::open_song`, the Mods menu).
@@ -63,7 +63,7 @@ pub fn mod_demo(path: &Path) -> Result<Vec<u8>, String> {
         .filter(|t| rbm.slots_covered(t))
         .ok_or_else(|| {
             format!(
-                "{}: the mod is not recrypted for rb (`rb recrypt`); its {DEMO} cannot be read",
+                "{}: the mod is not recrypted for rb (`rb mod recrypt`); its {DEMO} cannot be read",
                 path.display()
             )
         })?;
@@ -118,7 +118,7 @@ pub fn locate_standard_mod(explicit: Option<&Path>) -> Result<PathBuf, String> {
         .and_then(|e| e.parent().map(|d| d.join("Standard.rbm")))
         .filter(|p| p.is_file())
         .ok_or_else(|| {
-            "no standard mod found. Make it once with `rb standard-mod --rebirth-dll \
+            "no standard mod found. Make it once with `rb mod pack-standard --rebirth-dll \
              ReBirth.dll -o Standard.rbm`, then pass --standard-mod FILE or set RB_STANDARD_MOD"
                 .to_string()
         })
@@ -137,7 +137,7 @@ pub fn load_standard(explicit: Option<&Path>) -> Result<SampleSet, String> {
         .filter(|t| rbm.slots_covered(t))
         .ok_or_else(|| {
             format!(
-                "{}: the standard mod is not recrypted for rb; make it with `rb standard-mod`",
+                "{}: the standard mod is not recrypted for rb; make it with `rb mod pack-standard`",
                 path.display()
             )
         })?;

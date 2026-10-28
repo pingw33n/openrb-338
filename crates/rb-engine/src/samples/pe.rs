@@ -89,7 +89,7 @@ impl Pe<'_> {
     }
 }
 
-/// The resources of the named type `type_name` ("AIFF"; `rb standard-mod` also reads the exe's
+/// The resources of the named type `type_name` ("AIFF"; `rb mod pack-standard` also reads the exe's
 /// "JPEG"), by ID, in directory order. For an ID with several languages the first is taken
 /// (`FindResourceA` with a type and an ID only, as the DLL calls it at 0x1000B620, does not
 /// choose a language either).

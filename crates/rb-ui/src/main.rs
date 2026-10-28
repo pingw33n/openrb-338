@@ -8,7 +8,7 @@
 //! a new empty song. The menu bar (task-047, docs/ui_spec.md section 18) opens, saves and exports
 //! songs, chooses the mod and sets the Vintage flag and the keyboard mode. The drum machines play
 //! the built-in kit of the standard mod (`--standard-mod`, `RB_STANDARD_MOD`, or `Standard.rbm`
-//! next to the binary; make it with `rb standard-mod`); without it they are silent. `--demo`
+//! next to the binary; make it with `rb mod pack-standard`); without it they are silent. `--demo`
 //! starts the panel in a lively state with no player (a picture). `--size` is the inner size of
 //! the panel in points (default 624x510; the window is as high as the menu bar more), `--ppp`
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and

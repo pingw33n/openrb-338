@@ -107,7 +107,7 @@ pub fn load_standard(
     let path = mods::locate_standard_mod(explicit, mods)
         .map_err(|Fail(c, m)| fail(c, format!("{need}; {m}")))?;
     let rbm = read_mod(&path)?;
-    let remake = "make it with `rb standard-mod --rebirth-dll ReBirth.dll -o FILE`";
+    let remake = "make it with `rb mod pack-standard --rebirth-dll ReBirth.dll -o FILE`";
     if !rbm.is_standard() {
         return Err(fail(
             1,
@@ -141,7 +141,7 @@ pub fn read_mod(path: &Path) -> Result<rbm::Rbm, Fail> {
 }
 
 /// The mod's samples on top of the built-in ones: a slot the mod lacks stays built in. Only a
-/// recrypted mod (`rb recrypt`) loads: with the key bytes rb embeds. Any other mod is an
+/// recrypted mod (`rb mod recrypt`) loads: with the key bytes rb embeds. Any other mod is an
 /// error that names the fix; rb render, compare and play never read RB20FUL.DAT (task-063).
 pub fn load_mod(path: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
     let rbm = read_mod(path)?;
@@ -150,7 +150,7 @@ pub fn load_mod(path: &Path, builtin: &SampleSet) -> Result<SampleSet, Fail> {
             1,
             format!(
                 "{}: the song plays a drum machine with this mod, which is not recrypted. \
-                 Run `rb recrypt --rb20ful RB20FUL.DAT {} -o OUT.rbm` once and use OUT.rbm",
+                 Run `rb mod recrypt --rb20ful RB20FUL.DAT {} -o OUT.rbm` once and use OUT.rbm",
                 path.display(),
                 path.display()
             ),

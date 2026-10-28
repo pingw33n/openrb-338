@@ -422,7 +422,11 @@ fn mods_that_are_not_recrypted_are_listed_and_refused() {
     h.frame(&mut b, &mut s, vec![]);
     b.select(1);
     assert_eq!(h.key(&mut b, &mut s, Key::Enter), Poll::Open);
-    assert!(b.error().unwrap().contains("rb recrypt"), "{:?}", b.error());
+    assert!(
+        b.error().unwrap().contains("rb mod recrypt"),
+        "{:?}",
+        b.error()
+    );
     b.select(0);
     b.accept(&mut s);
     assert!(b.error().unwrap().contains("junk.rbm"));

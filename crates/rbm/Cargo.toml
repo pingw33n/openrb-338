@@ -7,6 +7,8 @@ publish.workspace = true
 
 [dependencies]
 rb-engine = { path = "../rb-engine" }
+# mod.toml of an unpacked mod (rbm::pack).
+toml = "=0.9.12"
 
 [dev-dependencies]
 # The gated check of the embedded key bytes against the user's RB20FUL.DAT.

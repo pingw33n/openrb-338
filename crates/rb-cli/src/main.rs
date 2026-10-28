@@ -1,14 +1,16 @@
 //! The `rb` command line tool: renders an `.rbs` song to audio (`rb render`), compares renders
 //! with their references (`rb compare`), plays a song through the audio output with the
-//! real-time player (`rb play`), rewrites a mod to need no RB20FUL.DAT (`rb recrypt`), and
-//! builds the standard mod, the built-in kit and panel as a mod (`rb standard-mod`), from which
-//! the other commands take the built-in drum samples.
+//! real-time player (`rb play`), rewrites a mod to need no RB20FUL.DAT (`rb mod recrypt`), and
+//! builds the standard mod, the built-in kit and panel as a mod (`rb mod pack-standard`), from
+//! which the other commands take the built-in drum samples. `rb mod unpack` and `rb mod pack`
+//! turn a recrypted mod into a folder of its files with a mod.toml and back.
 //!
 //! Exit codes: 0 success, 1 the song or the output failed (unreadable, invalid, not writable)
 //! or, for `compare`, a song differs from its reference, 2 a usage error (bad arguments,
 //! unknown output extension).
 
 mod compare;
+mod modcmd;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -50,7 +52,7 @@ enum Cmd {
         /// original's own export starts from whatever the running app was doing.
         #[arg(long, default_value_t = 9088, value_name = "N")]
         idle_blocks: u32,
-        /// The standard mod (made once by `rb standard-mod --rebirth-dll ReBirth.dll`), which
+        /// The standard mod (made once by `rb mod pack-standard --rebirth-dll ReBirth.dll`), which
         /// holds the built-in drum samples. Needed only when a drum machine plays. Without it
         /// the search is: the RB_STANDARD_MOD environment variable, then Standard.rbm next to
         /// the rb binary, then a mod named "ReBirth Standard Kit" in the mod folder.
@@ -61,8 +63,8 @@ enum Cmd {
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
         /// deprecated alias), then a Mods folder next to the rb
         /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
-        /// Only recrypted mods (rb recrypt) load; a mod that is not is still found by name and
-        /// fails with an error that says to run rb recrypt on it.
+        /// Only recrypted mods (rb mod recrypt) load; a mod that is not is still found by name and
+        /// fails with an error that says to run rb mod recrypt on it.
         #[arg(long, value_name = "DIR")]
         mod_dir: Option<PathBuf>,
         /// Use this .rbm mod whatever mod the song names.
@@ -127,8 +129,8 @@ enum Cmd {
         /// Default: the RB_MOD_DIR environment variable (RB_RBM_DIR is a
         /// deprecated alias), then a Mods folder next to the rb
         /// binary, then the usual install locations on Windows. "Standard ReBirth" needs none.
-        /// Only recrypted mods (rb recrypt) load; a mod that is not is still found by name and
-        /// fails with an error that says to run rb recrypt on it.
+        /// Only recrypted mods (rb mod recrypt) load; a mod that is not is still found by name and
+        /// fails with an error that says to run rb mod recrypt on it.
         #[arg(long, value_name = "DIR")]
         mod_dir: Option<PathBuf>,
         /// Use this .rbm mod whatever mod the song names.
@@ -139,6 +141,13 @@ enum Cmd {
         #[arg(long)]
         standard_kit: bool,
     },
+    /// Work with .rbm mods: recrypt, unpack, pack and pack-standard.
+    #[command(name = "mod", subcommand)]
+    Mod(ModCmd),
+}
+
+#[derive(Subcommand)]
+enum ModCmd {
     /// Rewrite a .rbm mod so that it needs no RB20FUL.DAT: rb then loads it with the 2047 key
     /// bytes it embeds, and the original ReBirth loads it unchanged (it reads the same bytes of
     /// its own RB20FUL.DAT). Needs the key file once, unless the mod is already recrypted. This
@@ -161,7 +170,7 @@ enum Cmd {
     /// render, compare and play take the built-in kit from it; the original ReBirth loads it
     /// from its Mods folder like any mod. Run it once; it is the only rb command that reads
     /// ReBirth.dll.
-    StandardMod {
+    PackStandard {
         /// The ReBirth 2.01 ReBirth.dll. Search order: this option, then a ReBirth.dll next to
         /// the rb binary, then the usual install locations on Windows.
         #[arg(long, value_name = "PATH")]
@@ -174,6 +183,33 @@ enum Cmd {
         /// compare and play look for it.
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
+    },
+    /// Unpack a recrypted .rbm mod into a folder: every embedded file under its own name
+    /// (decrypted) and mod.toml, which holds the mod's name, version, description, URLs and
+    /// the file order. Does not read RB20FUL.DAT; a mod that is not recrypted must go through
+    /// `rb mod recrypt` first.
+    Unpack {
+        /// The recrypted mod.
+        input: PathBuf,
+        /// The folder to write; it must be empty or new unless --force is given.
+        #[arg(short, long, value_name = "DIR")]
+        output: PathBuf,
+        /// Write into a folder that is not empty. Nothing is deleted; a file already there with
+        /// the name of one of the mod's files is replaced, but a file of the mod never replaces
+        /// another file of the mod (that clash is an error).
+        #[arg(long)]
+        force: bool,
+    },
+    /// Pack a folder made by `rb mod unpack` (mod.toml and the files it lists) into a recrypted
+    /// .rbm that rb loads without RB20FUL.DAT and the original ReBirth loads with its own. A
+    /// listed file that is missing, a file in the folder that mod.toml does not list, more
+    /// than 199 files and a too long INFO field are errors.
+    Pack {
+        /// The folder with mod.toml.
+        input: PathBuf,
+        /// The mod to write.
+        #[arg(short, long, value_name = "MOD.rbm")]
+        output: PathBuf,
     },
 }
 
@@ -252,20 +288,26 @@ fn main() -> ExitCode {
                 Err(Fail(1, "some songs differ from their references".into()))
             }
         }),
-        Cmd::Recrypt {
+        Cmd::Mod(ModCmd::Recrypt {
             input,
             output,
             rb20ful,
-        } => recrypt(&input, &output, rb20ful),
-        Cmd::StandardMod {
+        }) => recrypt(&input, &output, rb20ful),
+        Cmd::Mod(ModCmd::PackStandard {
             rebirth_dll,
             rebirth_exe,
             output,
-        } => standard_mod(
+        }) => standard_mod(
             rebirth_dll.as_deref(),
             rebirth_exe.as_deref(),
             output.as_deref(),
         ),
+        Cmd::Mod(ModCmd::Unpack {
+            input,
+            output,
+            force,
+        }) => modcmd::unpack(&input, &output, force),
+        Cmd::Mod(ModCmd::Pack { input, output }) => modcmd::pack(&input, &output),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -301,7 +343,7 @@ fn parse_range(s: &str) -> Result<(u32, u32), Fail> {
     Ok((a * TICKS_PER_BAR, b * TICKS_PER_BAR))
 }
 
-/// The ReBirth.dll `rb standard-mod` reads, in the order: the `--rebirth-dll` path (which must
+/// The ReBirth.dll `rb mod pack-standard` reads, in the order: the `--rebirth-dll` path (which must
 /// exist), a ReBirth.dll next to the rb binary, then the Windows install locations. An explicit
 /// choice is never second-guessed by a search.
 fn locate_rebirth_dll(explicit: Option<&Path>) -> Result<PathBuf, Fail> {
@@ -349,7 +391,7 @@ fn locate_rebirth_dll(explicit: Option<&Path>) -> Result<PathBuf, Fail> {
     ))
 }
 
-/// The Rebirth.exe `rb standard-mod` reads: `--rebirth-exe` (which must exist), else the
+/// The Rebirth.exe `rb mod pack-standard` reads: `--rebirth-exe` (which must exist), else the
 /// Rebirth.exe in the folder of the ReBirth.dll.
 fn locate_rebirth_exe(explicit: Option<&Path>, dll: &Path) -> Result<PathBuf, Fail> {
     if let Some(p) = explicit {
@@ -378,7 +420,7 @@ fn locate_rebirth_exe(explicit: Option<&Path>, dll: &Path) -> Result<PathBuf, Fa
         })
 }
 
-/// `rb standard-mod`: the built-in kit and panel as a recrypted mod (task-036).
+/// `rb mod pack-standard`: the built-in kit and panel as a recrypted mod (task-036).
 fn standard_mod(dll: Option<&Path>, exe: Option<&Path>, output: Option<&Path>) -> Result<(), Fail> {
     let dll = locate_rebirth_dll(dll)?;
     let exe = locate_rebirth_exe(exe, &dll)?;
@@ -541,7 +583,7 @@ fn read_key_table(rbm: &rbm::Rbm, key_file: &Path) -> Result<rbm::KeyTable, Fail
     rbm::KeyTable::read(rbm, &mut dat).map_err(|e| fail(1, format!("{}: {e}", key_file.display())))
 }
 
-/// `rb recrypt`: rewrites a mod to need only the key bytes rb embeds (task-059).
+/// `rb mod recrypt`: rewrites a mod to need only the key bytes rb embeds (task-059).
 fn recrypt(input: &Path, output: &Path, rb20ful: Option<PathBuf>) -> Result<(), Fail> {
     let rbm = read_mod(input)?;
     let table = match rbm::KeyTable::embedded(&rbm).filter(|t| rbm.all_covered(t)) {

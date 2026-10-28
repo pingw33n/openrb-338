@@ -28,9 +28,9 @@ The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte w
   `256 + sum_j % (0x8000000 - 2048)`, where `sum_j` are two u32 sums over the first 1024 bytes of
   every EMBF payload of the mod. The pages depend only on the mod's bytes: **each mod needs exactly
   4096 bytes of key material**. [C]
-- `rb recrypt` rewrites a mod so that it needs only the 2047 bytes of `RB20FUL.DAT` that rb
+- `rb mod recrypt` rewrites a mod so that it needs only the 2047 bytes of `RB20FUL.DAT` that rb
   embeds; the original loads the result unchanged (section 12).
-- `rb standard-mod` builds the built-in kit (ReBirth.dll's 46 AIFF resources) and panel
+- `rb mod pack-standard` builds the built-in kit (ReBirth.dll's 46 AIFF resources) and panel
   (Rebirth.exe's JPEG resources) into such a mod, "ReBirth Standard Kit", from which rb takes the
   built-in samples (section 13).
 - The Mods menu changes the mod of an open song in place: song msg 19 `{id}`, which silences the
@@ -443,11 +443,11 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
 
 The user decided on 2026-10-27 (superseding task-053's "nothing bundled" for this only) that rb
 embeds a minimum of `RB20FUL.DAT` that lets a mod load without the CD, and that
-`rb recrypt IN.rbm -o OUT.rbm [--rb20ful PATH]` rewrites a mod to need only that. Shown the
+`rb mod recrypt IN.rbm -o OUT.rbm [--rb20ful PATH]` rewrites a mod to need only that. Shown the
 trade-off of 12.2 (123 bytes with 113663-chunk mods against 2 KB with compact ones), the user
 chose, the same day, **one 2 KB window and compact mods**: rb embeds `RB20FUL.DAT[W .. W + 2047]`,
 and a recrypted mod keeps its chunk count and size (plus one 1024-byte chunk). A mod that is not
-recrypted is not loaded by rb at all (section 12.4); `rb recrypt` is the one place `RB20FUL.DAT`
+recrypted is not loaded by rb at all (section 12.4); `rb mod recrypt` is the one place `RB20FUL.DAT`
 is read.
 
 ### 12.1 Facts the scheme rests on [C]
@@ -549,20 +549,20 @@ the DAT (`crates/rb-cli/tests/corpus_mods.rs`). `tools/rbm.py` decodes with each
 
 ### 12.4 rb reads only recrypted mods (task-063, 2026-10-27)
 
-At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `rb recrypt` alone:
+At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `rb mod recrypt` alone:
 
 - `rb render`, `rb compare` and `rb play` have no `--rb20ful` and do not read `RB_RB20FUL`; only
-  `rb recrypt` has them (it searches: the option, `RB_RB20FUL`, an `RB20FUL.DAT` in the input mod's
-  folder or its parent, next to the binary, the Windows install folders). `crates/rbm` keeps the
+  `rb mod recrypt` has them (it searches: the option, `RB_RB20FUL`, an `RB20FUL.DAT` in the input
+  mod's folder or its parent, next to the binary, the Windows install folders). `crates/rbm` keeps the
   general descrambler (`KeyTable::read`) for recrypt's own use.
 - A mod that is not recrypted is found like any other by `--mod-dir` / `RB_MOD_DIR` (its INFO is in
   the clear, it keeps its place in the original's folder order, so the duplicate-name rule of
   task-058 is unchanged) and `--mod FILE` takes it; the error comes when its samples are loaded
   (only when a drum machine plays): `FILE: the song plays a drum machine with this mod, which is
-  not recrypted. Run rb recrypt --rb20ful RB20FUL.DAT FILE -o OUT.rbm once and use OUT.rbm`
+  not recrypted. Run rb mod recrypt --rb20ful RB20FUL.DAT FILE -o OUT.rbm once and use OUT.rbm`
   (exit 1). The decision is "found, fails at load", not "skipped": a skipped mod would turn into
   "mod not found" and hide the fix. The future UI (m-3, task-047's mod chooser) lists such mods the
-  same way, marked "needs rb recrypt".
+  same way, marked "needs rb mod recrypt".
 - The env-gated tests take recrypted mods: `corpus_mods.rs` and `rb compare` read `RB_MOD_DIR`
   (recrypted); `thirdparty.rs` reads `RB_THIRDPARTY_DIR/Mods` (recrypted) with `Mods.orig` and
   `RB_RB20FUL` as the reference; `corpus_mods.rs`'s `recrypt_of_the_originals_matches_the_references`
@@ -579,7 +579,7 @@ docs/test_machine.md section 7), and an app export of Fonda Workout from the ins
 
 ## 13. The standard mod: the built-in kit and panel as a mod (task-036, 2026-10-27)
 
-`rb standard-mod --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] [-o FILE]`
+`rb mod pack-standard --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] [-o FILE]`
 (`crates/rbm/src/standard.rs`) builds, from the user's own files, a mod that holds what the
 original has built in. rb's other commands take the built-in drum samples from it (13.4); the
 original loads it like any mod. Nothing of it is committed: the tests build it from `original/`.
@@ -645,7 +645,7 @@ ReBirth 1.0 Default Song is a file of the installation, not a resource.
 
 108 chunks, 106 EMBF (under the 200 of OB-14, every ordinal under 256). It is laid out in the clear
 and passed through `rbm::recrypt` with an all-zero table (the identity), so it is scrambled against
-the embedded window exactly as `rb recrypt` output: both key pages are `W`, rb loads it without
+the embedded window exactly as `rb mod recrypt` output: both key pages are `W`, rb loads it without
 `RB20FUL.DAT`, the original with its own. From `original/`: 2,574,060 bytes, SHA-256
 `2d732978...f3e5` (the build is deterministic).
 
@@ -672,8 +672,8 @@ was shown is that the samples the app plays from the standard mod give the built
 `rb render`, `rb compare` and `rb play` read the 46 built-in samples from the standard mod
 (`--standard-mod PATH`, then `RB_STANDARD_MOD`, then `Standard.rbm` next to the rb binary, then the
 first mod named "ReBirth Standard Kit" in the mod folder), never from ReBirth.dll: `--rebirth-dll`
-and `RB_REBIRTH_DLL` are gone from them, and `rb standard-mod` is the one command that reads the DLL
-(and the exe). The mod must be named "ReBirth Standard Kit", be recrypted and have all 46 slots
+and `RB_REBIRTH_DLL` are gone from them, and `rb mod pack-standard` is the one command that reads
+the DLL (and the exe). The mod must be named "ReBirth Standard Kit", be recrypted and have all 46 slots
 (`Rbm::load_all_samples`). A third-party mod's missing slots and `--standard-kit` take the standard
 mod's samples. The corpus is unchanged: 164 of 164 EQUAL, 175 of 175 with `RB_MOD_DIR`.
 
@@ -864,3 +864,86 @@ dialog being active is not traced].** The marks are split:
   shared delay line is cleared. [G] Between the two messages an audio callback may render the
   other song (not observed). This is docs/original_bugs.md Q-4.
 - **rb.** rb opens one song, so there is no other song to activate and nothing is modelled.
+
+## 15. `rb mod`: unpack and pack (task-097, 2026-10-28)
+
+The `rb mod` group holds every command that works on a mod file: `recrypt` (section 12, the one
+command that reads `RB20FUL.DAT`), `pack-standard` (section 13, once `rb standard-mod`), `unpack`
+and `pack`. The code is `crates/rbm/src/pack.rs` (the CLI, `crates/rb-cli/src/modcmd.rs`, only
+reads and writes the files).
+
+### 15.1 `rb mod unpack MOD.rbm -o DIR`
+
+Takes a recrypted mod (one that loads with `KeyTable::embedded`, i.e. rb's own; any other fails
+with the `rb mod recrypt` hint and `RB20FUL.DAT` is never read). It writes every embedded file
+decrypted with the key of its reader (12.1: the DLL's byte key for the first file of a slot name,
+the exe's u16 key for the others) under its own name, skips the key pad `rb-recrypt.pad`, and
+writes `DIR/mod.toml`. `DIR` must be new or empty unless `--force` is given. The mod must be
+HEAD, EMBF chunks, INFO (what every known mod is, recrypted); another chunk is an error.
+
+**Naming rule** (`rbm::pack::safe_path`, the one check for what unpack writes and for every path
+pack reads from `mod.toml`). A file name is used as it is only when it is a plain name on every
+system: not empty, not `.` or `..`, at most 200 bytes, none of `/ \ : * ? " < > |`, no control
+character (NUL included), no trailing dot or space, not `mod.toml` in any case, and not a
+Windows device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`, superscript digits
+too, in any case, with or without an extension, and with spaces or dots before the extension:
+`CON.aif`, `nul .txt`). Any other name, and any name whose lower case (`char::to_lowercase`, the
+fold `rbm::pack::fold` both unpack and pack use) was taken by an earlier file, gets the file name
+`NNN_name`: NNN its index, the unsafe characters turned into `_`, cut to 100 characters; if that
+is taken too, or is unsafe, the next index (or `file` as the name) is tried until the path is safe
+and unused. The file then has a `{ name, path }` entry in `files`. A name with a NUL cannot exist
+in a mod (the NUL ends the name) and `pack` refuses one.
+
+**Writing.** Each file is created with `create_new`: a clash the file system sees and the fold
+does not (macOS normalizes Unicode, for one) is an error, never a silent overwrite of one file
+of the mod by another. `--force` allows a folder that is not empty and deletes nothing: a file
+that was in the folder before the run and has the exact name of one of the mod's files is
+removed first and then created; every other name must be new.
+
+### 15.2 `mod.toml`
+
+```toml
+name = "Pitch Black Edition 2.0"      # INFO, the Mods menu name (required, at most 63 bytes)
+version = "1.0.0"                     # INFO; absent = zeros, "the app's version" (section 2)
+description = """..."""               # INFO text (at most 599 bytes; CR LF lines)
+ftp = "ftp://..."                     # at most 199 bytes
+web = "http://..."                    # at most 199 bytes
+head = "5b35b3..."                    # hex, only when HEAD is not the standard 256 bytes
+info_raw = "..."                      # hex, only when the fields above cannot reproduce INFO
+files = [                             # the EMBF order; the first of a name is the one looked up
+    "12017.JPG",
+    { name = "x", path = "001_x" },
+]
+```
+
+Strings are Latin-1 (the original's), each field NUL-terminated in its INFO space (section 2).
+`info_raw`, when present, is the whole 1280 bytes of INFO and wins over the fields (a mod with
+bytes between or after its fields); unpack writes it only then. None of the four shipped mods
+(recrypted) has one or a non-standard HEAD.
+
+### 15.3 `rb mod pack DIR -o MOD.rbm`
+
+Lays the CAT out in the clear (HEAD, the files in `files` order, INFO), then passes it through
+`rbm::recrypt` with an all-zero table (the identity), exactly as the standard mod is built
+(`standard.rs` uses the same `pack_parts`): the key pad is added after HEAD, every file is
+scrambled against the embedded window under its ordinal, and the result is parsed and checked to
+load without `RB20FUL.DAT` (`slots_covered`, `all_covered`). Errors (exit 1):
+- a listed file that cannot be read, a path that fails the naming rule of 15.1, or two paths
+  that are equal after the fold (case);
+- **a file in DIR that `files` does not list** (a decision: an error and not a skipped warning,
+  so a file is never left out unnoticed; `mod.toml` itself is the one exception). Names are
+  compared exactly, so `a.bin` next to a listed `A.bin` on a case-sensitive file system is
+  reported;
+- more than 199 files (the pad is the 200th EMBF of OB-14), or a file named `rb-recrypt.pad`;
+- an INFO field over its length, an empty name, a character over Latin-1, a bad `version`.
+
+### 15.4 The round trip
+
+`pack(unpack(M)) == M` byte for byte for every recrypted mod: the order is the file order, the
+ordinals and so the keys are the same, the pad is rebuilt from the same files, and INFO and HEAD
+are either rebuilt from the fields or carried raw. Checked (`crates/rb-cli/tests/mod_pack.rs`) on
+the standard mod (built from `original/`) and on the four shipped mods, recrypted, in
+`RB_MOD_DIR`. To edit a mod: unpack, change a file or a field, pack. A mod made so loads in rb
+and, like a recrypted one, in the original (section 12.3). The standard mod's own INFO
+description still says it was made by `rb standard-mod`: its bytes (SHA-256 `2d732978...f3e5`)
+are fixed.

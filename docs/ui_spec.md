@@ -905,7 +905,7 @@ starts with it open. The panel takes no key or click while a browser is open. Th
   folder, an unreadable folder) show in red in the dialog.
 - **Mods.** A `.rbm` is checked when its row is drawn (parse, embedded key window, as
   `session::load_standard`): one that is not recrypted is listed in amber marked "needs rb
-  recrypt" and cannot be chosen (the error tells the `rb recrypt` command, docs/rbm.md 12.4); a
+  recrypt" and cannot be chosen (the error tells the `rb mod recrypt` command, docs/rbm.md 12.4); a
   file that is not an RBM is marked "not a mod".
 - **Defaults and settings** (`crates/rb-ui/src/settings.rs`): the start folder is the songs folder
   (songs, export) or the mods folder (mods) of the settings, else the documents folder

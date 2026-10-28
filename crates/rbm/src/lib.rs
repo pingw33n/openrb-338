@@ -31,6 +31,7 @@ use std::sync::Arc;
 use rb_engine::samples::{self, Sample, SampleSet};
 
 pub mod embedded;
+pub mod pack;
 mod recrypt;
 pub mod standard;
 
@@ -141,6 +142,8 @@ pub enum RbmError {
     Recrypt(String),
     /// The standard mod cannot be built from these files (the text says why).
     Standard(String),
+    /// The mod cannot be packed or unpacked (the text says why).
+    Pack(String),
 }
 
 impl fmt::Display for RbmError {
@@ -159,6 +162,7 @@ impl fmt::Display for RbmError {
             ),
             RbmError::Recrypt(m) => write!(f, "cannot recrypt the mod: {m}"),
             RbmError::Standard(m) => write!(f, "cannot build the standard mod: {m}"),
+            RbmError::Pack(m) => write!(f, "{m}"),
         }
     }
 }

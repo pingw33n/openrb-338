@@ -22,7 +22,7 @@
 //! Ctrl/Cmd+L edits the path, typing a letter jumps to the next name that starts with it, Esc
 //! cancels). The save and export modes have a name field and ask before replacing a file; every
 //! problem (a folder that cannot be read, a bad name, a missing folder, a mod rb cannot load) is
-//! shown in the dialog. A mod that is not recrypted is listed and marked "needs rb recrypt"
+//! shown in the dialog. A mod that is not recrypted is listed and marked "needs rb mod recrypt"
 //! (docs/rbm.md section 12.4); it cannot be chosen. The folders (songs, mods, recent) are kept
 //! in [`Settings`].
 
@@ -553,8 +553,8 @@ impl Browser {
                 ModStatus::Ready => {}
                 ModStatus::NeedsRecrypt => {
                     self.error = Some(format!(
-                        "{}: not recrypted. Run `rb recrypt --rb20ful RB20FUL.DAT FILE -o OUT.rbm` \
-                         once and choose OUT.rbm.",
+                        "{}: not recrypted. Run `rb mod recrypt --rb20ful RB20FUL.DAT FILE \
+                         -o OUT.rbm` once and choose OUT.rbm.",
                         path.display()
                     ));
                     return Poll::Open;
@@ -891,7 +891,7 @@ impl Browser {
                         );
                         let right = match &status {
                             Some(ModStatus::NeedsRecrypt) => {
-                                Some(("needs rb recrypt".to_string(), AMBER))
+                                Some(("needs rb mod recrypt".to_string(), AMBER))
                             }
                             Some(ModStatus::Invalid(_)) => Some(("not a mod".to_string(), RED)),
                             _ if !e.dir => Some((human_size(e.size), INK_DIM)),

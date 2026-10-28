@@ -1,4 +1,4 @@
-//! `rb standard-mod` and the standard mod that holds the built-in drum samples (task-036; the
+//! `rb mod pack-standard` and the standard mod that holds the built-in drum samples (task-036; the
 //! ReBirth.dll of task-020 before it): the command, the `--standard-mod` flag, the
 //! `RB_STANDARD_MOD` variable, the mod folder, the errors, and 303-only songs that need none.
 
@@ -26,7 +26,7 @@ fn render(input: &Path, output: &Path, extra: &[&OsStr], env: Option<&Path>) -> 
 
 fn standard(args: &[&OsStr]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rb"))
-        .arg("standard-mod")
+        .args(["mod", "pack-standard"])
         .args(args)
         .output()
         .unwrap()
@@ -40,7 +40,7 @@ fn flag() -> &'static OsStr {
     OsStr::new("--standard-mod")
 }
 
-/// Whether a standard mod sits next to the rb binary (a developer's `rb standard-mod` without
+/// Whether a standard mod sits next to the rb binary (a developer's `rb mod pack-standard` without
 /// `-o`): then the "none found" cases cannot be seen.
 fn default_exists() -> bool {
     Path::new(env!("CARGO_BIN_EXE_rb"))
@@ -172,7 +172,7 @@ fn drums_need_the_standard_mod() {
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
     assert!(
-        err.contains("not a standard mod") && err.contains("rb standard-mod"),
+        err.contains("not a standard mod") && err.contains("rb mod pack-standard"),
         "{err}"
     );
 
@@ -194,7 +194,7 @@ fn drums_need_the_standard_mod() {
         assert_eq!(o.status.code(), Some(1), "{err}");
         assert!(
             err.contains("no standard mod found")
-                && err.contains("rb standard-mod --rebirth-dll")
+                && err.contains("rb mod pack-standard --rebirth-dll")
                 && err.contains("--standard-mod"),
             "{err}"
         );

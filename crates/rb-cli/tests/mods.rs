@@ -1,11 +1,12 @@
 //! Mods in `rb render` (task-033), with a synthetic mod and key file (the real ones are not in
 //! the repository): the song's mod found by name in `--mod-dir`, `--mod` overriding it, a
 //! missing mod as an error, `--standard-kit` as the fallback, and (task-063) that rb render
-//! loads only mods recrypted by `rb recrypt`, which is the only command that takes the key file.
+//! loads only mods recrypted by `rb mod recrypt`, which is the only command that takes the key
+//! file.
 //!
 //! The synthetic key file is the right size with the right magic and zeros after it, so its
 //! key table is zeros and the scrambling is the identity: the mod is built in the clear. The
-//! setup recrypts it with `rb recrypt --rb20ful` into `mods/`; `raw/` keeps the original.
+//! setup recrypts it with `rb mod recrypt --rb20ful` into `mods/`; `raw/` keeps the original.
 
 mod common;
 
@@ -102,7 +103,7 @@ fn setup() -> Setup {
     f.write_all(&rbm::DAT_MAGIC.to_be_bytes()).unwrap();
     drop(f);
     let o = rb()
-        .arg("recrypt")
+        .args(["mod", "recrypt"])
         .arg(raw.join("tm.rbm"))
         .arg("-o")
         .arg(mods.join("tm.rbm"))
@@ -298,7 +299,7 @@ fn a_missing_mod_is_an_error_unless_standard_kit() {
 }
 
 /// rb render takes no key file and reads none (task-063): a mod that is not recrypted is an
-/// error that names `rb recrypt`, however a key file is offered.
+/// error that names `rb mod recrypt`, however a key file is offered.
 #[test]
 fn a_mod_that_is_not_recrypted_is_an_error_naming_rb_recrypt() {
     let s = setup();
@@ -308,7 +309,7 @@ fn a_mod_that_is_not_recrypted_is_an_error_naming_rb_recrypt() {
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
     assert!(
-        err.contains("tm.rbm") && err.contains("not recrypted") && err.contains("rb recrypt"),
+        err.contains("tm.rbm") && err.contains("not recrypted") && err.contains("rb mod recrypt"),
         "{err}"
     );
     assert!(!out.exists());
@@ -318,7 +319,7 @@ fn a_mod_that_is_not_recrypted_is_an_error_naming_rb_recrypt() {
     let (o, out) = render(&s, &named, "n.wav", &[os("--mod"), raw_file.as_os_str()]);
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
-    assert!(err.contains("rb recrypt"), "{err}");
+    assert!(err.contains("rb mod recrypt"), "{err}");
     assert!(!out.exists());
 
     // a key file in the mod folder or in RB_RB20FUL is not read
@@ -335,7 +336,7 @@ fn a_mod_that_is_not_recrypted_is_an_error_naming_rb_recrypt() {
         .unwrap();
     let err = String::from_utf8_lossy(&o.stderr);
     assert_eq!(o.status.code(), Some(1), "{err}");
-    assert!(err.contains("rb recrypt"), "{err}");
+    assert!(err.contains("rb mod recrypt"), "{err}");
 
     // and the option is gone from render, compare and play
     for cmd in ["render", "compare", "play"] {
@@ -360,7 +361,7 @@ fn rb_recrypt_is_the_one_command_that_needs_the_key_file() {
     std::fs::create_dir(&re_dir).unwrap();
     let re = re_dir.join("tm.rbm");
     let recrypt = |extra: &[&OsStr]| {
-        rb().arg("recrypt")
+        rb().args(["mod", "recrypt"])
             .arg(&src)
             .arg("-o")
             .arg(&re)
@@ -393,7 +394,7 @@ fn rb_recrypt_is_the_one_command_that_needs_the_key_file() {
 
     // the RB_RB20FUL variable and the key file next to the mod are found
     let o = rb()
-        .arg("recrypt")
+        .args(["mod", "recrypt"])
         .arg(&src)
         .arg("-o")
         .arg(&re)

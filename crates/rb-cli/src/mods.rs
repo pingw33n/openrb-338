@@ -6,12 +6,13 @@
 //! which is INFO offset 1003); a name not in the list gets a dialog, Download / Standard /
 //! Cancel. rb does the same: the INFO name, exact; as a convenience a file name (`PBE2.rbm`, or
 //! `PBE2`, any case) also matches when no INFO name does. rb loads only recrypted mods
-//! (`rb recrypt`, task-059; task-063): a mod that is not recrypted is found like any other (its
+//! (`rb mod recrypt`, task-059; task-063): a mod that is not recrypted is found like any other (its
 //! INFO is in the clear and it keeps its place in the folder order) and fails when its samples
-//! are loaded, with an error that names `rb recrypt`. Only `rb recrypt` reads `RB20FUL.DAT`.
+//! are loaded, with an error that names `rb mod recrypt`. Only `rb mod recrypt` reads
+//! `RB20FUL.DAT`.
 //!
-//! The built-in kit itself comes from the standard mod (`rb standard-mod`, task-036; docs/rbm.md
-//! section 13), found by [`locate_standard_mod`].
+//! The built-in kit itself comes from the standard mod (`rb mod pack-standard`, task-036;
+//! docs/rbm.md section 13), found by [`locate_standard_mod`].
 
 use std::path::{Path, PathBuf};
 
@@ -78,7 +79,7 @@ impl ModOpts {
     }
 }
 
-/// The `RB20FUL.DAT` for `rb recrypt` of the mod `input` (the only command that reads it):
+/// The `RB20FUL.DAT` for `rb mod recrypt` of the mod `input` (the only command that reads it):
 /// `explicit` (`--rb20ful`), the `RB_RB20FUL` environment variable, then an `RB20FUL.DAT` in the
 /// input's folder or its parent, next to the rb binary, or in the original's install locations
 /// on Windows.
@@ -119,7 +120,7 @@ pub fn find_rb20ful(explicit: Option<&Path>, input: &Path) -> Result<PathBuf, Fa
 /// The file name of the standard mod next to the rb binary.
 pub const STANDARD_MOD_FILE: &str = "Standard.rbm";
 
-/// Where `rb standard-mod` writes the standard mod by default and where it is found: next to
+/// Where `rb mod pack-standard` writes the standard mod by default and where it is found: next to
 /// the rb binary.
 pub fn default_standard_mod() -> Option<PathBuf> {
     std::env::current_exe()
@@ -127,7 +128,7 @@ pub fn default_standard_mod() -> Option<PathBuf> {
         .and_then(|e| e.parent().map(|d| d.join(STANDARD_MOD_FILE)))
 }
 
-/// The standard mod (`rb standard-mod`, task-036), the source of the built-in drum samples:
+/// The standard mod (`rb mod pack-standard`, task-036), the source of the built-in drum samples:
 /// `explicit` (`--standard-mod`, which must exist), the `RB_STANDARD_MOD` environment variable
 /// (likewise), `Standard.rbm` next to the rb binary, then the first mod whose INFO name is the
 /// standard mod's ("ReBirth Standard Kit") in the mod folder of `opts`.
@@ -155,7 +156,7 @@ pub fn locate_standard_mod(explicit: Option<&Path>, opts: &ModOpts) -> Result<Pa
     Err(fail(
         1,
         format!(
-            "no standard mod found. Make it once with `rb standard-mod --rebirth-dll \
+            "no standard mod found. Make it once with `rb mod pack-standard --rebirth-dll \
              ReBirth.dll` (it is written next to the rb binary, or to -o FILE), then pass \
              --standard-mod FILE or set RB_STANDARD_MOD, or put it in the mod folder (its name \
              is \"{}\")",
