@@ -1358,3 +1358,74 @@ fn file_new_plays_the_startup_sound_when_the_preference_is_on() {
     assert_ne!(on, off);
     assert_eq!(on, with_preview(&off, &audio));
 }
+
+/// task-094: Mods > Demo Song is offered only for a mod that carries a `Demo.rbs`; it opens the
+/// demo as a song that was never saved, on its mod, through the open path (the unsaved prompt,
+/// the stop of the playing song), and a save never goes into the mod.
+#[test]
+fn the_demo_song_of_the_current_mod_opens_as_an_unsaved_song() {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
+        return;
+    };
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+
+    // the standard kit has no demo, and "Demo Song" does nothing
+    assert!(!h.app.has_demo());
+    h.app.demo_song();
+    assert!(h.app.notice.is_none());
+    assert_eq!(h.app.doc.path, None);
+
+    // a mod file without a Demo.rbs (the standard mod) is not offered either
+    if let Some(std_mod) = standard_mod() {
+        h.app.doc.kit = Kit::Mod(std_mod);
+        assert!(!h.app.has_demo());
+        h.app.doc.kit = Kit::Standard;
+    }
+
+    // a mod with one: enabled, and the bytes are a song that parses
+    h.app.use_kit(Kit::Mod(pbe2.clone()));
+    assert!(h.app.has_demo());
+    let demo = session::mod_demo(&pbe2).unwrap();
+    let want = rbs::Song::parse(&demo).unwrap();
+
+    // the unsaved changes (the mod change) ask first; Cancel keeps the song
+    assert!(h.app.doc.modified);
+    h.app.demo_song();
+    assert!(h.app.prompting());
+    h.app.answer(Answer::Cancel);
+    assert!(h.app.doc.modified);
+
+    // Don't Save opens it; the playing song stops
+    h.app.panel.press("transport.play", 0.0);
+    h.frame(vec![]);
+    h.calls(40);
+    assert!(h.app.panel.transport.playing);
+    h.app.demo_song();
+    assert!(h.app.prompting());
+    h.app.answer(Answer::DontSave);
+    assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+    h.calls(4);
+    assert!(!h.app.panel.transport.playing, "stopped");
+    assert_eq!(h.app.panel.transport.position, 0);
+    assert_eq!(h.app.doc.path, None, "Untitled");
+    assert!(!h.app.doc.modified);
+    assert_eq!(h.app.doc.kit, Kit::Mod(pbe2.clone()));
+    assert_eq!(h.app.doc.mod_name, session::mod_info(&pbe2).unwrap().name);
+    assert!(h.app.has_demo());
+    assert_eq!(h.app.panel.transport.tempo, want.glob.tempo as i32);
+
+    // Save asks for a file, and the mod is untouched
+    let before = std::fs::read(&pbe2).unwrap();
+    h.app.save();
+    assert!(h.app.browsing(), "Save goes to Save As");
+    assert_eq!(
+        std::fs::read(&pbe2).unwrap(),
+        before,
+        "the mod is untouched"
+    );
+
+    // unmodified: no prompt
+    h.app.demo_song();
+    assert!(!h.app.prompting());
+}

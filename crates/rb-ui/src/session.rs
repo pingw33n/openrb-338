@@ -20,19 +20,55 @@ pub struct Opened {
 /// Reads and converts an `.rbs` song, keeping the file's `rbs` song.
 pub fn open_song(path: &Path) -> Result<Opened, String> {
     let data = std::fs::read(path).map_err(|e| format!("{}: cannot read: {e}", path.display()))?;
-    if rbs::rb1x::is_1x(&data) {
-        let parsed = rbs::rb1x::Song1x::parse(&data)
-            .map_err(|e| format!("{}: not a valid ReBirth 1.x song: {e}", path.display()))?;
+    open_bytes(&data, &path.display().to_string())
+}
+
+/// Reads and converts the bytes of a song; `label` names the file in the errors.
+pub fn open_bytes(data: &[u8], label: &str) -> Result<Opened, String> {
+    if rbs::rb1x::is_1x(data) {
+        let parsed = rbs::rb1x::Song1x::parse(data)
+            .map_err(|e| format!("{label}: not a valid ReBirth 1.x song: {e}"))?;
         let engine = rb_engine::load::convert_1x(&parsed)
-            .map_err(|e| format!("{}: cannot load the song: {e}", path.display()))?;
+            .map_err(|e| format!("{label}: cannot load the song: {e}"))?;
         let source = crate::document::source_of_1x(&engine);
         return Ok(Opened { engine, source });
     }
-    let source = rbs::Song::parse(&data)
-        .map_err(|e| format!("{}: not a valid .rbs song: {e}", path.display()))?;
+    let source =
+        rbs::Song::parse(data).map_err(|e| format!("{label}: not a valid .rbs song: {e}"))?;
     let engine = rb_engine::load::convert(&source)
-        .map_err(|e| format!("{}: cannot load the song: {e:?}", path.display()))?;
+        .map_err(|e| format!("{label}: cannot load the song: {e:?}"))?;
     Ok(Opened { engine, source })
+}
+
+/// The name of the demo song a mod carries (docs/rbm.md 13.1; `sub_417000` looks it up).
+pub const DEMO: &str = "Demo.rbs";
+
+/// Whether the mod file has an embedded `Demo.rbs`; false for a file that is no mod.
+pub fn mod_has_demo(path: &Path) -> bool {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| rbm::Rbm::parse(b).ok())
+        .is_some_and(|r| r.find(DEMO).is_some())
+}
+
+/// The bytes of the `Demo.rbs` of a recrypted mod. An error says why there are none (no demo,
+/// not a mod, not recrypted).
+pub fn mod_demo(path: &Path) -> Result<Vec<u8>, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: cannot read: {e}", path.display()))?;
+    let rbm = rbm::Rbm::parse(bytes).map_err(|e| format!("{}: not a mod: {e}", path.display()))?;
+    if rbm.find(DEMO).is_none() {
+        return Err(format!("{}: the mod has no {DEMO}", path.display()));
+    }
+    let table = rbm::KeyTable::embedded(&rbm)
+        .filter(|t| rbm.slots_covered(t))
+        .ok_or_else(|| {
+            format!(
+                "{}: the mod is not recrypted for rb (`rb recrypt`); its {DEMO} cannot be read",
+                path.display()
+            )
+        })?;
+    rbm.file_by_name(DEMO, &table)
+        .map_err(|e| format!("{}: {DEMO}: {e}", path.display()))
 }
 
 /// Reads and converts an `.rbs` song.

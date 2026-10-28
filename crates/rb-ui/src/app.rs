@@ -133,6 +133,8 @@ pub struct App {
     pub(crate) after_save: Option<Then>,
     pub(crate) export: Option<Job>,
     pub(crate) mod_list: Option<Result<Vec<ModEntry>, String>>,
+    /// Whether a mod file has a `Demo.rbs`, for the file last asked (the Mods menu's item).
+    pub(crate) demo_cache: Option<(PathBuf, bool)>,
     pub(crate) events_seen: usize,
     pub(crate) allow_close: bool,
     pub(crate) title: String,
@@ -159,6 +161,7 @@ impl App {
             after_save: None,
             export: None,
             mod_list: None,
+            demo_cache: None,
             events_seen: 0,
             allow_close: false,
             title: String::new(),

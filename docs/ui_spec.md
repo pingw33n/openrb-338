@@ -932,6 +932,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, a mod per file, Choose file... | the song's kit, checked (below) |
+| Mods | Demo Song | opens the `Demo.rbs` of the current song's mod (below); enabled only when that mod file has one, so never for "Standard ReBirth" (task-094) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
@@ -990,6 +991,17 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
   object is [G]) is that item's mod object (`cmp edx, [ebp-134h]`, 0x40BF0C) [C: the loop,
   the item id, the name offset and the compare are read in the disassembly]. The
   original compares mod objects, rb compares the kit's mod file with the entry's file.
+- **Demo Song** (task-094). Every shipped mod carries an embedded `Demo.rbs`, the standard mod
+  and the built-in kit none (`docs/rbm.md` 13.1; the original only enables a button of the mod
+  info dialog, `sub_417000` at 0x417000, `sub_41A0C5`, that saves it, so rb's menu item is new).
+  The item is below "Choose file..." and is enabled when the current song's resolved kit (`doc.kit`)
+  is a mod file with that chunk (`App::has_demo`, the answer kept per mod file). Choosing it opens
+  the demo through the open path: the unsaved-changes prompt (`Then::Demo`), the same load as
+  File > Open (`App::adopt_as`: the stop of the playing song, the node pool refusal and its
+  alert). The demo is read from the recrypted mod (`session::mod_demo`) and opens as a song
+  with no file, so it is Untitled, not modified, and Save goes to Save As: it never writes into
+  the mod. Its mod is the mod it came from, whatever its GLOB names: the kit is that file, the
+  name and URLs are the mod's INFO.
 - **The startup sound of an open and of the start** (task-087). Below.
 
 ### 18.1 When the original plays the mod's startup sound (task-087) [C unless marked]

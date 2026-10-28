@@ -14,6 +14,7 @@
 //!   writes the new name. With the preference "Play Mod Startup Sound" on
 //!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays, as it
 //!   does when a song is opened and at the start ([`App::start`]).
+//!   "Demo Song" opens the `Demo.rbs` of the current mod as an unsaved song (task-094).
 //! - **Options**: the Vintage ReBirth Synth Sound flag (GLOB byte 482; Edit menu item 323 of the
 //!   original) and the keyboard mode (Ctrl/Cmd+F, Ctrl/Cmd+G; docs/ui_spec.md section 10).
 
@@ -51,6 +52,8 @@ const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 pub enum Then {
     /// Open this song (it replaces the one open).
     Open(PathBuf),
+    /// Open the demo song of this mod file ([`App::demo_song`]).
+    Demo(PathBuf),
     /// Start over with the new song of the app's start ([`App::new_song`]).
     New,
     /// Close the window.
@@ -77,6 +80,8 @@ pub enum Cmd {
     ChooseModFile,
     /// A kit from the Mods menu (or a mod file the browser chose).
     UseKit(Kit),
+    /// "Demo Song" of the Mods menu: the current mod's `Demo.rbs`.
+    DemoSong,
     ToggleVintage,
     /// "Play Mod Startup Sound" of the Options menu (the original's Edit > Preferences).
     ToggleStartupSound,
@@ -214,9 +219,26 @@ impl App {
     /// Makes a song that was read the open document: its mod is looked up, the song is loaded
     /// with that kit.
     pub fn adopt(&mut self, path: &Path, opened: session::Opened) {
+        self.adopt_as(Some(path.to_path_buf()), opened, None);
+    }
+
+    /// [`App::adopt`] for a song that may have no file (`path` is `None`: Untitled) and may be
+    /// given its mod (`forced`: the mod's INFO name and kit) instead of the one it names.
+    fn adopt_as(
+        &mut self,
+        path: Option<PathBuf>,
+        opened: session::Opened,
+        forced: Option<(String, Kit)>,
+    ) {
         self.notice = None;
-        let mod_name = opened.engine.mod_name.clone();
-        let kit = self.kit_for(&mod_name);
+        let (mod_name, kit) = match forced {
+            Some(f) => f,
+            None => {
+                let name = opened.engine.mod_name.clone();
+                let kit = self.kit_for(&name);
+                (name, kit)
+            }
+        };
         // a mod that does not load (not recrypted, unreadable) plays the built-in kit
         let (kit, samples) = match self.kit_samples(&kit) {
             Ok(s) => (kit, s),
@@ -237,7 +259,65 @@ impl App {
         // the song document's constructor `sub_425C4D` opens the mod, then `sub_426C67`
         // (0x425FAB for a 1.x song, 0x426400 for an RBS song): the old song was closed first
         // (the unsaved prompt is the close's), so this song is its mod's only user
-        self.settle(Some(path.to_path_buf()), opened.source, mod_name, kit);
+        self.settle(path, opened.source, mod_name, kit);
+    }
+
+    /// Whether the current song's mod has a `Demo.rbs` (the Mods menu's "Demo Song"): never for
+    /// the built-in kit. The answer for a mod file is kept until another mod is asked.
+    pub fn has_demo(&mut self) -> bool {
+        let Kit::Mod(p) = &self.doc.kit else {
+            return false;
+        };
+        if let Some((cp, has)) = &self.demo_cache
+            && cp == p
+        {
+            return *has;
+        }
+        let has = session::mod_has_demo(p);
+        self.demo_cache = Some((p.clone(), has));
+        has
+    }
+
+    /// Mods > Demo Song: opens the demo of the current song's mod, like [`App::open_song`]
+    /// opens a file (the unsaved prompt first).
+    pub fn demo_song(&mut self) {
+        let Kit::Mod(p) = self.doc.kit.clone() else {
+            return;
+        };
+        if self.doc.modified && self.link.is_some() {
+            self.prompt = Some(Then::Demo(p));
+        } else {
+            self.open_demo_now(&p);
+        }
+    }
+
+    /// Opens the `Demo.rbs` of the mod file `mod_path` as a song that was never saved
+    /// (Untitled, so Save goes to Save As and never writes into the mod), on that mod. The
+    /// load is [`App::adopt_as`]'s: the player stops the playing song, and a demo the node pool
+    /// refuses opens nothing. A failure goes to the notice line.
+    pub fn open_demo_now(&mut self, mod_path: &Path) {
+        if self.link.is_none() {
+            self.notice = Some("There is no player to open the song in.".into());
+            return;
+        }
+        let label = format!("{}: {}", mod_path.display(), session::DEMO);
+        let opened = session::mod_demo(mod_path).and_then(|b| session::open_bytes(&b, &label));
+        let info = session::mod_info(mod_path);
+        match (opened, info) {
+            (Ok(mut opened), Ok(info)) => {
+                // the song's mod is the mod it came from, whatever its GLOB names
+                opened.source.glob.mod_name = info.name.clone();
+                opened.source.glob.mod_ftp = info.ftp;
+                opened.source.glob.mod_www = info.web;
+                opened.engine.mod_name = info.name.clone();
+                self.adopt_as(
+                    None,
+                    opened,
+                    Some((info.name, Kit::Mod(mod_path.to_path_buf()))),
+                );
+            }
+            (Err(e), _) | (_, Err(e)) => self.notice = Some(e),
+        }
     }
 
     /// The song is loaded in the player: its mod's startup sound plays by the preference, and
@@ -531,6 +611,7 @@ impl App {
             }
             Cmd::ChooseModFile => self.open_browser(Mode::ChooseMod),
             Cmd::UseKit(kit) => self.use_kit(kit),
+            Cmd::DemoSong => self.demo_song(),
             Cmd::ToggleVintage => {
                 let on = !self.panel.vintage;
                 self.panel.set_vintage(on);
@@ -585,6 +666,7 @@ impl App {
     fn proceed(&mut self, then: Then) {
         match then {
             Then::Open(p) => self.open_now(&p),
+            Then::Demo(p) => self.open_demo_now(&p),
             Then::New => self.new_now(),
             Then::Quit => self.allow_close = true,
         }
@@ -626,7 +708,7 @@ impl App {
             answer = Some(Answer::Cancel);
         }
         let what = match then {
-            Then::Open(_) => "before opening another song",
+            Then::Open(_) | Then::Demo(_) => "before opening another song",
             Then::New => "before starting a new song",
             Then::Quit => "before closing",
         };
@@ -786,6 +868,12 @@ impl App {
                             ui.separator();
                             if item(ui, "Choose file...", None) {
                                 cmd = Some(Cmd::ChooseModFile);
+                            }
+                            let has_demo = self.has_demo();
+                            let r = ui.add_enabled(has_demo, egui::Button::new("Demo Song"));
+                            if r.clicked() {
+                                cmd = Some(Cmd::DemoSong);
+                                ui.close();
                             }
                         });
                         // the list is read again the next time the menu opens
