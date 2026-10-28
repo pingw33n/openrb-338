@@ -21,7 +21,7 @@ Every OS has an amd64 and an arm64 variant:
 | `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | `.zip` | MSVC, not gnu: it is what Rust, eframe's wgpu and the runners use; `cargo-xwin` cross-builds it from a Mac or Linux |
 | `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (the `.dmg` has the `lipo` of the two, below) |
 
-A package is `OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-<target>.tar.gz|zip` holding a folder of the same
+A package is `OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` holding a folder of the same
 name with `rb` (`rb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The
 binaries are built with `--locked` and the `dist` profile (below).
 
@@ -64,22 +64,49 @@ The Linux packages were not built (Docker was not running).
 ### The version is the build time
 
 Decided by the user (2026-10-28): no package, file name, plist or text shows the `version` of
-`Cargo.toml` (it stays, cargo needs one). The version of OpenRB-338 is its UTC build time, the
-same moment the About box shows (`2026-10-28 19:30:00 (7bd8876)`, task-102), from
-`SOURCE_DATE_EPOCH` (default now; `scripts/package.sh`, `package-dmg.sh` and `build-all.sh`
-export it once, release.yml takes it from `prepare`):
+`Cargo.toml` (it stays, cargo needs one). The version of OpenRB-338 is its UTC build time to the
+minute in one form, `YYYY.MMDD.HHMM` (decided 2026-10-28, task-133), from `SOURCE_DATE_EPOCH`
+(default now; `scripts/package.sh`, `package-dmg.sh` and `build-all.sh` export it once,
+release.yml takes it from `prepare`). `scripts/version.sh` prints it, and every place below shows
+the same string for one `SOURCE_DATE_EPOCH`:
 
 | Where | Form | Example |
 |---|---|---|
-| file names, `scripts/version.sh` (also the form of the release tag, task-113) | `YYYY_MM_DD_HH_MM_SS` | `OpenRB-338-2026_10_28_19_30_00-universal-apple-darwin.dmg` |
-| About box, `README.txt` | `YYYY-MM-DD HH:MM:SS` | `2026-10-28 19:30:00` |
-| macOS `CFBundleShortVersionString` and `CFBundleVersion` (at most three integers) | `YYYY.MMDD.HHMMSS` | `2026.1028.193000` |
-| macOS `OpenRBBuildTime` | `YYYY-MM-DD HH:MM:SS UTC` | `2026-10-28 19:30:00 UTC` |
+| `scripts/version.sh` | `YYYY.MMDD.HHMM` | `2026.1028.1930` |
+| file names | `OpenRB-338-<version>-<target>.<ext>` | `OpenRB-338-2026.1028.1930-universal-apple-darwin.dmg` |
+| About box (`crates/rb-ui/src/version.rs`, made by `build.rs`) | `<version> (<hash>)` | `2026.1028.1930 (b472847)` |
+| `README.txt` of a package | `OpenRB-338 <version> (<target>)` | `OpenRB-338 2026.1028.1930 (x86_64-pc-windows-msvc)` |
+| macOS `CFBundleShortVersionString` and `CFBundleVersion` (at most three integers) | `<version>` | `2026.1028.1930` |
+| macOS `OpenRBBuildTime` (the one place with seconds) | `YYYY-MM-DD HH:MM:SS UTC` | `2026-10-28 19:30:00 UTC` |
+| the release tag (task-113) | `v<version>` | `v2026.1028.1930` |
+
+The hash in the About box is the short commit hash; `dev-` before it marks a build that is not of
+main, `-dirty` after it a work tree with uncommitted changes to tracked files (`(unknown)` without
+git).
+
+Ordering: `MMDD` and `HHMM` are zero-padded, so a later build compares higher as text and
+component by component (`2026.0930.2359 < 2026.1001.0000`). The seconds are dropped, so two
+builds in one minute have one version. `MMDD` is at most 1231 and `HHMM` at most 2359, each
+below 65535, as an App Store validation would need (`YYYY.MMDD.HHMMSS` would not).
 
 `CFBundleVersion` is the time too, not a commit count: it orders builds across checkouts and
 branches, and the .dmg's name carries it. Neither `rb` nor `OpenRB-338` has a `--version` flag,
 so neither prints the Cargo version. Later packages (the Windows installers, the AppImages, the
 draft release) name themselves the same way.
+
+A release tag names its build: `v2026.1028.1930` is 2026-10-28 19:30:00 UTC, so
+`SOURCE_DATE_EPOCH=$(scripts/version.sh --epoch v2026.1028.1930)` (1793215800, seconds 0) gives
+every package of that release the version `2026.1028.1930`. The tag matches
+`^v[0-9]{4}\.[0-9]{4}\.[0-9]{4}$`; `--epoch` fails for anything else and for a date that does not
+exist (month 13, hour 25).
+
+One time per build: the version comes from `SOURCE_DATE_EPOCH` alone, in the binary
+(`build.rs`), the plist, the file names and the tag. A plain `cargo build` without it takes the
+time of the build script's last run, so a bundle made from it with `scripts/macos-dev-app.sh`
+(which has its own `SOURCE_DATE_EPOCH`, default now) can show a different version in its plist
+than the About box. For a dev bundle that matters, build and wrap with the same variable
+(`SOURCE_DATE_EPOCH=$(date +%s) cargo build --release -p rb-ui && SOURCE_DATE_EPOCH=...
+scripts/macos-dev-app.sh`), or read the version from the About box.
 
 ### What may ship
 
@@ -104,12 +131,12 @@ behind it); the GUI subsystem is part of task-111.
 | Script | Does |
 |---|---|
 | `scripts/build.sh TARGET` | builds `rb` and `OpenRB-338` (profile `dist`) for the target into `dist/<target>/bin/` |
-| `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
+| `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
 | `scripts/build-all.sh [TARGET...]` | packages every target practical from this machine, and lists the skipped and failed ones |
-| `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |
+| `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |
 | `scripts/macos-app.sh OUT_DIR UI [CLI]` | makes `OUT_DIR/OpenRB-338.app` from the binaries (Info.plist, icon, ad-hoc signature) |
 | `scripts/macos-dev-app.sh` | wraps `target/release/OpenRB-338` into `target/OpenRB-338.app` for everyday runs |
-| `scripts/version.sh` | prints the build time `YYYY_MM_DD_HH_MM_SS` (UTC, from `SOURCE_DATE_EPOCH`), the version of the packages |
+| `scripts/version.sh` | prints the version `YYYY.MMDD.HHMM` (the UTC build time from `SOURCE_DATE_EPOCH`, to the minute); `--time` the full time, `--epoch v2026.1028.1930` the `SOURCE_DATE_EPOCH` of a release tag |
 | `scripts/release-env.sh` | prints the build environment all packages of a release share (`SOURCE_DATE_EPOCH`, `RB_BUILD_BRANCH`) |
 | `scripts/docker/linux-build.Dockerfile` | the Linux build image (Ubuntu 22.04, build tools, ALSA headers) |
 
@@ -206,7 +233,7 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
   - The Windows arm64 job installs rustup if the image has none.
   - `dmg` (task-110), on `macos-15` after the package jobs: downloads the two macOS `bin-<target>`
     artifacts, runs `SKIP_BUILD=1 scripts/package-dmg.sh` and uploads the artifact `dmg`
-    (`OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg`). It reuses the two package
+    (`OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg`). It reuses the two package
     builds and the `prepare` build time, so the app's version string is theirs.
   - The draft release with the changelog (task-113), the Windows installers (task-111) and the
     AppImages (task-112) are added to this workflow by those tasks.
@@ -221,7 +248,7 @@ the generic executable icon for it (the icon comes from the bundle's `CFBundleIc
 only sets the Dock icon at run time). The `.app` bundle fixes both.
 
 `scripts/package-dmg.sh` (Mac only) builds
-`dist/universal-apple-darwin/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg`:
+`dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg`:
 
 - `OpenRB-338.app`, made by `scripts/macos-app.sh`: `Contents/MacOS/OpenRB-338` is the UI as a
   universal binary (`lipo` of the aarch64 and x86_64 builds; `lipo -archs` says `x86_64 arm64`),
@@ -230,7 +257,7 @@ only sets the Dock icon at run time). The `.app` bundle fixes both.
   the panel, then `iconutil`), and `Contents/Info.plist` has `CFBundleName` and
   `CFBundleDisplayName` OpenRB-338, the identifier `net.emphased.openrb338` (the user's choice,
   2026-10-28), `CFBundleShortVersionString` and `CFBundleVersion` = the build time as
-  `YYYY.MMDD.HHMMSS` (see "The version is the build time"), `OpenRBBuildTime`,
+  `YYYY.MMDD.HHMM` (see "The version is the build time"), `OpenRBBuildTime`,
   `LSMinimumSystemVersion` = the highest `minos` of the binary (`scripts/build.sh` sets
   `MACOSX_DEPLOYMENT_TARGET=11.0` for both macOS targets, so both slices need macOS 11.0;
   `macos-app.sh` fails if it finds no `minos`), `NSHighResolutionCapable` and

@@ -13,11 +13,13 @@
 # notarization (docs/building.md). The bundle is what gives the Dock
 # and Activity Monitor the name and the icon: an unbundled binary has no CFBundleIconFile.
 #
-# The version is the build time (SOURCE_DATE_EPOCH, default now; the time the About box shows):
-# CFBundleShortVersionString and CFBundleVersion are YYYY.MMDD.HHMMSS (e.g. 2026.1028.193000;
-# at most three integers), and OpenRBBuildTime is the full `2026-10-28 19:30:00 UTC`. Both
-# bundle keys are the time and not a commit count: it orders builds across checkouts and
-# branches, and the file name of the .dmg carries the same time.
+# The version is the build time (SOURCE_DATE_EPOCH, default now; the number the About box
+# shows): CFBundleShortVersionString and CFBundleVersion are YYYY.MMDD.HHMM (e.g. 2026.1028.1930;
+# at most three integers; scripts/version.sh), and OpenRBBuildTime is the full
+# `2026-10-28 19:30:00 UTC`. Both bundle keys are the time and not a commit count: it orders
+# builds across checkouts and branches, and the file name of the .dmg carries the same version.
+# The binary got its own SOURCE_DATE_EPOCH when it was built: a bundle made with another one
+# (scripts/macos-dev-app.sh after a plain cargo build) can differ from its About box.
 #
 # Environment: SOURCE_DATE_EPOCH, ICNS (an existing .icns: skips rendering one), BUNDLE_ID
 # (default net.emphased.openrb338).
@@ -28,10 +30,9 @@ out=${1:?usage: scripts/macos-app.sh OUT_DIR UI_BINARY [CLI_BINARY]}
 ui=${2:?usage: scripts/macos-app.sh OUT_DIR UI_BINARY [CLI_BINARY]}
 cli=${3:-}
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(date +%s)}
-ts=$("$root/scripts/version.sh")   # 2026_10_28_19_30_00
-version=${ts:0:4}.${ts:5:2}${ts:8:2}.${ts:11:2}${ts:14:2}${ts:17:2}
+version=$("$root/scripts/version.sh")   # 2026.1028.1930
 build=$version
-built="${ts:0:4}-${ts:5:2}-${ts:8:2} ${ts:11:2}:${ts:14:2}:${ts:17:2} UTC"
+built="$("$root/scripts/version.sh" --time) UTC"   # 2026-10-28 19:30:00 UTC
 bundle_id=${BUNDLE_ID:-net.emphased.openrb338}
 
 [ "$(uname -s)" = Darwin ] || { echo "macOS only (iconutil, codesign)" >&2; exit 1; }

@@ -959,7 +959,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the error message box); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
 | Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key rb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
-| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the logo (the `app_icon` part), the name, `Version <UTC build time> (<git>)` and the link https://github.com/pingw33n/open-rb-338 (task-102; below) |
+| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the logo (the `app_icon` part), the name, `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the link https://github.com/pingw33n/open-rb-338 (task-102; below) |
 
 The Help menu is last in the bar. Its items are the list `HELP_ITEMS` in `menu.rs`, so a new item
 is one more entry.
@@ -981,9 +981,10 @@ is one more entry.
 - **Help > About and the version string** (task-102; `crates/rb-ui/src/about.rs`, `version.rs`,
   `build.rs`). The window is centered as File > Info is (pivot CENTER_CENTER, `default_pos` at
   the content center, a fresh id per open: `App::about_serial`). The version is
-  `<UTC build time> (<git>)`, computed by `build.rs` into `RB_UI_VERSION` (the pure formatting
-  is `version.rs`, unit-tested): the time is `YYYY-MM-DD HH:MM:SS` UTC, from
-  `SOURCE_DATE_EPOCH` when set, else the time the script runs. `<git>` is
+  `YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)`, computed by `build.rs` into `RB_UI_VERSION` (the
+  pure formatting is `version.rs`, unit-tested): the number is the build time in UTC to the
+  minute (task-133), from `SOURCE_DATE_EPOCH` when set, else the time the script runs. The
+  hash part is
   `git rev-parse --short HEAD`, prefixed `dev-` when the build is not of main and suffixed
   `-dirty` when `git status --porcelain --untracked-files=no` is not empty (untracked files do
   not count, as with `git describe --dirty`); `(unknown)` when git or the repository is

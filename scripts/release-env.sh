@@ -5,6 +5,7 @@
 # the same main/not-main form of the hash:
 #
 #   SOURCE_DATE_EPOCH  the build time (Unix seconds); now. task-113 takes it from the release tag
+#                      v<YYYY.MMDD.HHMM> (`scripts/version.sh --epoch TAG`, seconds 0)
 #   RB_BUILD_BRANCH    "main" when HEAD is on origin/main (a tag's detached HEAD has no branch)
 #
 # Run in a checkout with full history (fetch-depth: 0).

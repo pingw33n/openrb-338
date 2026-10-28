@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds one target (scripts/build.sh) and packs dist/<target>/bin/ into
-# dist/<target>/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-<target>.tar.gz (Linux, macOS) or .zip (Windows;
-# the UTC build time, scripts/version.sh), with
+# dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz (Linux, macOS) or .zip (Windows;
+# the version is the UTC build time, scripts/version.sh), with
 # the license and a short readme (task-108).
 #
 #   scripts/package.sh TARGET
@@ -18,8 +18,6 @@ dist=${DIST:-$root/dist}
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(date +%s)}
 version=$("$root/scripts/version.sh")
 name=OpenRB-338-$version-$target
-# 2026_10_28_19_30_00 -> 2026-10-28 19:30:00, as the About box shows it
-built="${version:0:4}-${version:5:2}-${version:8:2} ${version:11:2}:${version:14:2}:${version:17:2}"
 
 [ -n "${SKIP_BUILD:-}" ] || "$root/scripts/build.sh" "$target"
 
@@ -34,7 +32,7 @@ case $target in
     *) run="OpenRB-338 (the app) and rb (the command line)" ;;
 esac
 cat > "$stage/README.txt" <<EOF
-OpenRB-338, built $built UTC ($target)
+OpenRB-338 $version ($target)
 
 A reimplementation of the audio engine of Propellerhead ReBirth RB-338 2.01.
 

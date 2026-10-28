@@ -17,7 +17,7 @@ const LOGO_SCALE: f32 = 2.0;
 pub const NAME: &str = "OpenRB-338";
 /// The project page.
 pub const URL: &str = "https://github.com/pingw33n/open-rb-338";
-/// The version: `<UTC build time> (<git>)` (`src/version.rs`).
+/// The version: `YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` (`src/version.rs`).
 pub const VERSION: &str = env!("RB_UI_VERSION");
 
 /// The id of the About window of an open (`App::about_serial`).

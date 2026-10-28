@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds dist/universal-apple-darwin/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg
-# (the UTC build time, scripts/version.sh; task-110): a universal (aarch64 +
+# Builds dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg
+# (the version is the UTC build time, scripts/version.sh; task-110): a universal (aarch64 +
 # x86_64, `lipo`) OpenRB-338.app with the CLI inside, an /Applications link for drag-install,
 # the license and a readme.
 #
@@ -19,7 +19,6 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 dist=${DIST:-$root/dist}
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(date +%s)}
 version=$("$root/scripts/version.sh")
-built="${version:0:4}-${version:5:2}-${version:8:2} ${version:11:2}:${version:14:2}:${version:17:2}"
 arm=aarch64-apple-darwin
 x86=x86_64-apple-darwin
 uni=universal-apple-darwin
@@ -45,7 +44,7 @@ mkdir -p "$stage"
 ln -s /Applications "$stage/Applications"
 cp "$root/LICENSE" "$stage/LICENSE"
 cat > "$stage/README.txt" <<EOF
-OpenRB-338, built $built UTC
+OpenRB-338 $version
 
 A reimplementation of the audio engine of Propellerhead ReBirth RB-338 2.01.
 

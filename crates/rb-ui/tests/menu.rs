@@ -1741,10 +1741,19 @@ fn the_about_window_opens_centered_and_closes() {
     assert!(shapes.contains(rb_ui::about::URL), "the link is drawn");
     // the logo: one more image than without the window
     assert_eq!(images(&shapes), before + 1, "the logo image is drawn");
-    // the version is `<time> (<git>)`
+    // the version is `YYYY.MMDD.HHMM (<git>)` (task-133)
     let v = rb_ui::about::VERSION;
+    let b = v.as_bytes();
+    let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
     assert!(
-        v.len() > 21 && v.as_bytes()[19] == b' ' && v.ends_with(')'),
+        v.len() > 16
+            && digits(0..4)
+            && b[4] == b'.'
+            && digits(5..9)
+            && b[9] == b'.'
+            && digits(10..14)
+            && v[14..].starts_with(" (")
+            && v.ends_with(')'),
         "{v}"
     );
 

@@ -25,8 +25,9 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Writes `RB_UI_VERSION` (task-102): `<UTC build time> (<git>)`, see `src/version.rs`. It
-/// never fails the build: without git the string says `(unknown)`.
+/// Writes `RB_UI_VERSION` (task-102): `<YYYY.MMDD.HHMM> (<git>)`, the build time to the
+/// minute (task-133), see `src/version.rs`. It never fails the build: without git the string
+/// says `(unknown)`.
 ///
 /// Freshness: the script reruns, and so takes a new time, when HEAD, the branch ref, the
 /// packed refs or the index change (a commit, a branch switch, a stage; only paths that exist
