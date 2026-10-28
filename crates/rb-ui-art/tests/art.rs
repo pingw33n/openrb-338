@@ -58,3 +58,32 @@ fn controls_are_inside_the_panel() {
         assert!(c.x + c.w <= PANEL_W && c.y + c.h <= PANEL_H, "{}", c.id);
     }
 }
+
+/// The macOS iconset (task-110): the ten files `iconutil` expects, at their pixel sizes, and
+/// `render_size` draws the app icon at exactly that size with visible pixels.
+#[test]
+fn iconset_has_the_ten_sizes() {
+    let files = rb_ui_art::iconset_files();
+    let expect = [
+        ("icon_16x16.png", 16),
+        ("icon_16x16@2x.png", 32),
+        ("icon_32x32.png", 32),
+        ("icon_32x32@2x.png", 64),
+        ("icon_128x128.png", 128),
+        ("icon_128x128@2x.png", 256),
+        ("icon_256x256.png", 256),
+        ("icon_256x256@2x.png", 512),
+        ("icon_512x512.png", 512),
+        ("icon_512x512@2x.png", 1024),
+    ];
+    assert_eq!(files.len(), 10);
+    for (f, (name, size)) in files.iter().zip(expect) {
+        assert_eq!((f.0.as_str(), f.1), (name, size));
+    }
+    let svg = fs::read_to_string(root().join("assets/ui/app_icon.svg")).unwrap();
+    for (name, size) in files {
+        let px = rb_ui_art::render_size(&svg, size).unwrap();
+        assert_eq!((px.width(), px.height()), (size, size), "{name}");
+        assert!(px.pixels().iter().any(|p| p.alpha() > 0), "{name} is empty");
+    }
+}

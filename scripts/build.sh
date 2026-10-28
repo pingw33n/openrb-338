@@ -99,6 +99,10 @@ case $os in
     macos)
         [ "$host_os" = macos ] || { echo "macOS targets build only on macOS" >&2; exit 1; }
         rustup target add "$target"
+        # Both slices of the .app (task-110) deliberately need macOS 11.0 (Big Sur), the Rust
+        # default of aarch64; the x86_64 default would be 10.12. LSMinimumSystemVersion is
+        # read back from the binary.
+        export MACOSX_DEPLOYMENT_TARGET=11.0
         cargo build "${cargo_args[@]}"
         ;;
     linux)

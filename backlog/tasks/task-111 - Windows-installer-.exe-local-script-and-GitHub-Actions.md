@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 10:12'
-updated_date: '2026-10-28 10:19'
+updated_date: '2026-10-28 19:42'
 labels:
   - tools
   - ui
@@ -50,4 +50,6 @@ What:
 
 <!-- SECTION:NOTES:BEGIN -->
 User decisions (2026-10-28): no Authenticode signing: drop the signing step, document SmartScreen. Two installers, one per architecture: OpenRB-338-<version>-x64-setup.exe and -arm64-setup.exe, from task-108's x86_64 and aarch64 Windows builds. If the arm64 one cannot be built from this Mac, build it only in GitHub Actions (windows-11-arm or cross) and say so.
+
+From task-110 (user decision 2026-10-28): the version of every package is the UTC build time, never the Cargo version (0.1.0). File names use scripts/version.sh = YYYY_MM_DD_HH_MM_SS from SOURCE_DATE_EPOCH, e.g. OpenRB-338-2026_10_28_19_30_00-x64-setup.exe or ...-x86_64.AppImage (the release-tag form of task-113); human text uses '2026-10-28 19:30:00 UTC'; where a format wants numbers (Windows file version, macOS plist) use YYYY.MMDD.HHMMSS style numeric parts. scripts/version.sh is the single source. The built-in kit may ship in public packages. Scheme and examples: docs/building.md, 'The version is the build time'. The macOS bundle id is net.emphased.openrb338 (the Windows and Linux ids should follow that domain).
 <!-- SECTION:NOTES:END -->

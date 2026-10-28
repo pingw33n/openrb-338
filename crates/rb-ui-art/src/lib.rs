@@ -43,6 +43,29 @@ pub fn render(svg: &str, scale: u32) -> Result<tiny_skia::Pixmap, String> {
     Ok(pixmap)
 }
 
+/// Renders a square SVG document scaled to `size` x `size` pixels.
+pub fn render_size(svg: &str, size: u32) -> Result<tiny_skia::Pixmap, String> {
+    let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).map_err(|e| e.to_string())?;
+    let mut pixmap = tiny_skia::Pixmap::new(size, size).ok_or("empty size")?;
+    let scale = size as f32 / tree.size().width();
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    Ok(pixmap)
+}
+
+/// The files of a macOS `.iconset` (task-110): name and pixel size, 16 to 1024.
+pub fn iconset_files() -> Vec<(String, u32)> {
+    let mut v = Vec::new();
+    for base in [16, 32, 128, 256, 512] {
+        v.push((format!("icon_{base}x{base}.png"), base));
+        v.push((format!("icon_{base}x{base}@2x.png"), base * 2));
+    }
+    v
+}
+
 /// The number of pixels that are not fully transparent.
 fn visible(pixmap: &tiny_skia::Pixmap) -> usize {
     pixmap.pixels().iter().filter(|p| p.alpha() > 0).count()

@@ -9,6 +9,8 @@
 set -uo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+# one build time for every package of the run (the names and the About box)
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(date +%s)}
 all=(
     aarch64-apple-darwin x86_64-apple-darwin
     x86_64-pc-windows-msvc aarch64-pc-windows-msvc

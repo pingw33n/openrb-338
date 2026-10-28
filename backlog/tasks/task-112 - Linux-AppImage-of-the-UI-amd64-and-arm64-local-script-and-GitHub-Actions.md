@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 10:19'
+updated_date: '2026-10-28 19:42'
 labels:
   - tools
   - ui
@@ -44,3 +45,9 @@ What:
 - [ ] #2 The x86_64 AppImage was started headless (xvfb, --screenshot) in a container or VM, with the result in the notes
 - [ ] #3 docs/building.md describes it; release.yml uploads both; validated with actionlint (or act)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+From task-110 (user decision 2026-10-28): the version of every package is the UTC build time, never the Cargo version (0.1.0). File names use scripts/version.sh = YYYY_MM_DD_HH_MM_SS from SOURCE_DATE_EPOCH, e.g. OpenRB-338-2026_10_28_19_30_00-x64-setup.exe or ...-x86_64.AppImage (the release-tag form of task-113); human text uses '2026-10-28 19:30:00 UTC'; where a format wants numbers (Windows file version, macOS plist) use YYYY.MMDD.HHMMSS style numeric parts. scripts/version.sh is the single source. The built-in kit may ship in public packages. Scheme and examples: docs/building.md, 'The version is the build time'. The macOS bundle id is net.emphased.openrb338 (the Windows and Linux ids should follow that domain).
+<!-- SECTION:NOTES:END -->

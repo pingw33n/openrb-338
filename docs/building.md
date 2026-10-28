@@ -2,7 +2,8 @@
 
 How rb (the CLI) and OpenRB-338 (the UI, crate `rb-ui`) are built for release on the six
 targets, locally and in GitHub Actions (task-108). The installers and bundles (.dmg, Windows
-installer, AppImage) and the draft release build on this (tasks 110 to 113).
+installer, AppImage) and the draft release build on this (tasks 110 to 113; the .dmg is
+described under "The macOS app and .dmg").
 
 Neither program needs a Propellerhead file at build or run time: the standard mod is
 `assets/Standard.rbm`, embedded in the binaries. No step here fetches any other ReBirth file.
@@ -18,12 +19,38 @@ Every OS has an amd64 and an arm64 variant:
 |---|---|---|
 | `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` | `.tar.gz` | built on Ubuntu 22.04: glibc 2.35 or newer |
 | `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | `.zip` | MSVC, not gnu: it is what Rust, eframe's wgpu and the runners use; `cargo-xwin` cross-builds it from a Mac or Linux |
-| `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (a `lipo` of the two is task-110's job for the .app) |
+| `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (the `.dmg` has the `lipo` of the two, below) |
 
-A package is `OpenRB-338-<version>-<target>.tar.gz|zip` holding a folder of the same name with
-`rb` (`rb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The version is
-the workspace version (`scripts/version.sh`). The binaries are built with `--locked` and
-stripped (`CARGO_PROFILE_RELEASE_STRIP=symbols`; the profile in `Cargo.toml` is unchanged).
+A package is `OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-<target>.tar.gz|zip` holding a folder of the same
+name with `rb` (`rb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The
+binaries are built with `--locked` and stripped (`CARGO_PROFILE_RELEASE_STRIP=symbols`; the
+profile in `Cargo.toml` is unchanged).
+
+### The version is the build time
+
+Decided by the user (2026-10-28): no package, file name, plist or text shows the `version` of
+`Cargo.toml` (it stays, cargo needs one). The version of OpenRB-338 is its UTC build time, the
+same moment the About box shows (`2026-10-28 19:30:00 (7bd8876)`, task-102), from
+`SOURCE_DATE_EPOCH` (default now; `scripts/package.sh`, `package-dmg.sh` and `build-all.sh`
+export it once, release.yml takes it from `prepare`):
+
+| Where | Form | Example |
+|---|---|---|
+| file names, `scripts/version.sh` (also the form of the release tag, task-113) | `YYYY_MM_DD_HH_MM_SS` | `OpenRB-338-2026_10_28_19_30_00-universal-apple-darwin.dmg` |
+| About box, `README.txt` | `YYYY-MM-DD HH:MM:SS` | `2026-10-28 19:30:00` |
+| macOS `CFBundleShortVersionString` and `CFBundleVersion` (at most three integers) | `YYYY.MMDD.HHMMSS` | `2026.1028.193000` |
+| macOS `OpenRBBuildTime` | `YYYY-MM-DD HH:MM:SS UTC` | `2026-10-28 19:30:00 UTC` |
+
+`CFBundleVersion` is the time too, not a commit count: it orders builds across checkouts and
+branches, and the .dmg's name carries it. Neither `rb` nor `OpenRB-338` has a `--version` flag,
+so neither prints the Cargo version. Later packages (the Windows installers, the AppImages, the
+draft release) name themselves the same way.
+
+### What may ship
+
+Decided by the user (2026-10-28): the built-in kit `assets/Standard.rbm` (the "Standard
+ReBirth" drum samples), embedded in both binaries, may ship in the public release packages:
+the `.tar.gz`, the `.zip`, the `.dmg`, and the later installer and AppImages.
 
 On Linux, both `rb` and OpenRB-338 link `libasound.so.2` (ALSA, package `libasound2`), so even
 `rb --help` fails without it. OpenRB-338 also loads X11 or Wayland and the GL or Vulkan driver at
@@ -42,9 +69,12 @@ behind it); the GUI subsystem is part of task-111.
 | Script | Does |
 |---|---|
 | `scripts/build.sh TARGET` | builds `rb` and `OpenRB-338` for the target into `dist/<target>/bin/` |
-| `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<version>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
+| `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
 | `scripts/build-all.sh [TARGET...]` | packages every target practical from this machine, and lists the skipped and failed ones |
-| `scripts/version.sh` | prints the workspace version |
+| `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |
+| `scripts/macos-app.sh OUT_DIR UI [CLI]` | makes `OUT_DIR/OpenRB-338.app` from the binaries (Info.plist, icon, ad-hoc signature) |
+| `scripts/macos-dev-app.sh` | wraps `target/release/OpenRB-338` into `target/OpenRB-338.app` for everyday runs |
+| `scripts/version.sh` | prints the build time `YYYY_MM_DD_HH_MM_SS` (UTC, from `SOURCE_DATE_EPOCH`), the version of the packages |
 | `scripts/release-env.sh` | prints the build environment all packages of a release share (`SOURCE_DATE_EPOCH`, `RB_BUILD_BRANCH`) |
 | `scripts/docker/linux-build.Dockerfile` | the Linux build image (Ubuntu 22.04, build tools, ALSA headers) |
 
@@ -139,11 +169,68 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
   - The runner images change: GitHub retires old ones (macos-13 is gone, which is why amd64
     macOS uses `macos-15-intel`). Fix a label here when a run reports one as missing.
   - The Windows arm64 job installs rustup if the image has none.
-  - The draft release with the changelog (task-113), the macOS .dmg (task-110), the Windows
-    installers (task-111) and the AppImages (task-112) are added to this workflow by those tasks.
+  - `dmg` (task-110), on `macos-15` after the package jobs: downloads the two macOS `bin-<target>`
+    artifacts, runs `SKIP_BUILD=1 scripts/package-dmg.sh` and uploads the artifact `dmg`
+    (`OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg`). It reuses the two package
+    builds and the `prepare` build time, so the app's version string is theirs.
+  - The draft release with the changelog (task-113), the Windows installers (task-111) and the
+    AppImages (task-112) are added to this workflow by those tasks.
 
 Validation before merge: `actionlint .github/workflows/*.yml` and `shellcheck scripts/*.sh`
 (both from Homebrew). `act` was not used: it cannot run the macOS and Windows runners.
+
+## The macOS app and .dmg (task-110)
+
+Double-clicking a bare binary in Finder opens Terminal, and the Dock and Activity Monitor show
+the generic executable icon for it (the icon comes from the bundle's `CFBundleIconFile`; eframe
+only sets the Dock icon at run time). The `.app` bundle fixes both.
+
+`scripts/package-dmg.sh` (Mac only) builds
+`dist/universal-apple-darwin/OpenRB-338-<YYYY_MM_DD_HH_MM_SS>-universal-apple-darwin.dmg`:
+
+- `OpenRB-338.app`, made by `scripts/macos-app.sh`: `Contents/MacOS/OpenRB-338` is the UI as a
+  universal binary (`lipo` of the aarch64 and x86_64 builds; `lipo -archs` says `x86_64 arm64`),
+  `Contents/Resources/OpenRB-338.icns` is the `app_icon` part rendered at 16 to 1024 px
+  (`cargo run -p rb-ui-art --bin ui-art -- iconset DIR`, DIR required, with the same resvg as
+  the panel, then `iconutil`), and `Contents/Info.plist` has `CFBundleName` and
+  `CFBundleDisplayName` OpenRB-338, the identifier `net.emphased.openrb338` (the user's choice,
+  2026-10-28), `CFBundleShortVersionString` and `CFBundleVersion` = the build time as
+  `YYYY.MMDD.HHMMSS` (see "The version is the build time"), `OpenRBBuildTime`,
+  `LSMinimumSystemVersion` = the highest `minos` of the binary (`scripts/build.sh` sets
+  `MACOSX_DEPLOYMENT_TARGET=11.0` for both macOS targets, so both slices need macOS 11.0;
+  `macos-app.sh` fails if it finds no `minos`), `NSHighResolutionCapable` and
+  `LSApplicationCategoryType` `public.app-category.music`.
+- The CLI `rb` (later `orb`, task-068) is inside the bundle, `Contents/MacOS/rb`, also
+  universal. Why inside and not next to the app: dragging the app to Applications installs both
+  and nothing is left behind, the bundle's seal covers both, and an update replaces both.
+  The cost is a longer path; `README.txt` in the image gives
+  `sudo ln -s /Applications/OpenRB-338.app/Contents/MacOS/rb /usr/local/bin/rb`.
+- An `Applications` link, `LICENSE` and `README.txt` (install, Gatekeeper, the `rb` link). There
+  is no background picture or icon layout (that needs Finder scripting, which is not
+  reproducible on a runner).
+- Signing is ad hoc only (Apple silicon refuses an unsigned bundle; no Developer ID, no
+  notarization): `rb` is signed explicitly (`codesign --force -s -`; before, only the linker had
+  signed it on its own), then the bundle without `--deep`, whose seal covers both executables,
+  then `codesign --verify --deep --strict`.
+- Reproducibility: `cp -p` and `touch -t` from `SOURCE_DATE_EPOCH` fix the times of the bundle
+  and the image's files. Two runs of `SKIP_BUILD=1 scripts/package-dmg.sh` give images whose
+  mounted files are byte-identical (the same sha256 for every file), but the `.dmg` files
+  themselves differ (`cmp`: the header; hdiutil writes a new volume UUID and creation date),
+  and hdiutil has no option for a fixed one, so the image is not byte-reproducible.
+
+`scripts/macos-dev-app.sh` is for everyday runs: after `cargo build --release -p rb-ui` it copies
+`target/release/OpenRB-338` into `target/OpenRB-338.app` (same Info.plist, icon, ad-hoc
+signature); `open target/OpenRB-338.app`. Run it again after each build.
+
+How a bundled app differs, from `lsappinfo list` for the launched copy and for the bare binary:
+the bare binary has `bundleID=[ NULL ]`, `bundle path` = the binary itself and no version, so
+Activity Monitor has no icon file to show; the app has `bundleID="net.emphased.openrb338"`,
+its `.app` as `bundle path` and its `Version` (the build time), which is where Activity Monitor and the Dock
+read the name and the icon.
+
+In CI the `dmg` job of `release.yml` runs `SKIP_BUILD=1 scripts/package-dmg.sh` over the two
+macOS `bin-<target>` artifacts, so the app carries the same version string as the `.tar.gz`
+packages.
 
 ## What the system shows for an unsigned download
 
@@ -151,9 +238,15 @@ Nothing is signed or notarized (decided 2026-10-28). Expect:
 
 - macOS (Gatekeeper): a file downloaded in a browser carries the quarantine attribute, and a
   command-line binary or an app from it is blocked ("cannot be opened because the developer
-  cannot be verified"). Remove the attribute: `xattr -d com.apple.quarantine <file>`; for an app,
-  right-click > Open once. Binaries built on the Mac itself and `curl`ed files are not
-  quarantined. Apple silicon also requires a signature to run any binary: the linker adds an
-  ad-hoc one to what cargo builds, which is enough locally and in the archive.
+  cannot be verified"). Remove the attribute: `xattr -dr com.apple.quarantine <file or app>`.
+  For an app: on macOS 15 (Sequoia) and newer, open it once (it is refused), then System
+  Settings > Privacy & Security > Security > "Open Anyway" and confirm (Sequoia removed the
+  Control-click > Open bypass for unnotarized apps); on macOS 14 and older, right-click > Open >
+  Open once works. Binaries built on the Mac itself and `curl`ed files are not quarantined.
+  Apple silicon also requires a signature to run any binary: the linker adds an ad-hoc one to
+  what cargo builds, which is enough locally and in the archive. The quarantine of a downloaded
+  `.dmg` applies to the app copied out of it (the `README.txt` in the image says the same).
+  These Gatekeeper paths were not tried here (no download, and this Mac is not on 15 for a
+  quarantined app); only the local launch from the mounted image was.
 - Windows (SmartScreen): "Windows protected your PC": More info > Run anyway.
 - Linux: nothing; `chmod +x` if the file lost its mode.
