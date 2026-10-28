@@ -86,6 +86,12 @@ struct Hold {
     arrow: Option<(&'static str, f64, u32)>,
 }
 
+/// The top-left corner that centers a block of `size` (a text galley, wrapped lines included)
+/// in `r`, horizontally and vertically (the mod name in the 808's mod window).
+pub fn centered_in(r: Rect, size: Vec2) -> Pos2 {
+    Pos2::new(r.center().x - size.x / 2.0, r.center().y - size.y / 2.0)
+}
+
 /// Where to save a screenshot and quit (`--screenshot`).
 pub struct Shot {
     pub path: PathBuf,
@@ -557,7 +563,7 @@ impl App {
             Color32::from_rgb(0xd8, 0xd8, 0xd0),
             r.width(),
         );
-        let pos = Pos2::new(r.center().x - galley.size().x / 2.0, r.min.y);
+        let pos = centered_in(r, galley.size());
         ui.painter()
             .with_clip_rect(r)
             .galley(pos, galley, Color32::WHITE);

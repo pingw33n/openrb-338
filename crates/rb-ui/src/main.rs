@@ -10,8 +10,9 @@
 //! songs, chooses the mod and sets the Vintage flag and the keyboard mode. The drum machines play
 //! the built-in kit "Standard ReBirth", the standard mod rb embeds (`assets/Standard.rbm`), or
 //! the song's mod laid over it. `--demo`
-//! starts the panel in a lively state with no player (a picture). `--size` is the inner size of
-//! the panel in points (default 624x510; the window is as high as the menu bar more), `--ppp`
+//! starts the panel in a lively state with no player (a picture). The window starts maximized;
+//! `--size` opens it, not maximized, with that inner size of the panel in points (624x510 is
+//! the native size; the window is as high as the menu bar more, for screenshots), `--ppp`
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
 //! quits. Ctrl/Cmd+O opens the in-app file browser (task-046) to open a song, Ctrl/Cmd+S saves;
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
@@ -34,7 +35,8 @@ use rb_ui::settings::Settings;
 fn usage() -> ! {
     eprintln!(
         "usage: OpenRB-338 [SONG.rbs] [--demo] [--size WxH] [--ppp S] \
-         [--browse open|save|export|mod] [--screenshot OUT.png]"
+         [--browse open|save|export|mod] [--screenshot OUT.png]\n\
+         the window starts maximized; --size WxH opens it at that panel size instead"
     );
     std::process::exit(2);
 }
@@ -42,6 +44,7 @@ fn usage() -> ! {
 fn main() -> eframe::Result {
     let mut demo = false;
     let mut size = [PANEL_W, PANEL_H];
+    let mut sized = false;
     let mut ppp: Option<f32> = None;
     let mut shot: Option<PathBuf> = None;
     let mut song: Option<PathBuf> = None;
@@ -57,6 +60,7 @@ fn main() -> eframe::Result {
                     w.parse().unwrap_or_else(|_| usage()),
                     h.parse().unwrap_or_else(|_| usage()),
                 ];
+                sized = true;
             }
             "--ppp" => {
                 ppp = Some(
@@ -107,15 +111,18 @@ fn main() -> eframe::Result {
         link = Some(l);
     }
 
+    // The window starts maximized; an explicit --size opens at that size instead.
+    let viewport = egui::ViewportBuilder::default()
+        .with_title("OpenRB-338")
+        .with_app_id("OpenRB-338")
+        .with_icon(Arc::new(rb_ui::art::app_icon(256)))
+        // the menu bar is above the panel
+        .with_inner_size([size[0], size[1] + MENU_H])
+        // The minimum is half the native panel size (decision task-040).
+        .with_min_inner_size([PANEL_W / 2.0, PANEL_H / 2.0 + MENU_H])
+        .with_maximized(!sized);
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("OpenRB-338")
-            .with_app_id("OpenRB-338")
-            .with_icon(Arc::new(rb_ui::art::app_icon(256)))
-            // the menu bar is above the panel
-            .with_inner_size([size[0], size[1] + MENU_H])
-            // The minimum is half the native panel size (decision task-040).
-            .with_min_inner_size([PANEL_W / 2.0, PANEL_H / 2.0 + MENU_H]),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(
