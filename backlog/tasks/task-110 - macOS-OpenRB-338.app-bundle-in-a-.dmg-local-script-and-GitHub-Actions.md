@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 10:12'
-updated_date: '2026-10-28 19:57'
+updated_date: '2026-10-28 21:26'
 labels:
   - tools
   - ui
@@ -76,6 +76,8 @@ Review round 1 (all fixed in the amended commit; items 1 and 2 were the user's d
 AC1 check redone from the mounted image: hdiutil attach, open -n '/Volumes/OpenRB-338/OpenRB-338.app': ps shows /Volumes/OpenRB-338/OpenRB-338.app/Contents/MacOS/OpenRB-338; lsappinfo: bundleID=net.emphased.openrb338, bundle path /Volumes/OpenRB-338/OpenRB-338.app, Version=2026.1028.193000, Arch ARM64 (the Dock and Activity Monitor name come from this bundle; not seen on screen). codesign --verify --deep --strict ok on the mounted app. Rebuilt with SOURCE_DATE_EPOCH=1793215800: dist/universal-apple-darwin/OpenRB-338-2026_10_28_19_30_00-universal-apple-darwin.dmg, 34302750 B. The aarch64 .tar.gz package name and README checked (OpenRB-338-2026_10_28_19_30_00-aarch64-apple-darwin.tar.gz). Gates: nightly fmt, clippy -D warnings, cargo test --release 583 passed 0 failed 3 ignored, actionlint, shellcheck. AC3 (the CI job) is unchecked until a CI release run; the dmg job and a quarantined download's Gatekeeper behavior were not run.
 
 User, 2026-10-28: keep the copyright string 'Copyright (C) 2026 the OpenRB-338 authors. GPL-3.0-only.' as it is.
+
+Supervisor, 2026-10-28: AC #3 (the dmg CI job) moves to task-134, the first release run's checks.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
