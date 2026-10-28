@@ -120,6 +120,9 @@ pub struct App {
     browser: Option<Browser>,
     /// The open song: its file, its mod, whether it has unsaved changes (task-047).
     pub doc: Document,
+    /// Whether a song has settled yet; until then the "previous kit" of the startup sound's
+    /// rule is none and the first song's mod plays (task-099).
+    pub(crate) settled: bool,
     /// An error shown at the bottom of the window (a song that could not be opened or written).
     pub notice: Option<String>,
     /// What was done, shown at the bottom when there is no error ("Saved ...").
@@ -159,6 +162,7 @@ impl App {
             settings: Settings::default(),
             browser: None,
             doc: Document::new(),
+            settled: false,
             notice: None,
             status: None,
             key_mode: KeyMode::default(),

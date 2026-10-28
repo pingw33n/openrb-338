@@ -1066,17 +1066,32 @@ disassembly (IDA's cross references, each re-read with llvm-objdump on `original
 
 rb (`App::adopt`, `App::start`, crates/rb-ui/src/menu.rs): rb-ui has one song, and its Open
 asks the unsaved prompt that is the original's close, so the open song is closed and the new
-one is its mod's only user: every song that opens plays its mod's startup sound when
-`Settings::startup_sound` is on (`Link::startup_sound` after `Link::load`; the built-in kit's
-for "Standard ReBirth" and for a mod that does not load). At the start, the song named on the
-command line is opened that way; without one the new empty song plays the built-in kit's sound.
-File New (task-091) is the start without a song (`App::fresh`), so it plays the sound too.
+one is its mod's only user: a song that opens plays its mod's startup sound when
+`Settings::startup_sound` is on and the kit changed (`Link::startup_sound` after `Link::load`;
+the built-in kit's for "Standard ReBirth" and for a mod that does not load; the "Only a changed
+kit plays" bullet below, task-099, is the rule). At the start, the song named on the command
+line is opened that way; without one the new empty song plays the built-in kit's sound. File
+New (task-091) is the start without a song (`App::fresh`), so it plays the sound when the kit
+changes (from a mod song to the built-in kit).
 Where rb differs: the original plays nothing when another window has the same mod open (count 2), or
 when the file is already open (the window is activated); rb has no second window, and reopening
 the open file reloads it and plays the sound. Tests (crates/rb-ui/tests/menu.rs):
 `a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on` (the built-in kit's and a
 mod's sound, mixed as the player mixes it, none with the preference off) and
 `the_start_plays_the_startup_sound_when_the_preference_is_on` (with and without a song, once).
+- **Only a changed kit plays** (task-099, the user's requirement, 2026-10-28; rb's deviation
+  from the original: the rule is rb's, set at the user's request; what the original does for
+  the same mod again was not verified).
+  `App::settle` and `App::use_kit` play the sound only when the resolved kit after the change
+  (`Document::kit`: Standard or Mod(path)) differs from the one before. This covers a song
+  open, File New, Mods > Demo Song (the current mod's demo: the mod stays, no sound) and a
+  Mods menu choice (the current mod again: nothing). At the start there is no previous kit
+  (`App::settled` is false), so the first song's mod plays (a start song the pool refuses
+  also sets it, the built-in kit counting as played). The kit is the resolved one: a mod that
+  does not load, or a failed mod change, leaves the built-in or current kit and plays nothing
+  new. The preference still gates it; the logo click (`sub_42A799`) plays whatever the
+  preference and whatever changed. Test:
+  `the_startup_sound_plays_only_when_the_kit_changes` (crates/rb-ui/tests/menu.rs).
 - **An open stops the playing song** (task-090, the user's requirement, 2026-10-28). Opening a
   song (File Open, the start's command-line song, and any later path that replaces the song)
   while the open song plays leaves the transport stopped and the new song at its start. The stop

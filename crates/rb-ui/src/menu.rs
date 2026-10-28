@@ -13,7 +13,8 @@
 //!   modified, the new kit goes to the player as song msg 19 ([`Link::set_mod`]) and a save
 //!   writes the new name. With the preference "Play Mod Startup Sound" on
 //!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays, as it
-//!   does when a song is opened and at the start ([`App::start`]).
+//!   does when a song is opened and at the start ([`App::start`]), but only when the kit
+//!   changes (task-099).
 //!   "Demo Song" opens the `Demo.rbs` of the current mod as an unsaved song (task-094).
 //! - **Options**: the Vintage ReBirth Synth Sound flag (GLOB byte 482; Edit menu item 323 of the
 //!   original) and the keyboard mode (Ctrl/Cmd+F, Ctrl/Cmd+G; docs/ui_spec.md section 10).
@@ -256,6 +257,9 @@ impl App {
         // song, the panel and the document stay, and no startup sound plays
         if link.load(&opened.engine, samples, &mut self.panel).is_err() {
             self.notice = Some(LoadRefused::ALERT.into());
+            // the start song refused: the player keeps the built-in kit, which counts as the
+            // kit that played, so a later song on it plays nothing (task-099)
+            self.settled = true;
             return;
         }
         // the song document's constructor `sub_425C4D` opens the mod, then `sub_426C67`
@@ -322,10 +326,15 @@ impl App {
         }
     }
 
-    /// The song is loaded in the player: its mod's startup sound plays by the preference, and
-    /// the document is the song, not modified. The tail of [`App::adopt`] and [`App::fresh`].
+    /// The song is loaded in the player: its mod's startup sound plays when the preference is
+    /// on and the kit changed (task-099), and the document is the song, not modified. The tail
+    /// of [`App::adopt`] and [`App::fresh`].
     fn settle(&mut self, path: Option<PathBuf>, source: rbs::Song, mod_name: String, kit: Kit) {
-        self.mod_opened();
+        // only a changed kit plays its sound (task-099); the first song has no previous kit
+        if !self.settled || self.doc.kit != kit {
+            self.mod_opened();
+        }
+        self.settled = true;
         self.doc = Document {
             source,
             path,
@@ -350,8 +359,9 @@ impl App {
     }
 
     /// The state of an app started without a song: the empty song, Untitled, on the standard
-    /// mod, not modified, stopped, the panel at its values; its mod's startup sound plays by
-    /// the preference ([`App::mod_opened`]). The settings stay. [`App::start`] and File > New
+    /// mod, not modified, stopped, the panel at its values; its mod's startup sound plays when
+    /// the preference is on and the kit changed ([`App::mod_opened`], task-099). The settings
+    /// stay. [`App::start`] and File > New
     /// ([`App::new_now`]) both come here. Without a player there is nothing to load: the
     /// panel and the document are made new.
     fn fresh(&mut self) {
@@ -573,8 +583,10 @@ impl App {
         if let Some(samples) = samples {
             link.set_mod(samples, &mut self.panel);
             // `sub_426C67` after the change (0x427030): rb has one song, the only user of
-            // its mod
-            self.mod_opened();
+            // its mod; a kit that did not change plays nothing (task-099)
+            if kit != self.doc.kit {
+                self.mod_opened();
+            }
         }
         // the save writes the mod's INFO URLs with its name (`sub_4270F7`, docs/rbm.md 14.1)
         let (ftp, web) = match &kit {

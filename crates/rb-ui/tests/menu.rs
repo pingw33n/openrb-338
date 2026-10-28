@@ -1334,8 +1334,12 @@ fn file_new_gives_the_state_of_a_fresh_start() {
 }
 
 /// task-091: File > New plays the startup sound once when the preference is on, none when off.
+/// task-099: it plays when the kit changes, so the song before it is on a mod.
 #[test]
 fn file_new_plays_the_startup_sound_when_the_preference_is_on() {
+    let Some(pbe2) = mod_file("PBE2.rbm") else {
+        return;
+    };
     let a = root().join("tests/songs/diag/songs/drums_kit.rbs");
     let audio = samples()
         .get(rb_engine::samples::STARTUP_ID)
@@ -1346,9 +1350,12 @@ fn file_new_plays_the_startup_sound_when_the_preference_is_on() {
         let mut h = Harness::new();
         h.app.settings.startup_sound = false;
         h.open(&a);
+        h.app.use_kit(Kit::Mod(pbe2.clone()));
         h.calls(4);
         h.app.settings.startup_sound = on;
         h.app.command(Cmd::New);
+        h.app.answer(Answer::DontSave);
+        assert_eq!(h.app.doc.kit, Kit::Standard);
         let out = h.calls(calls);
         (out, h.audio.preview_position())
     };
@@ -1454,4 +1461,72 @@ fn the_info_window_follows_the_song_and_escape_closes_it() {
         modifiers: Modifiers::NONE,
     }]);
     assert!(!h.app.info_is_open());
+}
+
+/// task-099: the startup sound plays only when the kit that plays after the change differs
+/// from the one before: a song open on the same mod, Demo Song of the current mod and File >
+/// New on the standard kit play nothing; a mod change and File > New from a mod song do.
+#[test]
+fn the_startup_sound_plays_only_when_the_kit_changes() {
+    let (Some(_), Some(pbe2)) = (standard_mod(), mod_file("PBE2.rbm")) else {
+        return;
+    };
+    let src = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let mut h = Harness::new();
+    let long = {
+        let kit = rb_cli::render::load_mod(&pbe2, &samples()).unwrap_or_else(|e| panic!("{}", e.1));
+        let a = kit.get(rb_engine::samples::STARTUP_ID).audio().len();
+        let b = samples().get(rb_engine::samples::STARTUP_ID).audio().len();
+        a.max(b).div_ceil(CALL_FRAMES) + 2
+    };
+    // runs `op`, lets one call render, and tells whether the sound started; then drains it
+    let sounds = |h: &mut Harness, op: &dyn Fn(&mut Harness)| {
+        op(h);
+        assert!(h.app.notice.is_none(), "{:?}", h.app.notice);
+        h.calls(1);
+        let on = h.audio.preview_position().is_some();
+        h.calls(long);
+        assert_eq!(h.audio.preview_position(), None, "drained");
+        on
+    };
+
+    // the first song plays (no previous kit); the same mod again does not
+    assert!(sounds(&mut h, &|h| h.app.open_song(&src)));
+    assert!(!sounds(&mut h, &|h| h.app.open_song(&src)));
+    // File > New on the standard kit from a standard song: no sound
+    assert!(!sounds(&mut h, &|h| h.app.new_now()));
+    // a mod change plays; choosing the current mod again does not
+    assert!(sounds(&mut h, &|h| h.app.use_kit(Kit::Mod(pbe2.clone()))));
+    assert!(!sounds(&mut h, &|h| h.app.use_kit(Kit::Mod(pbe2.clone()))));
+    // Demo Song opens the current mod's demo: the mod stays, no sound
+    assert!(h.app.has_demo());
+    assert!(!sounds(&mut h, &|h| h.app.open_demo_now(&pbe2)));
+    assert_eq!(h.app.doc.kit, Kit::Mod(pbe2.clone()));
+    // File > New from a mod song goes to the standard kit: sound; again: none
+    assert!(sounds(&mut h, &|h| h.app.new_now()));
+    assert_eq!(h.app.doc.kit, Kit::Standard);
+    assert!(!sounds(&mut h, &|h| h.app.new_now()));
+    // a failed mod change plays nothing and keeps the kit
+    assert!(sounds(&mut h, &|h| h.app.use_kit(Kit::Mod(pbe2.clone()))));
+    let bad = Kit::Mod(root().join("no/such/mod.rbm"));
+    h.app.use_kit(bad);
+    assert!(h.app.notice.is_some());
+    h.calls(1);
+    assert_eq!(h.audio.preview_position(), None);
+    assert_eq!(h.app.doc.kit, Kit::Mod(pbe2.clone()));
+    // this song names the standard kit: opened from a mod song it is a change, and plays
+    // (the sound is judged on the resolved kit); the mod change left the song modified, so
+    // the open asks first
+    h.app.open_song(&src);
+    assert!(h.app.prompting());
+    h.app.answer(Answer::DontSave);
+    h.calls(1);
+    assert_eq!(h.app.doc.path.as_deref(), Some(src.as_path()));
+    assert!(!h.app.doc.modified);
+    assert_eq!(h.app.doc.kit, Kit::Standard);
+    assert!(h.audio.preview_position().is_some());
+    h.calls(long);
+    // the preference still gates a changed kit
+    h.app.settings.startup_sound = false;
+    assert!(!sounds(&mut h, &|h| h.app.use_kit(Kit::Mod(pbe2.clone()))));
 }
