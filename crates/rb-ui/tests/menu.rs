@@ -1184,3 +1184,122 @@ fn the_startup_sound_checkbox_flips_the_preference_and_saves_it() {
     assert!(h.app.notice.is_some());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// task-091: File > New is the state of a start without a song: the same code builds both, and
+/// a modified song asks the prompt first.
+#[test]
+fn file_new_gives_the_state_of_a_fresh_start() {
+    let a = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let state = |h: &Harness| {
+        let d = &h.app.doc;
+        // the panel's maps print in no fixed order: the pretty print's lines, sorted
+        let mut lines: Vec<String> = format!("{:#?}", h.app.panel)
+            .lines()
+            .map(String::from)
+            .collect();
+        lines.sort();
+        format!(
+            "{lines:?}|{:?}|{}|{}|{:?}|{}",
+            d.path,
+            d.modified,
+            d.mod_name,
+            d.kit,
+            d.source == rbs::Song::empty()
+        )
+    };
+
+    // a fresh start without a song argument
+    let mut start = Harness::new();
+    let untouched = state(&start);
+    start.app.start(None);
+    start.calls(4);
+    assert_eq!(
+        state(&start),
+        untouched,
+        "the start builds the state the app is made in"
+    );
+
+    // a song that plays and was edited, then New through the prompt
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.open(&a);
+    h.app.panel.press("transport.play", 0.0);
+    h.frame(vec![]);
+    h.calls(40);
+    h.app.panel.set_knob("tb303_1.cutoff", 700);
+    h.frame(vec![]);
+    assert!(h.app.doc.modified && h.app.panel.transport.playing);
+    h.app.command(Cmd::New);
+    assert!(h.app.prompting(), "unsaved changes ask first");
+    h.app.answer(Answer::Cancel);
+    assert_eq!(h.app.doc.path.as_deref(), Some(a.as_path()));
+    h.app.command(Cmd::New);
+    h.app.answer(Answer::DontSave);
+    h.calls(4);
+    assert_eq!(state(&h), untouched, "New equals the start");
+    assert!(!h.app.panel.transport.playing);
+    assert_eq!(h.app.panel.transport.position, 0);
+    h.calls(40);
+    assert!(!h.app.panel.transport.playing, "and it stays stopped");
+    assert!(!h.app.settings.startup_sound, "the settings are kept");
+
+    // unmodified: no prompt
+    h.open(&a);
+    h.app.command(Cmd::New);
+    assert!(!h.app.prompting());
+    h.calls(4);
+    assert_eq!(state(&h), untouched);
+
+    // a pending pattern edit at the moment of New does not leak into the new song
+    h.open(&a);
+    h.app.panel.set_step808(3, true);
+    h.app.command(Cmd::New);
+    h.calls(4);
+    let fresh = Harness::new();
+    let mirror = |h: &Harness| h.app.link.as_ref().unwrap().patterns().clone();
+    assert_eq!(
+        mirror(&h),
+        mirror(&fresh),
+        "the pattern mirror is the fresh start's"
+    );
+    assert_eq!(state(&h), untouched);
+
+    // the shortcut
+    h.open(&a);
+    let key = Event::Key {
+        key: egui::Key::N,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    };
+    h.frame(vec![Event::ModifiersChanged(Modifiers::COMMAND), key]);
+    h.calls(4);
+    assert!(h.app.doc.path.is_none(), "Ctrl+N is New");
+}
+
+/// task-091: File > New plays the startup sound once when the preference is on, none when off.
+#[test]
+fn file_new_plays_the_startup_sound_when_the_preference_is_on() {
+    let a = root().join("tests/songs/diag/songs/drums_kit.rbs");
+    let audio = samples()
+        .get(rb_engine::samples::STARTUP_ID)
+        .audio()
+        .to_vec();
+    let calls = audio.len().div_ceil(CALL_FRAMES) + 2;
+    let run = |on: bool| {
+        let mut h = Harness::new();
+        h.app.settings.startup_sound = false;
+        h.open(&a);
+        h.calls(4);
+        h.app.settings.startup_sound = on;
+        h.app.command(Cmd::New);
+        let out = h.calls(calls);
+        (out, h.audio.preview_position())
+    };
+    let (off, pos_off) = run(false);
+    let (on, pos_on) = run(true);
+    assert_eq!((pos_off, pos_on), (None, None), "the sound ended");
+    assert_ne!(on, off);
+    assert_eq!(on, with_preview(&off, &audio));
+}

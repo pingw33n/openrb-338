@@ -926,6 +926,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 
 | Menu | Item | What it does |
 |---|---|---|
+| File | New (Ctrl+N, Cmd+N) | the state of a start without a song argument: the empty Untitled song on the standard mod, unmodified, stopped, the panel at its start values; the startup sound follows the preference (18.1); the settings are kept; playback stops (`Link::load_new`); with unsaved changes the prompt first (task-091; the original's File New opens a template song, section 12) |
 | File | Open... (Ctrl+O) | the browser for a song; with unsaved changes the prompt first |
 | File | Save (Ctrl+S) | writes the song's file; a song with none goes to Save As |
 | File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
@@ -1026,8 +1027,8 @@ one is its mod's only user: every song that opens plays its mod's startup sound 
 `Settings::startup_sound` is on (`Link::startup_sound` after `Link::load`; the built-in kit's
 for "Standard ReBirth" and for a mod that does not load). At the start, the song named on the
 command line is opened that way; without one the new empty song plays the built-in kit's sound.
-rb has no File New; the start's empty song is the original's start, not File New. Where rb
-differs: the original plays nothing when another window has the same mod open (count 2), or
+File New (task-091) is the start without a song (`App::fresh`), so it plays the sound too.
+Where rb differs: the original plays nothing when another window has the same mod open (count 2), or
 when the file is already open (the window is activated); rb has no second window, and reopening
 the open file reloads it and plays the sound. Tests (crates/rb-ui/tests/menu.rs):
 `a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on` (the built-in kit's and a

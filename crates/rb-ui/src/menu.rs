@@ -2,9 +2,10 @@
 //! and the keyboard mode, with the unsaved-changes prompt. Nothing else of the original's menu.
 //!
 //! What each item does (docs/ui_spec.md section 18):
-//! - **File**: Open (Ctrl+O), Save (Ctrl+S; a song that was never saved goes to Save As), Save
-//!   As, Export loop as audio file. The browser (task-046) returns paths only; the writes happen
-//!   here and their errors are shown in the notice line.
+//! - **File**: New (Ctrl+N: the state of the app's start), Open (Ctrl+O), Save (Ctrl+S; a song
+//!   that was never saved goes to Save As), Save As, Export loop as audio file. The browser
+//!   (task-046) returns paths only; the writes happen here and their errors are shown in the
+//!   notice line.
 //! - **Mods**: "Standard ReBirth", the mods of the Mods folder (one entry per INFO menu name, as
 //!   the original's Mods menu: `sub_40C163`, docs/rbm.md section 14), and a file picked in the
 //!   browser. A choice is the original's `sub_42D80D` -> `sub_426FB3`: the song is marked
@@ -48,6 +49,8 @@ const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 pub enum Then {
     /// Open this song (it replaces the one open).
     Open(PathBuf),
+    /// Start over with the new song of the app's start ([`App::new_song`]).
+    New,
     /// Close the window.
     Quit,
 }
@@ -63,6 +66,7 @@ pub enum Answer {
 /// A menu command.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Cmd {
+    New,
     Open,
     Save,
     SaveAs,
@@ -218,10 +222,16 @@ impl App {
         // the song document's constructor `sub_425C4D` opens the mod, then `sub_426C67`
         // (0x425FAB for a 1.x song, 0x426400 for an RBS song): the old song was closed first
         // (the unsaved prompt is the close's), so this song is its mod's only user
+        self.settle(Some(path.to_path_buf()), opened.source, mod_name, kit);
+    }
+
+    /// The song is loaded in the player: its mod's startup sound plays by the preference, and
+    /// the document is the song, not modified. The tail of [`App::adopt`] and [`App::fresh`].
+    fn settle(&mut self, path: Option<PathBuf>, source: rbs::Song, mod_name: String, kit: Kit) {
         self.mod_opened();
         self.doc = Document {
-            source: opened.source,
-            path: Some(path.to_path_buf()),
+            source,
+            path,
             modified: false,
             mod_name,
             kit,
@@ -238,8 +248,42 @@ impl App {
     pub fn start(&mut self, song: Option<(PathBuf, session::Opened)>) {
         match song {
             Some((path, opened)) => self.adopt(&path, opened),
-            None => self.mod_opened(),
+            None => self.fresh(),
         }
+    }
+
+    /// The state of an app started without a song: the empty song, Untitled, on the standard
+    /// mod, not modified, stopped, the panel at its values; its mod's startup sound plays by
+    /// the preference ([`App::mod_opened`]). The settings stay. [`App::start`] and File > New
+    /// ([`App::new_now`]) both come here. Without a player there is nothing to load: the
+    /// panel and the document are made new.
+    fn fresh(&mut self) {
+        if self.link.is_none() {
+            self.panel = crate::model::Panel::new();
+            self.notice = None;
+            self.settle(None, rbs::Song::empty(), STANDARD.into(), Kit::Standard);
+            return;
+        }
+        self.notice = None;
+        let samples = self.samples.clone();
+        if let Some(link) = &mut self.link {
+            link.load_new(samples, &mut self.panel);
+        }
+        self.settle(None, rbs::Song::empty(), STANDARD.into(), Kit::Standard);
+    }
+
+    /// File > New: with unsaved changes first asks what to do with them.
+    pub fn new_song(&mut self) {
+        if self.doc.modified && self.link.is_some() {
+            self.prompt = Some(Then::New);
+        } else {
+            self.new_now();
+        }
+    }
+
+    /// Replaces the open song with the start state (`Link::load_new` stops the playing song).
+    pub fn new_now(&mut self) {
+        self.fresh();
     }
 
     /// `sub_426C67` after a song's mod was opened by its only user (word +1088 is 1,
@@ -455,6 +499,7 @@ impl App {
     /// Runs a menu command.
     pub fn command(&mut self, cmd: Cmd) {
         match cmd {
+            Cmd::New => self.new_song(),
             Cmd::Open => self.open_browser(Mode::OpenSong),
             Cmd::Save => self.save(),
             Cmd::SaveAs => self.open_browser(Mode::SaveSong),
@@ -525,6 +570,7 @@ impl App {
     fn proceed(&mut self, then: Then) {
         match then {
             Then::Open(p) => self.open_now(&p),
+            Then::New => self.new_now(),
             Then::Quit => self.allow_close = true,
         }
     }
@@ -566,6 +612,7 @@ impl App {
         }
         let what = match then {
             Then::Open(_) => "before opening another song",
+            Then::New => "before starting a new song",
             Then::Quit => "before closing",
         };
         let frame = Frame::new()
@@ -662,6 +709,9 @@ impl App {
                 ui.add_enabled_ui(enabled, |ui| {
                     egui::MenuBar::new().ui(ui, |ui| {
                         ui.menu_button("File", |ui| {
+                            if item(ui, "New", "Ctrl+N") {
+                                cmd = Some(Cmd::New);
+                            }
                             if item(ui, "Open...", "Ctrl+O") {
                                 cmd = Some(Cmd::Open);
                             }

@@ -34,7 +34,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use rb_engine::frame::LoadRefused;
+use rb_engine::frame::{Engine, LoadRefused};
 use rb_engine::samples::{STARTUP_ID, SampleSet};
 use rb_engine::seq::Event as TrackEvent;
 use rb_engine::song::{Device, Song};
@@ -374,16 +374,7 @@ impl Link {
         panel: &mut Panel,
     ) -> Result<(), LoadRefused> {
         let engine = self.player.build(song, samples.clone())?;
-        // what the panel did before is sent first (the panel is replaced below)
-        self.forward(panel);
-        self.kit = samples;
-        // the open song stops first (task-090): the new song then becomes current at once, at
-        // its start, stopped, instead of waiting as the pending song behind a playing one
-        self.backlog.push_back(Command::Stop);
-        self.backlog.push_back(Command::Load(engine));
-        self.recorded = None;
-        self.recorded_at = None;
-        self.tracks_from = self.player.snapshot().generation + 1;
+        self.queue_song(engine, samples, panel);
         let g = &song.globals;
         *panel = Panel::new();
         let t = &mut panel.transport;
@@ -427,6 +418,46 @@ impl Link {
         self.fill_views(panel);
         self.flush_marked();
         Ok(())
+    }
+
+    /// File > New: a new empty song as the song constructor makes it (the state of the player
+    /// at the app's start, [`Link::new`]), queued as [`Link::load`] queues a song: the open
+    /// song stops, the panel is new and takes the engine's values at the next snapshot.
+    pub fn load_new(&mut self, samples: Option<Arc<SampleSet>>, panel: &mut Panel) {
+        let mut engine = self.player.build_new(samples.clone());
+        let patterns = std::array::from_fn(|c| {
+            engine.frame.devices.channels[c]
+                .patterns_mut()
+                .map(|p| p.to_vec())
+                .unwrap_or_default()
+        });
+        // the old song's pending panel events are forwarded first, into the old mirror
+        self.queue_song(engine, samples, panel);
+        self.patterns = patterns;
+        self.row_pattern = [0; 4];
+        self.shown = [None; 4];
+        *panel = Panel::new();
+        self.fill_views(panel);
+        self.flush_marked();
+    }
+
+    /// Queues `engine` as the newest song after a Stop, and forgets the old song's recording.
+    fn queue_song(
+        &mut self,
+        engine: Box<Engine>,
+        samples: Option<Arc<SampleSet>>,
+        panel: &mut Panel,
+    ) {
+        // what the panel did before is sent first (the panel is replaced after)
+        self.forward(panel);
+        self.kit = samples;
+        // the open song stops first (task-090): the new song then becomes current at once, at
+        // its start, stopped, instead of waiting as the pending song behind a playing one
+        self.backlog.push_back(Command::Stop);
+        self.backlog.push_back(Command::Load(engine));
+        self.recorded = None;
+        self.recorded_at = None;
+        self.tracks_from = self.player.snapshot().generation + 1;
     }
 
     /// The Mods menu's mod change of the open song (song msg 19): the pending panel events go

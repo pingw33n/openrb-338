@@ -486,6 +486,15 @@ impl Player {
         Ok(e)
     }
 
+    /// A new empty song as the song constructor makes it, without a load: the state of the
+    /// player's first song ([`Player::new`]), on this player's process globals.
+    pub fn build_new(&self, samples: Option<Arc<SampleSet>>) -> Box<Engine> {
+        Box::new(Engine::new(
+            self.tables.clone(),
+            Devices::implemented_with(samples, self.process.clone()),
+        ))
+    }
+
     /// [`Player::build`] and [`Command::Load`]. A refused song is not queued.
     pub fn load(&mut self, song: &Song, samples: Option<Arc<SampleSet>>) -> Result<(), LoadError> {
         let e = self.build(song, samples).map_err(LoadError::Refused)?;

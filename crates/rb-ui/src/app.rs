@@ -275,7 +275,9 @@ impl App {
         // While the file browser or the prompt is open the panel takes no keys and no clicks
         // of its own.
         if self.browser.is_none() && self.prompt.is_none() {
-            if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::O)) {
+            if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::N)) {
+                self.new_song();
+            } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::O)) {
                 self.open_browser(Mode::OpenSong);
             } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::S)) {
                 self.save();
