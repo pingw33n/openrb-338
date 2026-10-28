@@ -87,6 +87,18 @@ click on a focus bar, the selection of a pattern in a row, and the Up/Down arrow
 'T' and 'V'). The focus decides where the computer keyboard's synth and tap keys go and which
 pattern the Edit menu's pattern items act on.
 
+**The theme is always dark (task-127).** The colors of rb-ui's windows (`INK`, `INK_DIM`, the
+panel fill) assume a dark background, so the UI ignores the system theme: `main.rs` calls
+`set_theme(ThemePreference::Dark)` at start and `App::show` sets it again on every frame when it
+differs. The preference is Dark and the window theme is set to Dark, so a change of the system
+theme at run time cannot alter the visuals (winit 0.30 reports `WM_SETTINGCHANGE` as a theme
+event only for a window without a preferred theme). The menu bar, the menus, the file browser and
+every window are egui-drawn and follow; nothing is a native dialog. egui's `sync_window_theme`
+(on by default) then sends `ViewportCommand::SetTheme(Dark)`, which winit applies to the native
+title bar (on Windows, its dark mode). `crates/rb-ui/tests/theme.rs` runs frames with a light
+system theme and checks dark visuals, the text contrast and that only Dark is sent to the window.
+The Windows title bar itself is unverified (no Windows machine for the UI).
+
 **Pattern mode and song mode [C].** The transport's Pattern/Song switch sets global byte 0
 (msg 35 id 0). The UI does not change layout between the modes. In pattern mode the bar and loop
 displays are disabled (dark; `sub_42A058` calls `sub_47DCFB(0)` on the three displays) and the

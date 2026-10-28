@@ -129,6 +129,8 @@ fn main() -> eframe::Result {
         "OpenRB-338",
         options,
         Box::new(move |cc| {
+            // always dark, whatever the system theme (task-127; `App::show` keeps it)
+            cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
             if let Some(ppp) = ppp {
                 cc.egui_ctx.set_pixels_per_point(ppp);
             }

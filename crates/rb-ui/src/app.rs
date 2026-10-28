@@ -30,7 +30,7 @@ use crate::settings::Settings;
 use crate::shortcuts;
 
 /// The panel's background and the letterbox color.
-const BG: Color32 = Color32::from_rgb(0x1d, 0x21, 0x27);
+pub const BG: Color32 = Color32::from_rgb(0x1d, 0x21, 0x27);
 
 /// Where the panel is on screen: the point of the panel's origin and points per panel pixel.
 #[derive(Clone, Copy, Debug)]
@@ -351,6 +351,11 @@ fn paint_part_rotated(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>)
 impl App {
     /// Draws the whole panel in the free area of `ui` and handles the input.
     pub fn show(&mut self, ui: &mut Ui) {
+        // The theme is always dark (task-127): the colors of the windows assume it. Set on
+        // every frame, so a system theme that changes at run time cannot switch it back.
+        if ui.ctx().options(|o| o.theme_preference) != egui::ThemePreference::Dark {
+            ui.ctx().set_theme(egui::ThemePreference::Dark);
+        }
         let mut avail = ui.ctx().content_rect();
         ui.painter().rect_filled(avail, 0.0, BG);
         if self.menu {

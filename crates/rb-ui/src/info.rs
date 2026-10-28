@@ -9,8 +9,8 @@ use rb_cli::mods::{Kit, STANDARD};
 use crate::app::App;
 use crate::document::Document;
 
-const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
-const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
+pub const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
+pub const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 
 /// The id of the info window of an open (`App::info_serial`).
 pub fn info_window_id(serial: u32) -> egui::Id {
