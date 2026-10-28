@@ -2,9 +2,10 @@
 id: TASK-065
 title: rb recrypt and rb standard-mod read the ReBirth CD image (.iso) directly
 status: To Do
-assignee: []
+assignee:
+  - '@agent-worker'
 created_date: '2026-10-27 10:02'
-updated_date: '2026-10-28 09:33'
+updated_date: '2026-10-28 11:17'
 labels:
   - rbm
   - cli
@@ -43,3 +44,9 @@ The user's ISO: ask the supervisor for its path; never commit the image or anyth
 - [ ] #2 rb standard-mod --iso reads ReBirth.dll (and Rebirth.exe if needed) from the installer inside the image, giving the same mod as the --rebirth-dll form
 - [ ] #3 An unknown or different image is reported clearly; the reading code needs no Windows code; env-gated tests (RB_CD_ISO) check the extracted files' hashes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The user's CD image (2026-10-28): '/Users/pingw33n/Downloads/Rebirth 2.01 (2001 version).iso' (570,923,008 bytes). Read it only; never copy it into the repo or commit anything extracted from it. Command names changed since this task was written: rb recrypt is now rb mod recrypt (task-097, task-064's checks and bulk mode), rb standard-mod is now rb mod pack-standard (task-097), and the standard mod is committed and embedded (task-067: assets/Standard.rbm, built from ReBirth.dll plus the CD's Rebirth.exe for the splash; its gated reproduction test reads RB_CD_REBIRTH_EXE). With --iso, rb mod pack-standard should reproduce assets/Standard.rbm byte for byte (ReBirth.dll and Rebirth.exe both from the image), and that reproduction test can take the image instead of the extracted exe.
+<!-- SECTION:NOTES:END -->
