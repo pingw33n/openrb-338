@@ -2,16 +2,14 @@
 //! facts come from the document's song file as it was read ([`SongInfo::of`], no rendering, no
 //! player); editing the song information is not done.
 
-use eframe::egui::{self, Color32, Context, Key, Modifiers, RichText};
+use eframe::egui::{self, Context, Key, Modifiers, RichText};
 use rb_cli::info::{SongFacts, last_tick};
 use rb_cli::mods::{Kit, STANDARD};
 use rb_engine::seq::Event as TrackEvent;
 
 use crate::app::App;
 use crate::document::Document;
-
-pub const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
-pub const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
+use crate::palette::{INK, INK_DIM};
 
 /// The id of the info window of an open (`App::info_serial`).
 pub fn info_window_id(serial: u32) -> egui::Id {

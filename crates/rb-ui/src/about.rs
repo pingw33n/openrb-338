@@ -1,13 +1,11 @@
 //! Help > About (task-102): the logo, the name, the version and the project link in a small
 //! centered window. The version string is computed by `build.rs` (`crate::version`).
 
-use eframe::egui::{self, Color32, Context, Key, Modifiers, RichText};
+use eframe::egui::{self, Context, Key, Modifiers, RichText};
 
 use crate::app::App;
 use crate::art;
-
-const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
-const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
+use crate::palette::{INK, INK_DIM};
 
 /// The wordmark part of the panel (`assets/ui`), its native size and the scale it is shown at.
 pub const LOGO_PART: &str = "logo";

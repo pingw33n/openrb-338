@@ -10,16 +10,12 @@ use eframe::egui::{
 };
 
 use crate::app::App;
-use crate::info::{INK, INK_DIM};
-use crate::menu::{SLATE_DARK, SLATE_LINE};
+use crate::palette::{AMBER, INK, INK_DIM, SLATE_DARK, SLATE_LINE};
 
 /// The box's title.
 pub const TITLE: &str = "Error";
 /// The label of the box's one button.
 pub const OK: &str = "OK";
-
-/// The accent of the title: the amber of the panel's lamps.
-const AMBER: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 
 /// The widest the message is wrapped.
 const WIDTH: f32 = 380.0;

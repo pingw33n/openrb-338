@@ -22,12 +22,11 @@ use rb_cli::mods::{Kit, STANDARD};
 
 use crate::app::App;
 use crate::info::link;
+use crate::palette::{INK, INK_DIM};
 use crate::session::ModDetails;
 
 /// The width of a value in the facts' grid; a longer text wraps.
 const VALUE_WIDTH: f32 = 300.0;
-const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
-const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 
 /// Millimetres per pixel of a 17-inch CRT of 2000 at 1024 x 768 (the derivation is above).
 pub const MM_PER_PX: f32 = 0.317;

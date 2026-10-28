@@ -20,6 +20,7 @@ pub mod link;
 pub mod menu;
 pub mod mod_info;
 pub mod model;
+pub mod palette;
 pub mod session;
 pub mod settings;
 pub mod shortcuts;

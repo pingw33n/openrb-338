@@ -26,11 +26,9 @@ use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
 use crate::menu::{Job, MENU_H, ModEntry, Then};
 use crate::model::Panel;
+use crate::palette::BG;
 use crate::settings::Settings;
 use crate::shortcuts;
-
-/// The panel's background and the letterbox color.
-pub const BG: Color32 = Color32::from_rgb(0x1d, 0x21, 0x27);
 
 /// Where the panel is on screen: the point of the panel's origin and points per panel pixel.
 #[derive(Clone, Copy, Debug)]

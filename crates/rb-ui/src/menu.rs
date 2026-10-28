@@ -39,16 +39,12 @@ use crate::browser::{ExportFormat, Mode};
 use crate::document::{self, Document};
 use crate::keys::KeyMode;
 use crate::link::Link;
+use crate::palette::{INK, INK_DIM, SLATE_DARK, SLATE_LINE};
 use crate::session;
 use crate::shortcuts;
 
 /// The height of the menu bar in points.
 pub const MENU_H: f32 = 22.0;
-
-pub(crate) const SLATE_DARK: Color32 = Color32::from_rgb(0x2c, 0x35, 0x42);
-pub(crate) const SLATE_LINE: Color32 = Color32::from_rgb(0x56, 0x64, 0x7a);
-const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
-const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 
 /// What the unsaved-changes prompt guards: the action that waits for its answer.
 #[derive(Clone, Debug, PartialEq, Eq)]

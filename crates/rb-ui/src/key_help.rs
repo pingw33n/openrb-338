@@ -12,10 +12,9 @@ use eframe::egui::{self, Color32, Context, Key, KeyboardShortcut, Modifiers, Ric
 
 use crate::app::App;
 use crate::keys::{Action, KeyMode};
+use crate::palette::{INK, INK_DIM};
 use crate::shortcuts;
 
-const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
-const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 const CURRENT: Color32 = Color32::from_rgb(0xf0, 0xb4, 0x4c);
 
 /// Where a bind is active: the keyboard mode and the focused row (0 and 1 are the 303s, 2 and

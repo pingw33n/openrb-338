@@ -34,20 +34,16 @@ use eframe::egui::{
     RichText, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 
+use crate::palette::{AMBER, BG, INK, INK_DIM, SLATE_DARK, SLATE_LINE};
 use crate::settings::{self, Settings};
 use crate::shortcuts;
 
-// The art's palette (crates/rb-ui-art/src/svg.rs `pal`).
+// The art's palette (crates/rb-ui-art/src/svg.rs `pal`); the colors the windows share are in
+// `crate::palette`.
 const SLATE: Color32 = Color32::from_rgb(0x3b, 0x46, 0x56);
-const SLATE_DARK: Color32 = Color32::from_rgb(0x2c, 0x35, 0x42);
-const SLATE_LINE: Color32 = Color32::from_rgb(0x56, 0x64, 0x7a);
-const INK: Color32 = Color32::from_rgb(0xe9, 0xed, 0xf2);
-const INK_DIM: Color32 = Color32::from_rgb(0x9a, 0xa7, 0xb8);
 const RED: Color32 = Color32::from_rgb(0xe2, 0x41, 0x3b);
 const ORANGE: Color32 = Color32::from_rgb(0xf0, 0x8a, 0x24);
 const GOLD: Color32 = Color32::from_rgb(0xcd, 0xb5, 0x4a);
-const AMBER: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
-const BG: Color32 = Color32::from_rgb(0x1d, 0x21, 0x27);
 
 const ROW_H: f32 = 20.0;
 

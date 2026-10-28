@@ -3,11 +3,11 @@
 //! its light visuals, where the Song Information values were pale grey on near-white.
 
 use eframe::egui::{self, Color32, RawInput, Rect, Theme, Vec2};
-use rb_ui::app::{App, BG};
-use rb_ui::info::{INK, INK_DIM};
+use rb_ui::app::App;
 use rb_ui::layout::{PANEL_H, PANEL_W};
 use rb_ui::menu::MENU_H;
 use rb_ui::model::Panel;
+use rb_ui::palette::{BG, INK, INK_DIM};
 
 /// The relative luminance (WCAG) of a color.
 fn luminance(c: Color32) -> f64 {
