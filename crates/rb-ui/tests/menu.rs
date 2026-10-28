@@ -1071,6 +1071,17 @@ fn refresh_list_reads_the_mods_folder_again() {
         }
     }
     let mods_at = mods_at.expect("the Mods menu did not open");
+    // task-118: Choose file..., Refresh List, a separator, then Demo Song and Info...
+    let drawn = h.frame_shapes(vec![]);
+    let at = |t: &str| drawn.find(t).unwrap_or_else(|| panic!("{t} is not drawn"));
+    assert!(at("Choose file...") < at("Refresh List"));
+    assert!(at("Refresh List") < at("Demo Song"));
+    assert!(at("Demo Song") < at("Info..."));
+    // a separator is a line segment: one between Refresh List and Demo Song, none between
+    // Choose file... and Refresh List (so the two form one group)
+    let lines = |a: &str, b: &str| drawn[at(a)..at(b)].matches("LineSegment").count();
+    assert_eq!(lines("Refresh List", "Demo Song"), 1, "{drawn}");
+    assert_eq!(lines("Choose file...", "Refresh List"), 0);
     // the menu is open and drawn over a folder that changed: the list stays
     h.frame(vec![]);
     assert!(h.frame_shapes(vec![]).contains("Refresh List"));
@@ -1111,6 +1122,79 @@ fn refresh_list_reads_the_mods_folder_again() {
     assert_eq!(names(&h).len(), 1);
     h.app.refresh_mods();
     assert!(names(&h).is_empty());
+}
+
+/// task-118: Mods > Refresh List reports on the status line what it read (the count, the folder
+/// and what changed), and a folder that cannot be read on the notice line.
+#[test]
+fn refresh_list_reports_its_result() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("mods");
+    std::fs::create_dir(&folder).unwrap();
+    let mut h = Harness::new();
+    h.app.settings.mods_dir = Some(folder.clone());
+    h.app.notice = Some("unrelated".into());
+    h.app.command(Cmd::RefreshMods);
+    let want = format!(
+        "Mod list refreshed: 0 mods in {} (+0, -0)",
+        folder.display()
+    );
+    assert_eq!(h.app.status.as_deref(), Some(want.as_str()));
+    // an unrelated notice stays
+    assert_eq!(h.app.notice.as_deref(), Some("unrelated"));
+
+    if let (Some(pbe2), Some(msm2)) = (mod_file("PBE2.rbm"), mod_file("MSM2.rbm")) {
+        std::fs::copy(&pbe2, folder.join("PBE2.rbm")).unwrap();
+        h.app.command(Cmd::RefreshMods);
+        let want = format!("Mod list refreshed: 1 mod in {} (+1, -0)", folder.display());
+        assert_eq!(h.app.status.as_deref(), Some(want.as_str()));
+        std::fs::copy(&msm2, folder.join("MSM2.rbm")).unwrap();
+        std::fs::remove_file(folder.join("PBE2.rbm")).unwrap();
+        h.app.command(Cmd::RefreshMods);
+        let want = format!("Mod list refreshed: 1 mod in {} (+1, -1)", folder.display());
+        assert_eq!(h.app.status.as_deref(), Some(want.as_str()));
+    }
+
+    // a folder that cannot be read: the notice, no success line
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        struct Restore(PathBuf);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _restore = Restore(locked.clone());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // (running as root reads it anyway: then there is no error to show)
+        if std::fs::read_dir(&locked).is_err() {
+            h.app.settings.mods_dir = Some(locked.clone());
+            h.app.command(Cmd::RefreshMods);
+            assert_eq!(h.app.status, None);
+            assert!(
+                !h.app
+                    .notice
+                    .clone()
+                    .expect("the read error is shown")
+                    .is_empty()
+            );
+            assert!(matches!(h.app.mods(), Some(Err(_))));
+            // a good read after it takes the error's notice away
+            h.app.settings.mods_dir = Some(folder.clone());
+            h.app.command(Cmd::RefreshMods);
+            assert_eq!(h.app.notice, None);
+            assert!(
+                h.app
+                    .status
+                    .as_deref()
+                    .unwrap()
+                    .starts_with("Mod list refreshed")
+            );
+        }
+    }
 }
 
 /// task-093: the Mods menu checks the current song's mod: by the song's mod name, following a

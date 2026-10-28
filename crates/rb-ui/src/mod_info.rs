@@ -12,7 +12,7 @@
 //!   pixels_per_point`.
 //! - **Fallback** when the size is not known (other systems, or a display that reports none):
 //!   [`FALLBACK_PPI_MAC`] = 110 logical points per inch on macOS, [`FALLBACK_PPI_OTHER`] = 96
-//!   elsewhere: `points = image_px x MM_PER_PX x ppi / 25.4`. The window says which was used.
+//!   elsewhere: `points = image_px x MM_PER_PX x ppi / 25.4`. No note about the size is shown.
 //!
 //! When the physical size does not fit the window, the splash is scaled down to fit and the
 //! window says so ([`splash_width`]).
@@ -386,20 +386,10 @@ fn splash(
     let h = w * tex.size()[1] as f32 / px;
     ui.vertical_centered(|ui| {
         ui.add(egui::Image::new((tex.id(), egui::vec2(w, h))));
-        let how = match basis {
-            Basis::Measured(_) => "the display's reported size".to_string(),
-            Basis::Assumed(ppi) => format!("an assumed {ppi:.0} points per inch"),
-        };
-        let mm = px * MM_PER_PX;
-        let text = if scaled_down {
-            format!(
-                "Scaled down to fit the window (it was {mm:.0} mm wide on a 2000-era 17-inch \
-                 monitor)"
-            )
-        } else {
-            format!("{mm:.0} mm wide, as on a 2000-era 17-inch monitor ({how})")
-        };
-        ui.add(egui::Label::new(RichText::new(text).small().color(INK_DIM)).wrap());
+        if scaled_down {
+            let text = "Scaled down to fit the window";
+            ui.add(egui::Label::new(RichText::new(text).small().color(INK_DIM)).wrap());
+        }
     });
     SplashShown {
         width: w,

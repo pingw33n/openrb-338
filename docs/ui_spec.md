@@ -940,9 +940,9 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, a mod per file, Choose file... | the song's kit, checked (below) |
+| Mods | Refresh List | reads the Mods folder again (the list cache, below; task-101); directly after "Choose file..." with a separator after it, so the two form one group (task-118); the status line then says "Mod list refreshed: N mods in <folder> (+a, -b)" (what changed against the previous list, by file), a read error of the folder goes to the notice line (like the export's) |
 | Mods | Demo Song | opens the `Demo.rbs` of the current song's mod (below); enabled only when that mod file has one, so never for "Standard ReBirth" (task-094) |
 | Mods | Info... | a centered, closable window (Escape closes it) with the splash of the kit that plays at its 2000-era physical size, the mod's INFO facts and the file's (task-106; below) |
-| Mods | Refresh List | reads the Mods folder again (the list cache, below; task-101) |
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
@@ -1055,8 +1055,9 @@ is one more entry.
   info dialog, `sub_417000` at 0x417000, `sub_41A0C5` (the instruction at
   0x41A3E0 in it), that saves it (docs/rbm.md 13.1, the Demo.rbs paragraph), so rb's menu item
   is new).
-  The item is below "Choose file..." and is enabled when the current song's resolved kit (`doc.kit`)
-  is a mod file with that chunk (`App::has_demo`, the answer kept per mod file). Choosing it opens
+  The item is below the separator after "Refresh List" and is enabled when the current song's
+  resolved kit (`doc.kit`) is a mod file with that chunk (`App::has_demo`, the answer kept per
+  mod file). Choosing it opens
   the demo through the open path: the unsaved-changes prompt (`Then::Demo`), the same load as
   File > Open (`App::adopt_as`: the stop of the playing song, the node pool refusal and its
   alert). The demo is read from the recrypted mod (`session::mod_demo`) and opens as a song
@@ -1087,11 +1088,11 @@ is one more entry.
     (display_px / display_mm) / pixels_per_point`;
   - not known (Windows, Linux: no cheap query was added; or a display that reports 0 mm): the
     fallback of 110 logical points per inch on macOS and 96 elsewhere, `points = image_px x
-    0.317 x ppi / 25.4`; the window's note names which one it used ("the display's reported
-    size" or "an assumed N points per inch");
+    0.317 x ppi / 25.4`. The window shows no note about the physical size (task-118 dropped
+    "81 mm wide, as on a 2000-era 17-inch monitor (...)" and its variants);
   - when that width does not fit the window (`min(content width - 56, content height - 400)`,
-    at least 64) the splash is scaled down to fit and the note says "Scaled down to fit the
-    window". The EDID size of a display can be wrong (an external display that reports a
+    at least 64) the splash is scaled down to fit and the only note under it says "Scaled down
+    to fit the window". The EDID size of a display can be wrong (an external display that reports a
     default size); then the splash is as far off as the report is.
   `physical_width`, `splash_width`, `format_size` and `format_version` are unit-tested from
   given DPIs. On the developer's MacBook (main display 345.44 mm, 2992 px wide: 8.66 px/mm) a

@@ -154,6 +154,50 @@ impl App {
         self.splash = None;
     }
 
+    /// Mods > Refresh List: [`App::refresh_mods`], then the result on the status line, as the
+    /// export reports its end: "Mod list refreshed: N mods in <folder> (+a, -b)" with what
+    /// changed against the previous list (by file), or a read error of the folder on the
+    /// notice line. The scan is synchronous and fast, so there is no "in progress" line.
+    pub fn refresh_mods_reported(&mut self) {
+        let paths = |l: &Option<Result<Vec<ModEntry>, String>>| -> Vec<PathBuf> {
+            match l {
+                Some(Ok(l)) => l.iter().map(|e| e.path.clone()).collect(),
+                _ => Vec::new(),
+            }
+        };
+        let before = paths(&self.mod_list);
+        // the notice an earlier refresh set for a folder error goes with a good read
+        let earlier = match &self.mod_list {
+            Some(Err(e)) => Some(e.clone()),
+            _ => None,
+        };
+        self.refresh_mods();
+        match &self.mod_list {
+            Some(Ok(list)) => {
+                let after = paths(&self.mod_list);
+                let added = after.iter().filter(|p| !before.contains(p)).count();
+                let removed = before.iter().filter(|p| !after.contains(p)).count();
+                let folder = match self.mod_opts().mod_dir() {
+                    Ok(Some(d)) => format!(" in {}", d.display()),
+                    _ => String::new(),
+                };
+                let n = list.len();
+                let s = if n == 1 { "" } else { "s" };
+                if earlier.is_some() && self.notice == earlier {
+                    self.notice = None;
+                }
+                self.status = Some(format!(
+                    "Mod list refreshed: {n} mod{s}{folder} (+{added}, -{removed})"
+                ));
+            }
+            Some(Err(e)) => {
+                self.status = None;
+                self.notice = Some(e.clone());
+            }
+            None => {}
+        }
+    }
+
     /// The Mods menu's list as last read by [`App::refresh_mods`]; None before the first read.
     pub fn mods(&self) -> Option<&Result<Vec<ModEntry>, String>> {
         self.mod_list.as_ref()
@@ -649,7 +693,7 @@ impl App {
             Cmd::ChooseModFile => self.open_browser(Mode::ChooseMod),
             Cmd::UseKit(kit) => self.use_kit(kit),
             Cmd::DemoSong => self.demo_song(),
-            Cmd::RefreshMods => self.refresh_mods(),
+            Cmd::RefreshMods => self.refresh_mods_reported(),
             Cmd::ModInfo => self.show_mod_info(),
             Cmd::ToggleVintage => {
                 let on = !self.panel.vintage;
@@ -906,6 +950,10 @@ impl App {
                             if item(ui, "Choose file...", None) {
                                 cmd = Some(Cmd::ChooseModFile);
                             }
+                            if item(ui, "Refresh List", None) {
+                                cmd = Some(Cmd::RefreshMods);
+                            }
+                            ui.separator();
                             let has_demo = self.has_demo();
                             let r = ui.add_enabled(has_demo, egui::Button::new("Demo Song"));
                             if r.clicked() {
@@ -914,9 +962,6 @@ impl App {
                             }
                             if item(ui, "Info...", None) {
                                 cmd = Some(Cmd::ModInfo);
-                            }
-                            if item(ui, "Refresh List", None) {
-                                cmd = Some(Cmd::RefreshMods);
                             }
                         });
                         ui.menu_button("Options", |ui| {
