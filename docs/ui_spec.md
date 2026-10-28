@@ -940,10 +940,25 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the notice line); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
+| Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key rb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
 | Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the logo (the `app_icon` part), the name, `Version <UTC build time> (<git>)` and the link https://github.com/pingw33n/open-rb-338 (task-102; below) |
 
 The Help menu is last in the bar. Its items are the list `HELP_ITEMS` in `menu.rs`, so a new item
-(Keyboard Shortcuts, task-105) is one more entry.
+is one more entry.
+
+- **Help > Keyboard Shortcuts** (task-105; `crates/rb-ui/src/key_help.rs`). Centered as About is
+  (`App::key_help_serial`); Escape is consumed after the other windows. The text is one table,
+  `key_help::groups(is_mac)`: each line carries the binds it stands for (key, Shift state, the
+  modes and focused rows it holds in, the `keys::Action` it must give). Two unit tests keep it
+  true: every bind is run through `keys::map`, and every (key, Shift, mode, row) for which
+  `keys::map` gives an action (over all of egui's `Key::ALL`) must be covered by a bind with
+  that action. The menu lines take their text from `shortcuts.rs`. rb's deviations from the
+  original (section 10) are written in the window: tempo down has no key in Program Synth mode,
+  Enter and `/` change meaning with a 303 focused, PgUp / PgDn do nothing, numpad `*` gives no
+  key. The groups "Windows and the file browser" and "Prompts and questions" (the unsaved-changes
+  prompt: S/Y/Enter save, D/N do not, Esc cancels; the browser's overwrite question: Y replaces,
+  Enter/Esc/N go back) are listed by hand from `prompt_ui` (`menu.rs`) and the browser's key
+  handler (`browser.rs`); no test checks them.
 
 - **Help > About and the version string** (task-102; `crates/rb-ui/src/about.rs`, `version.rs`,
   `build.rs`). The window is centered as File > Info is (pivot CENTER_CENTER, `default_pos` at

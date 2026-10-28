@@ -12,6 +12,7 @@ pub mod behavior;
 pub mod browser;
 pub mod document;
 pub mod info;
+pub mod key_help;
 pub mod keys;
 pub mod layout;
 pub mod link;

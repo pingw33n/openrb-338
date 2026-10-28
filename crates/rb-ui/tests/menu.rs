@@ -1697,6 +1697,59 @@ fn the_about_window_opens_centered_and_closes() {
     assert!(!h.app.about_is_open(), "the close button closes it");
 }
 
+/// task-105: Help > Keyboard Shortcuts opens a centered window (each open again) that lists the
+/// keys by group with the current mode marked; Escape and the close button close it.
+#[test]
+fn the_key_help_window_opens_centered_marks_the_mode_and_closes() {
+    let mut h = Harness::with_menu();
+    let rect = |h: &Harness| h.ctx.memory(|m| m.area_rect(h.app.key_help_id()));
+    let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(PANEL_W, h.height));
+    let esc = || Event::Key {
+        key: egui::Key::Escape,
+        physical_key: Some(egui::Key::Escape),
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    assert!(!h.app.key_help_is_open());
+    h.app.command(Cmd::KeyHelp);
+    assert!(h.app.key_help_is_open());
+    let mut shapes = String::new();
+    for _ in 0..4 {
+        shapes = h.frame_shapes(vec![]);
+    }
+    let r = rect(&h).expect("the window is drawn");
+    let off = (r.center() - screen.center()).abs();
+    assert!(off.x < 3.0 && off.y < 3.0, "centered: {r:?} in {screen:?}");
+    assert!(shapes.contains("Keyboard Shortcuts"));
+    assert!(shapes.contains("Menu shortcuts"));
+    assert!(shapes.contains("Keyboard mode now: Program Synth"));
+
+    // the other mode marks the other group
+    h.app.key_mode = rb_ui::keys::KeyMode::Patterns;
+    for _ in 0..2 {
+        shapes = h.frame_shapes(vec![]);
+    }
+    assert!(shapes.contains("Keyboard mode now: Select Patterns"));
+
+    // Escape closes it
+    h.frame(vec![esc()]);
+    assert!(!h.app.key_help_is_open());
+
+    // opened again: a new id, centered again; the close button closes it
+    h.app.command(Cmd::KeyHelp);
+    for _ in 0..4 {
+        h.frame(vec![]);
+    }
+    let r = rect(&h).expect("drawn again");
+    let off = (r.center() - screen.center()).abs();
+    assert!(off.x < 3.0 && off.y < 3.0, "centered again: {r:?}");
+    let close = Pos2::new(r.max.x - 12.0, r.min.y + 10.0);
+    h.click(close);
+    h.frame(vec![]);
+    assert!(!h.app.key_help_is_open(), "the close button closes it");
+}
+
 /// task-099: the startup sound plays only when the kit that plays after the change differs
 /// from the one before: a song open on the same mod, Demo Song of the current mod and File >
 /// New on the standard kit play nothing; a mod change and File > New from a mod song do.

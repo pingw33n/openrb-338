@@ -147,6 +147,9 @@ pub struct App {
     /// `info_serial`; `App::about_ui`).
     pub(crate) about_open: bool,
     pub(crate) about_serial: u32,
+    /// The same for the Help > Keyboard Shortcuts window (`App::key_help_ui`).
+    pub(crate) key_help_open: bool,
+    pub(crate) key_help_serial: u32,
     /// What the info window drew last (`App::info_shown`).
     pub(crate) info_shown: Option<crate::info::SongInfo>,
     pub(crate) events_seen: usize,
@@ -182,6 +185,8 @@ impl App {
             info_serial: 0,
             about_open: false,
             about_serial: 0,
+            key_help_open: false,
+            key_help_serial: 0,
             info_shown: None,
             events_seen: 0,
             allow_close: false,
@@ -367,6 +372,7 @@ impl App {
         self.prompt_ui(&ctx);
         self.info_ui(&ctx);
         self.about_ui(&ctx);
+        self.key_help_ui(&ctx);
         self.poll_export(&ctx);
         self.update_title(&ctx);
         self.close_if_allowed(&ctx);

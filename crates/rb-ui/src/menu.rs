@@ -79,6 +79,8 @@ pub enum Cmd {
     Export,
     /// File > Info: the current song's information window.
     Info,
+    /// Help > Keyboard Shortcuts.
+    KeyHelp,
     /// Help > About.
     About,
     /// "Choose file..." of the Mods menu: the browser for a mod.
@@ -640,6 +642,7 @@ impl App {
                 }
             }
             Cmd::Info => self.show_info(),
+            Cmd::KeyHelp => self.show_key_help(),
             Cmd::About => self.show_about(),
             Cmd::ChooseModFile => self.open_browser(Mode::ChooseMod),
             Cmd::UseKit(kit) => self.use_kit(kit),
@@ -943,8 +946,7 @@ impl App {
                                 ui.close();
                             }
                         });
-                        // Last in the bar. An item is one line of the list: Keyboard Shortcuts
-                        // (task-105) goes above About.
+                        // Last in the bar. An item is one line of `HELP_ITEMS`.
                         ui.menu_button("Help", |ui| {
                             for (text, c) in HELP_ITEMS {
                                 if item(ui, text, None) {
@@ -962,7 +964,10 @@ impl App {
 }
 
 /// The items of the Help menu, in order.
-const HELP_ITEMS: &[(&str, Cmd)] = &[("About OpenRB-338...", Cmd::About)];
+const HELP_ITEMS: &[(&str, Cmd)] = &[
+    ("Keyboard Shortcuts...", Cmd::KeyHelp),
+    ("About OpenRB-338...", Cmd::About),
+];
 
 /// A menu item with its shortcut; true when clicked (the menu closes).
 fn item(ui: &mut Ui, text: &str, shortcut: Option<&egui::KeyboardShortcut>) -> bool {
