@@ -4,9 +4,10 @@ title: >-
   Commit assets/Standard.rbm ("Standard ReBirth") and embed it in rb as the
   built-in kit
 status: To Do
-assignee: []
+assignee:
+  - '@agent-complex'
 created_date: '2026-10-27 11:21'
-updated_date: '2026-10-28 09:19'
+updated_date: '2026-10-28 09:28'
 labels:
   - rbm
   - cli
