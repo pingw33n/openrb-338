@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 10:12'
-updated_date: '2026-10-28 10:19'
+updated_date: '2026-10-28 11:55'
 labels:
   - tools
   - ui
@@ -48,4 +48,6 @@ What:
 
 <!-- SECTION:NOTES:BEGIN -->
 User decisions (2026-10-28): no signing or notarization at all: drop the signing hooks, keep only ad-hoc codesign if the app needs it to launch on Apple Silicon (it does for arm64 binaries), and document Gatekeeper's right-click > Open. Both architectures: the universal app covers amd64 and arm64 in one .dmg; if a universal binary is impractical, make two .dmgs (-arm64, -x86_64).
+
+The user (2026-10-28): with the unbundled binary (task-104) the Dock tooltip and Activity Monitor name show OpenRB-338, but Activity Monitor shows the generic executable (terminal) icon: it takes the icon from the bundle (CFBundleIconFile), which an unbundled binary does not have; the Dock icon comes from eframe's runtime icon. Check in this task that Activity Monitor shows the app icon for the bundled app, and also provide a dev script (e.g. scripts/macos-dev-app.sh) that wraps target/release/OpenRB-338 into a local OpenRB-338.app for everyday runs, so the icon is right without building the .dmg.
 <!-- SECTION:NOTES:END -->
