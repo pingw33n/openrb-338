@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-29 14:49'
+updated_date: '2026-10-29 15:06'
 labels:
   - decision
   - rbm
@@ -49,3 +50,9 @@ Acceptance: the user's choice is recorded here with the date. If it is not A, a 
 <!-- AC:BEGIN -->
 - [ ] #1 The user's choice is recorded with the date, and a follow-up task exists when needed
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supervisor, 2026-10-29: the user removed DJ Turn's 8-Track.rbm (the identical copy of 8tRack.rbm) from ~/rb-mods/mods, so 4 duplicate pairs remain: AXIOM, dejenerate, Alpha 2.0 and AlpJunUV. The manifest entry is dropped in task-149.
+<!-- SECTION:NOTES:END -->
