@@ -6,7 +6,7 @@ engine, task-047 adds the menu). It describes the original, not its art: rb draw
 graphics at these positions. Written for task-041 (2026-10-27).
 
 **Sources.**
-- `Rebirth.exe` in IDA (`ida/Rebirth.exe.i64`, headless copy, read-only). The panel is a tree of
+- `Rebirth.exe` in IDA (`Rebirth.exe.i64`, headless copy, read-only). The panel is a tree of
   views with RTTI names (`CTransportView`, `CTB303View`, `CTR808View`, `CBitmapKnob`, ...). Each
   view has a layout method (vtable slot 22) that places its children with `sub_47E10F(x, y)`
   (move) or `sub_47E04C(x, y, w, h)` (frame), relative to the parent; a constructor that creates
@@ -1195,7 +1195,7 @@ the mod object's word `+1088` is 1 (`movsx ecx, word ptr [eax+440h]` at 0x426C6E
 0x426C78) and "Play Mod Startup Sound" is on (`sub_4098C3`, called at 0x426C85). Every caller
 calls it right after `sub_416300` has opened the mod for the song, which increments `+1088`
 (0x416452): 1 means that no other open song uses the mod. Its five callers, read in the
-disassembly (IDA's cross references, each re-read with llvm-objdump on `original/Rebirth.exe`):
+disassembly (IDA's cross references, each re-read with llvm-objdump on the installed `Rebirth.exe`):
 
 | Call | Caller | Path |
 |---|---|---|

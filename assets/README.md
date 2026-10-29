@@ -19,18 +19,18 @@ original.
 Made with:
 
 ```
-rb mod pack-standard --rebirth-dll original/ReBirth.dll --rebirth-exe CD/Rebirth.exe \
+rb mod pack-standard --rebirth-dll PATH/ReBirth.dll --rebirth-exe CD/Rebirth.exe \
     -o assets/Standard.rbm
 ```
 
 | File | Size | SHA-256 |
 |---|---|---|
-| `original/ReBirth.dll` (ReBirth 2.01, installed) | | `4c3a6441a2cd50f797d99b1c5b6cf0aaf198c7ad8ca2648196b530c2e3e58b12` |
+| `ReBirth.dll` (ReBirth 2.01, installed; also on the CD) | 2,472,960 | `4c3a6441a2cd50f797d99b1c5b6cf0aaf198c7ad8ca2648196b530c2e3e58b12` |
 | `Rebirth.exe` of the ReBirth CD (from the CAB at file offset 0x30266C of `Install ReBirth RB-338.exe`, extracted with bsdtar; not committed) | 1,606,656 | `e69fef4153856f4ad985797a3f312a0027633c00f835c3348415b031bbd87004` |
 | `assets/Standard.rbm` | 2,572,792 | `6355b5f14fc2ebfe7ed9e6e42208f97817f96c5e30ed42fdca4205d3cdab5fbe` |
 
-The CD's exe gives the splash without the Steinberg logo that `original/Rebirth.exe` (patched,
-installed) carries; the 58 panel bitmaps are the same in both. The build is deterministic: with
+The CD's exe gives the splash without the Steinberg logo that the installed `Rebirth.exe` (patched,
+`6a651e8164b8444a5f0639cb6a2fef2aa43c5500bd9c5288627c2030b047f876`, 1,594,880 bytes) carries; the 58 panel bitmaps are the same in both. The build is deterministic: with
 `RB_CD_ISO` naming the CD image, `cargo test --release -p rb-cli --test standard_mod` takes the
 DLL and the exe from it (`rb-testkit`, task-121), rebuilds the file and checks it byte for byte.
 `rb mod pack-standard --iso CD.iso -o FILE` (task-065, docs/rbm.md 16) reads both files straight

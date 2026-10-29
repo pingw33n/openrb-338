@@ -1,7 +1,7 @@
 //! Shared by the CLI tests: the repository root and the standard mod, the committed
 //! `assets/Standard.rbm` that rb embeds as its built-in kit (task-067; none of the tests needs
-//! `original/` or the CD; those that build the mod take the CD's files from the CD image, by
-//! `rb-testkit`, and skip without `RB_CD_ISO`).
+//! the original's files or the CD; those that build the mod take the CD's files from the CD image,
+//! by `rb-testkit`, and skip without `RB_CD_ISO`).
 
 #![allow(dead_code)]
 
@@ -27,7 +27,7 @@ pub fn standard_mod() -> &'static Path {
 
 /// `ReBirth.dll` or `Rebirth.exe` of the CD image (`RB_CD_ISO`, extracted once per process by
 /// `rb-testkit`), or `None` (with the "skipped" line) when it is not set. The DLL is byte for
-/// byte the one of `original/`; the exe is the CD's, not the patched one of `original/`.
+/// byte the installed one; the exe is the CD's, not the patched installed one.
 pub fn original(name: &str) -> Option<PathBuf> {
     let cd = rb_testkit::cd_files()?;
     match name {

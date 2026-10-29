@@ -26,7 +26,7 @@ Rules that always apply:
   - All of that goes in your one commit: the task goes from To Do to Done in it. The branch holds one commit for the task, and review fixes amend it.
   - Never edit a file under backlog/ by hand.
 - **Worktree.** You work in your own git worktree on your own branch. Never touch the user's checkout.
-- **Protected files.** Never edit original/ (the original program), the IDA databases in ida/ (both local and untracked, absent in your worktree), or a committed reference render by hand.
+- **Protected files.** Never save or modify the user's IDA databases (local, not in the repository), or edit a committed reference render by hand.
 - **Stop instead of guessing.** If the task turns out to need an engine change, a disassembly reading, or a judgment the task does not settle, stop. Write what you found in the task's notes and report it.
 - **Commit messages.** Code needs `cargo test`; a tool needs one run of it; docs need nothing. Say which in the commit message, which has the sections Change, Result, Testing and Task (root AGENTS.md).
 - **Editing and the shell.** Edit source with the Edit/Write tools, not sed or python. The shell is fish: quote arguments, and put multi-step sequences in a bash script file. Use /usr/bin/python3 for the tools.

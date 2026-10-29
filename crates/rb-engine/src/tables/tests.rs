@@ -213,7 +213,7 @@ struct Dll {
 }
 
 impl Dll {
-    /// The DLL of the CD image (`RB_CD_ISO`, by `rb-testkit`; byte for byte `original/`'s), or
+    /// The DLL of the CD image (`RB_CD_ISO`, by `rb-testkit`; byte for byte the installed one), or
     /// `None` (a skip with the message) when it is not set.
     fn open() -> Option<Self> {
         let cd = rb_testkit::cd_files()?;

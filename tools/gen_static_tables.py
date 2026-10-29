@@ -1,7 +1,10 @@
 #!/usr/bin/python3
 """Generate crates/rb-engine/src/tables/data.rs, the engine's static tables, from the DLL.
 
-    gen_static_tables.py [--dll original/ReBirth.dll] [-o crates/rb-engine/src/tables/data.rs]
+    gen_static_tables.py --dll PATH/ReBirth.dll [-o crates/rb-engine/src/tables/data.rs]
+
+--dll defaults to the environment variable RB_REBIRTH_DLL. The DLL is the one of your ReBirth 2.01
+installation (SHA-256 4c3a6441...8b12), or the one on the CD (RB_CD_ISO, rb-testkit).
 
 Reads each table from ReBirth.dll by virtual address through the PE section map (image base
 0x10000000), writes the Rust constants and formats the file with rustfmt. The unit test
@@ -73,7 +76,7 @@ ITEMS = [
 HEADER = """\
 //! The engine's static tables, as the original stores them in ReBirth.dll's data.
 //!
-//! Generated from `original/ReBirth.dll` by `tools/gen_static_tables.py`; the unit test
+//! Generated from ReBirth.dll by `tools/gen_static_tables.py`; the unit test
 //! `static_tables_match_dll` reads every table back from the DLL by file offset and asserts it
 //! equals these constants bit for bit. An f32 value is written as the shortest decimal that
 //! parses to the same f32. Addresses are virtual addresses in the DLL (image base 0x10000000).
@@ -152,13 +155,15 @@ def generate(dll):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--dll", default=os.path.join(ROOT, "original", "ReBirth.dll"))
+    ap.add_argument("--dll", default=os.environ.get("RB_REBIRTH_DLL"),
+                    help="ReBirth.dll (default: $RB_REBIRTH_DLL)")
     ap.add_argument("-o", "--out", default=os.path.join(ROOT, "crates", "rb-engine", "src", "tables", "data.rs"))
     args = ap.parse_args()
+    if not args.dll:
+        sys.exit("gen_static_tables.py: no DLL. Pass --dll PATH/ReBirth.dll (your ReBirth 2.01 "
+                 "installation) or set RB_REBIRTH_DLL.")
     if not os.path.isfile(args.dll):
-        sys.exit("gen_static_tables.py: %s not found. original/ is local and untracked: put the "
-                 "ReBirth.dll of your installation there (original/README.md), or pass --dll."
-                 % args.dll)
+        sys.exit("gen_static_tables.py: %s not found." % args.dll)
     text = generate(Pe(args.dll))
     with open(args.out, "w") as f:
         f.write(text)

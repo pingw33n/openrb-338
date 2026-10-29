@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-27 10:07'
-updated_date: '2026-10-29 07:28'
+updated_date: '2026-10-29 07:51'
 labels:
   - tools
   - tests
@@ -38,10 +38,10 @@ Also remove text.s (added by mistake in commit 3389512, a 3.4 MB llvm-objdump di
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No commit in the rewritten history (local and origin) contains original/Rebirth.exe, original/ReBirth.dll or anything under ida/; a fresh clone shows none
+- [x] #1 No commit in the rewritten history (local and origin) contains original/Rebirth.exe, original/ReBirth.dll or anything under ida/; a fresh clone shows none
 - [x] #2 The files stay on disk, are ignored by git, and original/README.md says what to put there; a backup of the pre-rewrite repository exists and its location is recorded
 - [x] #3 Tests and tools work with the files present and skip with a clear message when absent; AGENTS.md and the agent brief describe original/ and ida/ as local; cargo test --release passes
-- [ ] #4 text.s and any other disassembly or binary derived from the original (except the approved embedded key window) are gone from the history
+- [x] #4 text.s and any other disassembly or binary derived from the original (except the approved embedded key window) are gone from the history
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -100,6 +100,24 @@ Exact filter-repo call for the supervisor:
 Use the four file paths, not the directories original/ and ida/: this commit adds original/README.md and ida/README.md, which the directories would delete from the new history. git log --all --name-only -- original ida text.s shows exactly these five paths. The screenshots above are not in the list; add them (--path docs/test_machine/ --path docs/ui_spec/ plus the markdown links in docs/test_machine.md and docs/ui_spec.md) only if the user decides so.
 
 Review round 1 (send back, 3 fixes): (1) backup recorded: the supervisor made it on 2026-10-29 09:3x at ~/rb-backup-2026-10-29/: rb.git (git clone --mirror of the local repo at fc03593, all branches including worktree-ui-poc), original/ and ida/ copied with cp -Rp, original.sha256 and ida.sha256 listing every file; the IDA GUI is closed. AC #2 stays checked. (2) removed the stale original/** -text rule and its comment from .gitattributes. (3) original/README.md no longer says the tests compare against the files.
+
+Phase 2, supervisor, 2026-10-29:
+- Backup: ~/rb-backup-2026-10-29/ holds rb.git, a git clone --mirror at fc03593 with all branches including worktree-ui-poc and the old history, plus original/ and ida/ copied with cp -Rp, and original.sha256 / ida.sha256.
+- Phase 1 was merged as bdb65be (old hash). original/ and ida/ were copied out and back, and every file passed shasum -c against the backup lists.
+- The ui-poc worktree and branch were removed (user's decision), along with the phase-1 agent worktree.
+- git filter-repo 2.47.0 (brew) ran with --invert-paths --path original/Rebirth.exe --path original/ReBirth.dll --path ida/Rebirth.exe.i64 --path ida/ReBirth.dll.i64 --path text.s, plus a commit callback that adds LICENSE (blob f288702d, the verbatim GPLv3) to the root commit (the user's request of 2026-10-29).
+- Result: 222 commits, and the new root 59aaab1 contains LICENSE.
+  - git log --all on the five paths is empty, and the four old blobs (1563dbb5, 50ad82d1, a83bad73, d0b29541) are absent.
+  - The tree of HEAD^ differs from the backup's fc03593 only by the four removed files.
+  - .git went from 64 MB to 23 MB.
+  - cargo test --release passed 586, failed 0, ignored 3; backlog doctor was clean.
+- Force-pushed with --force-with-lease=main:9866fc1 after the user confirmed (9866fc1...35a40e7). A fresh clone of github.com/pingw33n/rb shows 222 commits, no hits for the five paths, none of the four blobs, and LICENSE in the root; ls-remote shows only main.
+- Left over: GitHub may keep the old commits reachable by hash for a while (cached views). To purge them, ask GitHub Support to remove cached views for the repository, or recreate the repository.
+- docs/ and backlog/ text still cite some old commit hashes; filter-repo rewrote the ones in commit messages, not those in file contents.
+
+2026-10-29, user request (branch worktree-agent-a5cf9f52f3f3e46c0): remove the original/ and ida/ folders and every mention of them from the repository; the user's local folders stay on disk, task files unchanged. Removed: original/README.md, ida/README.md, their .gitignore rules; mentions rewritten in AGENTS.md, .claude/agents, doc-001, docs, assets/README.md, code comments; tools/gen_static_tables.py now requires --dll or RB_REBIRTH_DLL. git grep for original/ and ida/ outside backlog/tasks is empty. fmt, clippy, shellcheck, actionlint clean; cargo test --release 586 pass 0 fail with and without RB_CD_ISO.
+
+Review round 1 (2026-10-29): restored the facts lost with original/README.md (installed ReBirth.dll 2,472,960 bytes and the full SHA-256 of the installed Rebirth.exe) in docs/rbm.md 13.1 and assets/README.md; the IDA databases path is given by the supervisor in each prompt (doc-001, agent-complex.md); subject area changed to docs:; rebased onto 9ad4543.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

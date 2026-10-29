@@ -26,7 +26,7 @@ Rules that always apply:
   - All of that goes in your one commit: the task goes from To Do to Done in it. The branch holds one commit for the task, and review fixes amend it.
   - Never edit a file under backlog/ by hand.
 - **Worktree.** You work in your own git worktree on your own branch. Never touch the user's checkout.
-- **IDA.** Use it through the idalib MCP tools only, on a headless copy of the database in your scratchpad, read-only, closed with save=false (doc-001). Never edit original/, ida/ (local and untracked: they are on the user's machine, absent in a fresh worktree; copy the database from the main checkout's ida/, reading only), or a committed reference render.
+- **IDA.** Use it through the idalib MCP tools only, on a headless copy of the database in your scratchpad, read-only, closed with save=false (doc-001). Never save or modify the user's IDA databases (local, not in the repository; the databases live outside the repository and the supervisor gives their path in your prompt; without a path, ask the supervisor and do not search the disk; copy one, reading only; IDA needs no exe or dll next to it), and never edit a committed reference render.
 - **The disassembly is the reference.** Hex-Rays is a second opinion. For engine code, check the exact x87 operand order, every f32 store (rounding point) and every integer conversion against the disassembly.
 - **Engine numerics.** Compute in f64, round to f32 exactly where the original stores, use no FMA, and keep the operand order.
 - **Testing.** A behavior change of the engine is checked against the reference corpus with the comparator. Unit tests come with each piece. State the corpus result in the commit message.

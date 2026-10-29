@@ -48,7 +48,8 @@ pub fn song(entry: &Value) -> Song {
 }
 
 /// The built-in samples: the kit rb embeds (`assets/Standard.rbm`, the samples of the
-/// original's ReBirth.dll byte for byte; task-067), so the corpus tests need no `original/`.
+/// original's ReBirth.dll byte for byte; task-067), so the corpus tests need no file of the
+/// original.
 pub fn samples() -> Arc<SampleSet> {
     rbm::standard::builtin_samples()
 }

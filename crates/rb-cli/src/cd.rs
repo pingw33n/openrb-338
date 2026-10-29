@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 pub const INSTALLER: &str = "Install ReBirth RB-338.exe";
 /// The key file at the root of the CD.
 pub const DAT: &str = "RB20FUL.DAT";
-/// ReBirth.dll of the 2001 reissue CD's installer (identical to `original/ReBirth.dll`).
+/// ReBirth.dll of the 2001 reissue CD's installer (identical to the installed ReBirth 2.01 DLL).
 pub const DLL_SHA256: &str = "4c3a6441a2cd50f797d99b1c5b6cf0aaf198c7ad8ca2648196b530c2e3e58b12";
 /// Rebirth.exe of the same installer (docs/rbm.md 13.1).
 pub const EXE_SHA256: &str = "e69fef4153856f4ad985797a3f312a0027633c00f835c3348415b031bbd87004";

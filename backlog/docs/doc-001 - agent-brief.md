@@ -3,7 +3,7 @@ id: doc-001
 title: agent-brief
 type: guide
 created_date: '2026-10-26 09:03'
-updated_date: '2026-10-29 07:18'
+updated_date: '2026-10-29 07:51'
 ---
 The shared brief for agents working on rb, the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. Read in this order:
 1. The root `AGENTS.md` (the backlog and commit rules).
@@ -36,8 +36,7 @@ You work in your own git worktree on your own branch, and everything is relative
 
 | Path | Contents |
 |---|---|
-| `original/` | **Local and untracked** (git-ignored, copyrighted; only `original/README.md` is in git). The original program byte for byte (`Rebirth.exe`, `ReBirth.dll`), on the user's machine in the main checkout and in the test machine's setup; it is absent in your worktree. Never edit it. Its IDA working files (`*.id0` …) belong to the user's open IDA. No test or tool may need it: the tests take the same files from the CD image (`RB_CD_ISO`, rb-testkit) and skip with a message when it is not set. |
-| `ida/` | **Local and untracked** (git-ignored; only `ida/README.md` is in git), absent in your worktree. The IDA databases: `Rebirth.exe.i64` (the UI, song loading, the export driver, the RBM container) and `ReBirth.dll.i64` (the engine). They are references and are not edited by agents. Take a copy from the main checkout's `ida/`, reading only. |
+| the IDA databases | **Not in the repository**, absent in your worktree: the user's local IDA databases of the original program, `Rebirth.exe.i64` (the UI, song loading, the export driver, the RBM container) and `ReBirth.dll.i64` (the engine). IDA opens a `.i64` by itself and needs no exe or dll next to it. They are references: agents never save or modify them. They live outside the repository; the supervisor gives their path in each agent's prompt, and an agent without a path asks the supervisor and does not search the disk. Take a copy, reading only; the IDA working files (`*.id0` …) belong to the user's open IDA. The original program itself (`Rebirth.exe`, `ReBirth.dll`) is not in the repository and no test or tool may need it: the tests take the same files from the CD image (`RB_CD_ISO`, rb-testkit) and skip with a message when it is not set. |
 | `docs/` | Knowledge documents, edited like source. `RBS42.txt` is the official RBS file format; `initial_investigation.md` holds the engine's facts. New facts about the original go into a document here, in the same commit as the task. `original_bugs.md` lists the defects of the original: a newly found defect goes into `docs/original_bugs.md` as well as its home document. |
 | `tools/` | Python tools: the test-machine runners, the `.rbs` writer, the comparator and the like. |
 | `tests/` | Test songs and reference renders (their storage is decided in a `Decide:` task). |
@@ -48,7 +47,7 @@ You work in your own git worktree on your own branch, and everything is relative
 Use the idalib MCP tools only. Never drive IDA from the shell, and never use the user's GUI session.
 
 **Opening a database.**
-1. Copy the database into your scratchpad subdirectory (`cp <main checkout>/ida/ReBirth.dll.i64 <scratch>/`; `ida/` is untracked, so your worktree has none, and the main checkout's file is only read).
+1. Copy the database into your scratchpad subdirectory (`cp <path from the supervisor's prompt>/ReBirth.dll.i64 <scratch>/`; the databases are not in the repository, so your worktree has none, and the user's file is only read).
 2. Open the copy with `idb_open(input_path=<copy>, mode="force_headless")`.
 3. Close it with `idb_close(save=false)` when you are done.
 

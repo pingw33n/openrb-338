@@ -26,7 +26,7 @@ Rules that always apply:
   - All of that goes in your one commit: the task goes from To Do to Done in it. The branch holds one commit for the task, and review fixes amend it.
   - Never edit a file under backlog/ by hand.
 - **Worktree.** You work in your own git worktree on your own branch. Never touch the user's checkout.
-- **Protected files.** Never edit original/ or the IDA databases in ida/ (both are local and untracked: absent in your worktree, present on the user's machine). A committed reference render changes only through the capture script named in the corpus manifest.
+- **Protected files.** Never save or modify the user's IDA databases (local, not in the repository). A committed reference render changes only through the capture script named in the corpus manifest.
 - **IDA.** If you need it, use it through the idalib MCP tools only, on a headless copy in your scratchpad, read-only (doc-001).
 - **Engine DSP.** Prefer not to change the engine's DSP: what it would need goes into a follow-up task for @agent-complex.
 - **Testing.** Code needs `cargo test`; a tool needs one run on a real song, with the output in the notes; docs need nothing. Say which in the commit message, which has the sections Change, Result, Testing and Task (root AGENTS.md).

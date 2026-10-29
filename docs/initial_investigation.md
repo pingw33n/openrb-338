@@ -8,8 +8,8 @@ only needs a similar look and feel. MIDI, ReWire and the realtime audio drivers 
 Sources:
 - `/Volumes/downloads/rebirth_2.01_manual.pdf`, the user manual. It describes behaviour but has no DSP numbers.
 - `docs/RBS42.txt`, the official RBS 4.2 file format.
-- An IDA survey of `original/Rebirth.exe` (GUI database) and `original/ReBirth.dll`. The DLL has a
-  headless database at `ida/ReBirth.dll.i64`.
+- An IDA survey of `Rebirth.exe` (GUI database) and `ReBirth.dll`. The DLL has a
+  headless database in `ReBirth.dll.i64` (the user's local IDA database).
 
 Every address below is a virtual address: `0x10xxxxxx` is in ReBirth.dll (image base 0x10000000) and
 `0x4xxxxx` is in Rebirth.exe. **[C]** means confirmed in the disassembly. **[G]** means guessed or

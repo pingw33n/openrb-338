@@ -602,7 +602,7 @@ fn the_real_image_holds_the_known_files() {
     let dll = cd::read_checked(&inst, "ReBirth.dll", cd::DLL_SHA256).unwrap();
     let exe = cd::read_checked(&inst, "Rebirth.exe", cd::EXE_SHA256).unwrap();
     assert_eq!(exe.len(), 1_606_656);
-    // (the DLL's hash is the one of original/ReBirth.dll, checked by read_checked)
+    // (the DLL's hash is the one of the installed ReBirth.dll, checked by read_checked)
     drop(dll);
     assert_eq!(
         cd::shipped_mods(&inst),

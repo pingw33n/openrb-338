@@ -4,7 +4,7 @@
 use rb_engine::samples::{self, PADDING, Sample, SampleError, SampleSet};
 
 /// `ReBirth.dll` or `Rebirth.exe` of the CD image (`RB_CD_ISO`, by `rb-testkit`), or `None` (a
-/// skip with the message) when it is not set. The DLL is byte for byte the one of `original/`.
+/// skip with the message) when it is not set. The DLL is byte for byte the installed one.
 fn original(name: &str) -> Option<Vec<u8>> {
     let cd = rb_testkit::cd_files()?;
     let p = match name {

@@ -1,12 +1,5 @@
-# The original program and its IDA databases are copyrighted: local, never in git
-# (original/README.md and ida/README.md say what goes there). This also covers IDA's
-# working files of an open database (*.id0 ...), which sit next to the .i64.
-/original/*
-!/original/README.md
-/ida/*
-!/ida/README.md
-
-# IDA's working files of an open database anywhere else (unpacked from the .i64)
+# IDA databases of the original program are made from copyrighted files: never in git. This
+# also covers IDA's working files of an open database (unpacked from the .i64)
 *.id0
 *.id1
 *.id2

@@ -1,6 +1,6 @@
 //! The engine's static tables, as the original stores them in ReBirth.dll's data.
 //!
-//! Generated from `original/ReBirth.dll` by `tools/gen_static_tables.py`; the unit test
+//! Generated from ReBirth.dll by `tools/gen_static_tables.py`; the unit test
 //! `static_tables_match_dll` reads every table back from the DLL by file offset and asserts it
 //! equals these constants bit for bit. An f32 value is written as the shortest decimal that
 //! parses to the same f32. Addresses are virtual addresses in the DLL (image base 0x10000000).

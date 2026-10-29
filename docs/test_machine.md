@@ -19,7 +19,7 @@ Commands below use `rcs` for `~/dev/dcre/common/tools/rcs_client.py`.
 The installation holds:
 
 ```
-Rebirth.exe, ReBirth.dll          the original program (same bytes as original/)
+Rebirth.exe, ReBirth.dll          the original program (same bytes as the local installation)
 ReBirth manual.pdf, ReBirth.hlp, ReBirth.cnt, ReadMe.rtf, ReWire.dll_, ReWire.reg
 Default Songs\   ReBirth 1.0 Default Song.rbs, Silent Default Song.rbs, Read Me.txt
 Demo Songs\      16 .rbs songs
@@ -274,7 +274,7 @@ image of the ReBirth 2.01 CD, the crate extracts the four originals (and `RB20FU
 `ReBirth.dll`, `Rebirth.exe`) once per test process, checks each against its SHA-256, recrypts the
 four mods and checks the result against the second table. The tests have no other input of the
 original program: no `RB_RB20FUL`, `RB_MOD_DIR`, `RB_MOD_ORIG_DIR` or `RB_CD_REBIRTH_EXE`, and no
-`original/`. The user's third-party files are the other two variables,
+file of the installed program. The user's third-party files are the other two variables,
 `RB_THIRDPARTY_MODS_DIR` (recrypted mods) and `RB_THIRDPARTY_SONGS_DIR` (songs); see AGENTS.md.
 
 ## 8. The export runner `tools/rb_export.py` (task-008)

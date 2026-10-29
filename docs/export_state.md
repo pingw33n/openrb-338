@@ -2,7 +2,7 @@
 
 What Rebirth.exe does with ReBirth.dll in real time, around an "Export Loop as Audio File", and which
 engine state reaches the first exported sample. Traced for task-004 in headless copies of
-`ida/Rebirth.exe.i64` and `ida/ReBirth.dll.i64` (2026-10-26). `0x4xxxxx` is the exe, `0x10xxxxxx` the
+`Rebirth.exe.i64` and `ReBirth.dll.i64` (2026-10-26). `0x4xxxxx` is the exe, `0x10xxxxxx` the
 DLL. **[C]** is checked in the disassembly; **[G]** is a guess or only partly traced. The message
 names (msg 33, 35, 52, ...) are those of `docs/song_load.md` §1 and `docs/initial_investigation.md`
 §5.2; "top-level" messages are the first packet byte, "song" messages are inside a type-78 packet.

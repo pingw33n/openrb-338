@@ -1,7 +1,7 @@
 # RBM mods: the container, the key table and the sample lookup
 
 How ReBirth RB-338 2.01 reads a mod (`.rbm`) and hands its samples to the engine, found out in
-task-030 (2026-10-27). Addresses `0x4xxxxx` are `Rebirth.exe` (the IDA database of `original/`),
+task-030 (2026-10-27). Addresses `0x4xxxxx` are `Rebirth.exe` (the IDA database `Rebirth.exe.i64`),
 `0x10xxxxxx` are `ReBirth.dll`. [C] marks what was read in the disassembly and checked on real
 files; [G] marks an inference. The reference implementation is `tools/rbm.py` (tests:
 `tools/rbm_test.py`); `tools/rbhost` loads a mod into the original DLL (`run.py --mod`).
@@ -695,9 +695,10 @@ So the mods' `<id>.jpg` is the exe's JPEG resource `<id>`, `splash.jpg` is resou
 a mod lacks falls back to the built-in bitmap one by one.
 
 **The CD's Rebirth.exe** (the ReBirth CD's installer, SHA-256 `e69fef41...7004`, 1,606,656 bytes;
-extracted from the CAB in `Install ReBirth RB-338.exe` with `bsdtar`) and the installed one in
-`original/` (`6a651e81...f876`, 1,594,880 bytes) have the same 58 panel bitmaps byte for byte; the
-four splash and about screens 900, 901, 903 and 905 differ: `original/`'s carry a Steinberg logo
+extracted from the CAB in `Install ReBirth RB-338.exe` with `bsdtar`) and the installed one
+(SHA-256 `6a651e8164b8444a5f0639cb6a2fef2aa43c5500bd9c5288627c2030b047f876`, 1,594,880 bytes;
+the installed ReBirth.dll is 2,472,960 bytes) have the same 58 panel bitmaps byte for byte; the
+four splash and about screens 900, 901, 903 and 905 differ: the installed one's carry a Steinberg logo
 next to Propellerhead's, the CD's do not. So the standard mod's panel is the same from either exe,
 and its `splash.jpg` is the one of the exe it was built from (the CD's gives a 2,572,792-byte mod).
 Nothing of it reaches the audio.
@@ -732,8 +733,8 @@ the embedded window exactly as `rb mod recrypt` output: both key pages are `W`, 
 
 | Built from | Size | SHA-256 |
 |---|---|---|
-| `original/ReBirth.dll` (`4c3a6441...8b12`) and the CD's Rebirth.exe (`e69fef41...7004`): **`assets/Standard.rbm`** | 2,572,792 | `6355b5f14fc2ebfe7ed9e6e42208f97817f96c5e30ed42fdca4205d3cdab5fbe` |
-| `original/ReBirth.dll` and `original/Rebirth.exe` | 2,574,060 | `c8752965...9324` |
+| the installed `ReBirth.dll` (`4c3a6441...8b12`) and the CD's Rebirth.exe (`e69fef41...7004`): **`assets/Standard.rbm`** | 2,572,792 | `6355b5f14fc2ebfe7ed9e6e42208f97817f96c5e30ed42fdca4205d3cdab5fbe` |
+| the installed `ReBirth.dll` and `Rebirth.exe` | 2,574,060 | `c8752965...9324` |
 
 The two differ only in `splash.jpg` (13.1). The gated test
 `crates/rb-cli/tests/standard_mod.rs::the_command_reproduces_the_committed_mod`
@@ -749,7 +750,7 @@ built-in kit, so a song made with the built-in kit and the mod name the same kit
 looks the name up in a mod folder. The mod is for rb only and was not tried in the original app
 in this form (where a mod of that name would stand beside the built-in entry of the Mods menu).
 task-036 built it as "ReBirth Standard Kit", with a description naming `rb standard-mod`
-(2,574,060 bytes from `original/`, SHA-256 `2d732978...f3e5`); 13.3 is that form's app check.
+(2,574,060 bytes from the installed files, SHA-256 `2d732978...f3e5`); 13.3 is that form's app check.
 
 ### 13.3 What the original does with it (test machine, 2026-10-27)
 
@@ -780,7 +781,7 @@ command that reads ReBirth.dll and Rebirth.exe. A song whose GLOB names "Standar
 the embedded kit; a third-party mod's missing slots and `--standard-kit` take its samples. The
 samples are ReBirth.dll's byte for byte, so the corpus is unchanged: 164 of 164 EQUAL with no kit
 option, 175 of 175 with the four recrypted shipped mods (`--mod-dir`). The tests (rb-cli,
-rb-engine's corpus tests, rb-player, OpenRB-338) use the embedded kit and need no `original/`;
+rb-engine's corpus tests, rb-player, OpenRB-338) use the embedded kit and need no file of the original;
 the ones that check the DLL itself or build the mod take the DLL and the exe from the CD image
 (`RB_CD_ISO`, task-121) and skip without it.
 
@@ -918,7 +919,7 @@ draws its own art).
 [G: inferred from the two facts below]. The Mod Selector's OK sends neither [G: inferred, and the
 dialog being active is not traced].** The marks are split:
 - the exe code is [C], read in the disassembly (and the addresses re-read with llvm-objdump on
-  `original/Rebirth.exe`);
+  the installed `Rebirth.exe`);
 - the order of Windows' MDI messages is [C for the test machine's Windows], measured with a probe
   program that mimics the exe's calls, not with Rebirth.exe;
 - the sequence in Rebirth.exe composed from the two is inferred, not observed.
@@ -1120,7 +1121,7 @@ bytes); it and anything read from it are never committed.
   ISO and an MSZIP CAB (`cab` cannot write LZX) in memory: names, paths, windows, the decoy
   `MSCF`, unsafe mod names, a truncated installer, the errors, the option conflicts; gated on
   the real image (`RB_CD_ISO`): the DAT's hash, the two
-  files' hashes (the DLL's is the hash of `original/ReBirth.dll`), the shipped mods equal to their
+  files' hashes (the DLL's is the hash of the installed `ReBirth.dll`), the shipped mods equal to their
   pinned SHA-256s, `pack-standard --iso` equal to `assets/Standard.rbm` (and to the file form),
   `recrypt --iso` equal to the `--rb20ful` form and to the pinned SHA-256s of the recrypted mods.
   `standard_mod.rs`'s reproduction test takes the exe and the DLL from `RB_CD_ISO`. The LZX path is

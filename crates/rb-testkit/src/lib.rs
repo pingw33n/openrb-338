@@ -68,9 +68,9 @@ pub const RECRYPTED_MODS: [(&str, &str); 4] = [
 pub struct CdFiles {
     /// `RB20FUL.DAT`.
     pub dat: PathBuf,
-    /// The installer's `ReBirth.dll` (byte for byte the one of `original/`).
+    /// The installer's `ReBirth.dll` (byte for byte the installed one).
     pub dll: PathBuf,
-    /// The installer's `Rebirth.exe` (the CD's, not the patched one of `original/`).
+    /// The installer's `Rebirth.exe` (the CD's, not the patched installed one).
     pub exe: PathBuf,
     /// The four shipped mods, as shipped.
     pub orig_mods: PathBuf,

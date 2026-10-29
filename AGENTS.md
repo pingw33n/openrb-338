@@ -2,7 +2,7 @@
 
 rb is a reimplementation in Rust of the audio engine of Propellerhead ReBirth RB-338 2.01. It renders an `.rbs` song, optionally with an `.rbm` mod, to audio. The rendered audio must match the original's "Export Loop as Audio File" output sample for sample, within a tolerance set by a `Decide:` task. A UI with a similar look and feel comes after the engine; it does not have to match the original exactly. MIDI and ReWire are out of scope for now.
 
-The original program (`Rebirth.exe`, `ReBirth.dll`) and its IDA databases are not in git: they are copyrighted, so they live only on the user's machine and in the test machine's setup, in `original/` and `ida/`, local and untracked (git-ignored; `original/README.md` says what goes there). rb needs them only for the reverse engineering; the tests take the same files from the CD image (`RB_CD_ISO`, rb-testkit) and skip when it is not set. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
+The original program (`Rebirth.exe`, `ReBirth.dll`) is not in git: it is copyrighted, so it lives only on the user's machine, in their ReBirth installation, and in the test machine's setup. The user's local IDA databases of it (`Rebirth.exe.i64`, `ReBirth.dll.i64`) are not part of the repository either; agents open a copy through the idalib MCP tools (IDA needs no exe or dll next to the `.i64`). rb needs the program only for the reverse engineering; the tests take the same files from the CD image (`RB_CD_ISO`, rb-testkit) and skip when it is not set. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
 
 Planning, progress and decisions live in `backlog/` (Backlog.md). The shared agent brief covers the worktree, IDA, the Windows test machine and its permits, testing and rebasing. It is the backlog doc `agent-brief`: run `backlog doc view doc-001 --plain`, or read its file under `backlog/docs/`.
 
@@ -93,7 +93,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
   `--ordinal` is the queue order. `Draft` holds ideas.
 - **Task ownership.** While a task is assigned to an agent, only that agent edits its file. The supervisor adds the merge comment in the task's squashed commit, pushes main to `origin` (github.com/pingw33n/rb, private) after each merge, and runs `backlog doctor` after the push. Agents never push.
 - **Standing rules.**
-  - Never edit `original/`, `ida/` (both local and untracked) or a committed reference render by hand. Never `git add -f` a file of them, and no test or tool may need them: use `RB_CD_ISO` and skip with a message when it is not set.
+  - Never save or modify the user's IDA databases, and never edit a committed reference render by hand. Never commit an IDA database or its working files, and no test or tool may need the original's exe or dll: use `RB_CD_ISO` and skip with a message when it is not set.
   - Facts about the original carry addresses and are checked against the disassembly, not only Hex-Rays.
   - Engine code computes in f64, rounds to f32 exactly where the original stores a float, uses no FMA, and keeps the original's operand order.
   - An engine change is checked against the reference corpus.
@@ -130,14 +130,14 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, 
   the 46 drum samples of ReBirth.dll and the panel of the CD's Rebirth.exe; assets/README.md),
   so `render`, `compare`, `play` and OpenRB-338 (the UI) need no kit option, variable or file
   (`--standard-mod` and `RB_STANDARD_MOD` are gone). `rb mod pack-standard --rebirth-dll
-  original/ReBirth.dll --rebirth-exe CD-Rebirth.exe -o assets/Standard.rbm` rebuilds it byte for
+  PATH/ReBirth.dll --rebirth-exe CD-Rebirth.exe -o assets/Standard.rbm` rebuilds it byte for
   byte (the one command that reads ReBirth.dll and Rebirth.exe; `--iso` reads them from the CD
   image, and the gated test takes them from it; docs/rbm.md 13).
 - External test inputs: the tests read exactly three variables, and every test that needs one
   skips with a message when it is not set (CI sets none). `RB_CD_ISO` is the ReBirth 2.01 CD
   image: the crate `rb-testkit` takes from it, once per test process, the DAT, `ReBirth.dll`,
   `Rebirth.exe` and the four shipped mods (each checked against its pinned SHA-256) and the four
-  mods recrypted (pinned too), so no test needs `original/`, `RB20FUL.DAT` or a mod folder.
+  mods recrypted (pinned too), so no test needs the original's files, `RB20FUL.DAT` or a mod folder.
   `RB_THIRDPARTY_MODS_DIR` is the user's folder of RECRYPTED third-party mods and
   `RB_THIRDPARTY_SONGS_DIR` the user's folder of songs, both read in place (docs/rbm.md 11):
   `cargo test --release -p rb-cli --test thirdparty -- --nocapture`. The mods test checks the

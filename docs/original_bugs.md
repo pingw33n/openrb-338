@@ -8,7 +8,7 @@ goes into this file as well as into its home document**, and the home document l
 Fields: **What**, **Where** (addresses), **Trigger** (the song data or action that reaches it),
 **Effect**, **Corpus** (the songs in `tests/songs` that reach it), **rb** (the model: file and
 function, and any deliberate deviation), and a mark: [C] confirmed in the disassembly (every
-address here was re-read with `llvm-objdump` on `original/`), [G] guessed or inferred.
+address here was re-read with `llvm-objdump` on the installed exe and dll), [G] guessed or inferred.
 
 Entries are numbered OB-n. "Quirks" at the end are behaviors that are odd but not defects, or whose
 status is a judgment call.
@@ -471,7 +471,7 @@ See OB-8 for the unclean buffer.
   then sends 53 for the changed song (0x42E5AE) [G: inferred, not observed in Rebirth.exe].
 - **Where.** `sub_42D80D` (0x42D886 mark, 0x42D892 `sub_473401` deletes, 0x42D8BE new window);
   `sub_49617E` (0x49625C `push 221h`); `sub_494DF1` (0x494E20 `call [edx+38h]`); 0x42D7DD;
-  0x42E5AE. All re-read with llvm-objdump on `original/Rebirth.exe`.
+  0x42E5AE. All re-read with llvm-objdump on the installed `Rebirth.exe`.
 - **Trigger.** Two or more songs open; a mod chosen from the Mods menu (command `5000 + i`, the
   frame active). The Mod Selector's OK runs the same code while the dialog is up. The probe
   tested an owned popup being the active window, and then the other child got no WM_NCACTIVATE 1.

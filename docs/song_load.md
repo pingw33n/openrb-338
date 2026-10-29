@@ -1,7 +1,7 @@
 # Song load: from `.rbs` to engine messages
 
 How Rebirth.exe turns an `.rbs` file into messages to the engine in ReBirth.dll, and what the engine
-does with them. Traced for task-003 in `ida/Rebirth.exe.i64` and `ida/ReBirth.dll.i64` (2026-10-26).
+does with them. Traced for task-003 in `Rebirth.exe.i64` and `ReBirth.dll.i64` (2026-10-26).
 `0x4xxxxx` is the exe, `0x10xxxxxx` the DLL. **[C]** is checked in the disassembly; **[G]** is a
 guess or only partly traced. `docs/RBS42.txt` is the file format; its errors are listed in §10.
 
@@ -155,7 +155,7 @@ Msg 35 is `{id, value}`: one value byte, except ids 4, 8, 12 and 16, which carry
 `sub_10018AC0` sets it to 1 (0x10018AEA); it is written only by msg 35 id 22 (0x100126A7, the
 switch's case 22 at 0x100126A1) and msg 36 (0x100127E0); the only read is the msg 21 reply's
 pack `sub_10018B00` (0x10018B8B), which echoes it to the exe. A scan of the whole DLL
-(`llvm-objdump` of `original/ReBirth.dll`) finds no other `+0x16E` displacement and no other
+(`llvm-objdump` of the installed `ReBirth.dll`) finds no other `+0x16E` displacement and no other
 byte access at `+0x16` outside the globals struct's own functions (`sub_10018AC0`,
 `sub_10018B00`, `sub_10018BA0`) and the parameter-block functions of other structs; msg 20's
 query answers only ids 0..2 (switch at 0x10011FC2). The exe always sends 1. What the exe means by
@@ -795,7 +795,7 @@ Still open:
 ## 12. ReBirth 1.x songs: the MIDI-file import (task-060) [C]
 
 ReBirth 1.x saved its songs as a Standard MIDI File with the `.rbs` extension (`MThd`). 2.01
-opens them through a separate reader, traced in `ida/Rebirth.exe.i64` (a read-only copy,
+opens them through a separate reader, traced in `Rebirth.exe.i64` (a read-only copy,
 2026-10-27). rb: `crates/rbs/src/rb1x.rs` (the file), `crates/rb-engine/src/load/rb1x.rs`
 (`load_1x`, the import), `tools/rb1x.py` (the Python twin, which `tools/rbhost/rbsmsg.py`,
 `run.py`, `fit.py` and `tools/rb_export.py` use for these songs).
@@ -908,7 +908,7 @@ the packers of section 4 (same layouts):
 8. **TR-909** `4/74 {0, 0}` and no data block: DLL sub 74 (`sub_1002B8E0`'s table at 0x101542F0,
    entry 0x1002BF12) stores the live byte `+0x1891 + ctrl` and calls the record hook
    `sub_10012BC0`, so with record off it is slot 11 with controller 0: the live 909 enabled byte
-   is 0. Checked in `original/ReBirth.dll` with `llvm-objdump` and the file bytes: the guard
+   is 0. Checked in the installed `ReBirth.dll` with `llvm-objdump` and the file bytes: the guard
    0x1002B932..0x1002B942 (`movl $0xffffffbf, %ecx; addl %edx, %ecx; cmpl $0xf, %ecx; ja
    0x1002C69C`) lets only sub bytes 0x41..0x50 (65..80) reach the table; then 0x1002B948
    `movl 0x101542f0(,%edx,4), %edx; jmpl *%edx` indexes it with the raw sub byte; the
