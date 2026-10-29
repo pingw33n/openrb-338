@@ -5,11 +5,12 @@ status: To Do
 assignee:
   - '@agent-worker'
 created_date: '2026-10-29 10:07'
+updated_date: '2026-10-29 10:12'
 labels:
   - ui
 milestone: m-4
 dependencies:
-  - TASK-115
+  - TASK-114
 references:
   - crates/orb-ui/src/about.rs
   - docs/ui_spec.md
