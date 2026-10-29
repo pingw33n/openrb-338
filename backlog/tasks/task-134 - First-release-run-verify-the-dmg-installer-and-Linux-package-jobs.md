@@ -1,11 +1,11 @@
 ---
 id: TASK-134
 title: 'First release run: verify the dmg, installer and Linux package jobs'
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 13:07'
+updated_date: '2026-10-29 13:39'
 labels:
   - tools
   - tests
@@ -115,3 +115,17 @@ Supervisor, 2026-10-29, AC #3 after task-141 (the user said 'do push'): main 867
 
 User, 2026-10-29: orb play works under WSL with the task-139 build (Linux x86_64 dist build of main 3d1df11). This is the WSL re-check that task-139 left for the user.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The first release run, done on 2026-10-29 at the user's request; the user closed the task on 2026-10-29.
+- Test release v2026.1029.1138 on e04aec6 (run 40866935635): all 15 jobs passed. The draft holds 12 packages plus SHA256SUMS.txt (13 assets) and a changelog body. Nothing was published.
+- Every package carries '2026.1029.1138 (e04aec6)' with no dev- prefix, and every file name carries the version.
+- A re-run replaced the draft, leaving one release. A bad tag, v1, failed in prepare and built nothing (run 40878787260), after the task-141 fix; the first bad-tag run had built everything and found that bug.
+- The x86_64 AppImage smoke step passed all four backend cases. On the user's Linux desktop with the Vulkan drivers hidden, the AppImage opened through OpenGL.
+- Both dmg jobs passed with single-architecture images.
+- The user's real machines: both .dmg and the darwin tar.gz on the user's Mac, the x64 installer (install and uninstall) on Windows 11, and the Linux UI, the AppImage and orb play under WSL. orb play first failed and was fixed in task-139.
+- An Intel Mac and arm64 Windows were accepted as covered by CI (user decision, 2026-10-29).
+- Follow-ups: task-139, task-141 and task-142, all merged.
+<!-- SECTION:FINAL_SUMMARY:END -->
