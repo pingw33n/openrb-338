@@ -2,9 +2,10 @@
 id: TASK-068
 title: 'Rename the project to OpenRB-338: binary orb, ORB_ environment variables'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-worker'
 created_date: '2026-10-27 11:27'
-updated_date: '2026-10-28 11:53'
+updated_date: '2026-10-29 07:54'
 labels:
   - cli
   - tools
