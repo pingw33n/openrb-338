@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 12:44'
+updated_date: '2026-10-29 12:45'
 labels:
   - tools
   - tests
@@ -106,4 +106,6 @@ Supervisor, 2026-10-29, AC #3 checks (user's go-ahead):
 Supervisor, 2026-10-29, AC #3 checks (user's go-ahead):
 - Re-run of run 40866935635 (attempt 2): all 15 jobs passed. The draft was replaced: still one release, v2026.1029.1138, now release id 427844732 (it was 427804773), with 13 assets. Nothing was published.
 - Bad tag v1 on e04aec6 (run 40873523255): no release was created, but prepare PASSED and all 12 packages were built; only the draft release job failed ('not a release tag: v1'). So 'fails in prepare' is not met. Filed as task-141 (the prepare step pipes release-env.sh into tee without pipefail). The v1 tag is deleted from origin and locally. AC #3 stays open until task-141 lands and a bad tag fails in prepare.
+
+task-141 (fix for the prepare tee) is due a bad-tag re-run on GitHub after the merge, with the user's go-ahead; record it in AC 3.
 <!-- SECTION:NOTES:END -->

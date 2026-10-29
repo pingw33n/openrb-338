@@ -17,6 +17,12 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
 
+# `shell: bash` is bash -eo pipefail; the default of a step without it is bash -e, where a
+# pipe hides the failure of its first command (task-141).
+defaults:
+  run:
+    shell: bash
+
 jobs:
   prepare:
     # One build time and one main/not-main flag for every package of the run.
@@ -62,6 +68,8 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Refuse an empty build time
+        run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -114,6 +122,8 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
       ORB_BUILD_BRANCH: ${{ needs.prepare.outputs.build_branch }}
     steps:
+      - name: Refuse an empty build time
+        run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -154,6 +164,8 @@ jobs:
       # makensis does not stop a release.
       MAKENSIS_FLAGS: ""
     steps:
+      - name: Refuse an empty build time
+        run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install NSIS
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
@@ -187,6 +199,8 @@ jobs:
     env:
       SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
     steps:
+      - name: Refuse an empty build time
+        run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the ALSA headers (ui-art links the workspace's cpal)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
