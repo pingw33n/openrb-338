@@ -2,9 +2,10 @@
 id: TASK-117
 title: 'rb-ui: Song Information edits the title, text, web page and copyright'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-complex'
 created_date: '2026-10-28 12:57'
-updated_date: '2026-10-29 08:28'
+updated_date: '2026-10-29 11:34'
 labels:
   - ui
 milestone: m-3
