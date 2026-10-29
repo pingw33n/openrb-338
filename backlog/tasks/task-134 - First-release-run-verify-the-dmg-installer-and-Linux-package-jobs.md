@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 12:32'
+updated_date: '2026-10-29 12:44'
 labels:
   - tools
   - tests
@@ -98,4 +98,12 @@ User, 2026-10-29, AC #4 on a real Linux desktop (host 'gnome', Mesa llvmpipe wit
 - With VK_DRIVER_FILES=/nonexistent VK_ICD_FILENAMES=/nonexistent, so no Vulkan driver is visible, it printed 'gpu: Gl Cpu llvmpipe (LLVM 21.1.8, 256 bits)' and opened through OpenGL.
 - The libEGL/ZINK warnings come from Mesa finding no GPU and are harmless.
 - The CI smoke half of #4 passed in run 40866935635.
+
+Supervisor, 2026-10-29, AC #3 checks (user's go-ahead):
+- Re-run of run 40866935635 (attempt 2): all 15 jobs passed. The draft was replaced: still one release, v2026.1029.1138, now release id 427844732 (it was 427804773), with 13 assets. Nothing was published.
+- Bad tag v1 on e04aec6 (run 40873523255): no release was created, but prepare PASSED and all 12 packages were built; only the draft release job failed ('not a release tag: v1'). So 'fails in prepare' is not met. Filed as task-141 (the prepare step pipes release-env.sh into tee without pipefail). The v1 tag is deleted from origin and locally. AC #3 stays open until task-141 lands and a bad tag fails in prepare.
+
+Supervisor, 2026-10-29, AC #3 checks (user's go-ahead):
+- Re-run of run 40866935635 (attempt 2): all 15 jobs passed. The draft was replaced: still one release, v2026.1029.1138, now release id 427844732 (it was 427804773), with 13 assets. Nothing was published.
+- Bad tag v1 on e04aec6 (run 40873523255): no release was created, but prepare PASSED and all 12 packages were built; only the draft release job failed ('not a release tag: v1'). So 'fails in prepare' is not met. Filed as task-141 (the prepare step pipes release-env.sh into tee without pipefail). The v1 tag is deleted from origin and locally. AC #3 stays open until task-141 lands and a bad tag fails in prepare.
 <!-- SECTION:NOTES:END -->
