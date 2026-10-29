@@ -17,7 +17,7 @@ Every OS has an amd64 and an arm64 variant:
 
 | Target | Package | Notes |
 |---|---|---|
-| `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` | `.tar.gz` | built on Ubuntu 22.04: glibc 2.35 or newer |
+| `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` | `.tar.gz`, `.AppImage` | built on Ubuntu 22.04: glibc 2.35 or newer; the AppImage is described under "The AppImage" |
 | `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | `.zip` | MSVC, not gnu: it is what Rust, eframe's wgpu and the runners use; `cargo-xwin` cross-builds it from a Mac or Linux |
 | `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (the `.dmg` has the `lipo` of the two, below) |
 
@@ -135,6 +135,9 @@ The Windows build of OpenRB-338 is a GUI-subsystem exe (task-111), see "The Wind
 | `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |
 | `scripts/package-installer.sh TARGET` | `build.sh` for a Windows target, then `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x64\|arm64>-setup.exe` with NSIS (`SKIP_BUILD=1` uses the existing `bin/`; `MAKENSIS` names makensis) |
 | `scripts/installer/openrb.nsi`, `scripts/installer/path.ps1` | the installer's script, and the helper that edits the user's PATH |
+| `scripts/package-appimage.sh TARGET` | `build.sh` for a Linux target, then `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x86_64\|aarch64>.AppImage` with appimagetool (`SKIP_BUILD=1` uses the existing `bin/`) |
+| `scripts/appimage-pack.sh TOOL APPDIR OUT` | runs appimagetool (called by `package-appimage.sh`, in the build image off Linux; unpacks the tool with `unsquashfs` where the AppImage cannot be exec-ed) |
+| `scripts/appimage-smoke.sh APPIMAGE` | runs an AppImage in a stock `ubuntu:22.04` container: contents, no glibc bundled, `rb`, `--screenshot` under xvfb |
 | `scripts/macos-app.sh OUT_DIR UI [CLI]` | makes `OUT_DIR/OpenRB-338.app` from the binaries (Info.plist, icon, ad-hoc signature) |
 | `scripts/macos-dev-app.sh` | wraps `target/release/OpenRB-338` into `target/OpenRB-338.app` for everyday runs |
 | `scripts/version.sh` | prints the version `YYYY.MMDD.HHMM` (the UTC build time from `SOURCE_DATE_EPOCH`, to the minute); `--time` the full time, `--epoch v2026.1028.1930` the `SOURCE_DATE_EPOCH` of a release tag |
@@ -248,8 +251,13 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
     Rust, and takes the `prepare` build time, so the installer's version is the exe's. Not run
     yet: only `actionlint` and a local run of the same script checked it (see "The CI job and
     old NSIS" below; the first release run is the check, task for it is separate).
-  - The draft release with the changelog (task-113) and the AppImages (task-112) are added to
-    this workflow by those tasks.
+  - `appimage` (task-112), one job per Linux architecture after the package jobs, on
+    `ubuntu-22.04` (x86_64) and `ubuntu-22.04-arm` (aarch64): downloads `bin-<target>`, runs
+    `SKIP_BUILD=1 scripts/package-appimage.sh <target>`, then `scripts/appimage-smoke.sh` on the
+    result (a stock `ubuntu:22.04` container), and uploads the artifact `appimage-x86_64` or
+    `appimage-aarch64` (`OpenRB-338-<YYYY.MMDD.HHMM>-<x86_64|aarch64>.AppImage`). It takes the
+    `prepare` build time. Not run yet (the first release run is the check, task-134).
+  - The draft release with the changelog (task-113) is added to this workflow by that task.
 
 Validation before merge: `actionlint .github/workflows/*.yml` and `shellcheck scripts/*.sh`
 (both from Homebrew). `act` was not used: it cannot run the macOS and Windows runners.
@@ -460,6 +468,94 @@ With `SOURCE_DATE_EPOCH=1793215800` (version `2026.1028.1930`):
   without a crash and does not change the exit code); the installer's own wizard pages were not
   clicked through (only `/S`); the `installer` jobs of `release.yml` ran nowhere (the first
   release run checks them, with Ubuntu's older makensis).
+
+## The AppImage (task-112)
+
+One file per architecture, `OpenRB-338-<YYYY.MMDD.HHMM>-x86_64.AppImage` and `-aarch64.AppImage`
+(the version is the build time, `scripts/version.sh`), that runs on most distributions without
+installing: `chmod +x` it and run it. Not signed (decided 2026-10-28). The `.tar.gz` of task-108
+stays as the plain form.
+
+**Build.** `scripts/package-appimage.sh <target>` takes `dist/<target>/bin/` (the `dist`-profile
+binaries, built by `scripts/build.sh` in the Ubuntu 22.04 image or on the 22.04 runner), lays out
+an AppDir and packs it with appimagetool. The tool is pinned: appimagetool 1.9.1, downloaded from
+its GitHub release into `dist/tools/` and checked against the sha256 in the script
+(`ed4ce84f...` for x86_64, `f0837e74...` for aarch64; both equal the digests GitHub shows for the
+release assets). It runs with `--appimage-extract-and-run`, so no FUSE is needed (CI runners and
+containers have none). The packing runs natively on a Linux host of the target's architecture
+and in the `openrb-linux-build:<arch>` Docker image anywhere else, so on this Mac it needs a
+running Docker (the script does not start it; the other architecture is emulated and slow). The
+icons are rendered on the host by `ui-art iconset` (cargo; resvg), so the host needs the Rust
+toolchain. The AppDir:
+
+| Path | Contents |
+|---|---|
+| `AppRun` | runs `usr/bin/OpenRB-338`; runs the bundled CLI when the AppImage is started through a symlink named `rb` or with `--rb` as the first argument |
+| `OpenRB-338.desktop` (and `usr/share/applications/`) | `Name=OpenRB-338`, `Exec=OpenRB-338 %f`, `Categories=AudioVideo;Audio;Music;`, `StartupWMClass=OpenRB-338` (the app id the window sets, so Wayland and X11 shells match the window to the entry) |
+| `OpenRB-338.png`, `.DirIcon`, `usr/share/icons/hicolor/{16,32,64,128,256,512}.../apps/OpenRB-338.png` | `assets/ui/app_icon.svg` rendered by `ui-art iconset` |
+| `usr/bin/OpenRB-338`, `usr/bin/rb` | the two programs |
+| `LICENSE`, `usr/share/doc/OpenRB-338/LICENSE` | GPL-3.0-only |
+
+**The CLI is inside** (decision of this task, since nothing decided otherwise). A user who has
+only the AppImage then also has the command line tool, and `rb` costs only a second binary of the
+same code (the engine and the embedded standard kit are in both). Use it as
+`OpenRB-338-<version>-x86_64.AppImage --rb render SONG.rbs -o SONG.flac`, or make a symlink
+`ln -s OpenRB-338-<version>-x86_64.AppImage ~/bin/rb` and run `rb render ...`: the AppImage
+runtime sets `ARGV0` to the name it was called by, and `AppRun` tests it. Measured on the
+aarch64 AppImage in an `ubuntu:22.04` container, under `--appimage-extract-and-run` too: a
+symlink named `rb` printed the same help as `--rb --help`. The `.tar.gz` stays for anyone who
+wants a plain `rb` without the AppImage.
+
+**What is bundled and why.** Only `OpenRB-338` and `rb`. No library: both binaries are Rust
+with the C parts (the vendored libvorbis) linked in statically, and what remains is the system
+set below, which must come from the host (a bundled `libasound`, GL or X11 would have to match
+the host's sound server, driver and display stack, and bundling glibc or the GL stack is what
+breaks AppImages on other distributions). `scripts/appimage-smoke.sh` checks that the AppDir has
+exactly two ELF files and no `libc.so`, `ld-linux`, `libm`, `libpthread` or `libdl`.
+
+**The host provides:**
+- glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and newer; the most recent symbol the
+  programs use is `GLIBC_2.35`, see "What may ship"; both architectures);
+- `libasound.so.2` (`libasound2` on Debian and Ubuntu, `alsa-lib` on Fedora and Arch): without
+  it even `rb --help` fails; a PipeWire or PulseAudio system has the ALSA plugins for it;
+- for the window: X11 (`libxcursor1`, `libxrandr2`, `libxi6`, `libxkbcommon-x11-0`; the X11
+  libraries are loaded at run time) or Wayland (`libwayland-client0`, `libxkbcommon0`), and a
+  Vulkan driver: `libvulkan1` and an ICD (Mesa; `mesa-vulkan-drivers` has lavapipe, software
+  rendering, on a bare system). The window is drawn by wgpu, and in the smoke test (xvfb,
+  `ubuntu:22.04`) `--screenshot` worked with `WGPU_BACKEND=vulkan` (lavapipe) and failed to
+  create a surface ("FailedToCreateSurfaceForAnyBackend") with `WGPU_BACKEND=gl` and with the
+  Vulkan ICDs hidden (`VK_ICD_FILENAMES=/nonexistent`), so a Vulkan driver is what the host
+  needs; OpenGL alone was not enough in that container (not tried on a real desktop).
+
+FUSE 2 (`libfuse2`) lets the AppImage mount itself. Without it, run
+`./OpenRB-338-<version>-x86_64.AppImage --appimage-extract-and-run`, or `--appimage-extract` and
+`squashfs-root/AppRun`.
+
+**Checked (2026-10-29, this Mac, Docker Desktop on Apple silicon).** Both AppImages were built
+for real with `scripts/package-appimage.sh` (binaries from `scripts/build.sh` in the Docker
+image, `SOURCE_DATE_EPOCH=1793215800`) and passed `scripts/appimage-smoke.sh`:
+
+| AppImage | Size | sha256 |
+|---|---|---|
+| `OpenRB-338-2026.1028.1930-x86_64.AppImage` | 15317496 B | `088ec470...2827a1` |
+| `OpenRB-338-2026.1028.1930-aarch64.AppImage` | 14547464 B | `def28e2c...178a9d` |
+
+The smoke test found: the desktop entry valid (`desktop-file-validate`), the six icon sizes and
+`LICENSE`; exactly two ELF files (`usr/bin/OpenRB-338`, `usr/bin/rb`) and no glibc file;
+the highest glibc symbol `GLIBC_2.35` (OpenRB-338) and `GLIBC_2.34` (rb), both architectures
+(`objdump -T`); `rb --help` and `rb info` on `tests/songs/shipped/Calm.rbs`; the symlink named
+`rb`; and a PNG (191621 B on aarch64, 191815 B on x86_64) from `--demo --screenshot` under xvfb
+through Vulkan (lavapipe). The aarch64 AppImage ran as an AppImage (`--appimage-extract-and-run`,
+native on Apple silicon). **The x86_64 one could not be exec-ed in Docker Desktop's amd64
+emulation** (`Exec format error` for the AppImage runtime and for the x86_64 appimagetool: the
+ELF header has the AppImage marker in `e_ident`, ABI version 65), although the static x86_64
+programs inside run. So, only when `OPENRB_APPIMAGE_EMULATED` is `1` (the scripts compute it from `uname`
+for x86_64 on a macOS host and never inherit it; `release.yml` never sets it, and on Linux and in CI a runtime that does not run fails the
+script), `scripts/appimage-pack.sh` unpacks appimagetool with `unsquashfs`, and the smoke test
+unpacks the x86_64 AppImage's squashfs and runs its `AppRun` (with `ARGV0` set by hand for the
+symlink test). This emulated run is local only: everything but the x86_64 runtime was
+exercised, and the x86_64 runtime itself (and so `--screenshot` through it) was not. A real x86_64 Linux host or the CI runner runs it. The first release
+run (task-134) still has to check the runners and a real desktop.
 
 ## What the system shows for an unsigned download
 

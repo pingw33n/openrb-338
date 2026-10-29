@@ -156,3 +156,43 @@ jobs:
           name: installer-${{ matrix.arch }}
           path: dist/${{ matrix.target }}/OpenRB-338-*-setup.exe
           if-no-files-found: error
+
+  appimage:
+    # The Linux AppImages (task-112), one per architecture on the oldest LTS runner of that
+    # architecture (glibc 2.35), from the Linux `bin-` artifacts of the package jobs.
+    # appimagetool runs with --appimage-extract-and-run (no FUSE needed). Cargo is needed for
+    # the icons only (ui-art). The smoke test runs the AppImage in a stock ubuntu:22.04
+    # container. The AppImages are not signed.
+    name: appimage (${{ matrix.arch }})
+    needs: [prepare, package]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, arch: x86_64, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, arch: aarch64, os: ubuntu-22.04-arm }
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the ALSA headers (ui-art links the workspace's cpal)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: bin-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/bin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: appimage-${{ matrix.arch }}
+      - name: Build the AppImage
+        run: |
+          chmod +x "dist/${{ matrix.target }}/bin/"*
+          SKIP_BUILD=1 scripts/package-appimage.sh "${{ matrix.target }}"
+      - name: Smoke test in ubuntu:22.04
+        run: scripts/appimage-smoke.sh dist/${{ matrix.target }}/OpenRB-338-*-${{ matrix.arch }}.AppImage
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: dist/${{ matrix.target }}/OpenRB-338-*.AppImage
+          if-no-files-found: error
