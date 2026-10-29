@@ -142,27 +142,24 @@ fn knobs(out: &mut Vec<Part>) {
     }
 }
 
-/// The app icon: a 303 knob turned to three quarters on a slate tile, 64 x 64 with the
-/// tile inset like a macOS icon's.
+/// The four colors of the 808's steps, which the app icon and the wordmark's underline reuse.
+const STEP_COLORS: [&str; 4] = [pal::RED, pal::ORANGE, pal::YELLOW, pal::WHITE];
+
+/// The app icon (task-115): the 303's saw running into a square wave in orange over four
+/// step keys in the 808's colors, on a slate tile; 64 x 64 with the tile inset like a
+/// macOS icon's.
 fn app_icon(out: &mut Vec<Part>) {
     out.push(Part::new("app_icon", 64.0, 64.0, |s| {
         s.rect(6.0, 6.0, 52.0, 52.0, 12.0, pal::SLATE_DARK);
         s.rect(6.0, 6.0, 52.0, 26.0, 12.0, "#ffffff0c");
         s.rect_stroke(6.5, 6.5, 51.0, 51.0, 11.5, "#ffffff1a", 1.0);
-        let (cx, cy) = (32.0, 33.0);
-        let a = KNOB_SWEEP * 0.5;
-        s.path_stroke(
-            &arc_path(cx, cy, 19.5, -KNOB_SWEEP, KNOB_SWEEP),
-            "#00000050",
-            3.4,
-        );
-        s.path_stroke(&arc_path(cx, cy, 19.5, -KNOB_SWEEP, a), pal::ORANGE, 3.4);
-        s.circle(cx, cy + 0.8, 15.0, "#00000040");
-        s.circle(cx, cy, 15.0, pal::STEEL);
-        s.circle_stroke(cx, cy, 14.2, "#ffffff40", 0.8);
-        let (x0, y0) = polar(cx, cy, 4.0, a);
-        let (x1, y1) = polar(cx, cy, 12.5, a);
-        s.line(x0, y0, x1, y1, pal::BLACK, 3.2);
+        s.path_stroke("M13 33 L24 17 V33 H30 V17 H41 V33 H51", "#00000050", 5.0);
+        s.path_stroke("M13 32 L24 16 V32 H30 V16 H41 V32 H51", pal::ORANGE, 4.0);
+        for (i, color) in STEP_COLORS.into_iter().enumerate() {
+            let x = 12.0 + 10.75 * i as f32;
+            s.rect(x, 39.0, 8.5, 9.0, 2.0, "#00000050");
+            s.rect(x, 38.0, 8.5, 9.0, 2.0, color);
+        }
     }));
 }
 
@@ -213,60 +210,161 @@ fn switch(out: &mut Vec<Part>, name: &str, w: f32, h: f32, horizontal: bool) {
     }
 }
 
+/// The saw and square glyphs with their left edges at `sx` and `qx`, 6 px tall around `yc`.
+fn wave_glyphs(s: &mut Svg, sx: f32, qx: f32, yc: f32, color: &str) {
+    let (t, b) = (yc - 3.0, yc + 3.0);
+    s.path_stroke(
+        &format!(
+            "M{sx} {b} L{} {t} V{b} L{} {t} V{b}",
+            n(sx + 3.75),
+            n(sx + 7.5)
+        ),
+        color,
+        1.0,
+    );
+    s.path_stroke(
+        &format!(
+            "M{qx} {b} V{t} H{} V{b} H{} V{t} H{}",
+            n(qx + 2.5),
+            n(qx + 5.0),
+            n(qx + 7.5)
+        ),
+        color,
+        1.0,
+    );
+}
+
+/// A round LED lens of radius `r` in a recessed socket, centered at (`cx`, `cy`): a radial
+/// gradient gives it the dome, a white ellipse the gloss, a halo the glow when lit. The
+/// socket is translucent, so it takes the color of what it sits on. `hue` is "green" or
+/// "amber".
+fn led_3d(s: &mut Svg, cx: f32, cy: f32, r: f32, on: bool, hue: &str) {
+    let (id, stops) = match (hue, on) {
+        ("green", true) => (
+            "ledg1",
+            concat!(
+                "<stop offset=\"0\" stop-color=\"#c8f8cc\"/>",
+                "<stop offset=\"0.3\" stop-color=\"#6fe07e\"/>",
+                "<stop offset=\"0.75\" stop-color=\"#38b84d\"/>",
+                "<stop offset=\"1\" stop-color=\"#1f7a30\"/>",
+            ),
+        ),
+        ("green", false) => (
+            "ledg0",
+            concat!(
+                "<stop offset=\"0\" stop-color=\"#4f6a55\"/>",
+                "<stop offset=\"0.5\" stop-color=\"#2f4536\"/>",
+                "<stop offset=\"1\" stop-color=\"#1c2a20\"/>",
+            ),
+        ),
+        (_, true) => (
+            "leda1",
+            concat!(
+                "<stop offset=\"0\" stop-color=\"#fff0b8\"/>",
+                "<stop offset=\"0.3\" stop-color=\"#ffd04a\"/>",
+                "<stop offset=\"0.75\" stop-color=\"#f0a300\"/>",
+                "<stop offset=\"1\" stop-color=\"#9a6400\"/>",
+            ),
+        ),
+        (_, false) => (
+            "leda0",
+            concat!(
+                "<stop offset=\"0\" stop-color=\"#5d5340\"/>",
+                "<stop offset=\"0.5\" stop-color=\"#3b3526\"/>",
+                "<stop offset=\"1\" stop-color=\"#231f14\"/>",
+            ),
+        ),
+    };
+    s.raw(&format!(
+        "<defs><radialGradient id=\"{id}\" cx=\"0.38\" cy=\"0.32\" r=\"0.75\">{stops}\
+         </radialGradient></defs>"
+    ));
+    // the socket: the lighter ring peeking out below reads as the recess's lower edge
+    s.circle_stroke(cx, cy + 0.45, r + 1.3, "#ffffff2c", 0.7);
+    s.circle(cx, cy, r + 1.4, "#00000062");
+    s.circle_stroke(cx, cy - 0.15, r + 0.9, "#00000050", 0.8);
+    if on {
+        let halo = if hue == "green" { "#5fe070" } else { "#ffb000" };
+        s.circle(cx, cy, r + 2.6, &format!("{halo}24"));
+    }
+    s.circle(cx, cy, r, &format!("url(#{id})"));
+    s.raw(&format!(
+        "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"#ffffff\" opacity=\"{}\"/>",
+        n(cx - r * 0.25),
+        n(cy - r * 0.45),
+        n(r * 0.45),
+        n(r * 0.28),
+        if on { "0.55" } else { "0.18" }
+    ));
+}
+
+/// A keycap: a face over a 1.8 px darker lip, with a thin outline.
+fn keycap(s: &mut Svg, x: f32, y: f32, w: f32, h: f32, face: &str, lip: &str) {
+    s.rect(x, y, w, h, 2.2, lip);
+    s.rect(x, y, w, h - 1.8, 2.2, face);
+    s.rect_stroke(x + 0.25, y + 0.25, w - 0.5, h - 0.5, 2.2, "#00000055", 0.5);
+}
+
+/// The discreet 3D of the 303's keys and pills: a darker base, the face inset by 0.5 px on
+/// the sides and 1.5 px short at the bottom. `r` is the corner radius.
+#[allow(clippy::too_many_arguments)]
+fn key_3d(s: &mut Svg, x: f32, y: f32, w: f32, h: f32, r: f32, base: &str, face: &str) {
+    s.rect(x, y, w, h, r, base);
+    s.rect(x + 0.5, y, w - 1.0, h - 1.5, r - 0.3, face);
+}
+
+/// The mixer's routing key, 28 x 13: a face over a darker base that shows as a soft rim and a
+/// lip, an amber LED at the left and the label left-aligned after it.
+fn mixsw_body(s: &mut Svg, label_: &str, on: bool) {
+    s.rect(0.0, 0.0, 28.0, 13.0, 2.5, "#2a323d");
+    s.rect(0.6, 0.6, 26.8, 10.6, 2.0, "#4b5767");
+    s.rect(0.6, 0.6, 26.8, 4.6, 2.0, "#ffffff0c");
+    led_3d(s, 5.4, 6.2, 1.8, on, "amber");
+    let color = if on { pal::INK } else { pal::INK_DIM };
+    text(s, 10.4, 6.2, 3.8, Anchor::Start, color, label_);
+}
+
 fn switches(out: &mut Vec<Part>) {
-    switch(out, "switch_wave", 16.0, 12.0, true);
+    // The 303's waveform switch: one 40 x 14 black frame with the saw and the square printed
+    // on it, an 18 x 12 track between them and the thumb at position 0 (saw) or 1 (square).
+    for pos in 0..2 {
+        out.push(Part::new(format!("switch_wave_{pos}"), 40.0, 14.0, |s| {
+            s.rect(0.0, 0.0, 40.0, 14.0, 3.0, pal::BLACK);
+            s.rect(0.6, 0.6, 38.8, 12.8, 2.5, "#26282b");
+            s.rect(11.0, 1.0, 18.0, 12.0, 2.0, "#0e0f10");
+            wave_glyphs(s, 2.0, 30.5, 7.0, pal::INK);
+            let x = 12.0 + pos as f32 * 8.0;
+            s.rect(x, 1.5, 8.0, 11.0, 2.0, "#8c929b");
+            s.rect(x, 1.5, 8.0, 9.5, 2.0, pal::STEEL);
+            s.line(x + 2.0, 6.0, x + 6.0, 6.0, "#00000040", 0.8);
+        }));
+    }
     switch(out, "switch_808", 11.0, 17.0, false);
     switch(out, "switch_fx", 9.0, 18.0, false);
     switch(out, "switch_mode", 26.0, 19.0, true);
-    // Dist, PCF and Comp routing switches of the mixer (and the master's).
+    // Dist, PCF and Comp routing keys of the mixer (and the master's).
     for (kind, text_) in [("dist", "DIST"), ("pcf", "PCF"), ("comp", "COMP")] {
         for (state, on) in [("off", false), ("on", true)] {
             out.push(Part::new(
                 format!("mixsw_{kind}_{state}"),
-                20.0,
-                11.0,
-                |s| {
-                    s.rect(
-                        0.5,
-                        0.0,
-                        19.0,
-                        11.0,
-                        2.0,
-                        if on { pal::AMBER } else { pal::SLATE_DARK },
-                    );
-                    label(
-                        s,
-                        10.0,
-                        5.5,
-                        4.0,
-                        if on { pal::BLACK } else { pal::INK },
-                        text_,
-                    );
-                },
+                28.0,
+                13.0,
+                |s| mixsw_body(s, text_, on),
             ));
         }
     }
 }
 
 fn power_buttons(out: &mut Vec<Part>) {
-    // The pattern sections' (13) and the mixer's and effects' (14) on/off buttons.
+    // The pattern sections' (13) and the mixer's and effects' (14) on/off buttons: a round 3D
+    // LED, no bezel.
     for (w, h) in [(13.0, 13.0), (14.0, 14.0)] {
         for (state, on) in [("off", false), ("on", true)] {
             out.push(Part::new(
                 format!("power_{}x{}_{state}", n(w), n(h)),
                 w,
                 h,
-                // flat: the lamp alone
-                |s| {
-                    s.rect(
-                        0.0,
-                        0.0,
-                        w,
-                        h,
-                        2.0,
-                        if on { pal::GREEN } else { pal::GREEN_DIM },
-                    );
-                },
+                |s| led_3d(s, w / 2.0, h / 2.0, 2.6, on, "green"),
             ));
         }
     }
@@ -411,22 +509,13 @@ fn transport_buttons(out: &mut Vec<Part>) {
             30.0,
             12.0,
             |s| {
-                s.rect(
-                    0.5,
-                    0.5,
-                    29.0,
-                    11.0,
-                    2.5,
-                    if on { pal::RED } else { "#dfe3e8" },
-                );
-                label(
-                    s,
-                    15.0,
-                    6.0,
-                    3.2,
-                    if on { pal::WHITE } else { pal::BLACK },
-                    "SHUFFLE",
-                );
+                if on {
+                    keycap(s, 0.0, 0.0, 30.0, 12.0, "#e8503f", "#9c2b25");
+                } else {
+                    keycap(s, 0.0, 0.0, 30.0, 12.0, "#dde1e6", "#a7afba");
+                }
+                let ink = if on { pal::WHITE } else { pal::BLACK };
+                label(s, 15.0, 5.3, 3.2, ink, "SHUFFLE");
             },
         ));
         // The 909's flam button: the shape of a step button's light.
@@ -446,23 +535,14 @@ fn transport_buttons(out: &mut Vec<Part>) {
 fn pattern_buttons(out: &mut Vec<Part>) {
     for k in 1..=8 {
         for (state, on) in [("off", false), ("on", true)] {
-            out.push(Part::new(format!("pat_btn_{k}_{state}"), 17.0, 20.0, |s| {
-                s.rect(
-                    1.0,
-                    1.0,
-                    15.0,
-                    18.0,
-                    2.5,
-                    if on { pal::RED } else { "#dfe3e8" },
-                );
-                label(
-                    s,
-                    8.5,
-                    10.0,
-                    7.0,
-                    if on { pal::WHITE } else { pal::BLACK },
-                    &k.to_string(),
-                );
+            out.push(Part::new(format!("pat_btn_{k}_{state}"), 14.0, 15.0, |s| {
+                if on {
+                    keycap(s, 0.0, 0.0, 14.0, 15.0, "#e8503f", "#9c2b25");
+                } else {
+                    keycap(s, 0.0, 0.0, 14.0, 15.0, "#dde1e6", "#a7afba");
+                }
+                let ink = if on { pal::WHITE } else { pal::BLACK };
+                label(s, 7.0, 6.8, 5.5, ink, &k.to_string());
             }));
         }
     }
@@ -470,18 +550,16 @@ fn pattern_buttons(out: &mut Vec<Part>) {
         for (state, on) in [("off", false), ("on", true)] {
             out.push(Part::new(
                 format!("bank_btn_{bank}_{state}"),
-                17.0,
-                20.0,
+                14.0,
+                15.0,
                 |s| {
-                    s.rect(
-                        1.0,
-                        1.0,
-                        15.0,
-                        18.0,
-                        2.5,
-                        if on { pal::ORANGE } else { "#dfe3e8" },
-                    );
-                    label(s, 8.5, 10.0, 7.0, pal::BLACK, bank);
+                    if on {
+                        keycap(s, 0.0, 0.0, 14.0, 15.0, pal::ORANGE, "#a85d14");
+                    } else {
+                        keycap(s, 0.0, 0.0, 14.0, 15.0, "#4e5a6b", "#2c3542");
+                    }
+                    let ink = if on { pal::BLACK } else { pal::INK_DIM };
+                    label(s, 7.0, 6.8, 5.5, ink, bank);
                 },
             ));
         }
@@ -489,15 +567,14 @@ fn pattern_buttons(out: &mut Vec<Part>) {
 }
 
 fn small_buttons(out: &mut Vec<Part>) {
-    for (w, h) in [(17.0, 10.0)] {
+    for (w, h) in [(22.0, 10.0)] {
         for state in ["rest", "pressed"] {
             out.push(Part::new(
                 format!("btn_pill_{}x{}_{state}", n(w), n(h)),
                 w,
                 h,
                 |s| {
-                    s.rect(0.5, 0.5, w - 1.0, h - 1.0, 2.0, pal::STEEL);
-                    s.rect_stroke(0.5, 0.5, w - 1.0, h - 1.0, 2.0, "#00000050", 0.6);
+                    key_3d(s, 0.5, 0.0, w - 1.0, h, 2.0, "#a4aab2", pal::STEEL);
                     if state == "pressed" {
                         s.rect(0.5, 0.5, w - 1.0, h - 1.0, 2.0, "#00000040");
                     }
@@ -535,7 +612,7 @@ fn small_buttons(out: &mut Vec<Part>) {
             ));
         }
         out.push(Part::new(format!("key_white_{state}"), 9.0, 16.0, |s| {
-            s.rect(0.5, 0.0, 8.0, 16.0, 1.5, pal::WHITE);
+            key_3d(s, 0.5, 0.0, 8.0, 16.0, 1.5, "#c4c7cb", pal::WHITE);
             if state == "pressed" {
                 s.rect(0.5, 0.0, 8.0, 16.0, 1.5, "#80808066");
             }
@@ -548,7 +625,7 @@ fn small_buttons(out: &mut Vec<Part>) {
             }
         }));
         out.push(Part::new(format!("btn_flag_{state}"), 9.0, 16.0, |s| {
-            s.rect(0.5, 0.0, 8.0, 16.0, 1.8, pal::STEEL);
+            key_3d(s, 0.5, 0.0, 8.0, 16.0, 1.8, "#a4aab2", pal::STEEL);
             if state == "pressed" {
                 s.rect(0.5, 0.0, 8.0, 16.0, 1.8, "#00000050");
             }
@@ -727,9 +804,34 @@ fn face(s: &mut Svg, w: f32, h: f32, fill: &str) {
     s.rect(1.0, 1.0, w - 2.0, h - 2.0, 3.0, fill);
 }
 
-fn header(s: &mut Svg, x: f32, y: f32, w: f32, h: f32, fill: &str) {
-    s.rect(x, y, w, h, 2.0, fill);
+/// `hex` (`#rrggbb`) with each channel times `f`.
+fn shade(hex: &str, f: f32) -> String {
+    let v = u32::from_str_radix(&hex[1..7], 16).expect("a #rrggbb color");
+    let c = |sh: u32| (((v >> sh) & 0xff) as f32 * f).round().clamp(0.0, 255.0) as u32;
+    format!("#{:02x}{:02x}{:02x}", c(16), c(8), c(0))
 }
+
+/// A section header with a 3D look: a lip in the header color darkened to 0.62 under the
+/// face, which is 1.3 px shorter, a vertical gradient over the face and a thin white line
+/// just below its top.
+fn header(s: &mut Svg, x: f32, y: f32, w: f32, h: f32, fill: &str) {
+    s.raw(concat!(
+        "<defs><linearGradient id=\"hdr\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">",
+        "<stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.17\"/>",
+        "<stop offset=\"0.55\" stop-color=\"#ffffff\" stop-opacity=\"0.02\"/>",
+        "<stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.16\"/>",
+        "</linearGradient></defs>",
+    ));
+    s.rect(x, y, w, h, 2.0, &shade(fill, 0.62));
+    s.rect(x, y, w, h - 1.3, 2.0, fill);
+    s.rect(x, y, w, h - 1.3, 2.0, "url(#hdr)");
+    s.line(x + 2.0, y + 0.5, x + w - 2.0, y + 0.5, "#ffffff2e", 0.6);
+}
+
+/// The pattern sections' header color (rust).
+const PATTERN_HEADER: &str = "#bf4a2b";
+/// The mixer channels' header color (sea).
+const MIXER_HEADER: &str = "#3b8a8f";
 
 fn well(s: &mut Svg, x: f32, y: f32, w: f32, h: f32) {
     s.rect(x - 0.5, y - 0.5, w + 1.0, h + 1.0, 2.0, "#0c0707");
@@ -790,9 +892,18 @@ pub const LOGO_X: f32 = 474.0;
 pub const LOGO_Y: f32 = 1.0;
 /// The pieces of the logo, each on the whole `LOGO_W` x `LOGO_H` canvas: every piece is placed
 /// at (0, 0) of the logo, so an animation only offsets or fades a piece.
-pub const LOGO_PIECES: [&str; 4] = ["logo_open", "logo_rb338", "logo_line", "logo_sub"];
+pub const LOGO_PIECES: [&str; 7] = [
+    "logo_open",
+    "logo_rb338",
+    "logo_line_0",
+    "logo_line_1",
+    "logo_line_2",
+    "logo_line_3",
+    "logo_sub",
+];
 
 /// Our own wordmark, `OPENRB-338`: the whole, and its pieces (`LOGO_PIECES`) for task-114.
+/// The underline is four segments in the 808's step colors.
 fn logo(out: &mut Vec<Part>) {
     let cap = 14.0;
     let x0 = 8.0;
@@ -816,8 +927,8 @@ fn logo(out: &mut Vec<Part>) {
         run(s, 4, 7);
         text(s, x_338, 17.0, cap, Anchor::Start, pal::ORANGE, "338");
     };
-    let line = |s: &mut Svg| {
-        s.rect(8.0, 28.0, 118.0, 1.5, 0.75, pal::ORANGE);
+    let line = |s: &mut Svg, i: usize| {
+        s.rect(8.0 + 29.9 * i as f32, 28.0, 28.4, 1.5, 0.75, STEP_COLORS[i]);
     };
     let sub = |s: &mut Svg| {
         let y = 37.0;
@@ -834,19 +945,25 @@ fn logo(out: &mut Vec<Part>) {
     out.push(Part::new("logo", LOGO_W, LOGO_H, |s| {
         open(s);
         rb338(s);
-        line(s);
+        for i in 0..4 {
+            line(s, i);
+        }
         sub(s);
     }));
     out.push(Part::new("logo_open", LOGO_W, LOGO_H, open));
     out.push(Part::new("logo_rb338", LOGO_W, LOGO_H, rb338));
-    out.push(Part::new("logo_line", LOGO_W, LOGO_H, line));
+    for i in 0..4 {
+        out.push(Part::new(format!("logo_line_{i}"), LOGO_W, LOGO_H, |s| {
+            line(s, i)
+        }));
+    }
     out.push(Part::new("logo_sub", LOGO_W, LOGO_H, sub));
 }
 
 fn pattern_bg(out: &mut Vec<Part>) {
     out.push(Part::new("bg_pattern", 70.0, 115.0, |s| {
         face(s, 70.0, 115.0, pal::SLATE);
-        header(s, 2.0, 2.0, 66.0, 17.0, pal::RED);
+        header(s, 2.0, 2.0, 66.0, 17.0, PATTERN_HEADER);
         // centered between the on/off button (4..17) and the header's right edge
         label(s, 42.5, 10.5, 4.0, pal::WHITE, "PATTERN");
         label(s, 45.5, 91.3, 3.2, pal::INK_DIM, "STEPS");
@@ -860,46 +977,48 @@ fn pattern_bg(out: &mut Vec<Part>) {
     }
 }
 
-/// The 303's key band: three sections 6 px apart, (x, y, w, h): pitch mode and clear, the
-/// keys, and one row of the step flags and note/rest under the edit step display. All end
-/// at y 112.
+/// The 303's key band: three blocks of one height 6 px apart, (x, y, w, h): pitch mode and
+/// clear, the keys, and the step flags with the edit step display. All span y 46..112.
 pub const BAND_303: [(f32, f32, f32, f32); 3] = [
-    (12.0, 46.0, 44.0, 66.0),
-    (62.0, 46.0, 172.0, 66.0),
-    (240.0, 74.0, 114.0, 38.0),
+    (12.0, 46.0, 34.0, 66.0),
+    (52.0, 46.0, 184.0, 66.0),
+    (242.0, 46.0, 112.0, 66.0),
 ];
 /// The left edges of the 303's white keys and its flags (DOWN, UP, ACCENT, SLIDE, NOTE),
-/// the flags 22 px apart and centered in the band's right section.
-pub const WHITE_303: [f32; 8] = [70.0, 91.0, 112.0, 133.0, 154.0, 175.0, 196.0, 217.0];
-pub const FLAGS_303: [f32; 5] = [248.5, 270.5, 292.5, 314.5, 336.5];
-/// The edit step display's left and top, centered over the band's right section (the
-/// display and its arrows are 31 px wide).
-pub const EDIT_303: (f32, f32) = (281.5, 55.0);
+/// the flags 22 px apart.
+pub const WHITE_303: [f32; 8] = [66.0, 87.0, 108.0, 129.0, 150.0, 171.0, 192.0, 213.0];
+pub const FLAGS_303: [f32; 5] = [250.5, 272.5, 294.5, 316.5, 338.5];
+/// The edit step display's left and top, in the flags block's top row (the display and its
+/// arrows are 31 px wide).
+pub const EDIT_303: (f32, f32) = (296.0, 50.0);
+/// The first knob's left edge: the six knobs, 40 px apart, are centered in the paper.
+pub const KNOB_X0_303: f32 = 95.0;
+/// The center x of the pitch mode and clear block.
+pub const LEFT_X_303: f32 = 29.0;
 
 fn tb303_bg(out: &mut Vec<Part>) {
     out.push(Part::new("bg_tb303", 366.0, 115.0, |s| {
         face(s, 366.0, 115.0, pal::PAPER);
         let ink = pal::BLACK;
-        // The waveform switch between saw (left) and square (right), level with the knobs;
-        // the switch is centered over pitch mode and clear (x 34).
-        s.path_stroke("M15.5 30 L19.5 24 V30 L23.5 24 V30", ink, 1.0);
-        s.path_stroke("M45.5 30 V24 H48 V30 H50.5 V24 H52.5", ink, 1.0);
+        // The waveform switch (40 x 14 at (15, 20)) is labeled like a knob.
+        label(s, 35.0, 5.5, 3.6, ink, "WAVEFORM");
         for (k, name) in ["TUNE", "CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT"]
             .into_iter()
             .enumerate()
         {
-            label(s, 81.0 + 40.0 * k as f32, 5.5, 3.6, ink, name);
+            label(s, KNOB_X0_303 + 15.0 + 40.0 * k as f32, 5.5, 3.6, ink, name);
         }
-        let (ex, ey) = EDIT_303;
-        label(s, ex + 15.5, ey - 5.5, 3.4, ink, "EDIT STEP");
-        well(s, ex, ey, 19.0, 16.0);
         // The key band: pitch mode and clear, the keys on gray, the flags.
         for (i, (x, y, w, h)) in BAND_303.into_iter().enumerate() {
             s.rect(x, y, w, h, 4.0, if i == 1 { "#7d8087" } else { pal::BLACK });
         }
+        let (ex, ey) = EDIT_303;
+        // the display is the flags block's top row, "EDIT STEP" left of it
+        label(s, 279.5, ey + 8.0, 3.2, pal::INK, "EDIT STEP");
+        well(s, ex, ey, 19.0, 16.0);
         let ink = pal::INK;
-        label(s, 34.0, 51.5, 3.2, ink, "PITCH");
-        label(s, 34.0, 87.5, 3.2, ink, "CLEAR");
+        label(s, LEFT_X_303, 51.5, 3.2, ink, "PITCH");
+        label(s, LEFT_X_303, 88.5, 3.2, ink, "CLEAR");
         for (x, name) in FLAGS_303
             .into_iter()
             .zip(["DOWN", "UP", "ACCENT", "SLIDE", "NOTE"])
@@ -1053,11 +1172,12 @@ fn tr909_bg(out: &mut Vec<Part>) {
 fn mixer_bg(out: &mut Vec<Part>) {
     out.push(Part::new("bg_mixer", 70.0, 115.0, |s| {
         face(s, 70.0, 115.0, pal::SLATE);
-        header(s, 2.0, 2.0, 66.0, 18.0, pal::OLIVE);
+        header(s, 2.0, 2.0, 66.0, 18.0, MIXER_HEADER);
         // centered between the on/off button (4..18) and the meter (58..66)
         label(s, 38.0, 11.0, 4.4, pal::WHITE, "MIX");
-        label(s, 19.0, 51.0, 3.0, pal::INK_DIM, "PAN");
-        label(s, 51.0, 102.5, 3.0, pal::INK_DIM, "DELAY");
+        // pan and delay send side by side; the fader and the routing keys below
+        label(s, 19.0, 52.5, 3.0, pal::INK_DIM, "PAN");
+        label(s, 51.0, 52.5, 3.0, pal::INK_DIM, "DELAY");
     }));
 }
 

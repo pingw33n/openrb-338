@@ -1,5 +1,6 @@
-//! task-116: the wordmark is its own part (and four pieces), drawn once over the transport
-//! background, which holds no logo of its own.
+//! task-116: the wordmark is its own part (and its pieces: OPEN, RB-338, the four underline
+//! segments of task-115 and the subtitle), drawn once over the transport background, which
+//! holds no logo of its own.
 
 use orb_ui_art::layout::layout;
 use orb_ui_art::parts::{LOGO_H, LOGO_PIECES, LOGO_W, LOGO_X, LOGO_Y, all_parts};
@@ -45,7 +46,13 @@ fn wordmark_as_one_run() -> String {
     text(&mut s, 8.0, 17.0, cap, Anchor::Start, pal::INK, "OPENRB-");
     let x1 = 8.0 + text_width(cap, "OPENRB-") + gap(cap);
     text(&mut s, x1, 17.0, cap, Anchor::Start, pal::ORANGE, "338");
-    s.rect(8.0, 28.0, 118.0, 1.5, 0.75, pal::ORANGE);
+    // the underline: four segments in the 808's step colors
+    for (i, color) in [pal::RED, pal::ORANGE, pal::YELLOW, pal::WHITE]
+        .into_iter()
+        .enumerate()
+    {
+        s.rect(8.0 + 29.9 * i as f32, 28.0, 28.4, 1.5, 0.75, color);
+    }
     let sub = "BASS LINE AND DRUM MACHINE";
     text(&mut s, 8.0, 37.0, 3.4, Anchor::Start, pal::INK_DIM, sub);
     s.s
@@ -73,4 +80,26 @@ fn the_logo_pieces_render_like_the_single_run() {
         assert_eq!(a.data(), b.data(), "scale {scale}");
         assert!(a.data().iter().any(|&v| v != 0), "something is drawn");
     }
+}
+
+/// task-115: the underline is four separate pieces, one per segment, each in one step color of
+/// the 808 and 28.4 px wide at 29.9 px steps, so an animation can fade them in one by one.
+#[test]
+fn the_underline_is_four_colored_segments() {
+    let parts = all_parts();
+    let colors = [pal::RED, pal::ORANGE, pal::YELLOW, pal::WHITE];
+    for (i, color) in colors.into_iter().enumerate() {
+        let name = format!("logo_line_{i}");
+        let p = parts.iter().find(|p| p.name == name).expect(&name);
+        let x = orb_ui_art::svg::n(8.0 + 29.9 * i as f32);
+        let want = format!(
+            concat!(
+                "<rect x=\"{}\" y=\"28\" width=\"28.4\" height=\"1.5\" rx=\"0.75\" ",
+                "fill=\"{}\"/>"
+            ),
+            x, color
+        );
+        assert_eq!(p.body, want, "{name}");
+    }
+    assert!(parts.iter().all(|p| p.name != "logo_line"));
 }

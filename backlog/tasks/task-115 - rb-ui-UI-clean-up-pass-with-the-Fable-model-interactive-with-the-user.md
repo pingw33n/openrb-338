@@ -1,11 +1,11 @@
 ---
 id: TASK-115
 title: 'rb-ui: UI clean-up pass with the Fable model (interactive with the user)'
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-28 11:57'
-updated_date: '2026-10-29 09:38'
+updated_date: '2026-10-29 10:08'
 labels:
   - ui
 milestone: m-3
@@ -36,9 +36,20 @@ Constraints:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The user ran the session with the Fable model and accepted the changes in the running app
-- [ ] #2 The art is regenerated, the wired/interaction tests pass, and assets/ui/README.md and docs/ui_spec.md record what changed
+- [x] #1 The user ran the session with the Fable model and accepted the changes in the running app
+- [x] #2 The art is regenerated, the wired/interaction tests pass, and assets/ui/README.md and docs/ui_spec.md record what changed
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Plan (spec: Panel art of mockups/HANDOFF.md, approved 2026-10-29):
+1. orb-ui-art/parts.rs: lift led_3d, keycap, key_3d, mixsw_body, header3d, shade from the mockup generator; redraw power_13x13/14x14, switch_wave (40x14), mixsw (28x13), pat/bank keys (14x15), shuffle keycap, btn_pill (renamed 22x10), white/flag keys with 3D, headers 3D (pattern rust, mixer sea), tb303/pattern/mixer/master/fx backgrounds, key band consts, wordmark with four underline segments (logo_line_0..3 replace logo_line; LOGO_PIECES = open, rb338, line 0..3, sub), new app_icon.
+2. layout.rs: the moved controls (303 knobs/keys/flags/edit step, pattern keys, mixer routing keys, master COMP).
+3. Regenerate assets/ui (gen), assets/app_icon.ico (ui-art ico), update tests that assert positions/sizes (art tests, logo test), About window layout in orb-ui/about.rs (icon, wordmark, version, link; no name line).
+4. docs/ui_spec.md and assets/ui/README.md updated.
+5. Screenshot orb-ui --demo vs mockups/panel_after.png, list differences. Run fmt, clippy, tests, gen no diff, xwin clippy.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
@@ -154,4 +165,23 @@ ORANGE, YELLOW, WHITE, each with a `#00000050` shade 1 px lower.
 2.0 with the colored underline; the version and the link left-aligned at x 108 under the
 subtitle (y 150 and 172); the "OpenRB-338" name line is dropped. The link needs about 20 pt
 more width at that alignment, or one size smaller.
+
+Branch: worktree-agent-aa03b4b320a6f00cd (rebased on main c97ba15).
+
+Implementation (2026-10-29, @agent-worker). Lifted from mockups/gen/src/main.rs into crates/orb-ui-art: led_3d, keycap, key_3d, mixsw_body, shade, header (3D), wave_glyphs (parts.rs); band constants BAND_303/WHITE_303/FLAGS_303/EDIT_303 plus new KNOB_X0_303 and LEFT_X_303; layout.rs moves the 303 knobs, switch, pitch/clear, keys, flags, edit step, the pattern and bank keys (14 x 15 at 4 + 16 i, rows 25/43, bank 64), the mixer (pan 8,26; delay 40,26; routing keys 38, 62 + 16 i) and the master COMP (27, 82).
+Renamed parts: btn_pill_17x10_* -> btn_pill_22x10_* (the part is 22 wide now), logo_line -> logo_line_0..3 (LOGO_PIECES is now 7 pieces: open, rb338, four segments, sub; logo = their concatenation, tests/logo.rs updated and a test for the four colored segments added). New sizes: switch_wave 40 x 14, mixsw 28 x 13, pat/bank 14 x 15.
+About window (crates/orb-ui/src/about.rs): fixed 380 x 156 content, no inner margin: icon 64 pt at (18,18), wordmark at (92,14) x2, version at (108,104), link at (108,126); name line dropped. Width is 380 (spec 360 plus the 20 the link needs); title bar height is egui's own, not the mockup's 34. tests/menu.rs about test: icon + logo = 2 images (was 1). Added an OpenRB-338 --about flag (opens About at start, for --screenshot).
+Regenerated: cargo run --release -p orb-ui-art -- gen (172 files, 3 removed, 6 new) and -- ico (assets/app_icon.ico, 20539 bytes, 8 sizes). A second gen + ico leaves the sha1 of every file under assets/ unchanged.
+Static compare: ui-art check preview panel_2x.png vs mockups/panel_after.png: same 1248 x 1020, 545 pixels differ, all in x 482..600, y 29..30 = the wordmark underline (the mockup panel_after still had the old one-piece orange underline; wordmark.png shows the four segments, as implemented).
+Screenshots: /private/tmp/claude-501/-Users-pingw33n-dev-rb/8f24950b-b10f-47b2-be09-4ad0d95914c5/scratchpad/task115/panel.png (OpenRB-338 --demo --size 624x510 --ppp 2) and /private/tmp/claude-501/-Users-pingw33n-dev-rb/8f24950b-b10f-47b2-be09-4ad0d95914c5/scratchpad/task115/about.png (--demo --about, same size). Differences from mockups/panel_after.png: the live demo state differs (selected patterns/banks, knob values, loop button, meters, step lights, the kit's splash in the 808 view, menu bar on top), the About screenshot is taken mid fade-in so the window is translucent, and the About title bar is egui's. All panel art (headers, LEDs, keycaps, 303 band, mixer keys, master COMP) matches in position and look.
+Checks: cargo +nightly fmt --all --check clean; cargo clippy --all-targets -D warnings clean; cargo test -p orb-ui -p orb-ui-art (debug) 205 pass; cargo test --release workspace 587 pass, 0 fail; cargo xwin clippy --release -p orb-ui --target x86_64-pc-windows-msvc -D warnings clean (CL=-Wno-incompatible-pointer-types, XWIN_ACCEPT_LICENSE=1).
+Not done: AC #1 (the user accepting the changes in the running app) is the user's; the animation (task-114) is not part of this.
+
+User accepted the changes in the running app on 2026-10-29 ("ui looks fine, merge"), including the 380 pt About width and the --about option.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The approved panel art of the mockup session (2026-10-29) is in crates/orb-ui-art (parts.rs, layout.rs), assets/ui is regenerated (gen leaves no diff) and assets/app_icon.ico is regenerated with ui-art ico. What changed: the 303 (waveform switch with its label and printed glyphs, centered knobs, three-block key band, 22 x 10 pills, 3D keys, edit step in the flags block), the pattern section (rust header, 14 x 15 keycaps, shuffle keycap), the mixer (sea header, pan and delay side by side, 28 x 13 routing keys with amber LEDs, master COMP), 3D headers, round 3D on/off LEDs, the four-segment wordmark underline split into logo_line_0..3 pieces (LOGO_PIECES = 7) for task-114, the new app icon and the About window layout (--about flag for screenshots). docs/ui_spec.md (section 19, About) and assets/ui/README.md record it. Tests: cargo test --release 587 pass, debug orb-ui + orb-ui-art 205 pass, fmt, clippy and the Windows xwin clippy clean. The rendered static panel equals mockups/panel_after.png except the wordmark underline. The user accepted the result in the running app on 2026-10-29. Branch worktree-agent-aa03b4b320a6f00cd, one commit.
+<!-- SECTION:FINAL_SUMMARY:END -->

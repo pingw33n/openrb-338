@@ -15,6 +15,13 @@ cargo run --release -p orb-ui-art -- check    # renders everything at 1x/2x/3x i
 cargo test -p orb-ui-art                      # committed files = generator; render + spec checks
 ```
 
+**The look since task-115** (the mockup session of 2026-10-29; docs/ui_spec.md section 19 has the
+numbers). The flat look keeps its palette; the small controls got a discreet 3D: keycaps for the
+pattern, bank and shuffle buttons (`keycap`), a darker base under the 303's keys and pills
+(`key_3d`), round LEDs for the header on/off buttons and the routing keys (`led_3d`), and 3D
+headers (`header`, lip + gradient). Pattern headers are rust (`PATTERN_HEADER`), mixer headers
+sea (`MIXER_HEADER`); the generator functions are in `parts.rs`.
+
 ## License and origin
 
 All art is our own work, drawn in code, released under the repository's license (GPL-3.0-only,
@@ -57,7 +64,7 @@ Place each at its section origin (panel pixels).
 | `wood` | 16 x 510 | (0, 0) and (608, 0) | left and right side wood |
 | `bg_transport` | 592 x 50 | (16, 0) | transport (no logo: it is its own part) |
 | `logo` | 134 x 48 | (474, 1) | the wordmark, over `bg_transport`; the click area of the logo |
-| `logo_open`, `logo_rb338`, `logo_line`, `logo_sub` | 134 x 48 | (474, 1) | the pieces of `logo` |
+| `logo_open`, `logo_rb338`, `logo_line_0` .. `logo_line_3`, `logo_sub` | 134 x 48 | (474, 1) | the pieces of `logo` |
 | `bg_pattern` | 70 x 115 | (16, 50 + 115 r) | pattern section of row r = 0..3 |
 | `focus_off`, `focus_on` | 4 x 115 | (86, 50 + 115 r) | the row's focus bar (lit orange) |
 | `bg_tb303` | 366 x 115 | (90, 50) and (90, 165) | the two bass synths |
@@ -73,20 +80,27 @@ Place each at its section origin (panel pixels).
 Control positions in `layout.tsv` are already absolute. The drum legend rows are in the
 backgrounds (808: 12 cells of 22 px at (10, 71); 909: the 12 instrument chips of the top row at
 (4, 4) with the edges of `EDGES_909` in `parts.rs`, and the name row at (26, 74)). The 303's key
-band (`BAND_303`) is three sections: pitch mode and clear, the keys on gray, and one row of the
-flags and note/rest under the edit step display.
+band (`BAND_303`) is three blocks of one height (y 46..112): pitch mode and clear (black), the
+keys (gray), and the flags with the edit step display in their top row (black). The six knobs
+start at `KNOB_X0_303` (95), the waveform switch is labeled "WAVEFORM" and sits at (15, 20)
+(task-115; the placement is in docs/ui_spec.md section 19).
 
-The logo is the wordmark `OPENRB-338`, its orange underline and the subtitle `BASS LINE AND
-DRUM MACHINE`. `logo` is the whole (the panel draws it at (474, 1) after `bg_transport`, and
-Help > About draws it scaled up, crisp because it is SVG). `logo_open` ('OPEN'), `logo_rb338`
-('RB-' in ink and '338' in orange), `logo_line` (the 118 x 1.5 underline) and `logo_sub` (the
-subtitle) are its pieces for an animation (task-114): each is on the whole 134 x 48 canvas and
-is placed at the same (474, 1), so an offset or an opacity moves it with no placement math
-(`LOGO_PIECES` in `parts.rs`; `logo` is exactly the four in that order, and `logo` renders
-pixel for pixel like the single run the transport background used to hold). The app draws
-`logo`; the pieces are generated but unused until task-114.
+The logo is the wordmark `OPENRB-338`, its underline of four segments in the 808's step colors
+(red, orange, yellow, white; each 28.4 x 1.5 at (8 + 29.9 i, 28)) and the subtitle `BASS LINE
+AND DRUM MACHINE`. `logo` is the whole (the panel draws it at (474, 1) after `bg_transport`,
+and Help > About draws it scaled up, crisp because it is SVG). `logo_open` ('OPEN'),
+`logo_rb338` ('RB-' in ink and '338' in orange), `logo_line_0` .. `logo_line_3` (the underline
+segments, left to right) and `logo_sub` (the subtitle) are its pieces for an animation
+(task-114): each is on the whole 134 x 48 canvas and is placed at the same (474, 1), so an
+offset or an opacity moves it with no placement math (`LOGO_PIECES` in `parts.rs`; `logo` is
+exactly the seven in that order). The app draws `logo`; the pieces are generated but unused
+until task-114.
 
-`app_icon` (64 x 64) is not part of the panel: the app renders it as the window icon.
+`app_icon` (64 x 64) is the 303's saw running into a square wave (orange, 4 px stroke) over four
+step keys in the 808's colors, on a slate tile. It is not part of the panel: the app renders it
+as the window icon and in Help > About, and `ui-art iconset` / `ui-art ico` make the macOS
+`.icns` and the Windows `assets/app_icon.ico` from it (regenerate the `.ico` whenever the icon
+changes).
 
 ## Controls
 
@@ -120,14 +134,15 @@ are in `KNOBS` (`src/parts.rs`) and below:
 - `fader_track` 15 x 54 and `fader_handle` 15 x 11. The handle's top is at
   `(1 - v) * 43` px from the track's top (`v` = position / 999; travel 43 px); the track holds the
   scale ticks and slot. Used by the mixer levels, the master and the four PCF faders.
-- Two-position switches, `_0` / `_1` (0 = left or top): `switch_wave_` 16 x 12 (303 waveform:
-  0 saw, 1 square), `switch_808_` 11 x 17 (shared slots: 0 upper label, 1 lower), `switch_fx_`
+- Two-position switches, `_0` / `_1` (0 = left or top): `switch_wave_` 40 x 14 (303 waveform,
+  the saw and the square printed on its frame: 0 saw, 1 square), `switch_808_` 11 x 17 (shared slots: 0 upper label, 1 lower), `switch_fx_`
   9 x 18 (PCF BP/LP; delay triplet/16th), `switch_mode_` 26 x 19 (transport: 0 pattern, 1 song).
   A click anywhere on a two-position switch flips it.
-- `mixsw_dist_`, `mixsw_pcf_`, `mixsw_comp_` (`off` / `on`) 20 x 11: the routing buttons of the
-  mixer channels; `mixsw_comp_` also on the master.
-- `power_13x13_`, `power_14x14_` (`off` / `on`): flat green on/off lamps in the headers: pattern
-  section; mixer mute and effects.
+- `mixsw_dist_`, `mixsw_pcf_`, `mixsw_comp_` (`off` / `on`) 28 x 13: the routing keys of the
+  mixer channels (a key with an amber 3D LED and the label; the LED lights when on);
+  `mixsw_comp_` also on the master.
+- `power_13x13_`, `power_14x14_` (`off` / `on`): round 3D green LEDs (radius 2.6, no bezel) in
+  the headers: pattern section; mixer mute and effects.
 - `toggle_loop_` 18 x 18 (icon only), `toggle_shuffle_` 30 x 12, `toggle_flam_` 14 x 8 (`off` /
   `on`; the flam button, shaped like a 909 step's light).
 
@@ -138,10 +153,10 @@ are in `KNOBS` (`src/parts.rs`) and below:
 | `btn_play_`, `btn_record_` | 32 x 25 | `rest`, `pressed`, `lit` | Play, Record |
 | `btn_stop_`, `btn_rewind_`, `btn_ff_` | 32 x 25 | `rest`, `pressed` | Stop, Rewind, Fast forward |
 | `arrow_inc_`, `arrow_dec_` | 11 x 9 | `rest`, `pressed` | every value display's up / down arrows |
-| `pat_btn_1_` .. `pat_btn_8_` | 17 x 20 | `off`, `on` | pattern grid, 4 x 2 cells at (1 + 17 col, 19 + 20 row) of the section |
-| `bank_btn_A_` .. `bank_btn_D_` | 17 x 20 | `off`, `on` | bank row, 4 cells at (1 + 17 i, 66) |
+| `pat_btn_1_` .. `pat_btn_8_` | 14 x 15 | `off`, `on` | pattern grid, 4 x 2 keycaps at (4 + 16 col, 25 + 18 row) of the section |
+| `bank_btn_A_` .. `bank_btn_D_` | 14 x 15 | `off`, `on` | bank row, 4 keycaps at (4 + 16 i, 64) |
 | `arrow303_inc_`, `arrow303_dec_` | 11 x 9 | `rest`, `pressed` | 303 Step (up) and Back (down) |
-| `btn_pill_17x10_` | 17 x 10 | `rest`, `pressed` | 303 Pitch mode, Clear |
+| `btn_pill_22x10_` | 22 x 10 | `rest`, `pressed` | 303 Pitch mode, Clear |
 | `key_white_`, `key_black_` | 9 x 16, 8 x 15 | `rest`, `pressed` | 303 note keys (white at y 89, black at y 60) |
 | `btn_flag_` | 9 x 16 | `rest`, `pressed` | 303 Down, Up, Accent, Slide, Note/Rest |
 

@@ -1,17 +1,26 @@
-//! Help > About (task-102): the logo, the name, the version and the project link in a small
-//! centered window. The version string is computed by `build.rs` (`crate::version`).
+//! Help > About (task-102, laid out in task-115): the icon, the wordmark, the version and the
+//! project link in a small centered window. The version string is computed by `build.rs`
+//! (`crate::version`).
 
 use eframe::egui::{self, Context, Key, Modifiers, RichText};
 
 use crate::app::App;
 use crate::art;
-use crate::palette::{INK, INK_DIM};
+use crate::palette::INK_DIM;
 
 /// The wordmark part of the panel (`assets/ui`), its native size and the scale it is shown at.
 pub const LOGO_PART: &str = "logo";
 const LOGO_W: f32 = 134.0;
 const LOGO_H: f32 = 48.0;
 const LOGO_SCALE: f32 = 2.0;
+/// The app icon part and the size it is shown at.
+pub const ICON_PART: &str = "app_icon";
+const ICON_SIZE: f32 = 64.0;
+/// The content area below the title bar and the x of the version and the link. The mockup's
+/// window is 360 wide; the link needs about 20 more at this alignment.
+const CONTENT_W: f32 = 380.0;
+const CONTENT_H: f32 = 156.0;
+const TEXT_X: f32 = 108.0;
 
 /// The name of the app.
 pub const NAME: &str = "OpenRB-338";
@@ -63,19 +72,38 @@ impl App {
             .resizable(false)
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
+            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(0.0))
             .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    // the panel's wordmark, 2x its native size; it is SVG, so the loader
-                    // rasterizes it at the window's pixel density
-                    let logo = art::part(LOGO_PART).expect("logo part");
-                    ui.add(
-                        egui::Image::from_bytes(logo.uri, logo.svg)
-                            .fit_to_exact_size(egui::vec2(LOGO_W, LOGO_H) * LOGO_SCALE),
-                    );
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(NAME).size(20.0).strong().color(INK));
+                // The layout of the mockup session (task-115), points from the top left of
+                // the content: the icon, the wordmark at 2x, and under its subtitle the
+                // version and the link, left-aligned. The images are SVG, so the loader
+                // rasterizes them at the window's pixel density.
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(CONTENT_W, CONTENT_H), egui::Sense::hover());
+                let at = |x: f32, y: f32| rect.min + egui::vec2(x, y);
+                let image = |ui: &mut egui::Ui, name: &str, pos: egui::Pos2, size: egui::Vec2| {
+                    let part = art::part(name).expect("the part");
+                    let r = egui::Rect::from_min_size(pos, size);
+                    egui::Image::from_bytes(part.uri, part.svg)
+                        .fit_to_exact_size(size)
+                        .paint_at(ui, r);
+                };
+                image(
+                    ui,
+                    ICON_PART,
+                    at(18.0, 18.0),
+                    egui::vec2(ICON_SIZE, ICON_SIZE),
+                );
+                let logo_size = egui::vec2(LOGO_W, LOGO_H) * LOGO_SCALE;
+                image(ui, LOGO_PART, at(92.0, 14.0), logo_size);
+                let line = |ui: &mut egui::Ui, y: f32, f: &dyn Fn(&mut egui::Ui)| {
+                    let r = egui::Rect::from_min_size(at(TEXT_X, y), egui::vec2(CONTENT_W, 18.0));
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(r), f);
+                };
+                line(ui, 104.0, &|ui| {
                     ui.label(RichText::new(format!("Version {VERSION}")).color(INK_DIM));
-                    ui.add_space(6.0);
+                });
+                line(ui, 126.0, &|ui| {
                     ui.hyperlink_to(URL, URL);
                 });
             });

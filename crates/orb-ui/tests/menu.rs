@@ -1739,8 +1739,12 @@ fn the_about_window_opens_centered_and_closes() {
         "the version is drawn"
     );
     assert!(shapes.contains(orb_ui::about::URL), "the link is drawn");
-    // the logo: one more image than without the window
-    assert_eq!(images(&shapes), before + 1, "the logo image is drawn");
+    // the icon and the wordmark: two more images than without the window
+    assert_eq!(
+        images(&shapes),
+        before + 2,
+        "the icon and the logo are drawn"
+    );
     // the version is `YYYY.MMDD.HHMM (<git>)` (task-133)
     let v = orb_ui::about::VERSION;
     let b = v.as_bytes();

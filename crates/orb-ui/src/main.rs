@@ -15,6 +15,7 @@
 //! the native size; the window is as high as the menu bar more, for screenshots), `--ppp`
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
 //! quits. Ctrl/Cmd+O opens the in-app file browser (task-046) to open a song, Ctrl/Cmd+S saves;
+//! `--about` starts with the About window open (for screenshots, task-115).
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
 //! settings file (`OpenRB-338/ui.toml` in the configuration folder, or `$ORB_UI_CONFIG`).
 
@@ -40,7 +41,7 @@ use orb_ui::settings::Settings;
 fn usage() -> ! {
     eprintln!(
         "usage: OpenRB-338 [SONG.rbs] [--demo] [--size WxH] [--ppp S] \
-         [--browse open|save|export|mod] [--screenshot OUT.png]\n\
+         [--browse open|save|export|mod] [--about] [--screenshot OUT.png]\n\
          the window starts maximized; --size WxH opens it at that panel size instead"
     );
     std::process::exit(2);
@@ -90,6 +91,7 @@ fn main() -> eframe::Result {
     #[cfg(all(windows, not(debug_assertions)))]
     attach_parent_console();
     let mut demo = false;
+    let mut about = false;
     let mut size = [PANEL_W, PANEL_H];
     let mut sized = false;
     let mut ppp: Option<f32> = None;
@@ -100,6 +102,7 @@ fn main() -> eframe::Result {
     while let Some(a) = args.next() {
         match a.as_str() {
             "--demo" => demo = true,
+            "--about" => about = true,
             "--size" => {
                 let v = args.next().unwrap_or_else(|| usage());
                 let (w, h) = v.split_once('x').unwrap_or_else(|| usage());
@@ -215,6 +218,9 @@ fn main() -> eframe::Result {
             });
             if let Some(mode) = browse {
                 app.open_browser(mode);
+            }
+            if about {
+                app.show_about();
             }
             Ok(Box::new(app))
         }),

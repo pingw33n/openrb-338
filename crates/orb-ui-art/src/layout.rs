@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use crate::parts::{
-    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOBS, KNOBS_909, LOGO_X, LOGO_Y, MOD_VIEW_808, STEPS_Y_909,
-    WHITE_303, column_909, knob_y_909,
+    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOB_X0_303, KNOBS, KNOBS_909, LEFT_X_303, LOGO_X, LOGO_Y,
+    MOD_VIEW_808, STEPS_Y_909, WHITE_303, column_909, knob_y_909,
 };
 use crate::svg::{Part, Svg, arc_path, n, pal};
 
@@ -229,8 +229,8 @@ fn pattern(b: &mut Builder, r: usize) {
             &format!("pattern{}", i + 1),
             "grid",
             &format!("pat_btn_{}_{state}", i + 1),
-            1.0 + 17.0 * (i % 4) as f32,
-            19.0 + 20.0 * (i / 4) as f32,
+            4.0 + 16.0 * (i % 4) as f32,
+            25.0 + 18.0 * (i / 4) as f32,
         );
     }
     for (i, name) in ["A", "B", "C", "D"].into_iter().enumerate() {
@@ -239,8 +239,8 @@ fn pattern(b: &mut Builder, r: usize) {
             &format!("bank{name}"),
             "grid",
             &format!("bank_btn_{name}_{state}"),
-            1.0 + 17.0 * i as f32,
-            66.0,
+            4.0 + 16.0 * i as f32,
+            64.0,
         );
     }
     // level with the steps display (95..111)
@@ -259,25 +259,36 @@ fn pattern(b: &mut Builder, r: usize) {
 fn tb303(b: &mut Builder, r: usize) {
     let oy = 50.0 + 115.0 * r as f32;
     b.section(&format!("tb303_{}", r + 1), "bg_tb303", 90.0, oy);
-    // saw (15.5..23.5), the switch, square (45.5..52.5): centered over pitch mode and
-    // clear (x 34), level with the knobs' centers
-    b.part("wave", "hswitch", "switch_wave_0", 26.5, 21.0);
+    // The waveform switch carries the saw and the square on its frame, under the label.
+    b.part("wave", "hswitch", "switch_wave_0", 15.0, 20.0);
     let vals = [0.5, 0.35, 0.6, 0.45, 0.4, 0.55];
     for (k, name) in ["tune", "cutoff", "reso", "envmod", "decay", "accent"]
         .into_iter()
         .enumerate()
     {
-        b.knob(name, KNOB_303, 66.0 + 40.0 * k as f32, 12.0, vals[k]);
+        b.knob(name, KNOB_303, KNOB_X0_303 + 40.0 * k as f32, 12.0, vals[k]);
     }
     let (ex, ey) = EDIT_303;
     b.display("edit_step", ex, ey, 19.0, 2, " 1");
     b.part("step", "trigger", "arrow303_inc_rest", ex + 20.0, ey - 1.0);
     b.part("back", "trigger", "arrow303_dec_rest", ex + 20.0, ey + 8.0);
-    // Pitch mode and clear, centered in the band's left section (x 12..56).
-    b.part("pitch_led", "led", "led_8_off", 30.0, 55.0);
-    b.part("pitch_button", "trigger", "btn_pill_17x10_rest", 25.5, 65.0);
-    b.part("clear", "trigger", "btn_pill_17x10_rest", 25.5, 92.0);
-    // The keys; each LED is centered 3 px above its key.
+    // Pitch mode and clear, centered in the band's left block (x 12..46).
+    b.part("pitch_led", "led", "led_8_off", LEFT_X_303 - 4.0, 56.0);
+    b.part(
+        "pitch_button",
+        "trigger",
+        "btn_pill_22x10_rest",
+        LEFT_X_303 - 11.0,
+        66.0,
+    );
+    b.part(
+        "clear",
+        "trigger",
+        "btn_pill_22x10_rest",
+        LEFT_X_303 - 11.0,
+        95.0,
+    );
+    // The keys; each LED's top is 11 px above its key's top (a 3 px gap).
     let white_notes = [0, 2, 4, 5, 7, 9, 11, 12];
     let black_notes = [(0, 1), (1, 3), (3, 6), (4, 8), (5, 10)];
     let note_lit = 0; // C
@@ -421,8 +432,12 @@ fn mixer(b: &mut Builder, c: usize) {
         58.0,
         4.0,
     );
-    // Two columns: pan and level centered at x 19, the routing and delay at x 51.
-    b.part("dist", "toggle", "mixsw_dist_off", 41.0, 23.0);
+    // Pan and the delay send side by side under the header (labels at 52.5), then the fader
+    // at the left and the three routing keys stacked at the right.
+    b.pan("pan", KNOB_22, 8.0, 26.0, 0.5);
+    b.knob("delay", KNOB_22, 40.0, 26.0, [0.0, 0.25, 0.1, 0.0][c]);
+    b.fader("level", 11.5, 58.0, [0.7, 0.7, 0.8, 0.75][c]);
+    b.part("dist", "toggle", "mixsw_dist_off", 38.0, 62.0);
     b.part(
         "pcf",
         "radio",
@@ -431,14 +446,10 @@ fn mixer(b: &mut Builder, c: usize) {
         } else {
             "mixsw_pcf_off"
         },
-        41.0,
-        37.0,
+        38.0,
+        78.0,
     );
-    b.part("comp", "radio", "mixsw_comp_off", 41.0, 51.0);
-    // pan centered in the space between the header (20) and the fader (58)
-    b.pan("pan", KNOB_22, 8.0, 25.5, 0.5);
-    b.fader("level", 11.5, 58.0, [0.7, 0.7, 0.8, 0.75][c]);
-    b.knob("delay", KNOB_22, 40.0, 76.0, [0.0, 0.25, 0.1, 0.0][c]);
+    b.part("comp", "radio", "mixsw_comp_off", 38.0, 94.0);
 }
 
 fn master(b: &mut Builder) {
@@ -446,7 +457,8 @@ fn master(b: &mut Builder) {
     b.part("meter_l", "meter", "meter_15x56_8", 16.0, 24.0);
     b.part("meter_r", "meter", "meter_15x56_7", 51.0, 24.0);
     b.fader("fader", 33.0, 25.0, 0.8);
-    b.part("comp", "radio", "mixsw_comp_off", 31.0, 81.0);
+    // centered under the meters
+    b.part("comp", "radio", "mixsw_comp_off", 27.0, 82.0);
 }
 
 /// An effect's header (2..20): the on/off button and the meter 2 px from its edges.

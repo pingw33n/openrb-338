@@ -959,7 +959,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the error message box); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
 | Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key orb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
-| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the logo (the `app_icon` part), the name, `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the link https://github.com/pingw33n/open-rb-338 (task-102; below) |
+| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the app icon (the `app_icon` part), the wordmark (the `logo` part, at 2x), `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the link https://github.com/pingw33n/open-rb-338 (task-102, laid out in task-115; below) |
 
 The Help menu is last in the bar. Its items are the list `HELP_ITEMS` in `menu.rs`, so a new item
 is one more entry.
@@ -980,7 +980,12 @@ is one more entry.
 
 - **Help > About and the version string** (task-102; `crates/orb-ui/src/about.rs`, `version.rs`,
   `build.rs`). The window is centered as File > Info is (pivot CENTER_CENTER, `default_pos` at
-  the content center, a fresh id per open: `App::about_serial`). The version is
+  the content center, a fresh id per open: `App::about_serial`). Its content is a fixed 380 x
+  156 pt area under the title bar with no inner margin (the mockup session's 360 pt window plus
+  the 20 pt the link needs at its alignment): the 64 pt icon at (18, 18), the wordmark at
+  (92, 14) scaled 2.0 (the subtitle is part of it), and the version and the link left-aligned
+  at x 108 (y 104 and 126); there is no separate name line (the title bar and the wordmark say
+  it). `OpenRB-338 --about` opens it at the start (for `--screenshot`). The version is
   `YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)`, computed by `build.rs` into `ORB_UI_VERSION` (the
   pure formatting is `version.rs`, unit-tested): the number is the build time in UTC to the
   minute (task-133), from `SOURCE_DATE_EPOCH` when set, else the time the script runs. The
@@ -1281,3 +1286,49 @@ mod's sound, mixed as the player mixes it, none with the preference off) and
 - **Fixed with it.** The model took the engine's value for a mixer channel's distortion insert
   only after the button had been pressed, and never for a pattern section's on/off switch
   (`Panel::adopt`); both now follow the song, and the save needs them.
+
+## 19. OpenRB-338's own panel art and placement (task-115)
+
+Sections 3 to 9 give the original's rectangles; OpenRB-338 draws its own art and places a control
+inside its section as it likes (`assets/ui/layout.tsv`, written by `crates/orb-ui-art`). The
+mockup session of 2026-10-29 (six review rounds with the user) set the following; all numbers are
+panel pixels, relative to the section unless said otherwise. Control ids, kinds and behavior are
+unchanged.
+
+- **303** (both). "WAVEFORM" (cap 3.6) centered at (35, 5.5) labels one 40 x 14 switch at
+  (15, 20) that has the saw and the square printed on its black frame, an 18 x 12 track between
+  them and a steel thumb (8 x 11) at x 12 (saw) or 20 (square); the bare glyphs on the paper are
+  gone. The six knobs are centered in the paper: first knob at x 95, 40 apart (labels at the
+  centers). The key band is three blocks of one height (y 46..112, radius 4): pitch and clear
+  (black, x 12, 34 wide), the keys (gray, x 52, 184 wide), the flags (black, x 242, 112 wide).
+  Pitch and clear: "PITCH" at (29, 51.5), the LED at (25, 56), the pill (now 22 x 10) at (18, 66);
+  "CLEAR" at (29, 88.5), its pill at (18, 95). White keys at x 66 + 21 i (y 89, LEDs at y 78),
+  black keys 11 px right of the white key to their left (y 60, LEDs y 49). The edit step display
+  (19 x 16) is the flags block's top row at (296, 50), its arrows at (316, 49) and (316, 58),
+  "EDIT STEP" (cap 3.2) centered at (279.5, 58). The flags at x 250.5 + 22 j: LED y 78, key y 89,
+  label y 109. The pills, white keys and flag keys have a discreet 3D (a darker base, the face
+  0.5 px in at the sides and 1.5 px short); the black keys are unchanged.
+- **Pattern sections.** Header color rust `#bf4a2b`. The pattern and bank buttons are 14 x 15
+  keycaps on a 16 px grid (x 4 + 16 i; rows y 25 and 43; bank row y 64): a face over a 1.8 px
+  darker lip with a 0.5 px outline. Pattern: light (`#dde1e6`) with a black digit, selected
+  `#e8503f` with a white digit. Bank: slate with a dim letter, selected orange with a black
+  letter. SHUFFLE (30 x 12) is the same keycap; its place and the steps display are unchanged.
+- **Mixer channels.** Header color sea `#3b8a8f`. Pan at (8, 26) and the delay send at (40, 26)
+  side by side (labels at y 52.5), the fader at (11.5, 58), and the three routing keys
+  (`mixsw_*`, now 28 x 13: a key with an amber 3D LED and a left-aligned label, ink when on and
+  dim when off) stacked at x 38, y 62 + 16 i. The master's COMP is the same key at section
+  (27, 82).
+- **Headers** (pattern, mix, master and the four effects) are 3D: a lip in the header color
+  darkened to 0.62, a face 1.3 px shorter with a light-to-dark gradient and a faint white line
+  below its top edge. Sizes and label places are unchanged.
+- **The on/off buttons** (`power_13x13`, `power_14x14`) are round 3D LEDs (radius 2.6, no
+  bezel) in a translucent socket that takes the header's color; lit, they glow green.
+- **The wordmark** (`logo`) has a four-segment underline in the 808's step colors (red, orange,
+  yellow, white), each 28.4 x 1.5 at (8 + 29.9 i, 28). Its pieces (`LOGO_PIECES`: `logo_open`,
+  `logo_rb338`, `logo_line_0` .. `logo_line_3`, `logo_sub`) are separate parts, for the startup
+  animation (task-114).
+- **The app icon** is the 303's saw running into a square wave in orange over four step keys in
+  the 808's colors, on the same slate tile as before.
+- **Help > About** is laid out as section 18 says.
+
+The art part list, sizes and generator functions are in `assets/ui/README.md`.
