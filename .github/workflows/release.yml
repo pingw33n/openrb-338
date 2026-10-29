@@ -97,11 +97,19 @@ jobs:
           if-no-files-found: error
 
   dmg:
-    # The macOS .dmg (task-110): one universal OpenRB-338.app (lipo of the two macOS builds)
-    # with the CLI inside, signed ad hoc only (no Developer ID, no notarization).
-    name: dmg
+    # The macOS .dmg (task-110, task-136): one per architecture, each an OpenRB-338.app of that
+    # architecture only with the CLI inside, signed ad hoc only (no Developer ID, no
+    # notarization). Each runs on the runner of its target, like the package jobs, so the
+    # target's own tools check it and no job needs the other build.
+    name: dmg (${{ matrix.target }})
     needs: [prepare, package]
-    runs-on: macos-15
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-15 }
     env:
       SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
       ORB_BUILD_BRANCH: ${{ needs.prepare.outputs.build_branch }}
@@ -111,24 +119,19 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: bin-*-apple-darwin
-          path: dist-in
-      - name: Lay out the two builds
-        run: |
-          for t in aarch64-apple-darwin x86_64-apple-darwin; do
-            mkdir -p "dist/$t"
-            mv "dist-in/bin-$t" "dist/$t/bin"
-            chmod +x "dist/$t/bin/"*
-          done
+          name: bin-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/bin
+      - name: Make the binaries executable
+        run: chmod +x "dist/${{ matrix.target }}/bin/"*
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          key: dmg
+          key: dmg-${{ matrix.target }}
       - name: Build the .dmg
-        run: SKIP_BUILD=1 scripts/package-dmg.sh
+        run: SKIP_BUILD=1 scripts/package-dmg.sh "${{ matrix.target }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: dmg
-          path: dist/universal-apple-darwin/OpenRB-338-*.dmg
+          name: dmg-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/OpenRB-338-*.dmg
           if-no-files-found: error
 
   installer:
@@ -229,7 +232,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: "{package-*,dmg,installer-*,appimage-*}"
+          pattern: "{package-*,dmg-*,installer-*,appimage-*}"
           path: release-in
           merge-multiple: true
       - name: Check the packages and write SHA256SUMS.txt

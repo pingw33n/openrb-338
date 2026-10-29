@@ -19,7 +19,7 @@ Every OS has an amd64 and an arm64 variant:
 |---|---|---|
 | `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` | `.tar.gz`, `.AppImage` | built on Ubuntu 22.04: glibc 2.35 or newer; the AppImage is described under "The AppImage" |
 | `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | `.zip` | MSVC, not gnu: it is what Rust, eframe's wgpu and the runners use; `cargo-xwin` cross-builds it from a Mac or Linux |
-| `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (the `.dmg` has the `lipo` of the two, below) |
+| `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (nor in the `.dmg`: one image per architecture, below) |
 
 A package is `OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` holding a folder of the same
 name with `orb` (`orb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The
@@ -55,7 +55,6 @@ Sizes on this Mac (2026-10-28, bytes; release profile with `strip = symbols`, th
 |---|---|---|---|
 | aarch64-apple-darwin | 5,924,320 to 5,418,736 | 21,058,864 to 14,981,536 | .tar.gz 15,417,562 to 11,888,843 |
 | x86_64-apple-darwin | 6,170,656 to 5,749,832 | 22,011,896 to 16,373,416 | .tar.gz 15,940,752 to 12,531,940 |
-| universal-apple-darwin | 12,101,088 to 11,185,904 | 43,078,960 to 31,365,536 | .dmg 34,302,700 to 26,980,214 |
 | aarch64-pc-windows-msvc | 5,666,816 to 5,509,120 | 21,507,072 to 17,240,576 | .zip 15,703,374 to 12,583,557 |
 | x86_64-pc-windows-msvc | 6,229,504 to 6,064,128 | 24,596,480 to 20,065,792 | .zip 16,469,940 to 13,365,072 |
 
@@ -73,7 +72,7 @@ the same string for one `SOURCE_DATE_EPOCH`:
 | Where | Form | Example |
 |---|---|---|
 | `scripts/version.sh` | `YYYY.MMDD.HHMM` | `2026.1028.1930` |
-| file names | `OpenRB-338-<version>-<target>.<ext>` | `OpenRB-338-2026.1028.1930-universal-apple-darwin.dmg` |
+| file names | `OpenRB-338-<version>-<target>.<ext>` | `OpenRB-338-2026.1028.1930-aarch64-apple-darwin.dmg` |
 | About box (`crates/orb-ui/src/version.rs`, made by `build.rs`) | `<version> (<hash>)` | `2026.1028.1930 (b472847)` |
 | `README.txt` of a package | `OpenRB-338 <version> (<target>)` | `OpenRB-338 2026.1028.1930 (x86_64-pc-windows-msvc)` |
 | macOS `CFBundleShortVersionString` and `CFBundleVersion` (at most three integers) | `<version>` | `2026.1028.1930` |
@@ -133,7 +132,7 @@ The Windows build of OpenRB-338 is a GUI-subsystem exe (task-111), see "The Wind
 | `scripts/build.sh TARGET` | builds `orb` and `OpenRB-338` (profile `dist`) for the target into `dist/<target>/bin/` |
 | `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
 | `scripts/build-all.sh [TARGET...]` | packages every target practical from this machine, and lists the skipped and failed ones |
-| `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |
+| `scripts/package-dmg.sh` | `scripts/package-dmg.sh TARGET` (a macOS target) builds it, then `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folder) |
 | `scripts/package-installer.sh TARGET` | `build.sh` for a Windows target, then `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x64\|arm64>-setup.exe` with NSIS (`SKIP_BUILD=1` uses the existing `bin/`; `MAKENSIS` names makensis) |
 | `scripts/installer/openrb.nsi`, `scripts/installer/path.ps1` | the installer's script, and the helper that edits the user's PATH |
 | `scripts/package-appimage.sh TARGET` | `build.sh` for a Linux target, then `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x86_64\|aarch64>.AppImage` with appimagetool (`SKIP_BUILD=1` uses the existing `bin/`) |
@@ -270,10 +269,12 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
   - The runner images change: GitHub retires old ones (macos-13 is gone, which is why amd64
     macOS uses `macos-15-intel`). Fix a label here when a run reports one as missing.
   - The Windows arm64 job installs rustup if the image has none.
-  - `dmg` (task-110), on `macos-15` after the package jobs: downloads the two macOS `bin-<target>`
-    artifacts, runs `SKIP_BUILD=1 scripts/package-dmg.sh` and uploads the artifact `dmg`
-    (`OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg`). It reuses the two package
-    builds and the `prepare` build time, so the app's version string is theirs.
+  - `dmg` (task-110, task-136), one job per macOS target after the package jobs, on the runner
+    of its target (`macos-15-intel`, `macos-15`; not one runner for both, so each job needs only
+    its own `bin-<target>` and the target's own tools check the image): downloads that
+    `bin-<target>` artifact, runs `SKIP_BUILD=1 scripts/package-dmg.sh <target>` and uploads the
+    artifact `dmg-<target>` (`OpenRB-338-<YYYY.MMDD.HHMM>-<target>.dmg`). It reuses the package
+    build and the `prepare` build time, so the app's version string is theirs.
   - `installer` (task-111), one job per Windows architecture on `ubuntu-latest` after the package
     jobs: installs NSIS (`apt-get install nsis`), downloads `bin-x86_64-pc-windows-msvc` or
     `bin-aarch64-pc-windows-msvc`, runs `SKIP_BUILD=1 scripts/package-installer.sh <target>` and
@@ -315,14 +316,14 @@ git push origin v2026.1028.1930
   `^v[0-9]{4}\.[0-9]{4}\.[0-9]{4}$` (and that the date exists); another tag (`v1`, `vfoo`) fails
   there with a message, the other jobs are skipped and no release is created.
 - When `package`, `dmg`, `installer` and `appimage` all pass, the `release` job:
-  1. downloads `package-*`, `dmg`, `installer-*` and `appimage-*`;
-  2. `scripts/release-assets.sh` checks that exactly the 11 files of a release are there (four
-     `.tar.gz`, two `.zip`, the `.dmg`, the two `-setup.exe`, the two `.AppImage`, all named with
+  1. downloads `package-*`, `dmg-*`, `installer-*` and `appimage-*`;
+  2. `scripts/release-assets.sh` checks that exactly the 12 files of a release are there (four
+     `.tar.gz`, two `.zip`, the two `.dmg`, the two `-setup.exe`, the two `.AppImage`, all named with
      the tag's version) and writes `SHA256SUMS.txt` over them (`sha256sum -c` form, sorted);
      a missing or foreign file fails the job, so a release never ships without a package;
   3. `scripts/changelog.sh` writes the release body;
   4. creates a draft release with `gh release create --draft --verify-tag`, titled
-     `OpenRB-338 <version>`, with the 11 files and `SHA256SUMS.txt` attached (12 assets).
+     `OpenRB-338 <version>`, with the 12 files and `SHA256SUMS.txt` attached (13 assets).
 - It never publishes. The release is a draft that only the user can see: read the body and the
   assets on the Releases page, then press "Publish release" (or `gh release edit TAG --draft=false`).
   Nothing is signed (Gatekeeper and SmartScreen: "What the system shows for an unsigned
@@ -361,11 +362,17 @@ Double-clicking a bare binary in Finder opens Terminal, and the Dock and Activit
 the generic executable icon for it (the icon comes from the bundle's `CFBundleIconFile`; eframe
 only sets the Dock icon at run time). The `.app` bundle fixes both.
 
-`scripts/package-dmg.sh` (Mac only) builds
-`dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg`:
+`scripts/package-dmg.sh TARGET` (Mac only; `aarch64-apple-darwin` for Apple silicon,
+`x86_64-apple-darwin` for Intel) builds
+`dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.dmg`: one image per architecture, each about
+half the size of the universal image of task-110 (the user's decision, 2026-10-29, task-136). The
+script checks with `lipo -archs` that both binaries have exactly the target's architecture.
+Sizes on this Mac (2026-10-29, `--profile dist`): aarch64 13,636,328 bytes, x86_64 14,610,880
+(the universal one was 26,980,214). An Intel Mac needs the x86_64 image; an Apple silicon
+Mac can run it under Rosetta but should take the aarch64 one.
 
-- `OpenRB-338.app`, made by `scripts/macos-app.sh`: `Contents/MacOS/OpenRB-338` is the UI as a
-  universal binary (`lipo` of the aarch64 and x86_64 builds; `lipo -archs` says `x86_64 arm64`),
+- `OpenRB-338.app`, made by `scripts/macos-app.sh`: `Contents/MacOS/OpenRB-338` is the UI of the
+  image's target only (`lipo -archs` says `arm64` or `x86_64`),
   `Contents/Resources/OpenRB-338.icns` is the `app_icon` part rendered at 16 to 1024 px
   (`cargo run -p orb-ui-art --bin ui-art -- iconset DIR`, DIR required, with the same resvg as
   the panel, then `iconutil`), and `Contents/Info.plist` has `CFBundleName` and
@@ -373,10 +380,10 @@ only sets the Dock icon at run time). The `.app` bundle fixes both.
   2026-10-28), `CFBundleShortVersionString` and `CFBundleVersion` = the build time as
   `YYYY.MMDD.HHMM` (see "The version is the build time"), `OpenRBBuildTime`,
   `LSMinimumSystemVersion` = the highest `minos` of the binary (`scripts/build.sh` sets
-  `MACOSX_DEPLOYMENT_TARGET=11.0` for both macOS targets, so both slices need macOS 11.0;
+  `MACOSX_DEPLOYMENT_TARGET=11.0` for both macOS targets, so both need macOS 11.0;
   `macos-app.sh` fails if it finds no `minos`), `NSHighResolutionCapable` and
   `LSApplicationCategoryType` `public.app-category.music`.
-- The CLI `orb` is inside the bundle, `Contents/MacOS/orb`, also universal. Why inside and not next to the app: dragging the app to Applications installs both
+- The CLI `orb` is inside the bundle, `Contents/MacOS/orb`, of the same architecture. Why inside and not next to the app: dragging the app to Applications installs both
   and nothing is left behind, the bundle's seal covers both, and an update replaces both.
   The cost is a longer path; `README.txt` in the image gives
   `sudo ln -s /Applications/OpenRB-338.app/Contents/MacOS/orb /usr/local/bin/orb`.
@@ -403,8 +410,8 @@ Activity Monitor has no icon file to show; the app has `bundleID="net.emphased.o
 its `.app` as `bundle path` and its `Version` (the build time), which is where Activity Monitor and the Dock
 read the name and the icon.
 
-In CI the `dmg` job of `release.yml` runs `SKIP_BUILD=1 scripts/package-dmg.sh` over the two
-macOS `bin-<target>` artifacts, so the app carries the same version string as the `.tar.gz`
+In CI the `dmg` job of `release.yml` runs `SKIP_BUILD=1 scripts/package-dmg.sh <target>` over the
+`bin-<target>` artifact of each macOS target, so the app carries the same version string as the `.tar.gz`
 packages.
 
 ## The Windows installer (task-111)

@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 08:52'
+updated_date: '2026-10-29 09:44'
 labels:
   - tools
   - tests
@@ -44,8 +44,9 @@ File a bug for each failure. Assigned to the user, because it needs a release ru
 - [ ] #1 Every release.yml job passes on the first release run and every artifact is produced (dmg, installers x64/arm64, tar.gz/zip, AppImages, draft release)
 - [ ] #2 Spot checks on real machines done (macOS Gatekeeper, Windows x64 and arm64 install/uninstall, Linux AppImage); failures filed as bugs
 - [ ] #3 A v<YYYY.MMDD.HHMM> tag run builds every package with the tag's time: the About box/version string of each package equals the tag (v2026.1028.1930 -> 2026.1028.1930), file names carry it, and the hash has no dev- when the tag is on main (ORB_BUILD_BRANCH=main)
-- [ ] #4 The tag run ends with a DRAFT release with all 11 packages and SHA256SUMS.txt (12 assets) and the changelog body; a re-run replaces the draft (still one release); a tag not matching the pattern (e.g. v1) fails in prepare and creates nothing; nothing is published automatically
+- [ ] #4 The tag run ends with a DRAFT release with all 12 packages (two .dmg: aarch64 and x86_64) and SHA256SUMS.txt (13 assets) and the changelog body; a re-run replaces the draft (still one release); a tag not matching the pattern (e.g. v1) fails in prepare and creates nothing; nothing is published automatically
 - [ ] #5 On the first release run the x86_64 appimage smoke step passes its four screenshots, the backend asserted for each (WGPU_BACKEND=vulkan gives Vulkan, WGPU_BACKEND=gl gives Gl, automatic gives Vulkan, Vulkan ICDs hidden gives Gl); on a real Linux desktop with no Vulkan driver the AppImage opens through OpenGL (task-135)
+- [ ] #6 The dmg matrix of release.yml (task-136) passes for both targets, dmg (x86_64-apple-darwin) on macos-15-intel and dmg (aarch64-apple-darwin) on macos-15; each artifact dmg-<target> holds one OpenRB-338-<version>-<target>.dmg whose app has exactly one architecture; on a real Intel Mac the x86_64 image mounts and the app opens (Gatekeeper as docs/building.md says)
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -62,4 +63,6 @@ From task-135 (2026-10-29): scripts/appimage-smoke.sh now takes three screenshot
 task-135 round 1: the smoke script now has four screenshots and asserts the backend from the ORB_GPU_INFO=1 line (Vulkan forced, Gl forced, automatic expects Vulkan, ICDs hidden expects Gl); the AC above covers the x86_64 run.
 
 Correction (task-135 round 1): the earlier note saying three screenshots is superseded; there are four, with the backend asserted for each.
+
+From task-136 (2026-10-29): the universal .dmg is gone; there are two, OpenRB-338-<version>-aarch64-apple-darwin.dmg and -x86_64-apple-darwin.dmg, from a dmg job matrix (artifacts dmg-<target>). The release job pattern is now {package-*,dmg-*,installer-*,appimage-*}, release-assets.sh expects 12 files (so the 11 in the notes above are 12, and 13 assets with SHA256SUMS.txt). Done locally: both images built, lipo -archs one arch each, codesign --verify --strict, arm64 app opened from the mounted image, x86_64 app ran under Rosetta (--screenshot). Open: the CI run of the matrix, and a real Intel Mac.
 <!-- SECTION:NOTES:END -->

@@ -3,13 +3,13 @@
 #
 #   scripts/release-assets.sh DIR v2026.1028.1930
 #
-# DIR holds the downloaded artifacts of release.yml, flat. The 11 files that a release has
+# DIR holds the downloaded artifacts of release.yml, flat. The 12 files that a release has
 # must all be there, and nothing else (a missing package fails the release instead of
 # shipping without it):
 #   OpenRB-338-<version>-<target>.tar.gz   x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu,
 #                                          x86_64-apple-darwin, aarch64-apple-darwin
 #   OpenRB-338-<version>-<target>.zip      x86_64-pc-windows-msvc, aarch64-pc-windows-msvc
-#   OpenRB-338-<version>-universal-apple-darwin.dmg
+#   OpenRB-338-<version>-<target>.dmg     x86_64-apple-darwin, aarch64-apple-darwin
 #   OpenRB-338-<version>-<x64|arm64>-setup.exe
 #   OpenRB-338-<version>-<x86_64|aarch64>.AppImage
 # SHA256SUMS.txt lists them by name, sorted, in the format of `sha256sum -c`.
@@ -31,7 +31,8 @@ expected=(
     "$p-aarch64-apple-darwin.tar.gz"
     "$p-x86_64-pc-windows-msvc.zip"
     "$p-aarch64-pc-windows-msvc.zip"
-    "$p-universal-apple-darwin.dmg"
+    "$p-x86_64-apple-darwin.dmg"
+    "$p-aarch64-apple-darwin.dmg"
     "$p-x64-setup.exe"
     "$p-arm64-setup.exe"
     "$p-x86_64.AppImage"

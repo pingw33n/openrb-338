@@ -58,7 +58,7 @@ else
     iconutil -c icns "$tmp/OpenRB-338.iconset" -o "$app/Contents/Resources/OpenRB-338.icns"
 fi
 
-# The oldest macOS the binaries run on: the highest minos of the Mach-O headers (both slices).
+# The oldest macOS the binaries run on: the highest minos of the Mach-O headers.
 minos=$(otool -l "$app/Contents/MacOS/OpenRB-338" | awk '
     $1 == "minos" { print $2 }
     $1 == "cmd" && $2 == "LC_VERSION_MIN_MACOSX" { want = 1 }
