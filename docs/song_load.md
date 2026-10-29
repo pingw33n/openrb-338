@@ -1024,3 +1024,51 @@ into the stand-in song's USRI, so Save writes it, and `orb info` and File > Info
 [G] The original's Save of a 1.x song was not run on the test machine. What it writes is read
 from the disassembly above. That orb's lists equal the DLL's after a load rests on the msg-22
 comparison of task-057 (RBS songs) and on the 1.x renders.
+
+## 13. The song information and the copyright (task-117)
+
+Read from the bytes of Rebirth.exe with `llvm-objdump` (the idalib MCP tools were not available
+for this task): a scan of the file for every copy of each string and every 4-byte copy of its
+address, then the disassembly of each place found.
+
+**The copyright is not checked, and not kept [C, the read and write paths].**
+- The exe holds the string at 0x4BC010 (`(c)1997 Propellerhead Software, all rights reserved`, no
+  period), at 0x4BB8C8 and 0x4BC058 (the same with a period) and twice in `.rsrc` (version
+  resources, no reference). ReBirth.dll has no copyright string.
+- The six references to the `.rdata` strings are each the copyright argument of the HEAD
+  object constructor `sub_465AF6(magic, version, copyright)`, which copies the string to the
+  object's +0x10: 0x4109D1 and 0x41110E (magic 0x3B445B64, the RBRT file), 0x4380AE (the RBS
+  writer `sub_438025`: magic `[T[T`, CVersion(4,2) at 0x4DB918, string 0x4BC010), 0x43AA8A (magic
+  from 0x4CF1A4, string 0x4BC058), 0x41C22E and 0x41CAC2 (magic 0xFFEFEFE5, string 0x4BB8C8).
+  None is a comparison.
+- HEAD's serializer `sub_465B9D` writes the copyright at +9 with `sub_465D0E(dst, 0x80, src)`
+  (0x465BEE); its parser `sub_465BFC` reads it with `sub_465D8D(src, 0x80, dst)` (0x465C39) into
+  the object's +0x10.
+- A song open reads HEAD twice, each time through `sub_465AA2` (construct and parse) into a
+  stack object that is destroyed (`sub_465B87`) after the checks: the peek `sub_4349C7` at
+  0x434B26 (object at `ebp-0x170`) checks the magic (0x434B2F) and copies the version bytes
+  (0x434B77..0x434BB0, destroyed at 0x434BBD); `sub_434D05` at 0x434ECC (object at `ebp-0x188`)
+  checks the magic (0x434ED5) and the major version (0x434F11..0x434F49, `sub_47DB0B`), destroyed
+  at 0x434F93. Neither reads the object's copyright (`ebp-0x160`, `ebp-0x178`): no instruction of
+  0x4349C7..0x436000 addresses either.
+- So a song with any copyright opens without a message, and the original's Save writes its own
+  string (0x4380AE) whatever the file had.
+- [G] That no other code reads a song's copyright: without IDA's cross references, a pointer made
+  at run time cannot be ruled out; no other 4-byte copy of any of the string addresses is in the
+  file.
+
+**The limits of the USRI strings [C].** The USRI reader `sub_434955` copies the title with
+`sub_465D8D` max 0x28 (0x434960), the text with max 0x190 (0x434975) and the web page with max
+0x64 (0x434993); the writer uses `sub_465D0E` with the same 0x28, 0x190 and 0x64
+(0x4348E4..0x434911). `sub_465D8D` copies up to the zero or `max` bytes, and after a 0x0D it
+writes a 0x0A as well, which counts toward `max` (0x465DDA..0x465DED); `sub_465D0E` zeroes
+`max + 1` bytes and copies up to `max` bytes, skipping 0x0A (0x465D55). So the original holds the
+text with CR LF in at most 400 bytes, and a file's text whose bytes plus line breaks pass 400 loses
+its tail when the original opens it (and a Save of it writes the shortened text;
+`docs/original_bugs.md` OB-21).
+
+**orb** (File > Info, `crates/orb-ui/src/info.rs`, `docs/ui_spec.md` 18): the title, text, web
+page and copyright are editable with the limits 40, 400 (a line break counting two, so the
+original reads the text whole), 100 and 128 bytes. orb's Save writes the copyright the document
+holds; a note next to the field says that the original ignores it on open and writes its own on
+Save.

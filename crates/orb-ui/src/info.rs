@@ -1,6 +1,8 @@
-//! File > Info (task-095): the information of the current song in a read-only window. The
-//! facts come from the document's song file as it was read ([`SongInfo::of`], no rendering, no
-//! player); editing the song information is not done.
+//! File > Info (task-095): the information of the current song in a window. The facts come
+//! from the document's song file as it was read ([`SongInfo::of`], no rendering, no player).
+//! The title, text, web page and copyright are edited in place (task-117, [`Field`],
+//! [`set_field`]): an edit changes the document's song and marks it modified; the other facts
+//! are read-only.
 
 use eframe::egui::{self, Context, Key, Modifiers, RichText};
 use orb_cli::info::{SongFacts, last_tick};
@@ -142,6 +144,201 @@ pub fn web_url(text: &str) -> Option<String> {
     host_like.then(|| format!("http://{t}"))
 }
 
+/// A field of the song information that the window edits (task-117).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Field {
+    /// USRI "Window title", at USRI +0.
+    Title,
+    /// USRI "More text", at USRI +41, 0x0d a line break.
+    Text,
+    /// USRI "Web page", at USRI +442.
+    WebPage,
+    /// HEAD "Copyright", at HEAD +9.
+    Copyright,
+}
+
+impl Field {
+    pub const ALL: [Field; 4] = [Field::Title, Field::Text, Field::WebPage, Field::Copyright];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Field::Title => "Title",
+            Field::Text => "Text",
+            Field::WebPage => "Web page",
+            Field::Copyright => "Copyright",
+        }
+    }
+
+    /// The bytes the field holds, the zero after them not counted: the limits the original's
+    /// readers and writers use (`sub_465D8D` / `sub_465D0E` with 0x28, 0x190 and 0x64 for USRI
+    /// at 0x434960..0x434993 and 0x4348E4..0x434911, 0x80 for HEAD at 0x465BE2 / 0x465C2D;
+    /// docs/song_load.md 13). The text's 400 count a line break twice ([`cost`]).
+    pub fn limit(self) -> usize {
+        match self {
+            Field::Title => 40,
+            Field::Text => 400,
+            Field::WebPage => 100,
+            Field::Copyright => 128,
+        }
+    }
+
+    pub fn multiline(self) -> bool {
+        self == Field::Text
+    }
+
+    /// The id of the field's text edit.
+    pub fn edit_id(self) -> egui::Id {
+        egui::Id::unique(("orb_song_info_edit", self))
+    }
+}
+
+/// What a value takes of its field's [`Field::limit`]: a byte per character (Latin-1), and for
+/// the text one more per line break. The original holds the text with CR LF in at most 400
+/// bytes (`sub_465D8D` adds the 0x0a and counts it, 0x465DDA..0x465DED), so a text within this
+/// limit is read back whole by the original.
+pub fn cost(field: Field, value: &str) -> usize {
+    let breaks = if field.multiline() {
+        value.matches('\n').count()
+    } else {
+        0
+    };
+    value.chars().count() + breaks
+}
+
+/// The value a field can hold made from typed or pasted text: CR LF and CR are a line break,
+/// which the text keeps and a one-line field turns into a space, as is a tab; any other
+/// control character and any character outside Latin-1 (the file's encoding, `rbs` `get_z`)
+/// becomes `?`.
+pub fn sanitize(field: Field, text: &str) -> String {
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .chars()
+        .map(|c| match c {
+            '\n' if field.multiline() => '\n',
+            '\n' | '\t' => ' ',
+            c if c as u32 > 0xFF || c.is_control() => '?',
+            c => c,
+        })
+        .collect()
+}
+
+/// A field's value in the document, as the window shows it (the text's 0x0d, or CR LF, as a
+/// line break). The document's `rbs` song holds the values for a 1.x song too
+/// (`document::source_of_1x`).
+pub fn field_value(doc: &Document, field: Field) -> String {
+    let s = &doc.source;
+    match field {
+        Field::Title => s.usri.window_title.clone(),
+        Field::Text => s.usri.text.replace("\r\n", "\n").replace('\r', "\n"),
+        Field::WebPage => s.usri.web_page.clone(),
+        Field::Copyright => s.head.copyright.clone(),
+    }
+}
+
+/// Sets a field of the document from typed or pasted text ([`sanitize`]) and marks the
+/// document modified. An edit that passes the field's limit is refused (false, nothing
+/// changes), unless it shortens a value that was already longer (a file can hold a text the
+/// limit does not take). The text is stored with 0x0d line breaks. A 1.x song's facts follow.
+pub fn set_field(doc: &mut Document, field: Field, text: &str) -> bool {
+    let value = sanitize(field, text);
+    let old = field_value(doc, field);
+    if value == old {
+        return false;
+    }
+    let c = cost(field, &value);
+    if c > field.limit() && c > cost(field, &old) {
+        return false;
+    }
+    let s = &mut doc.source;
+    match field {
+        Field::Title => s.usri.window_title = value.clone(),
+        Field::Text => s.usri.text = value.replace('\n', "\r"),
+        Field::WebPage => s.usri.web_page = value.clone(),
+        Field::Copyright => s.head.copyright = value.clone(),
+    }
+    if let Some(f) = &mut doc.facts_1x {
+        match field {
+            Field::Title => f.window_title = value,
+            Field::Text => f.text = value,
+            Field::WebPage => f.web_page = value,
+            Field::Copyright => f.copyright = value,
+        }
+    }
+    doc.modified = true;
+    true
+}
+
+/// The count next to a field: the bytes left, in the units of [`cost`]. The text's count says
+/// that a line break takes two, so with one byte left an Enter that does nothing is explained
+/// (egui's char limit counts a break once; `set_field` refuses it).
+pub fn left_text(field: Field, value: &str) -> String {
+    let left = field.limit() as i64 - cost(field, value) as i64;
+    match (field.multiline(), left) {
+        (false, _) => format!("{left} left"),
+        (true, 1) => "1 left, too few for a line break (2)".into(),
+        (true, _) => format!("{left} left (a line break takes 2)"),
+    }
+}
+
+/// The text edit of a field, with the bytes left; an edit applies to the document on every
+/// change.
+fn field_ui(ui: &mut egui::Ui, doc: &mut Document, field: Field) {
+    // the edit applies its change to the document at once
+    let edit = |ui: &mut egui::Ui, doc: &mut Document| {
+        let mut buf = field_value(doc, field);
+        // typing and pasting stop at the limit (a line break takes two of the text's bytes);
+        // what still passes it is refused by `set_field`
+        let breaks = cost(field, &buf) - buf.chars().count();
+        let edit = if field.multiline() {
+            egui::TextEdit::multiline(&mut buf).desired_rows(4)
+        } else {
+            egui::TextEdit::singleline(&mut buf)
+        };
+        let edit = edit
+            .id(field.edit_id())
+            .char_limit(field.limit().saturating_sub(breaks))
+            .desired_width(EDIT_W);
+        if ui.add(edit).changed() {
+            set_field(doc, field, &buf);
+        }
+    };
+    let count = |ui: &mut egui::Ui, doc: &Document| {
+        let text = left_text(field, &field_value(doc, field));
+        ui.label(RichText::new(text).small().color(INK_DIM));
+    };
+    if field.multiline() {
+        ui.vertical(|ui| {
+            edit(ui, doc);
+            count(ui, doc);
+        });
+        return;
+    }
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            edit(ui, doc);
+            count(ui, doc);
+            if field == Field::WebPage
+                && let Some(url) = web_url(&field_value(doc, field))
+            {
+                ui.hyperlink_to("open", url);
+            }
+        });
+        if field == Field::Copyright {
+            ui.label(RichText::new(COPYRIGHT_NOTE).small().color(INK_DIM));
+        }
+    });
+}
+
+/// The width of the text edits.
+const EDIT_W: f32 = 230.0;
+/// The width of the label column, the same in the window's three grids.
+const LABEL_W: f32 = 72.0;
+
+/// The note under the copyright: the original neither checks nor keeps it (docs/song_load.md
+/// 13).
+pub const COPYRIGHT_NOTE: &str =
+    "ReBirth does not check this when it opens a song; its own Save writes its standard line.";
+
 /// A web address as a link when it is one, else as plain text.
 pub(crate) fn link(ui: &mut egui::Ui, text: &str) {
     match web_url(text) {
@@ -206,55 +403,64 @@ impl App {
             // a small window: the info scrolls in a window that fits
             .max_size(ctx.content_rect().size() - egui::vec2(16.0, 16.0))
             .default_width(380.0);
+        let doc = &mut self.doc;
         window.show(ctx, |ui| {
-            egui::Grid::new("orb_song_info_grid")
-                .num_columns(2)
-                .spacing([12.0, 4.0])
-                .show(ui, |ui| {
-                    let row = |ui: &mut egui::Ui, k: &str, v: &str| {
-                        ui.label(RichText::new(k).color(INK_DIM));
-                        ui.label(RichText::new(v).color(INK));
-                        ui.end_row();
-                    };
-                    row(ui, "File", &info.name);
-                    if let Some(f) = &info.folder {
-                        row(ui, "Folder", f);
-                    }
-                    row(ui, "Title", &info.window_title);
-                    ui.label(RichText::new("Text").color(INK_DIM));
-                    ui.label(RichText::new(&info.text).color(INK));
+            let row = |ui: &mut egui::Ui, k: &str, v: &str| {
+                ui.label(RichText::new(k).color(INK_DIM));
+                ui.label(RichText::new(v).color(INK));
+                ui.end_row();
+            };
+            // three grids with the same label column: the file, the editable song information
+            // and the read-only facts, with a line between them
+            let grid = |id: &str| {
+                egui::Grid::new(id)
+                    .num_columns(2)
+                    .spacing([12.0, 4.0])
+                    .min_col_width(LABEL_W)
+            };
+            grid("orb_song_info_file").show(ui, |ui| {
+                row(ui, "File", &info.name);
+                if let Some(f) = &info.folder {
+                    row(ui, "Folder", f);
+                }
+            });
+            ui.separator();
+            grid("orb_song_info_edits").show(ui, |ui| {
+                for field in Field::ALL {
+                    ui.label(RichText::new(field.label()).color(INK_DIM));
+                    field_ui(ui, doc, field);
                     ui.end_row();
-                    ui.label(RichText::new("Web page").color(INK_DIM));
-                    link(ui, &info.web_page);
-                    ui.end_row();
-                    row(
-                        ui,
-                        "Mod",
-                        &format!("{} ({})", info.mod_name, info.mod_state.text()),
-                    );
-                    ui.label(RichText::new("Mod web").color(INK_DIM));
-                    link(ui, &info.mod_www);
-                    ui.end_row();
-                    ui.label(RichText::new("Mod ftp").color(INK_DIM));
-                    ui.label(RichText::new(&info.mod_ftp).color(INK));
-                    ui.end_row();
-                    row(ui, "Format", &info.format);
-                    row(ui, "Copyright", &info.copyright);
-                    row(ui, "Tempo", &format!("{:.3} BPM", info.bpm));
-                    row(ui, "Mode", if info.song_mode { "song" } else { "pattern" });
-                    row(ui, "Loop", if info.looping { "on" } else { "off" });
-                    row(ui, "Shuffle", &info.shuffle.to_string());
-                    row(
-                        ui,
-                        "Synth sound",
-                        if info.vintage {
-                            "vintage"
-                        } else {
-                            "ReBirth 2.0"
-                        },
-                    );
-                    row(ui, "Last event", &info.last_event_text());
-                });
+                }
+            });
+            ui.separator();
+            grid("orb_song_info_grid").show(ui, |ui| {
+                row(
+                    ui,
+                    "Mod",
+                    &format!("{} ({})", info.mod_name, info.mod_state.text()),
+                );
+                ui.label(RichText::new("Mod web").color(INK_DIM));
+                link(ui, &info.mod_www);
+                ui.end_row();
+                ui.label(RichText::new("Mod ftp").color(INK_DIM));
+                ui.label(RichText::new(&info.mod_ftp).color(INK));
+                ui.end_row();
+                row(ui, "Format", &info.format);
+                row(ui, "Tempo", &format!("{:.3} BPM", info.bpm));
+                row(ui, "Mode", if info.song_mode { "song" } else { "pattern" });
+                row(ui, "Loop", if info.looping { "on" } else { "off" });
+                row(ui, "Shuffle", &info.shuffle.to_string());
+                row(
+                    ui,
+                    "Synth sound",
+                    if info.vintage {
+                        "vintage"
+                    } else {
+                        "ReBirth 2.0"
+                    },
+                );
+                row(ui, "Last event", &info.last_event_text());
+            });
         });
         if !open {
             self.info_open = false;
@@ -341,6 +547,118 @@ mod tests {
         s.usri.window_title = "caf\u{e9}".into();
         let back = rbs::Song::parse(&s.write().unwrap()).unwrap();
         assert_eq!(back.usri.window_title, "caf\u{e9}");
+    }
+
+    /// The body of the chunk `tag` in a written song.
+    fn chunk<'a>(file: &'a [u8], tag: &[u8; 4]) -> &'a [u8] {
+        let at = file.windows(4).position(|w| w == tag).unwrap() + 8;
+        let size = u32::from_be_bytes(file[at - 4..at].try_into().unwrap()) as usize;
+        &file[at..at + size]
+    }
+
+    #[test]
+    fn an_edit_of_each_field_is_saved_in_its_chunk() {
+        let mut d = doc();
+        assert!(!d.modified);
+        assert!(set_field(&mut d, Field::Title, "New title"));
+        assert!(d.modified);
+        assert!(set_field(&mut d, Field::Text, "one\ntwo\r\nthree"));
+        assert!(set_field(&mut d, Field::WebPage, "www.example.org"));
+        assert!(set_field(&mut d, Field::Copyright, "(c) me"));
+        let bytes = d.source.write().unwrap();
+        let usri = chunk(&bytes, b"USRI");
+        assert_eq!(&usri[..10], b"New title\0");
+        assert_eq!(&usri[41..56], b"one\rtwo\rthree\0\0");
+        assert_eq!(&usri[442..458], b"www.example.org\0");
+        let head = chunk(&bytes, b"HEAD");
+        assert_eq!(&head[9..16], b"(c) me\0");
+        let back = rbs::Song::parse(&bytes).unwrap();
+        assert_eq!(back.usri.window_title, "New title");
+        assert_eq!(back.usri.text, "one\rtwo\rthree");
+        assert_eq!(back.usri.web_page, "www.example.org");
+        assert_eq!(back.head.copyright, "(c) me");
+        // the window shows the 0x0d as line breaks again
+        d.source = back;
+        assert_eq!(field_value(&d, Field::Text), "one\ntwo\nthree");
+        // the same value again is no edit
+        d.modified = false;
+        assert!(!set_field(&mut d, Field::Title, "New title"));
+        assert!(!d.modified);
+    }
+
+    #[test]
+    fn the_byte_limits_refuse_longer_values() {
+        let mut d = Document::new();
+        for f in Field::ALL {
+            let full = "x".repeat(f.limit());
+            assert!(set_field(&mut d, f, &full), "{f:?}");
+            assert!(!set_field(&mut d, f, &format!("{full}y")), "{f:?}");
+            assert_eq!(field_value(&d, f), full);
+        }
+        // every field at its limit is written
+        let back = rbs::Song::parse(&d.source.write().unwrap()).unwrap();
+        assert_eq!(back.usri.window_title.len(), 40);
+        assert_eq!(back.usri.text.len(), 400);
+        assert_eq!(back.usri.web_page.len(), 100);
+        assert_eq!(back.head.copyright.len(), 128);
+        // a line break takes two of the text's 400 bytes
+        assert_eq!(cost(Field::Text, "a\nb"), 4);
+        assert_eq!(cost(Field::Title, "a b"), 3);
+        let breaks = "ab\n".repeat(100);
+        assert_eq!(cost(Field::Text, &breaks), 400);
+        assert!(set_field(&mut d, Field::Text, &breaks));
+        assert!(!set_field(&mut d, Field::Text, &format!("{breaks}c")));
+        // the count is in the same units: with one byte left a line break does not fit
+        let almost = "ab\n".repeat(99) + "abc";
+        assert_eq!(cost(Field::Text, &almost), 399);
+        assert_eq!(
+            left_text(Field::Text, &almost),
+            "1 left, too few for a line break (2)"
+        );
+        assert!(set_field(&mut d, Field::Text, &almost));
+        assert!(!set_field(&mut d, Field::Text, &format!("{almost}\n")));
+        assert!(set_field(&mut d, Field::Text, &format!("{almost}c")));
+        assert_eq!(
+            left_text(Field::Text, "a\n"),
+            "397 left (a line break takes 2)"
+        );
+        assert_eq!(left_text(Field::Title, "abc"), "37 left");
+        // a text already longer than the limit (a file's) may still be shortened
+        d.source.usri.text = "y".repeat(400) + "\r";
+        assert!(!set_field(&mut d, Field::Text, &("y".repeat(400) + "\nz")));
+        assert!(set_field(&mut d, Field::Text, &"y".repeat(400)));
+    }
+
+    #[test]
+    fn characters_outside_latin1_become_question_marks() {
+        assert_eq!(
+            sanitize(Field::Title, "caf\u{e9} \u{20ac}5 \u{1f600}"),
+            "caf\u{e9} ?5 ?"
+        );
+        // control characters: a tab and a line break are a space in a one-line field
+        assert_eq!(
+            sanitize(Field::Title, "a\tb\nc\r\nd\u{1b}e\u{85}"),
+            "a b c d?e?"
+        );
+        assert_eq!(sanitize(Field::Text, "a\r\nb\rc\nd\te"), "a\nb\nc\nd e");
+        let mut d = Document::new();
+        assert!(set_field(&mut d, Field::Copyright, "\u{a9} \u{2122}"));
+        assert_eq!(d.source.head.copyright, "\u{a9} ?");
+        let back = rbs::Song::parse(&d.source.write().unwrap()).unwrap();
+        assert_eq!(back.head.copyright, "\u{a9} ?");
+        assert_eq!(chunk(&d.source.write().unwrap(), b"HEAD")[9], 0xa9);
+    }
+
+    #[test]
+    fn a_1x_songs_facts_follow_an_edit() {
+        let mut d = doc();
+        d.facts_1x = Some(SongFacts::of_source(&d.source));
+        assert!(set_field(&mut d, Field::Text, "x\ny"));
+        assert!(set_field(&mut d, Field::Copyright, "c"));
+        let i = SongInfo::of(&d, None);
+        assert_eq!(i.text, "x\ny");
+        assert_eq!(i.copyright, "c");
+        assert_eq!(d.source.usri.text, "x\ry");
     }
 
     #[test]

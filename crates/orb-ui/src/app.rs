@@ -435,7 +435,13 @@ impl App {
                 if shortcuts::consume(ui, &shortcuts::KEYS_PATTERNS) {
                     self.key_mode = KeyMode::Patterns;
                 }
-                self.keyboard(ui);
+                if ui.ctx().text_edit_focused() {
+                    // typing in a text field (File > Info, task-117): the other keys are the
+                    // field's, not the panel's
+                    self.holds.clear();
+                } else {
+                    self.keyboard(ui);
+                }
                 self.focus_click(ui, &view);
             }
         } else {

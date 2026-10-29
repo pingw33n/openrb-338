@@ -1119,12 +1119,46 @@ is one more entry.
   given DPIs. On the developer's MacBook (main display 345.44 mm, 2992 px wide: 8.66 px/mm) a
   256 px splash is 702.9 px, i.e. 351.4 points at 2 pixels per point.
 - **File > Info** (task-095). Below "Save As...", a closable window "Song Information"
-  (`crates/orb-ui/src/info.rs`; the close button or Escape closes it). It is read-only and shows
-  the current document each frame, so it follows an open of another song. It lists the file
-  name and folder (Untitled for a song with no file), the song info chunk's window title, more
-  text (0x0d shown as a line break) and web page (a link), the mod's name with its state
+  (`crates/orb-ui/src/info.rs`; the close button or Escape closes it). It shows the current
+  document each frame, so it follows an open of another song. It has three parts, each a
+  two-column grid with the same label column, with a line between them:
+  - the file name and folder (Untitled for a song with no file);
+  - **the editable song information** (task-117, `info::Field`): the song info chunk's window
+    title, more text and web page, and the version chunk's copyright, each in a text edit (the
+    text in a multi-line edit, 0x0d shown as a line break) with the bytes left next to it
+    ("N left"). An edit applies to the document on every change (`info::set_field`): it sets
+    the `rbs::Song` that `document::compose` saves from (USRI +0, +41, +442 and HEAD +9; a 1.x
+    song's facts follow) and marks the song modified, so the title bar shows the `*`, the
+    unsaved prompt applies and Save writes the new values. There is no undo.
+    - The limits are those of the original's readers and writers (docs/song_load.md 13): 40
+      bytes for the title, 400 for the text, 100 for the web page and 128 for the copyright.
+      In the text a line break counts two bytes, because the original holds the text with
+      CR LF in its 400 (`sub_465D8D`), so it reads back whole any text orb writes. Typing and
+      pasting stop at the limit; an edit that still passes it is refused, unless it shortens
+      a value that was already longer. The count is in the same units (`info::left_text`):
+      the text's says "N left (a line break takes 2)", and with one byte left "1 left, too few
+      for a line break (2)", since egui's character limit lets an Enter through that
+      `set_field` then refuses.
+    - The file stores Latin-1. A typed or pasted character outside Latin-1 becomes `?`, as
+      does a control character, the C0 range (U+0000..U+001F, U+007F) and the C1 range
+      (U+0080..U+009F) alike, though C1 is Latin-1; a tab, and a line break in a one-line
+      field, become a space.
+      CR LF, CR and LF in the text are all stored as one 0x0d.
+    - Next to the web page edit, an "open" link opens the page when the text is a web address
+      (`info::web_url`); the link never takes the edit's place.
+    - Under the copyright a note says that ReBirth does not check it when it opens a song and
+      that its own Save writes its standard line (the original's open reads and drops it, and
+      its writer always writes Propellerhead's string; docs/song_load.md 13). orb's Save writes
+      the copyright the document holds.
+    - While a text edit has the keyboard focus the panel takes no computer keys
+      (`App::show`, `text_edit_focused`): Space types a space instead of playing. The menu's
+      shortcuts that `App::show` takes still work: Cmd/Ctrl+N (New), +O (Open), +S (Save),
+      +F (Program Synth from Keyboard) and +G (Select Patterns from Keyboard). Escape closes
+      the window. When the field loses the focus (or the window closes) the panel takes its
+      keys again.
+  - the read-only facts: the mod's name with its state
   (built-in kit, loaded, or missing with the built-in kit playing) and the mod's web and ftp
-  addresses, the format version and copyright of the file as read, and the tempo, mode, loop,
+  addresses, the format version of the file as read, and the tempo, mode, loop,
   shuffle and synth sound of the file, and "Last event": `bar N` (1-based) of the song's last
   track event, or `none` (task-124; `SongFacts::last_event_bar`, the same facts `orb info`
   prints, for a 4.x and a 1.x song; an .rbs song has no length field, so this is its useful
@@ -1133,7 +1167,7 @@ is one more entry.
   (`orb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), and a
   successful Save of any song makes the document's song the one written, so the document
   matches the file. `SongInfo::of` builds the facts from the document (and the recorded
-  tracks) without a player. Editing the song information is not done. "Show song info on open" (the
+  tracks) without a player. "Show song info on open" (the
   USRI flag, `docs/RBS42.txt`) is not done either: the window opens only from the menu. The
   original shows these in its Song Information dialog; its layout is not copied.
 - **The startup sound of an open and of the start** (task-087). Below.

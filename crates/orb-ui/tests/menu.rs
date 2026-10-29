@@ -1616,6 +1616,152 @@ fn the_info_window_follows_the_song_and_escape_closes_it() {
     assert!(!h.app.info_is_open());
 }
 
+/// task-117: while a field of the info window has the focus, Cmd/Ctrl+F and +G still set the
+/// keyboard mode and Escape closes the window; once the focus has left (the window closed, or
+/// the field let go), Space plays again.
+#[test]
+fn the_menu_shortcuts_and_escape_work_while_a_field_is_focused() {
+    use orb_ui::info::Field;
+    let key = |key, pressed, modifiers| Event::Key {
+        key,
+        physical_key: Some(key),
+        pressed,
+        repeat: false,
+        modifiers,
+    };
+    let tap = |h: &mut Harness, k, m| {
+        h.frame(vec![key(k, true, m)]);
+        h.frame(vec![key(k, false, m)]);
+    };
+    let mut h = Harness::with_menu();
+    h.open(&root().join("tests/songs/diag/songs/303_saw_lowcut.rbs"));
+    h.app.show_info();
+    h.frame(vec![]);
+    h.ctx
+        .memory_mut(|m| m.request_focus(Field::Title.edit_id()));
+    h.frame(vec![]);
+    assert!(h.ctx.text_edit_focused());
+    h.app.key_mode = KeyMode::Patterns;
+    tap(&mut h, egui::Key::F, Modifiers::COMMAND);
+    assert_eq!(h.app.key_mode, KeyMode::Synth);
+    tap(&mut h, egui::Key::G, Modifiers::COMMAND);
+    assert_eq!(h.app.key_mode, KeyMode::Patterns);
+    tap(&mut h, egui::Key::F, Modifiers::COMMAND);
+    assert_eq!(h.app.key_mode, KeyMode::Synth);
+    assert!(!h.app.doc.modified, "the shortcuts typed nothing");
+    // Escape closes the window, and the focus goes with the field
+    tap(&mut h, egui::Key::Escape, Modifiers::NONE);
+    assert!(!h.app.info_is_open());
+    h.frame(vec![]);
+    assert!(!h.ctx.text_edit_focused());
+    assert!(!h.app.panel.transport.playing);
+    tap(&mut h, egui::Key::Space, Modifiers::NONE);
+    assert!(
+        h.app.panel.transport.playing,
+        "Space plays once the window is closed"
+    );
+    tap(&mut h, egui::Key::Space, Modifiers::NONE);
+    assert!(!h.app.panel.transport.playing);
+
+    // a field that lets go of the focus (the window stays open): Space plays again
+    h.app.show_info();
+    h.frame(vec![]);
+    h.ctx.memory_mut(|m| m.request_focus(Field::Text.edit_id()));
+    h.frame(vec![]);
+    tap(&mut h, egui::Key::Space, Modifiers::NONE);
+    assert!(
+        !h.app.panel.transport.playing,
+        "the focused field takes Space"
+    );
+    h.ctx
+        .memory_mut(|m| m.surrender_focus(Field::Text.edit_id()));
+    h.frame(vec![]);
+    assert!(h.app.info_is_open());
+    tap(&mut h, egui::Key::Space, Modifiers::NONE);
+    assert!(
+        h.app.panel.transport.playing,
+        "Space plays once the field lets go"
+    );
+}
+
+/// task-117: the info window edits the title, text, web page and copyright of the open song:
+/// typing goes into the field and not to the panel, the song is marked modified, Save writes the
+/// new values, and another open refreshes the fields.
+#[test]
+fn the_info_window_edits_the_song_information_and_save_writes_it() {
+    use orb_ui::info::Field;
+    let dir = root().join("tests/songs/diag/songs");
+    let src = dir.join("303_saw_lowcut.rbs");
+    let out_dir = tempfile::tempdir().unwrap();
+    let out = out_dir.path().join("edited.rbs");
+    let mut h = Harness::with_menu();
+    h.open(&src);
+    h.app.show_info();
+    h.frame(vec![]);
+    let was = read_rbs(&src);
+    let key = |key, pressed| Event::Key {
+        key,
+        physical_key: Some(key),
+        pressed,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let typed = [
+        (Field::Title, "T \u{e9}\u{20ac}"),
+        (Field::Text, "a\r\nb"),
+        (Field::WebPage, "www.x.org"),
+        (Field::Copyright, "(c) us"),
+    ];
+    for (field, text) in typed {
+        h.ctx.memory_mut(|m| m.request_focus(field.edit_id()));
+        h.frame(vec![]);
+        // a space typed in a field is the field's, not the panel's play key
+        h.frame(vec![
+            key(egui::Key::Space, true),
+            Event::Text(" ".into()),
+            key(egui::Key::Space, false),
+        ]);
+        h.frame(vec![Event::Paste(text.into())]);
+        assert!(!h.app.panel.transport.playing, "{field:?}");
+    }
+    assert!(h.app.doc.modified);
+    let s = &h.app.doc.source;
+    let ends = |v: &str, tail: &str| v.ends_with(tail);
+    assert!(
+        ends(&s.usri.window_title, " T \u{e9}?"),
+        "{:?}",
+        s.usri.window_title
+    );
+    assert!(ends(&s.usri.text, " a\rb"), "{:?}", s.usri.text);
+    assert!(
+        ends(&s.usri.web_page, " www.x.org"),
+        "{:?}",
+        s.usri.web_page
+    );
+    assert!(ends(&s.head.copyright, " (c) us"), "{:?}", s.head.copyright);
+    let want = s.clone();
+    h.app.save_to(&out);
+    assert!(!h.app.doc.modified);
+    let b = read_rbs(&out);
+    assert_eq!(b.usri.window_title, want.usri.window_title);
+    assert_eq!(b.usri.text, want.usri.text);
+    assert_eq!(b.usri.web_page, want.usri.web_page);
+    assert_eq!(b.head.copyright, want.head.copyright);
+    // the rest of the song is as read
+    assert_eq!(b.tracks, was.tracks);
+    assert_eq!(b.usri.show_on_open, was.usri.show_on_open);
+    // another open shows that song's values
+    h.ctx
+        .memory_mut(|m| m.surrender_focus(Field::Title.edit_id()));
+    h.open(&dir.join("303_saw_highcut.rbs"));
+    h.frame(vec![]);
+    let other = read_rbs(&dir.join("303_saw_highcut.rbs"));
+    let shown = h.app.info_shown().unwrap();
+    assert_eq!(shown.window_title, other.usri.window_title);
+    assert_eq!(shown.copyright, other.head.copyright);
+    assert!(!h.app.doc.modified);
+}
+
 /// task-100: File > Info opens the window centered in the app window, each open centers it
 /// again, it can be dragged, and it stays inside a small window.
 #[test]

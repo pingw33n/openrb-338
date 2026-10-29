@@ -247,6 +247,7 @@ work as ever.
 | | `--ppp S` | overrides the pixel density |
 | | `--browse open\|save\|export\|mod` | starts with the file browser open for that mode |
 | | `--about` | starts with the About window open (task-115) |
+| | `--info` | starts with File > Info's Song Information window open (task-117) |
 | | `--screenshot OUT.png` | saves the window to a PNG after a few frames and quits |
 | | `ORB_LOGO_T=SECONDS` (variable) | freezes the logo's startup animation (task-114) at that time, on the panel and in About, for pictures of a moment |
 

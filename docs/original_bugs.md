@@ -128,6 +128,24 @@ status is a judgment call.
   text; the player and the UI do not yet refuse to open such a song (task-088).
 - **Home.** `docs/song_load.md` section 5.2.
 
+### OB-21: the song text's line breaks count twice against its 400 bytes, so a full text is cut on open [C: the code; G: the effect in the dialog]
+
+- **What.** The USRI reader copies the 400-byte text field into memory with a 0x0A after each
+  0x0D, and the added byte counts toward the same 400, so a stored text whose bytes plus line
+  breaks pass 400 loses its tail.
+- **Where.** `sub_434955` calls `sub_465D8D(src, 0x190, dst)` for the text (0x434975);
+  `sub_465D8D` writes the 0x0A at 0x465DED and stops at `max` (0x465DA4, 0x465DE2).
+- **Trigger.** A song whose text, with its line breaks, is longer than 400 bytes (a file made by
+  another tool; the original's own Save cannot write one, since its writer `sub_465D0E` drops the
+  0x0A of a text that fits in memory).
+- **Effect.** The song information shows the shortened text, and a Save of the song writes it
+  shortened. No effect on the audio.
+- **Corpus.** None known.
+- **orb.** orb reads the whole field (`rbs` `Usri`); File > Info limits an edited text to 400
+  bytes with a line break counting two (`crates/orb-ui/src/info.rs`, `info::cost`), so the
+  original reads every text orb writes whole.
+- **Home.** `docs/song_load.md` section 13.
+
 ## 2. Devices
 
 ### OB-5: the PCF's wave byte indexes the pattern data with no bounds check [C]

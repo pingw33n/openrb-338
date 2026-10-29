@@ -9,7 +9,8 @@
 //! "OpenRB-338 developer options"):
 //!
 //! ```text
-//! --demo  --size WxH  --ppp S  --browse open|save|export|mod  --about  --screenshot OUT.png
+//! --demo  --size WxH  --ppp S  --browse open|save|export|mod  --about  --info
+//! --screenshot OUT.png
 //! ```
 //!
 //! `-h` is `--help`; an argument `-psn_...` (Finder on old macOS) is ignored; a bad option prints
@@ -26,7 +27,8 @@
 //! the native size; the window is as high as the menu bar more, for screenshots), `--ppp`
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
 //! quits. Ctrl/Cmd+O opens the in-app file browser (task-046) to open a song, Ctrl/Cmd+S saves;
-//! `--about` starts with the About window open (for screenshots, task-115).
+//! `--about` starts with the About window open (for screenshots, task-115), `--info` with File >
+//! Info's Song Information window (task-117).
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
 //! settings file (`OpenRB-338/ui.toml` in the configuration folder, or `$ORB_UI_CONFIG`).
 
@@ -58,6 +60,7 @@ const USAGE: &str = "usage: OpenRB-338 [SONG]\n\
 struct Args {
     demo: bool,
     about: bool,
+    info: bool,
     size: [f32; 2],
     sized: bool,
     ppp: Option<f32>,
@@ -80,6 +83,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
     let mut r = Args {
         demo: false,
         about: false,
+        info: false,
         size: [PANEL_W, PANEL_H],
         sized: false,
         ppp: None,
@@ -93,6 +97,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
             "--help" | "-h" => return Err(Exit::Help),
             "--demo" => r.demo = true,
             "--about" => r.about = true,
+            "--info" => r.info = true,
             "--size" => {
                 let v = args.next().ok_or(Exit::Bad)?;
                 let (w, h) = v.split_once('x').ok_or(Exit::Bad)?;
@@ -180,6 +185,7 @@ fn main() -> eframe::Result {
     let Args {
         demo,
         about,
+        info,
         size,
         sized,
         ppp,
@@ -277,6 +283,9 @@ fn main() -> eframe::Result {
             if about {
                 app.show_about();
             }
+            if info {
+                app.show_info();
+            }
             Ok(Box::new(app))
         }),
     )
@@ -294,7 +303,7 @@ mod tests {
     fn no_arguments_is_the_new_song() {
         let a = parse(&[]).unwrap();
         assert_eq!(a.song, None);
-        assert!(!a.demo && !a.about && !a.sized);
+        assert!(!a.demo && !a.about && !a.info && !a.sized);
         assert_eq!(a.size, [PANEL_W, PANEL_H]);
     }
 
@@ -329,11 +338,12 @@ mod tests {
             "--browse",
             "export",
             "--about",
+            "--info",
             "--screenshot",
             "out.png",
         ])
         .unwrap();
-        assert!(a.demo && a.about && a.sized);
+        assert!(a.demo && a.about && a.info && a.sized);
         assert_eq!(a.size, [300.0, 200.0]);
         assert_eq!(a.ppp, Some(2.0));
         assert_eq!(a.browse, Some(Mode::Export));
@@ -358,6 +368,7 @@ mod tests {
             "--browse",
             "--screenshot",
             "--about",
+            "--info",
         ] {
             assert!(!USAGE.contains(hidden), "{hidden}");
         }
