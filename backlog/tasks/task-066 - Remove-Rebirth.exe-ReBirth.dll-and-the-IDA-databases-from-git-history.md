@@ -2,9 +2,10 @@
 id: TASK-066
 title: 'Remove Rebirth.exe, ReBirth.dll and the IDA databases from git history'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-worker'
 created_date: '2026-10-27 10:07'
-updated_date: '2026-10-28 09:11'
+updated_date: '2026-10-29 07:16'
 labels:
   - tools
   - tests
@@ -42,3 +43,15 @@ Also remove text.s (added by mistake in commit 3389512, a 3.4 MB llvm-objdump di
 - [ ] #3 Tests and tools work with the files present and skip with a clear message when absent; AGENTS.md and the agent brief describe original/ and ida/ as local; cargo test --release passes
 - [ ] #4 text.s and any other disassembly or binary derived from the original (except the approved embedded key window) are gone from the history
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+User, 2026-10-29: go ahead with task-066. Decisions:
+- Drop the user's ui-poc branch and worktree (worktree-ui-poc, 1359e39). The supervisor removes it before the rewrite.
+- Keep crates/rb-engine/tests/fixtures/tables/*.bin. They are run-time math tables dumped by rbhost, like the reference renders in tests/refs, which also stay.
+
+Plan (supervisor):
+- Phase 1, @agent-worker, one reviewed commit: original/README.md; .gitignore for original/* and ida/* (except the README); git rm --cached of the four tracked files; AGENTS.md, the agent brief and .claude/agents describe original/ and ida/ as local and untracked; tests and tools skip with a clear message without them; a history search for other derived binaries. That commit sets the task Done with AC #2 and #3 checked.
+- Phase 2, the supervisor with the user: back up (git clone --mirror plus a copy of original/ and ida/); the user closes the IDA GUI (it has original/Rebirth.exe open); git filter-repo; verify; force-push only after the user confirms. AC #1 and #4 are then checked in a backlog commit after the push is verified.
+<!-- SECTION:NOTES:END -->
