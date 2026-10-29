@@ -2,8 +2,19 @@
 //! name (crate `orb-ui`) because the macOS Dock and Activity Monitor show the executable's name.
 //!
 //! ```text
-//! OpenRB-338 [SONG.rbs] [--demo] [--size WxH] [--ppp S] [--screenshot OUT.png]
+//! OpenRB-338 [SONG]
 //! ```
+//! `--help` shows only this. The options below are for developers, tests and screenshots
+//! (task-137): hidden from `--help` and the usage text, but they all work (docs/building.md,
+//! "OpenRB-338 developer options"):
+//!
+//! ```text
+//! --demo  --size WxH  --ppp S  --browse open|save|export|mod  --about  --screenshot OUT.png
+//! ```
+//!
+//! `-h` is `--help`; an argument `-psn_...` (Finder on old macOS) is ignored; a bad option prints
+//! the usage and exits 2.
+//!
 //! With a song it opens that song, with the mod it names (looked up in the Mods folder of the
 //! settings, `ORB_MOD_DIR`, or the default places of `orb render`); without one the panel starts on
 //! a new empty song. The menu bar (task-047, docs/ui_spec.md section 18) opens, saves and exports
@@ -38,13 +49,89 @@ use orb_ui::model::Panel;
 use orb_ui::session;
 use orb_ui::settings::Settings;
 
-fn usage() -> ! {
-    eprintln!(
-        "usage: OpenRB-338 [SONG.rbs] [--demo] [--size WxH] [--ppp S] \
-         [--browse open|save|export|mod] [--about] [--screenshot OUT.png]\n\
-         the window starts maximized; --size WxH opens it at that panel size instead"
-    );
-    std::process::exit(2);
+/// The visible help: only the song. The developer options are hidden (task-137).
+const USAGE: &str = "usage: OpenRB-338 [SONG]\n\
+                     SONG is a ReBirth song (.rbs, RBS 4.x or ReBirth 1.x) to open";
+
+/// The command line, parsed.
+#[derive(Debug, PartialEq)]
+struct Args {
+    demo: bool,
+    about: bool,
+    size: [f32; 2],
+    sized: bool,
+    ppp: Option<f32>,
+    shot: Option<PathBuf>,
+    song: Option<PathBuf>,
+    browse: Option<Mode>,
+}
+
+/// What the command line asks instead of running the app.
+#[derive(Debug, PartialEq)]
+enum Exit {
+    /// `--help`: print the usage, exit 0.
+    Help,
+    /// A bad option or value: print the usage, exit 2.
+    Bad,
+}
+
+/// Parses the arguments after the program name. `-psn_...` (Finder on old macOS) is ignored.
+fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
+    let mut r = Args {
+        demo: false,
+        about: false,
+        size: [PANEL_W, PANEL_H],
+        sized: false,
+        ppp: None,
+        shot: None,
+        song: None,
+        browse: None,
+    };
+    let mut args = args.into_iter();
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--help" | "-h" => return Err(Exit::Help),
+            "--demo" => r.demo = true,
+            "--about" => r.about = true,
+            "--size" => {
+                let v = args.next().ok_or(Exit::Bad)?;
+                let (w, h) = v.split_once('x').ok_or(Exit::Bad)?;
+                r.size = [
+                    w.parse().map_err(|_| Exit::Bad)?,
+                    h.parse().map_err(|_| Exit::Bad)?,
+                ];
+                r.sized = true;
+            }
+            "--ppp" => r.ppp = Some(args.next().and_then(|v| v.parse().ok()).ok_or(Exit::Bad)?),
+            "--screenshot" => r.shot = Some(args.next().ok_or(Exit::Bad)?.into()),
+            "--browse" => {
+                r.browse = Some(match args.next().as_deref() {
+                    Some("open") => Mode::OpenSong,
+                    Some("save") => Mode::SaveSong,
+                    Some("export") => Mode::Export,
+                    Some("mod") => Mode::ChooseMod,
+                    _ => return Err(Exit::Bad),
+                })
+            }
+            s if s.starts_with("-psn_") => {}
+            s if !s.starts_with('-') && r.song.is_none() => r.song = Some(s.into()),
+            _ => return Err(Exit::Bad),
+        }
+    }
+    Ok(r)
+}
+
+fn usage(e: Exit) -> ! {
+    match e {
+        Exit::Help => {
+            println!("{USAGE}");
+            std::process::exit(0);
+        }
+        Exit::Bad => {
+            eprintln!("{USAGE}");
+            std::process::exit(2);
+        }
+    }
 }
 
 /// Gives a GUI-subsystem process the console of the program that started it (task-111).
@@ -90,49 +177,16 @@ fn attach_parent_console() {
 fn main() -> eframe::Result {
     #[cfg(all(windows, not(debug_assertions)))]
     attach_parent_console();
-    let mut demo = false;
-    let mut about = false;
-    let mut size = [PANEL_W, PANEL_H];
-    let mut sized = false;
-    let mut ppp: Option<f32> = None;
-    let mut shot: Option<PathBuf> = None;
-    let mut song: Option<PathBuf> = None;
-    let mut browse: Option<Mode> = None;
-    let mut args = std::env::args().skip(1);
-    while let Some(a) = args.next() {
-        match a.as_str() {
-            "--demo" => demo = true,
-            "--about" => about = true,
-            "--size" => {
-                let v = args.next().unwrap_or_else(|| usage());
-                let (w, h) = v.split_once('x').unwrap_or_else(|| usage());
-                size = [
-                    w.parse().unwrap_or_else(|_| usage()),
-                    h.parse().unwrap_or_else(|_| usage()),
-                ];
-                sized = true;
-            }
-            "--ppp" => {
-                ppp = Some(
-                    args.next()
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or_else(|| usage()),
-                )
-            }
-            "--screenshot" => shot = Some(args.next().unwrap_or_else(|| usage()).into()),
-            "--browse" => {
-                browse = Some(match args.next().as_deref() {
-                    Some("open") => Mode::OpenSong,
-                    Some("save") => Mode::SaveSong,
-                    Some("export") => Mode::Export,
-                    Some("mod") => Mode::ChooseMod,
-                    _ => usage(),
-                })
-            }
-            s if !s.starts_with("--") && song.is_none() => song = Some(s.into()),
-            _ => usage(),
-        }
-    }
+    let Args {
+        demo,
+        about,
+        size,
+        sized,
+        ppp,
+        shot,
+        song,
+        browse,
+    } = parse_args(std::env::args().skip(1)).unwrap_or_else(|e| usage(e));
 
     let panel = if demo { Panel::demo() } else { Panel::new() };
     let mut link = None;
@@ -225,4 +279,86 @@ fn main() -> eframe::Result {
             Ok(Box::new(app))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(a: &[&str]) -> Result<Args, Exit> {
+        parse_args(a.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn no_arguments_is_the_new_song() {
+        let a = parse(&[]).unwrap();
+        assert_eq!(a.song, None);
+        assert!(!a.demo && !a.about && !a.sized);
+        assert_eq!(a.size, [PANEL_W, PANEL_H]);
+    }
+
+    #[test]
+    fn help_is_exit_0_and_a_bad_option_is_exit_2() {
+        assert_eq!(parse(&["--help"]), Err(Exit::Help));
+        assert_eq!(parse(&["-h"]), Err(Exit::Help));
+        assert_eq!(parse(&["song.rbs", "--help"]), Err(Exit::Help));
+        for bad in [
+            &["--nope"][..],
+            &["-x"],
+            &["--size"],
+            &["--size", "10"],
+            &["--size", "axb"],
+            &["--ppp", "x"],
+            &["--screenshot"],
+            &["--browse", "other"],
+            &["a.rbs", "b.rbs"],
+        ] {
+            assert_eq!(parse(bad), Err(Exit::Bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_hidden_options_still_parse() {
+        let a = parse(&[
+            "--demo",
+            "--size",
+            "300x200",
+            "--ppp",
+            "2",
+            "--browse",
+            "export",
+            "--about",
+            "--screenshot",
+            "out.png",
+        ])
+        .unwrap();
+        assert!(a.demo && a.about && a.sized);
+        assert_eq!(a.size, [300.0, 200.0]);
+        assert_eq!(a.ppp, Some(2.0));
+        assert_eq!(a.browse, Some(Mode::Export));
+        assert_eq!(a.shot, Some("out.png".into()));
+    }
+
+    #[test]
+    fn the_song_is_a_path_with_spaces_and_psn_is_ignored() {
+        let a = parse(&["-psn_0_12345", "/my songs/a b.rbs"]).unwrap();
+        assert_eq!(a.song, Some("/my songs/a b.rbs".into()));
+        let a = parse(&["-psn_0_12345"]).unwrap();
+        assert_eq!(a.song, None);
+    }
+
+    #[test]
+    fn the_usage_shows_only_the_song() {
+        assert!(USAGE.contains("[SONG]"));
+        for hidden in [
+            "--demo",
+            "--size",
+            "--ppp",
+            "--browse",
+            "--screenshot",
+            "--about",
+        ] {
+            assert!(!USAGE.contains(hidden), "{hidden}");
+        }
+    }
 }

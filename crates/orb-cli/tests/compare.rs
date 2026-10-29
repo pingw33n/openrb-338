@@ -135,3 +135,21 @@ fn usage_errors_exit_2() {
     let o = orb(&[song.as_ref(), "--reference".as_ref(), song.as_ref()]);
     assert_eq!(o.status.code(), Some(2), "{}", out(&o));
 }
+
+#[test]
+fn compare_is_hidden_from_the_help_but_has_its_own() {
+    let help = |args: &[&str]| {
+        let o = Command::new(env!("CARGO_BIN_EXE_orb"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", out(&o));
+        String::from_utf8(o.stdout).unwrap()
+    };
+    let top = help(&["--help"]);
+    assert!(!top.contains("compare"), "{top}");
+    for shown in ["render", "play", "info", "mod"] {
+        assert!(top.contains(shown), "{shown} missing from {top}");
+    }
+    assert!(help(&["compare", "--help"]).contains("--reference"));
+}

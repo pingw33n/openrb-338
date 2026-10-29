@@ -1,10 +1,11 @@
 ---
 id: TASK-137
 title: Hide developer-only CLI options from orb and OpenRB-338 help
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-29 10:01'
+updated_date: '2026-10-29 10:22'
 labels:
   - cli
   - ui
@@ -37,7 +38,31 @@ What:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 orb --help does not list compare and orb compare still works; OpenRB-338 --help and usage show only [SONG], and the hidden options still work (tests)
-- [ ] #2 Opening a song from the positional argument works for RBS 4.x and 1.x songs and paths with spaces; a bad path reports an error; the hidden options are documented for developers
-- [ ] #3 fmt, clippy, cargo test --release, debug cargo test -p orb-ui, shellcheck pass
+- [x] #1 orb --help does not list compare and orb compare still works; OpenRB-338 --help and usage show only [SONG], and the hidden options still work (tests)
+- [x] #2 Opening a song from the positional argument works for RBS 4.x and 1.x songs and paths with spaces; a bad path reports an error; the hidden options are documented for developers
+- [x] #3 fmt, clippy, cargo test --release, debug cargo test -p orb-ui, shellcheck pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. orb: add hide = true to Cmd::Compare; test: orb --help lacks compare, orb compare still runs (existing compare.rs plus a help test in orb-cli/tests).
+2. OpenRB-338 main.rs: move parsing into parse_args (unit-testable), --help/-h prints [SONG] usage exit 0, bad option exit 2, -psn_* ignored; usage shows only [SONG]; crate docs list the hidden options.
+3. Tests: unit tests of parse_args in main.rs; integration test running the binary for --help, bad option, -psn_; session::open_song on RBS 4.x, 1.x and a path with spaces, bad path error.
+4. docs/building.md: one section for the developer options.
+5. Run fmt, clippy, tests, shellcheck; one demo --screenshot run.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-a6f7a1ada618c8273
+
+Evidence: OpenRB-338 --help exit 0 and --bogus exit 2 (both print 'usage: OpenRB-338 [SONG]' only); orb --help lists render, play, info, mod, no compare; orb compare tests pass; real run 'OpenRB-338 --demo --size 624x510 --screenshot' wrote a 503414 B PNG, exit 0; a missing song path prints the error and the app starts with it in the message box (existing task-130 path). Parser moved into parse_args (-psn_* ignored, which the old code took as a song). scripts/appimage-smoke.sh uses --demo --screenshot and orb --help via a symlink: unaffected (shellcheck ok). No ReBirth 1.x fixture exists in tests/, so the test builds one with rbs::rb1x as other tests do.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+orb compare is hidden (clap hide) and works; OpenRB-338 --help/-h prints only [SONG] and exits 0, bad option exits 2, -psn_ ignored, hidden options (--demo --size --ppp --browse --about --screenshot) work. Developer options documented in docs/building.md and the crate docs of crates/orb-ui/src/main.rs. Tests: 5 unit tests in orb-ui main.rs, crates/orb-ui/tests/cli_args.rs (help, exit codes, open RBS 4.x/1.x/spaces/bad path), compare.rs help test. fmt, clippy, debug cargo test -p orb-ui, cargo test --release (0 failures), shellcheck pass. Branch worktree-agent-a6f7a1ada618c8273, one commit.
+<!-- SECTION:FINAL_SUMMARY:END -->

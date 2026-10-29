@@ -232,6 +232,30 @@ for `tools/rbm_test.py` only; `RBM` is the mod format), and the variables of oth
 (`SOURCE_DATE_EPOCH`, `GITHUB_REF_NAME`, `WGPU_BACKEND`). The settings folder is `OpenRB-338`
 (`OpenRB-338/ui.toml`); settings of the old `rb/` folder are not carried over (no migration).
 
+## Developer options hidden from the help (task-137)
+
+The end user sees `orb --help` and `OpenRB-338 --help` without the options meant for development,
+tests and pictures. They are hidden, not removed: no variable or feature switches them on, they
+work as ever.
+
+| Program | Hidden item | Use |
+|---|---|---|
+| `orb` | `orb compare` (`--help` of it works) | renders songs and compares them with the references (the corpus, docs in AGENTS.md) |
+| `OpenRB-338` | `--demo` | the panel in a lively state, with no player (pictures; `scripts/appimage-smoke.sh`) |
+| | `--size WxH` | opens the window, not maximized, with that inner panel size in points (624x510 is native) |
+| | `--ppp S` | overrides the pixel density |
+| | `--browse open\|save\|export\|mod` | starts with the file browser open for that mode |
+| | `--about` | starts with the About window open (task-115) |
+| | `--screenshot OUT.png` | saves the window to a PNG after a few frames and quits |
+
+`OpenRB-338 --help` (also `-h`) prints `usage: OpenRB-338 [SONG]` and exits 0; a bad option or
+value prints the same and exits 2. `SONG` (one, a path with spaces is one argument) is an RBS 4.x
+or ReBirth 1.x song; one that does not open starts the app on a new song with the error in the
+message box, as File > Open reports it. An argument `-psn_...` (Finder on old macOS) is ignored.
+The parser is `parse_args` in `crates/orb-ui/src/main.rs` (unit tests there and in
+`crates/orb-ui/tests/cli_args.rs`); `orb`'s is the clap definition in `crates/orb-cli/src/main.rs`
+(`hide = true` on `Compare`; `crates/orb-cli/tests/compare.rs`).
+
 ## GitHub Actions (`.github/workflows/`)
 
 Decisions of the user (2026-10-28): the cost of six release package jobs and the three-OS CI

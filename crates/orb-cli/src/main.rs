@@ -124,6 +124,8 @@ enum Cmd {
     /// Render songs and compare each with its reference, byte for byte as a WAV: prints EQUAL
     /// or the first difference (frame, time, bar, channel, both values) per song, and exits 1
     /// when any song differs. Either `SONG --reference REF` or `--manifest PATH [NAME...]`.
+    // a developer tool (task-137): not in `orb --help`, still works
+    #[command(hide = true)]
     Compare {
         /// With --reference: the song, an .rbs file. With --manifest: the entries to compare,
         /// as NAME or SET/NAME (all of the sets' entries when none is given).
