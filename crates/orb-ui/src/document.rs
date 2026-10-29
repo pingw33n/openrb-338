@@ -93,7 +93,9 @@ pub fn source_of_1x(engine: &EngineSong, song: &rbs::rb1x::Song1x) -> rbs::Song 
 /// Puts the engine's tracks into `s`: the TRAK writer `sub_437CFF` reads each track back from
 /// the DLL (song msg 22, 0x437DE6, in list order, `sub_10020EC0`) and writes each tick as
 /// `8 * tick / 192` (0x437E9E) after the one before (0x437EA4). The DLL's lists are sorted by
-/// tick (`sub_10014750`), so the positions never go back.
+/// tick (`sub_10014750`), so the positions never go back. `rbs::Track::build` writes a position
+/// below the one before as a wrap past 2^32 (what a file's own deltas may do) and refuses
+/// nothing, so an unsorted list here is a bug of the model, checked in debug builds.
 pub fn set_engine_tracks(s: &mut rbs::Song, tracks: &[Vec<TrackEvent>; 9]) {
     for (t, events) in tracks.iter().enumerate() {
         s.tracks[t].events = events
@@ -104,11 +106,17 @@ pub fn set_engine_tracks(s: &mut rbs::Song, tracks: &[Vec<TrackEvent>; 9]) {
                 value: e.value,
             })
             .collect();
+        debug_assert!(
+            s.tracks[t].events.windows(2).all(|w| w[0].pos <= w[1].pos),
+            "track {t}: events not sorted by position"
+        );
     }
 }
 
 /// The track events the load accepted (converted, as an older file's values are), as the file
-/// holds them: a position in 32nd notes is a tick over 24.
+/// holds them: a position in 32nd notes is a tick over 24. Not checked for order: a file's
+/// huge deltas wrap in u32 and may put an accepted event before the one before it, which the
+/// writer stores as the same wrap.
 fn set_tracks(s: &mut rbs::Song, engine: &EngineSong) {
     for (t, events) in engine.tracks.iter().enumerate() {
         s.tracks[t].events = events
@@ -270,4 +278,37 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
         }
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ev(tick: i32) -> TrackEvent {
+        TrackEvent {
+            tick,
+            ctrl: 6,
+            value: 1,
+        }
+    }
+
+    #[test]
+    fn engine_tracks_become_positions() {
+        let mut s = rbs::Song::empty();
+        let mut tracks: [Vec<TrackEvent>; 9] = Default::default();
+        tracks[0] = vec![ev(0), ev(24), ev(768)];
+        set_engine_tracks(&mut s, &tracks);
+        let pos: Vec<u32> = s.tracks[0].events.iter().map(|e| e.pos).collect();
+        assert_eq!(pos, [0, 1, 32]);
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "events not sorted by position")]
+    fn unsorted_engine_tracks_are_a_model_bug() {
+        let mut s = rbs::Song::empty();
+        let mut tracks: [Vec<TrackEvent>; 9] = Default::default();
+        tracks[2] = vec![ev(48), ev(24)];
+        set_engine_tracks(&mut s, &tracks);
+    }
 }

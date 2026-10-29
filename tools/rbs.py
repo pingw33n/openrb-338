@@ -390,8 +390,9 @@ class Event:
 
 
 def encode_delta(v):
-    """MIDI-style variable length quantity (RBS42.txt WriteDeltaPos)."""
-    if v < 0 or v >= 1 << 28:
+    """MIDI-style variable length quantity (RBS42.txt WriteDeltaPos; 5 bytes from 2^28, which
+    only a file with such a delta gives, see decode_delta)."""
+    if v < 0 or v >= 1 << 32:
         raise ValueError("delta %d out of range" % v)
     out = [v & 0x7F]
     v >>= 7
@@ -402,22 +403,20 @@ def encode_delta(v):
 
 
 def decode_delta(data, pos):
-    """Return (value, next_pos) (RBS42.txt ReadDeltaPos, at most 4 bytes)."""
+    """Return (value, next_pos). RBS42.txt's ReadDeltaPos allows 4 bytes, but the exe's reader
+    sub_4A09D1 has no limit: it reads while bit 7 is set and keeps v = (v << 7) | (c & 0x7F) in
+    32 bits (shl eax, 7 at 0x4A0A1D), so the bits shifted out are lost."""
     c = data[pos]
     pos += 1
     v = c
     if c & 0x80:
         v &= 0x7F
-        n = 1
         while True:
             c = data[pos]
             pos += 1
-            n += 1
-            v = (v << 7) | (c & 0x7F)
+            v = ((v << 7) | (c & 0x7F)) & 0xFFFFFFFF
             if not c & 0x80:
                 break
-            if n >= 4:
-                raise ValueError("delta position longer than 4 bytes")
     return v, pos
 
 
@@ -433,18 +432,19 @@ class Track:
         events = []
         for _ in range(n):
             d, p = decode_delta(raw, p)
-            pos += d
+            pos = (pos + d) & 0xFFFFFFFF      # u32, as the exe's abs + delta (0x436CE5)
             events.append(Event(pos, raw[p], raw[p + 1]))
             p += 2
         return cls(events, bytes(raw[p:]))
 
     def build(self):
         out = [struct.pack(">I", len(self.events))]
+        # Each delta is (pos - prev) mod 2^32, the inverse of parse's u32 add, so every parsed
+        # track writes back its own deltas, one whose positions wrap past 2^32 included; a
+        # position below the previous one is written as such a wrap, not refused.
         prev = 0
         for e in self.events:
-            if e.pos < prev:
-                raise ValueError("events not sorted by position")
-            out.append(encode_delta(e.pos - prev) + bytes([e.ctrl, e.value]))
+            out.append(encode_delta((e.pos - prev) & 0xFFFFFFFF) + bytes([e.ctrl, e.value]))
             prev = e.pos
         out.append(self._raw)
         return b"".join(out)
@@ -546,6 +546,9 @@ def validate(song):
         if not tr.events or tr.events[0].pos != 0:
             raise ValueError("track %s: the first event must exist at position 0" % name)
         names = controller_names(name)
+        for a, b in zip(tr.events, tr.events[1:]):
+            if b.pos < a.pos:   # the writer would store a wrap (Track.build)
+                raise ValueError("track %s: events not sorted by position" % name)
         for e in tr.events:
             if e.pos > MAX_POS:
                 raise ValueError("track %s: position %d beyond %d" % (name, e.pos, MAX_POS))

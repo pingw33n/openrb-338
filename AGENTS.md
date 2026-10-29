@@ -149,7 +149,11 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rbm`, `crate
   recrypts the originals with the current orb and requires them to equal MODS byte for byte; the
   originals and the DAT are arguments, not variables). To re-verify the recryptor on the real
   collection, run `tools/thirdparty_mods_manifest.py --check --orig MODS.ORIG --dat RB20FUL.DAT`
-  (recrypts the originals and compares with the manifest; exit 1 on a difference). Not test
+  (recrypts the originals and compares with the manifest; exit 1 on a difference). The songs
+  test walks the songs folder recursively and requires each song's `orb render` to hash as
+  rbhost's render in `tests/refs/thirdparty_songs.json`, failing on a song file it does not list;
+  regenerate it on the test machine with `tools/rbhost/thirdparty_songs.py --songs SONGS --mods
+  MODS --rb20ful RB20FUL.DAT` (batched and resumable; docs/rbm.md 11.5). Not test
   inputs: `ORB_LIVE_OUT` (orb-player's live_messages: an output folder) and `RBM_TEST_DAT` /
   `RBM_TEST_MODS` (set by a cargo test for its child process only, `tools/rbm_test.py`).
 - Song metadata: `orb info SONG.rbs [--mod-dir DIR] [--json]` prints the facts File > Info shows (format and version, title, text, web page, copyright, the mod and whether it is the built-in kit, a file of `--mod-dir` / `ORB_MOD_DIR`, missing, or not checked, tempo, shuffle, mode, loop, synth sound) for an RBS 4.x or a ReBirth 1.x song; `--json` keys are in `orb info --help`. The code is `crates/orb-cli/src/info.rs`, shared with orb-ui.

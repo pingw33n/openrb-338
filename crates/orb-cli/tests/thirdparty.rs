@@ -3,10 +3,13 @@
 //! skips with a message when its input is not set:
 //!
 //! - `ORB_THIRDPARTY_MODS_DIR`: a folder of the RECRYPTED `.rbm` files (`orb mod recrypt`;
-//!   task-063), for the `mods` test, and for the `songs` test's mod resolution when it is set;
-//! - `ORB_THIRDPARTY_SONGS_DIR`: a folder of songs (`.rbs` files, any name), for the `songs` test.
+//!   task-063), for the `mods` test, and for the `songs` test's mod resolution (the `songs` test
+//!   fails without it when its manifest lists a song with a third-party mod);
+//! - `ORB_THIRDPARTY_SONGS_DIR`: a folder of songs (every file under it, recursively, whose name
+//!   contains `.rbs` in any case), for the `songs` test.
 //!
-//! Run it in release, with the summary shown:
+//! Run it in release, with the summary shown (`songs` renders over 1200 songs on all cores: about
+//! 2 minutes):
 //!
 //! ```text
 //! ORB_THIRDPARTY_MODS_DIR=~/rb-mods/mods ORB_THIRDPARTY_SONGS_DIR=~/rb-songs/songs \
@@ -21,12 +24,20 @@
 //!   the collection changes), the originals and the key file are arguments of the tool, not
 //!   variables of the test: `tools/thirdparty_mods_manifest.py --orig MODS.ORIG --mods MODS --dat
 //!   RB20FUL.DAT`.
-//! - `songs`: every distinct song (by SHA-256): an RBS 4.2 song is read and written back
-//!   (byte-identical) and rendered with `orb render --mod-dir DIR --standard-kit` (DIR is
-//!   `ORB_THIRDPARTY_MODS_DIR` when it is set; without it no mod is found and the test says so),
-//!   its mod resolved as the original does; a ReBirth 1.x song (a MIDI file, `MThd`, task-060) is
-//!   rendered too, and its import's message stream (`orb_engine::load::load_1x`) must equal
-//!   `tools/rb1x.py`'s. No song may panic.
+//! - `songs`: every distinct song (by SHA-256) against the committed manifest
+//!   `tests/refs/thirdparty_songs.json` (task-129): the SHA-256 of rbhost's render of each song,
+//!   the original ReBirth.dll on the test machine, with the mod the original resolves. A song file
+//!   the manifest does not list (by its SHA-256 and its path under the folder) fails the test. An
+//!   RBS song is read and written back (byte-identical, or re-read equal) and rendered with `orb
+//!   render --idle-blocks N --mod-dir DIR --standard-kit` (N from the manifest, 9088; DIR is
+//!   `ORB_THIRDPARTY_MODS_DIR`; without it every listed song with a third-party mod is a failure
+//!   naming the variable, so a green run has compared every listed song); a ReBirth 1.x song (a
+//!   MIDI file, `MThd`, task-060) is rendered at idle 0, and its import's message stream
+//!   (`orb_engine::load::load_1x`) must equal `tools/rb1x.py`'s. The render's SHA-256 must equal
+//!   the manifest's. A song the manifest lists as skipped (one the original refuses) is only
+//!   listed. No song may panic. To regenerate the manifest when the collection changes (it needs
+//!   the test machine): `tools/rbhost/thirdparty_songs.py --songs SONGS --mods MODS --rb20ful
+//!   RB20FUL.DAT` (resumable; the paths are its arguments, not variables of the test).
 
 mod common;
 #[path = "../../../tests/common/python.rs"]
@@ -54,8 +65,8 @@ fn env() -> Option<Env> {
     let mods = common::env_path("ORB_THIRDPARTY_MODS_DIR");
     if mods.is_none() {
         eprintln!(
-            "note: ORB_THIRDPARTY_MODS_DIR is not set: the songs' mods are not resolved \
-             (the built-in kit plays instead)"
+            "note: ORB_THIRDPARTY_MODS_DIR is not set: the songs' mods are not resolved, so \
+             the songs test fails on every song of the manifest that plays one"
         );
     }
     Some(Env { mods, songs })
@@ -270,30 +281,79 @@ fn resolution(mods: &[(String, Option<String>)], name: &str) -> String {
     "missing".into()
 }
 
+/// The song files under `dir`, recursively (a file whose name contains `.rbs`, any case), as
+/// paths relative to `dir` with `/` separators, sorted; as `tools/rbhost/thirdparty_songs.py`.
+fn song_files(dir: &Path) -> Vec<String> {
+    fn walk(dir: &Path, rel: &str, out: &mut Vec<String>) {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let e = e.unwrap();
+            let name = e.file_name().to_string_lossy().into_owned();
+            let r = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
+            let ft = e.file_type().unwrap();
+            if ft.is_dir() {
+                walk(&e.path(), &r, out);
+            } else if e.path().is_file() && name.to_lowercase().contains(".rbs") {
+                out.push(r);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, "", &mut out);
+    out.sort();
+    out
+}
+
+/// The rbhost manifest `tests/refs/thirdparty_songs.json` (task-129): SHA-256 to the entry of
+/// `songs` (rendered) or `skipped` (with the reason), and whether it was skipped.
+fn songs_manifest() -> HashMap<String, (Value, bool)> {
+    let m: Value = serde_json::from_slice(
+        &std::fs::read(root().join("tests/refs/thirdparty_songs.json")).unwrap(),
+    )
+    .expect("tests/refs/thirdparty_songs.json");
+    let mut out = HashMap::new();
+    for (key, skipped) in [("songs", false), ("skipped", true)] {
+        for e in m[key].as_array().unwrap() {
+            out.insert(
+                e["sha256"].as_str().unwrap().to_string(),
+                (e.clone(), skipped),
+            );
+        }
+    }
+    out
+}
+
 #[test]
 fn songs() {
     let Some(e) = env() else { return };
     let mods = e.mods.as_deref().map(info_names).unwrap_or_default();
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(&e.songs)
-        .unwrap()
-        .map(|x| x.unwrap().path())
-        .filter(|p| {
-            p.is_file()
-                && p.file_name()
-                    .is_some_and(|f| f.to_string_lossy().to_lowercase().contains(".rbs"))
-        })
-        .collect();
-    paths.sort();
+    let manifest = songs_manifest();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
     let mut unique = Vec::new();
-    let mut dups = 0;
-    for p in paths {
+    let (mut dups, mut files) = (0, 0);
+    let mut unlisted = Vec::new();
+    for rel in song_files(&e.songs) {
+        files += 1;
+        let p = e.songs.join(&rel);
         let h = hex(&std::fs::read(&p).unwrap());
+        let listed = manifest.get(&h).is_some_and(|(m, _)| {
+            m["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f.as_str() == Some(rel.as_str()))
+        });
+        if !listed {
+            unlisted.push(rel.clone());
+        }
         if seen.contains_key(&h) {
             dups += 1;
         } else {
             seen.insert(h.clone(), p.clone());
-            unique.push((h, p));
+            unique.push((h, rel, p));
         }
     }
 
@@ -310,10 +370,23 @@ fn songs() {
                         *n += 1;
                         *n - 1
                     };
-                    let Some((h, p)) = unique.get(i) else { break };
-                    let r = check_song(&e, &mods, p, &tmp.path().join(format!("{h}.wav")));
-                    let label = p.file_name().unwrap().to_string_lossy().into_owned();
-                    results.lock().unwrap().insert(label, r);
+                    let Some((h, rel, p)) = unique.get(i) else {
+                        break;
+                    };
+                    let r = match manifest.get(h) {
+                        Some((m, true)) => (
+                            "SKIPPED".to_string(),
+                            format!("rbhost: {}", m["reason"].as_str().unwrap_or("?")),
+                        ),
+                        entry => check_song(
+                            &e,
+                            &mods,
+                            p,
+                            &tmp.path().join(format!("{h}.wav")),
+                            entry.map(|(m, _)| m),
+                        ),
+                    };
+                    results.lock().unwrap().insert(rel.clone(), r);
                 }
             });
         }
@@ -322,28 +395,58 @@ fn songs() {
     let results = results.into_inner().unwrap();
     let mut classes: BTreeMap<String, usize> = BTreeMap::new();
     let mut problems = Vec::new();
+    let (mut equal, mut not_compared, mut need_mods) = (0, 0, 0);
     for (label, (class, detail)) in &results {
         println!("{class:<10} {label}: {detail}");
         *classes.entry(class.clone()).or_default() += 1;
-        if class.starts_with("FAIL") {
+        if class == "FAIL-mods" {
+            need_mods += 1;
+        } else if class.starts_with("FAIL") {
             problems.push(format!("{label}: {detail}"));
+        }
+        if detail.contains(EQUAL) {
+            equal += 1;
+        }
+        if detail.contains(NOT_COMPARED) {
+            not_compared += 1;
         }
     }
     println!(
-        "songs: {} files with .rbs in the name, {dups} duplicates, {} distinct: {classes:?}",
-        results.len() + dups,
+        "songs: {files} files with .rbs in the name, {dups} duplicates, {} distinct: \
+         {classes:?}; {equal} renders equal rbhost's (tests/refs/thirdparty_songs.json), \
+         {not_compared} not compared",
         results.len()
     );
+    if need_mods > 0 {
+        problems.push(format!(
+            "{need_mods} songs of tests/refs/thirdparty_songs.json play a third-party mod and \
+             were not compared with rbhost's render: set ORB_THIRDPARTY_MODS_DIR to the folder \
+             of the recrypted third-party mods"
+        ));
+    }
+    if !unlisted.is_empty() {
+        problems.push(format!(
+            "{} song files of the folder are not in tests/refs/thirdparty_songs.json (regenerate \
+             it with tools/rbhost/thirdparty_songs.py): {}",
+            unlisted.len(),
+            unlisted.join(", ")
+        ));
+    }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
+const EQUAL: &str = "equals rbhost's render";
+const NOT_COMPARED: &str = "not compared with rbhost's render";
+
 /// (class, detail) of one song: `RBS42`, `RBS1X` (rendered, and its import messages equal
-/// `tools/rb1x.py`'s), or `FAIL...`.
+/// `tools/rb1x.py`'s), or `FAIL...`; with its manifest `entry`, rendered with the entry's
+/// settings and `FAIL-hash` unless the WAV's SHA-256 equals rbhost's.
 fn check_song(
     e: &Env,
     mods: &[(String, Option<String>)],
     path: &Path,
     out: &Path,
+    entry: Option<&Value>,
 ) -> (String, String) {
     let data = std::fs::read(path).unwrap();
     let mut detail = String::new();
@@ -371,10 +474,19 @@ fn check_song(
     }
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_orb"));
     cmd.arg("render").arg(path).arg("-o").arg(out);
+    if let Some(n) = entry.and_then(|m| m["idle_blocks"].as_u64()) {
+        cmd.arg("--idle-blocks").arg(n.to_string());
+    }
+    // A song whose mod no INFO name of the folder has plays the built-in kit in the original
+    // (the Standard choice of its dialog), but orb's --mod-dir also matches a file name
+    // ("omega" finds Omega.rbm, INFO name "Omega"; docs/rbm.md 11.4): such a song is
+    // rendered without the folder, as the manifest's rbhost render was.
+    let missing = entry
+        .is_some_and(|m| m["mod"].is_null() && m["mod_name"].as_str() != Some("Standard ReBirth"));
     match &e.mods {
-        Some(mods) => cmd.arg("--mod-dir").arg(mods),
+        Some(mods) if !missing => cmd.arg("--mod-dir").arg(mods),
         // no mod folder: the mod of the child's own environment must not matter
-        None => cmd.env_remove("ORB_MOD_DIR"),
+        _ => cmd.env_remove("ORB_MOD_DIR"),
     };
     let o = cmd.arg("--standard-kit").output().unwrap();
     let stderr = String::from_utf8_lossy(&o.stderr);
@@ -383,6 +495,7 @@ fn check_song(
         .filter(|l| l.contains("warning"))
         .map(|l| l.split(": warning: ").last().unwrap_or(l))
         .collect();
+    let wav = std::fs::read(out).ok();
     let _ = std::fs::remove_file(out);
     if stderr.contains("panicked") || o.status.code().is_none_or(|c| c > 2) {
         return ("FAIL-panic".into(), stderr.into_owned());
@@ -391,6 +504,34 @@ fn check_song(
         return ("FAIL-render".into(), stderr.trim().to_string());
     }
     detail.push_str("rendered");
+    if let Some(m) = entry {
+        let ours = hex(&wav.unwrap_or_default());
+        let theirs = m["render_sha256"].as_str().unwrap();
+        if m["mod"].is_string() && e.mods.is_none() {
+            // a green run means every listed song was compared
+            return (
+                "FAIL-mods".into(),
+                format!(
+                    "{detail}; its mod {} needs ORB_THIRDPARTY_MODS_DIR (the folder of the \
+                     recrypted third-party mods): not compared with rbhost's render",
+                    m["mod"]
+                ),
+            );
+        } else if ours == theirs {
+            detail.push_str(&format!("; {EQUAL}"));
+        } else {
+            return (
+                "FAIL-hash".into(),
+                format!(
+                    "{detail}; orb's render {ours} differs from rbhost's {theirs} (settings: {}, \
+                     idle {}, mod {})",
+                    m["form"], m["idle_blocks"], m["mod"]
+                ),
+            );
+        }
+    } else {
+        detail.push_str(&format!("; {NOT_COMPARED}: not in the manifest"));
+    }
     for w in warnings {
         detail.push_str("; ");
         detail.push_str(w.chars().take(100).collect::<String>().as_str());

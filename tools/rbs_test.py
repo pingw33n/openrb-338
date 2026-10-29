@@ -50,9 +50,31 @@ class DeltaPosition(unittest.TestCase):
         t = rbs.Track(evs)
         self.assertEqual(rbs.Track.parse(t.build()).events, evs)
 
-    def test_unsorted_rejected(self):
-        with self.assertRaises(ValueError):
-            rbs.Track([rbs.Event(5, 0, 1), rbs.Event(4, 0, 1)]).build()
+    def test_long_deltas_read_as_the_exe(self):
+        # sub_4A09D1: no length limit, 32-bit shift (a third-party song has 8f ff fa 94 00)
+        self.assertEqual(rbs.decode_delta(b"\x8f\xff\xfa\x94\x00", 0), (0xFFFE8A00, 5))
+        self.assertEqual(rbs.encode_delta(0xFFFE8A00), b"\x8f\xff\xfa\x94\x00")
+        v = 0
+        for c in (1, 1, 1, 1, 1, 2):
+            v = ((v << 7) | c) & 0xFFFFFFFF
+        self.assertEqual(rbs.decode_delta(b"\x81\x81\x81\x81\x81\x02", 0), (v, 6))
+        t = rbs.Track.parse(b"\0\0\0\2\x00\x06\x09\x8f\xff\xfa\x94\x00\x07\x01")
+        self.assertEqual([e.pos for e in t.events], [0, 0xFFFE8A00])
+        self.assertEqual(t.build(), b"\0\0\0\2\x00\x06\x09\x8f\xff\xfa\x94\x00\x07\x01")
+
+    def test_a_wrapped_track_writes_back_its_deltas(self):
+        raw = b"\0\0\0\2\x8f\xff\xff\xff\x70\x06\x09\x20\x07\x01"   # 0xFFFFFFF0, then 0x20
+        t = rbs.Track.parse(raw)
+        self.assertEqual([e.pos for e in t.events], [0xFFFFFFF0, 0x10])
+        self.assertEqual(t.build(), raw)
+        # every backward step is a wrap, whatever its delta (1, 0xFFFFFFF0, 2^31, 2^32 - 1)
+        for a, b in ((0xFFFFFFFF, 0), (0x10, 0), (0x80000000, 0), (5, 4)):
+            t = rbs.Track([rbs.Event(a, 0, 1), rbs.Event(b, 0, 1)])
+            self.assertEqual(rbs.Track.parse(t.build()).events, t.events)
+        raw = b"\0\0\0\2\x10\x06\x09\x8f\xff\xff\xff\x70\x07\x01"   # 0x10, then 0xFFFFFFF0
+        t = rbs.Track.parse(raw)
+        self.assertEqual([e.pos for e in t.events], [0x10, 0])
+        self.assertEqual(t.build(), raw)
 
 
 class Shipped(unittest.TestCase):
@@ -145,7 +167,11 @@ class Build(unittest.TestCase):
                                           {"pos": 16, "ctrl": "pattern", "value": 1}]}},
                     {"tracks": {"delay": [{"pos": 0, "ctrl": "enabled", "value": 1},
                                           {"pos": 31977, "ctrl": "enabled", "value": 0}]}},
-                    {"tracks": {"mixer": [{"pos": 0, "ctrl": 0x20, "value": 1}]}}):
+                    {"tracks": {"mixer": [{"pos": 0, "ctrl": 0x20, "value": 1}]}},
+                    # unsorted: the writer would store a wrap, so the spec check refuses it
+                    {"tracks": {"delay": [{"pos": 0, "ctrl": "enabled", "value": 1},
+                                          {"pos": 8, "ctrl": "enabled", "value": 0},
+                                          {"pos": 4, "ctrl": "enabled", "value": 1}]}}):
             with self.assertRaises(ValueError, msg=str(bad)):
                 self.build(bad)
 

@@ -128,6 +128,21 @@ at 0x4DB918 (`sub_4329E5`), all with revision 0. Two tests are used:
 So a file of version 4.1.1 gets neither the 4.1 enable forcing nor any 4.2 path; 4.0.1 is read like
 4.1 without the forcing. Every shipped and diagnostic song has revision 0.
 
+### 2.1 The file check (task-129) [C]
+
+Before anything is read, `sub_434D05` calls `sub_49F3B4(file, 0)` (0x434D56). It reads the chunk at
+offset 0 (`sub_49F5E2`: a stream under 8 bytes has none; `sub_49F477` reads the tag and the size,
+and for FORM, CAT and LIST also the type) and is true only when that chunk is of kind 1..3 (FORM,
+CAT, LIST; 0x49F41D..0x49F427) and its whole length, `sub_49F19B` = the header (12 bytes,
+`sub_49F1C7`) plus the stored size less 4, equals the stream's length (vtable +0x18, `cmp` at
+0x49F440). Otherwise the load throws (0x434D92) and the song does not open. So a file with bytes
+after its CAT chunk, or a CAT that claims more than the file holds, is refused. The `CAT RB40` is
+then found by `sub_49F7F5` (kind 2 with the type at 0x4BC050, 0x434DBD) from offset 0.
+
+In the user's collection (task-129) this refuses three files, which `crates/rbs` refuses too:
+`yawn.rbs` (a CAT of 18018 bytes in a file of 18020), a BinHex 4.0 text and a file with no chunk
+header. `tools/rbhost/thirdparty_songs.py` (`refusal`) applies the same check.
+
 ## 3. Msg 36: globals [C]
 
 Built from GLOB by `sub_433F96` (parse), `sub_438B4B` and `sub_420AE7` (pack; defaults from
@@ -511,7 +526,8 @@ work found is not a message: orb's PCF step after a return to pattern mode while
 ## 5. Msg 37: track events [C]
 
 `sub_436B6F(…, song, track, rangeTable)` reads one TRAK chunk: a u32 event count, then per event a
-MIDI-style variable-length delta (`sub_4A09D1`), a controller and a value.
+MIDI-style variable-length delta (`sub_4A09D1`, of any length, kept in 32 bits: section 10), a
+controller and a value.
 
 **Position.** `abs += delta`; `tick = (abs * 0xC0) >> 3` in u32, i.e. **`tick = abs × 24`** (0x436CF3).
 The RBS position unit is a 32nd note (32 per bar, 8 per quarter), not 24 PPQ: in the shipped songs
@@ -757,6 +773,8 @@ and its packets have the intended layout. rbhost and the Rust engine use the int
 | 303 waveform 0 = triangle | 0 = saw |
 | USRI is 512 bytes | 712 bytes in real files; the exe requires 712. From the 18 shipped songs (tools/rbs.py): title ZSTRING at 0 (41), text ZSTRING at 41 (401 bytes, not 201), web page ZSTRING at 442 (101), show-on-open byte at 543; bytes 544..711 hold leftover junk that the engine does not use |
 | TRAK accumulated position must not exceed 31976 | `Alloy Cowboy Resurrection.rbs` has events above 31976 in every track, up to 41024; the exe drops those at or above 32000 (tick 768000, section 5) |
+| Delta position "up to 4 bytes long" | [C] the exe's reader `sub_4A09D1` has no limit: it reads while bit 7 is set and keeps `v = (v << 7) \| (c & 0x7F)` in 32 bits (`shl eax, 7` at 0x4A0A1D), so a longer delta loses its top bits; `abs + delta` and `abs × 0xC0 >> 3` are u32 too (section 5). A third-party song has a 5-byte delta, `8F FF FA 94 00` = 0xFFFE8A00: its event fails the tick check and is dropped (task-129). `crates/rbs` and `tools/rbs.py` read it so and write such a delta back in 5 bytes |
+| (the file) | [C] the file must be exactly one FORM, CAT or LIST chunk: section 2.1 |
 
 ## 11. Open items
 
@@ -937,7 +955,9 @@ version below 3.1, a bad sysex, no sysex) or one that reaches OB-15 is an error.
 - rbhost (the original DLL fed `tools/rb1x.py`'s messages, idle 0) against `orb render
   --idle-blocks 0`: **129 of 129 equal** byte for byte (`tools/rbhost/hashcmp.py`, the WAV
   sha256 taken on the machine, 2026-10-27; the per-song hashes are in the task-060 notes), the
-  two pattern-mode songs included (rbhost exports them; the app cannot).
+  two pattern-mode songs included (rbhost exports them; the app cannot). Since task-129 the
+  gated test pins this: all 426 1.x songs of the recursive collection render equal to rbhost
+  (`tests/refs/thirdparty_songs.json`, `docs/rbm.md` 11.5).
 - The app itself (a copy of the installation, `tools/rb_export.py --app-dir --restore-prf
   --startup-sound off`) exported 11 song-mode 1.x songs (Razor Topz, Eternal Darkness, i feel
   love, Virus 303, MagneticFields, Galaxy Defender, pre2, DISFUNKT (3.2.0), Venom Surf, speed,
@@ -997,7 +1017,9 @@ reversed, tick 0 excepted. The original does the same.
 **orb.** orb-ui gives a 1.x song's document the tracks of the engine it built
 (`Link::loaded_tracks`, `document::set_engine_tracks`, `App::adopt_as`), which is what msg 22
 would read back right after the load. It does not copy `load_1x`'s buffers, which made
-`rbs::Track::build` refuse the save ("events not sorted by position"). The mod does not matter:
+`rbs::Track::build` refuse the save ("events not sorted by position"; since task-129 the writer
+refuses nothing and writes a backward step as a u32 wrap, and `set_engine_tracks` debug-asserts
+the order instead, `docs/rbm.md` 11.5). The mod does not matter:
 `compose` takes only the mod's name, and the save failed without a mod change too. Checked by
 `crates/orb-ui/tests/menu.rs`:
 - `a_1x_song_with_unsorted_imports_saves_and_reopens_the_same`: a synthetic song.

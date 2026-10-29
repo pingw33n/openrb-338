@@ -454,6 +454,68 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
 - `run.py` and `fit.py` take `--remote-dir NAME` (work in `C:\re\rb\NAME`), `rb_export.py`
   `--app-dir` and `--startup-boxes`.
 
+### 11.5 Every song against rbhost: the songs manifest (task-129, 2026-10-29)
+
+The collection moved to `~/rb-songs/songs` (songs, read recursively: the top level and the
+`CaveysRebirthStuff` archive) and `~/rb-mods/mods` (the 172 recrypted mods). The user asked
+(2026-10-29) that all songs be handled recursively.
+
+**The manifest.** `tests/refs/thirdparty_songs.json` holds, per distinct song (by SHA-256), its
+paths under the folder, its form and version, the mod name and the mod file the original
+resolves (null: the built-in kit), the idle blocks and the SHA-256 of rbhost's render (the WAV,
+hashed on the machine); then the skipped files with the reason. Hashes and names only.
+`tools/rbhost/thirdparty_songs.py --songs SONGS --mods MODS --rb20ful RB20FUL.DAT` writes it:
+- RBS songs: `rbsmsg.py`'s messages, `--idle-blocks 9088`, the mod's message 55 as `run.py --mod
+  --rb20ful` builds it (the recrypted mods load in the DLL with the CD's DAT);
+- 1.x songs: `tools/rb1x.py`'s messages, idle 0, the built-in kit.
+- The mod is the first file in NTFS order (section 11.3) whose INFO name is the GLOB's, exactly
+  (`strcmp`, section 10); `Standard ReBirth` or a name no INFO has is the built-in kit.
+- It works in `C:\re\rb\t129` (deleted after each batch) in batches of 100 songs, each under one
+  permit with no Rebirth.exe running. The manifest is rewritten after every song, and a song it
+  already records is not rendered again, so a stopped run resumes (`--fresh` starts over,
+  `--only PATH...` renders songs again). The DAT comes from the CD image (`bsdtar -xf CD.iso
+  RB20FUL.DAT`).
+
+The gated `songs` test (`crates/orb-cli/tests/thirdparty.rs`) renders every listed song with
+`orb render --idle-blocks N --mod-dir ORB_THIRDPARTY_MODS_DIR --standard-kit` and requires the
+WAV's SHA-256 to equal the manifest's; a song file of the folder the manifest does not list fails
+it, and so does a run without `ORB_THIRDPARTY_MODS_DIR` when the manifest lists a song with a
+third-party mod (510 of them), so a green run has compared all 1239. Regenerate the manifest when
+the collection changes.
+
+**Positions that wrap.** The reader adds the deltas in u32 (`docs/song_load.md` section 10), so
+huge deltas can wrap a track's positions past 2^32. The writers (`crates/rbs` `Track::build`,
+`tools/rbs.py`) write each delta as `pos - prev` modulo 2^32 and refuse nothing: positions come
+only from u32 deltas, so every backward step of a parsed track is a wrap (whatever its delta), and
+every parsed track writes back byte for byte. The order is checked where tracks are built from a
+model instead: orb-ui's `document::set_engine_tracks` (the engine's lists, a 1.x import included)
+debug-asserts that its positions never go back ("events not sorted by position"), and
+`tools/rbs.py`'s `validate` refuses an unsorted spec. No song of the collection wraps. Today
+orb-ui's Save writes a song's own events through this writer; task-143 (open) makes it write the
+engine's tracks instead, whose positions are below 32000 and sorted, so they never wrap.
+
+**The run of 2026-10-29.** 1242 song files (a name containing `.rbs`), 1242 distinct:
+- 426 ReBirth 1.x (built-in kit) and 813 RBS: 436 of 4.2, 369 of 4.1, 8 of 4.0. 510 RBS play a
+  mod, 33 mods in all (each name matches one file). 303 play the built-in kit: 301 name `Standard ReBirth`, and 2
+  name `omega`, which no INFO name matches (`Omega.rbm` is `Omega`).
+- All songs are in song mode. Five pattern-mode songs (four 1.x) were resaved by the user during
+  the run; their new versions are the ones pinned.
+- **1239 rendered by rbhost, and all 1239 equal `orb render` byte for byte** (the WAV's
+  SHA-256), the 4.0 and 4.1 songs, the 1.x songs and all 33 mods included.
+- 3 skipped: the original refuses them (`docs/song_load.md` 2.1, `sub_49F3B4`), and so does orb:
+  `Pack34/yawn.rbs` (a CAT of 18018 bytes in a file of 18020), `Top 25/005/Wax and Rain.RBS` (a
+  BinHex 4.0 text) and `ChemicalPack/thefur~1.rbs` (no chunk header).
+- One mismatch was found and fixed. `Mod Demo Songs/AXIOM peace.rbs` has a 5-byte delta in a
+  TRAK. orb refused it, but the original reads deltas of any length (`docs/song_load.md` 10).
+  `crates/rbs` and `tools/rbs.py` now read it so, and its render equals rbhost's.
+- **orb's file-name fallback.** `--mod-dir` also matches a mod by its file name when no INFO name
+  does (section 10). So orb loads `Omega.rbm` for the two `omega` songs, where the original would
+  ask and, on Standard, play the built-in kit. The test renders such a song without the mod folder,
+  as rbhost rendered it.
+- `CaveysRebirthStuff/Battle of the Best/Top 25/006/SaturdayMorning.zip` (a song, a ReadMe and a
+  sample) was out of scope by the user's decision. The user replaced it with its song, `Saturday
+  morning.RBS` (1.x), during the run, and that song is in the manifest like the others.
+
 ## 12. Recrypted mods: one 2047-byte embedded key window (task-059, 2026-10-27)
 
 The user decided on 2026-10-27 (superseding task-053's "nothing bundled" for this only) that orb

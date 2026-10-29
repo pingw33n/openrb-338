@@ -753,10 +753,9 @@ pub struct Event {
     pub value: u8,
 }
 
+/// Encodes a delta in the fewest 7-bit groups: up to 4 bytes as RBS42.txt, 5 for a delta of
+/// 2^28 or more (which only a file with such a delta gives, see [`decode_delta`]).
 fn encode_delta(v: u32, out: &mut Vec<u8>) -> Result<(), Error> {
-    if v >= 1 << 28 {
-        return err("TRAK", 0, format!("delta {v} out of range"));
-    }
     let mut groups = vec![(v & 0x7f) as u8];
     let mut v = v >> 7;
     while v != 0 {
@@ -767,7 +766,10 @@ fn encode_delta(v: u32, out: &mut Vec<u8>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Decodes a delta (RBS42.txt ReadDeltaPos, at most 4 bytes); returns the value and the next index.
+/// Decodes a delta; returns the value and the next index. RBS42.txt's ReadDeltaPos allows 4
+/// bytes, but the exe's reader `sub_4A09D1` has no limit: it reads while bit 7 is set and keeps
+/// `v = (v << 7) | (c & 0x7f)` in 32 bits (`shl eax, 7` at 0x4A0A1D), so the bits shifted out
+/// are lost (docs/song_load.md section 5).
 fn decode_delta(body: &[u8], mut p: usize, base: usize) -> Result<(u32, usize), Error> {
     let at = |p: usize| -> Result<u8, Error> {
         match body.get(p) {
@@ -780,17 +782,12 @@ fn decode_delta(body: &[u8], mut p: usize, base: usize) -> Result<(u32, usize), 
     let mut v = c as u32;
     if c & 0x80 != 0 {
         v &= 0x7f;
-        let mut n = 1;
         loop {
             c = at(p)?;
             p += 1;
-            n += 1;
             v = (v << 7) | (c & 0x7f) as u32;
             if c & 0x80 == 0 {
                 break;
-            }
-            if n >= 4 {
-                return err("TRAK", base + p, "delta position longer than 4 bytes");
             }
         }
     }
@@ -815,10 +812,9 @@ impl Track {
         let mut events = Vec::with_capacity(n.min(body.len()));
         for _ in 0..n {
             let (d, q) = decode_delta(body, p, c.start)?;
-            pos = match pos.checked_add(d) {
-                Some(x) => x,
-                None => return err("TRAK", c.start + p, "position overflow"),
-            };
+            // u32, as the exe's `abs + delta` (0x436CE5); the engine takes the deltas back with
+            // a wrapping subtraction (orb_engine::load::track_batches)
+            pos = pos.wrapping_add(d);
             if q + 2 > body.len() {
                 return err("TRAK", c.start + q, "truncated event");
             }
@@ -835,14 +831,16 @@ impl Track {
         })
     }
 
+    /// The TRAK body. Each delta is `pos - prev` modulo 2^32, the inverse of the reader's u32
+    /// add, so every parsed track writes back its own deltas, one whose positions wrap past
+    /// 2^32 (a file's huge deltas) included. A position below the previous one is written as
+    /// such a wrap, not refused: the callers that build tracks from a model (orb-ui's
+    /// `document.rs`) check that their lists are sorted.
     fn build(&self) -> Result<Vec<u8>, Error> {
         let mut out = (self.events.len() as u32).to_be_bytes().to_vec();
-        let mut prev = 0;
+        let mut prev = 0u32;
         for e in &self.events {
-            if e.pos < prev {
-                return err("TRAK", 0, "events not sorted by position");
-            }
-            encode_delta(e.pos - prev, &mut out)?;
+            encode_delta(e.pos.wrapping_sub(prev), &mut out)?;
             out.extend([e.ctrl, e.value]);
             prev = e.pos;
         }
@@ -1204,6 +1202,61 @@ mod tests {
     }
 
     #[test]
+    fn a_delta_of_any_length_reads_as_the_exe_does() {
+        // A 5-byte delta (8f ff fa 94 00, from a third-party song): 0xFFFE8A00, as sub_4A09D1's
+        // 32-bit shift gives; then 6 bytes, whose top bits are shifted out (0x81 x5, 0x02 is
+        // 2^35 + .. + 2 modulo 2^32). Both read, and the 5-byte one writes back unchanged.
+        let body = [0, 0, 0, 2, 0, 6, 9, 0x8f, 0xff, 0xfa, 0x94, 0x00, 7, 1];
+        let odd = with_mixer_track(&silent(), &body);
+        let song = Song::parse(&odd).unwrap();
+        let ev = |pos, ctrl, value| Event { pos, ctrl, value };
+        assert_eq!(song.tracks[0].events, [ev(0, 6, 9), ev(0xFFFE_8A00, 7, 1)]);
+        assert_eq!(song.write().unwrap(), odd);
+
+        let body = [0, 0, 0, 1, 0x81, 0x81, 0x81, 0x81, 0x81, 0x02, 6, 9];
+        let song = Song::parse(&with_mixer_track(&silent(), &body)).unwrap();
+        let v = (0..6).fold(0u32, |v, i| (v << 7) | [1, 1, 1, 1, 1, 2][i]);
+        assert_eq!(song.tracks[0].events, [ev(v, 6, 9)]);
+        let back = Song::parse(&song.write().unwrap()).unwrap();
+        assert_eq!(back, song);
+    }
+
+    #[test]
+    fn a_track_that_wraps_past_2_32_writes_back_its_deltas() {
+        // deltas 0xFFFFFFF0 (8f ff ff ff 70) then 0x20: positions 0xFFFFFFF0 and 0x10
+        let body = [0, 0, 0, 2, 0x8f, 0xff, 0xff, 0xff, 0x70, 6, 9, 0x20, 7, 1];
+        let odd = with_mixer_track(&silent(), &body);
+        let song = Song::parse(&odd).unwrap();
+        let ev = |pos, ctrl, value| Event { pos, ctrl, value };
+        assert_eq!(
+            song.tracks[0].events,
+            [ev(0xFFFF_FFF0, 6, 9), ev(0x10, 7, 1)]
+        );
+        assert_eq!(song.write().unwrap(), odd);
+
+        // every backward step is a wrap, whatever its delta: 0x10 then 0 (delta 0xFFFFFFF0),
+        // 0x80000000 then 0 (delta 2^31) and 5 then 4 (delta 2^32 - 1) all write and read back
+        for evs in [
+            vec![ev(0x10, 6, 9), ev(0, 7, 1)],
+            vec![ev(0x8000_0000, 6, 9), ev(0, 7, 1)],
+            vec![ev(5, 6, 9), ev(4, 7, 1)],
+        ] {
+            let mut s = song.clone();
+            s.tracks[0].events = evs.clone();
+            let bytes = s.write().unwrap();
+            let back = Song::parse(&bytes).unwrap();
+            assert_eq!(back.tracks[0].events, evs);
+            assert_eq!(back.write().unwrap(), bytes);
+        }
+        // 0x10 then delta 0xFFFFFFF0, as a file holds it, round-trips byte for byte
+        let body = [0, 0, 0, 2, 0x10, 6, 9, 0x8f, 0xff, 0xff, 0xff, 0x70, 7, 1];
+        let odd = with_mixer_track(&silent(), &body);
+        let song = Song::parse(&odd).unwrap();
+        assert_eq!(song.tracks[0].events, [ev(0x10, 6, 9), ev(0, 7, 1)]);
+        assert_eq!(song.write().unwrap(), odd);
+    }
+
+    #[test]
     fn the_empty_song_writes_and_reads_back() {
         let s = Song::empty();
         let bytes = s.write().unwrap();
@@ -1244,6 +1297,9 @@ mod tests {
         let mut s = base.clone();
         s.glob.mod_name = "x".repeat(65);
         assert!(s.write().is_err());
+        // A position below the one before is no error since task-129: the writer stores it as
+        // a u32 wrap, which reads back the same; the order of a model's tracks is checked where
+        // they are built (orb-ui `document::set_engine_tracks`).
         let mut s = base;
         s.tracks[0].events = vec![
             Event {
@@ -1257,7 +1313,8 @@ mod tests {
                 value: 0,
             },
         ];
-        assert!(s.write().is_err());
+        let back = Song::parse(&s.write().unwrap()).unwrap();
+        assert_eq!(back.tracks[0].events, s.tracks[0].events);
     }
 
     #[test]

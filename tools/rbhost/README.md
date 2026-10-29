@@ -15,6 +15,7 @@ The facts it relies on are in `docs/export_state.md` (sections 2.7, 4 and 12) an
 | `run.py` | build, convert, upload to `C:\re\rb\rbhost`, run under one permit, download |
 | `hashcmp.py` | rbhost against `orb render` by the WAV sha256 taken on the machine (nothing downloaded) |
 | `rbsmsg_test.py` | unit tests of the conversion |
+| `thirdparty_songs.py` | writes `tests/refs/thirdparty_songs.json`: rbhost's render hash of every distinct song of a third-party folder, recursively, with the mod the original resolves (task-129; batched, resumable; `docs/rbm.md` 11.5) |
 
 ## Toolchain
 
