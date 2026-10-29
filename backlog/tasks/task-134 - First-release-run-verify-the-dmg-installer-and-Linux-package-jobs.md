@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 12:19'
+updated_date: '2026-10-29 12:23'
 labels:
   - tools
   - tests
@@ -78,4 +78,9 @@ User, 2026-10-29, real-machine checks of the v2026.1029.1138 draft:
 - Work: both .dmg (aarch64 and x86_64) on the user's Mac; the darwin tar.gz on the same Mac; the x64 setup.exe on Windows 11; the Linux x86_64 UI binary (tar.gz) under WSL on Windows (WSLg).
 - Fails: orb play of the Linux x86_64 binary under WSL. The output was "orb-player: audio output: ALSA function 'snd_pcm_avail_delay' failed with error 'I/O error (5)'", twice, then "orb: error: the audio output stopped with an error". Filed as task-139.
 - Not yet: the AppImage (under WSL it needs libfuse2 or --appimage-extract-and-run), the arm64 installer, uninstall, and a real Intel Mac. The x86_64 .dmg was checked on the user's Mac; whether that is Apple silicon with Rosetta has not been recorded.
+
+User, 2026-10-29:
+- Under WSL, the Linux UI played sound and worked normally.
+- The x86_64 AppImage was checked under WSL and works, sound included.
+- The user has no Intel Mac and no arm64 Windows machine, and will not test those: the x86_64 .dmg on a real Intel Mac (AC #6) and the arm64 installer (AC #2) stay unchecked by hardware.
 <!-- SECTION:NOTES:END -->
