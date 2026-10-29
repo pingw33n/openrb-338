@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 12:45'
+updated_date: '2026-10-29 12:52'
 labels:
   - tools
   - tests
@@ -108,4 +108,6 @@ Supervisor, 2026-10-29, AC #3 checks (user's go-ahead):
 - Bad tag v1 on e04aec6 (run 40873523255): no release was created, but prepare PASSED and all 12 packages were built; only the draft release job failed ('not a release tag: v1'). So 'fails in prepare' is not met. Filed as task-141 (the prepare step pipes release-env.sh into tee without pipefail). The v1 tag is deleted from origin and locally. AC #3 stays open until task-141 lands and a bad tag fails in prepare.
 
 task-141 (fix for the prepare tee) is due a bad-tag re-run on GitHub after the merge, with the user's go-ahead; record it in AC 3.
+
+task-139 WSL re-check, for the user: with a build that has task-139, run orb play on a song under WSL (WSLg, libasound2-plugins installed). Expect sound to the end, at most one 'orb-player: audio output: ... I/O error' line per second with a count, and no 'the audio output stopped'. Run OpenRB-338 (tar.gz or AppImage) too: sound as before. A lost device (stop the PulseAudio server) must end orb play with 'the audio device is gone or unusable: ...' and show a box in the UI.
 <!-- SECTION:NOTES:END -->

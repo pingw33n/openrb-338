@@ -17,8 +17,10 @@
 //! textual and its scope is narrow: it greps `crates/orb-player/src` and `crates/orb-engine/src`
 //! (skipping the unit-test files `tests.rs` and `test_cell.rs`) for the words `Mutex`, `RwLock`,
 //! `Condvar`, `Barrier`, `Once` (also `OnceLock`), `mpsc` and `parking_lot`; it does not see a
-//! lock under another name, a spin loop, or the dependencies' code (rtrb, triple_buffer and
-//! rubato's `process_into_buffer` are lock-free by their documentation).
+//! lock under another name (`output::Health` is atomics only: the data callback's `h.data()`
+//! reads the clock and stores atomics; the error callback allocates for `e.to_string()`, on the
+//! error path only, which is not the render path), a spin loop, or the dependencies' code (rtrb,
+//! triple_buffer and rubato's `process_into_buffer` are lock-free by their documentation).
 
 mod common;
 

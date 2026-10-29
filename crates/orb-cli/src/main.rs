@@ -72,7 +72,10 @@ enum Cmd {
     },
     /// Play a song through the default audio output device with the real-time player, for
     /// listening (no UI): from its song position (or --bar) until the song stops (or Ctrl+C).
-    /// A song in pattern mode plays its patterns until --seconds.
+    /// A song in pattern mode plays its patterns until --seconds. A stream error that the sound
+    /// survives is only logged (one line a second); a lost device, or no sound for 500 ms after
+    /// an error, ends the play with an error. Under WSL the audio goes through WSLg's
+    /// PulseAudio: ALSA's default device needs the pulse plugin (libasound2-plugins).
     Play {
         /// The song, an .rbs file.
         input: PathBuf,
@@ -617,9 +620,10 @@ fn play(input: &Path, bar: Option<u32>, seconds: Option<f64>, mods: ModOpts) -> 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(100));
         player.collect_garbage();
-        if stream.failed() {
+        // an error alone does not stop the song; a lost device or a stall does (Health)
+        if let Some(why) = stream.failure() {
             eprintln!();
-            return Err(fail(1, "the audio output stopped with an error"));
+            return Err(fail(1, why));
         }
         let s = *player.snapshot();
         started |= s.playing;

@@ -131,6 +131,10 @@ pub struct App {
     pub errors: std::collections::VecDeque<String>,
     /// How many times each kind of repeating error was notified (`App::notify`).
     pub(crate) notified: std::collections::HashMap<String, u32>,
+    /// The audio stream's health (None: no stream), checked every frame: a lost device or a
+    /// stall is reported once (`App::check_audio`), as in `orb play` (task-139).
+    pub audio_health: Option<orb_player::output::Health>,
+    audio_reported: bool,
     /// Where the box's OK button was drawn last (`App::error_ok_rect`).
     pub(crate) error_ok: Option<Rect>,
     /// The errors of the action running, shown as one box when it ends (`App::action`).
@@ -206,6 +210,8 @@ impl App {
             settled: false,
             errors: Default::default(),
             notified: Default::default(),
+            audio_health: None,
+            audio_reported: false,
             error_ok: None,
             batch: None,
             error_close: None,
@@ -401,8 +407,23 @@ fn paint_part_with(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>, ti
 }
 
 impl App {
+    /// Reports once, in the message box, that the sound has stopped for good (the rule of
+    /// `orb_player::output::Health`); a transient stream error that the sound survives is only
+    /// logged by the stream. It runs on every frame, so a device lost while the UI is idle is
+    /// reported on the next frame it repaints.
+    fn check_audio(&mut self) {
+        if self.audio_reported {
+            return;
+        }
+        if let Some(why) = self.audio_health.as_ref().and_then(|h| h.failure()) {
+            self.audio_reported = true;
+            self.fail(format!("Audio output: {why}"));
+        }
+    }
+
     /// Draws the whole panel in the free area of `ui` and handles the input.
     pub fn show(&mut self, ui: &mut Ui) {
+        self.check_audio();
         // The theme is always dark (task-127): the colors of the windows assume it. Set on
         // every frame, so a system theme that changes at run time cannot switch it back.
         if ui.ctx().options(|o| o.theme_preference) != egui::ThemePreference::Dark {

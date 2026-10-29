@@ -12,7 +12,8 @@
 //! The offline render does not use any of this: it is [`orb_engine::frame::export`].
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::time::Instant;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{ErrorKind, FromSample, SampleFormat, SizedSample, StreamConfig};
@@ -54,16 +55,209 @@ pub struct Stream {
     pub format: SampleFormat,
     /// Whether the engine's output is resampled (the device does not offer 44.1 kHz).
     pub resampled: bool,
-    failed: Arc<AtomicBool>,
+    health: Health,
 }
 
 impl Stream {
-    /// Whether the stream reported an error other than an underrun or a denied real-time
-    /// priority (e.g. the device went away); the sound has then stopped.
+    /// Whether the sound has really stopped ([`Health::failure`]).
     pub fn failed(&self) -> bool {
-        self.failed.load(Ordering::Relaxed)
+        self.health.failure().is_some()
+    }
+
+    /// Why the sound has stopped, if it has ([`Health::failure`]).
+    pub fn failure(&self) -> Option<String> {
+        self.health.failure()
+    }
+
+    /// A handle on the stream's health that outlives borrowing the stream (the UI keeps it).
+    pub fn health(&self) -> Health {
+        self.health.clone()
     }
 }
+
+/// How long the data callback may stay silent after a stream error before the sound counts as
+/// stopped.
+pub const STALL_MS: u64 = 500;
+
+/// The words (8 bytes each) of an error text [`Health`] keeps.
+const TEXT_WORDS: usize = 16;
+
+/// The shortest time between two log lines about stream errors.
+pub const LOG_EVERY_MS: u64 = 1000;
+
+/// The rule that turns the stream's error reports into "the sound stopped" (task-139). cpal's
+/// ALSA worker (cpal 0.18.2, src/host/alsa/mod.rs:1015-1018, 1004-1010) reports every error of
+/// a cycle (e.g. WSLg's PulseAudio plugin returning EIO from `snd_pcm_avail_delay`) through the
+/// error callback and goes on polling and calling the data callback; only a device that is gone
+/// (`DeviceNotAvailable`, mod.rs:1015-1018) ends the worker. So an error alone does not mean
+/// the sound stopped:
+///
+/// - `DeviceNotAvailable`, `HostUnavailable`, `StreamInvalidated`: fail at once, the stream cannot
+///   go on;
+/// - every other kind (`Xrun`, `RealtimeDenied`, `DeviceChanged`, `DeviceBusy` included) never
+///   fails on the error alone; it sets a pending error, and the sound counts as stopped when the
+///   data callback then does not run for [`STALL_MS`] (an error is pending and the last data
+///   callback is that old). A data callback clears the pending error.
+///
+/// A silent stop with no error reported at all is not detected: nothing is pending then.
+///
+/// The data callback only reads the clock and stores atomics ([`Health::data`]); the error
+/// callback allocates (the error text), which is outside the audio thread's render path.
+///
+/// Times are milliseconds from any fixed origin, passed in by the caller (a clock in the stream,
+/// numbers in the tests). All fields are atomics: the data callback runs on the audio thread.
+#[derive(Clone)]
+pub struct Health(Arc<HealthInner>);
+
+struct HealthInner {
+    /// The time of the last data callback.
+    last_data: AtomicU64,
+    /// Whether an error came after the last data callback.
+    pending: AtomicBool,
+    /// Set by a device-gone error.
+    fatal: AtomicBool,
+    /// The last error's text (cut to [`TEXT_WORDS`] * 8 bytes), packed little-endian into
+    /// atomics so that the audio thread's code holds no lock (tests/no_alloc.rs); a read racing
+    /// a write may show a mix of two texts, which only the message sees.
+    text: [AtomicU64; TEXT_WORDS],
+    text_len: AtomicUsize,
+    /// The errors not logged yet, and the time of the last log line (`NO_LOG` for none).
+    held: AtomicU64,
+    last_log: AtomicU64,
+    /// The stream's clock origin.
+    origin: Instant,
+}
+
+impl Health {
+    /// A rule whose stream started at `now` ms.
+    fn new(now: u64) -> Self {
+        Health(Arc::new(HealthInner {
+            last_data: AtomicU64::new(now),
+            pending: AtomicBool::new(false),
+            fatal: AtomicBool::new(false),
+            text: std::array::from_fn(|_| AtomicU64::new(0)),
+            text_len: AtomicUsize::new(0),
+            held: AtomicU64::new(0),
+            last_log: AtomicU64::new(NO_LOG),
+            origin: Instant::now(),
+        }))
+    }
+
+    /// A rule for tests and for [`start`], starting at 0.
+    pub fn started() -> Self {
+        Self::new(0)
+    }
+
+    /// Milliseconds since the stream was built.
+    pub fn now(&self) -> u64 {
+        self.0.origin.elapsed().as_millis() as u64
+    }
+
+    /// The data callback ran at `now`.
+    pub fn data(&self, now: u64) {
+        // the time first, then the flag: a reader that sees the flag clear sees this time
+        self.0.last_data.store(now, Ordering::Relaxed);
+        self.0.pending.store(false, Ordering::Release);
+    }
+
+    /// The error callback got an error of `kind` with `text`.
+    pub fn error(&self, kind: ErrorKind, text: &str) {
+        match kind {
+            ErrorKind::DeviceNotAvailable
+            | ErrorKind::HostUnavailable
+            | ErrorKind::StreamInvalidated => self.0.fatal.store(true, Ordering::Relaxed),
+            _ => self.0.pending.store(true, Ordering::Release),
+        }
+        let mut b = text.as_bytes();
+        // cut at a character boundary
+        let mut n = b.len().min(TEXT_WORDS * 8);
+        while !text.is_char_boundary(n) {
+            n -= 1;
+        }
+        b = &b[..n];
+        for (i, w) in self.0.text.iter().enumerate() {
+            let mut x = [0u8; 8];
+            let part = b.get(i * 8..).unwrap_or(&[]);
+            let k = part.len().min(8);
+            x[..k].copy_from_slice(&part[..k]);
+            w.store(u64::from_le_bytes(x), Ordering::Relaxed);
+        }
+        self.0.text_len.store(n, Ordering::Relaxed);
+    }
+
+    fn last_error(&self) -> String {
+        let n = self.0.text_len.load(Ordering::Relaxed).min(TEXT_WORDS * 8);
+        let mut v = Vec::with_capacity(TEXT_WORDS * 8);
+        for w in &self.0.text {
+            v.extend_from_slice(&w.load(Ordering::Relaxed).to_le_bytes());
+        }
+        v.truncate(n);
+        String::from_utf8_lossy(&v).into_owned()
+    }
+
+    /// Why the sound has stopped at `now`, if it has.
+    pub fn failure_at(&self, now: u64) -> Option<String> {
+        let last = self.last_error();
+        if self.0.fatal.load(Ordering::Relaxed) {
+            return Some(format!("the audio device is gone or unusable: {last}"));
+        }
+        // the flag first (Acquire), then the time it was set against
+        if self.0.pending.load(Ordering::Acquire) {
+            let silent = now.saturating_sub(self.0.last_data.load(Ordering::Relaxed));
+            if silent >= STALL_MS {
+                return Some(format!(
+                    "the audio output stopped ({silent} ms without sound): {last}"
+                ));
+            }
+        }
+        None
+    }
+
+    /// [`Health::failure_at`] now; it also writes the log line for errors held back
+    /// ([`Health::flush_log`]), so the end of a burst is reported by whoever polls.
+    pub fn failure(&self) -> Option<String> {
+        let now = self.now();
+        if let Some(n) = self.flush_log(now) {
+            eprintln!(
+                "orb-player: audio output: {n} more errors (last: {})",
+                self.last_error()
+            );
+        }
+        self.failure_at(now)
+    }
+
+    /// An error at `now` to log: `Some(n)` when a line is due, for this error and the `n - 1`
+    /// held back since the previous line; `None` when it is held back (one line per
+    /// [`LOG_EVERY_MS`]).
+    pub fn note_error(&self, now: u64) -> Option<u64> {
+        self.0.held.fetch_add(1, Ordering::Relaxed);
+        let last = self.0.last_log.load(Ordering::Relaxed);
+        if last != NO_LOG && now.saturating_sub(last) < LOG_EVERY_MS {
+            return None;
+        }
+        self.0.last_log.store(now, Ordering::Relaxed);
+        Some(self.0.held.swap(0, Ordering::Relaxed))
+    }
+
+    /// The count of errors held back when a second has passed since the last line (the burst
+    /// ended or went on without a new error), else `None`.
+    pub fn flush_log(&self, now: u64) -> Option<u64> {
+        let last = self.0.last_log.load(Ordering::Relaxed);
+        if last == NO_LOG || now.saturating_sub(last) < LOG_EVERY_MS {
+            return None;
+        }
+        match self.0.held.swap(0, Ordering::Relaxed) {
+            0 => None,
+            n => {
+                self.0.last_log.store(now, Ordering::Relaxed);
+                Some(n)
+            }
+        }
+    }
+}
+
+/// `last_log` before the first line.
+const NO_LOG: u64 = u64::MAX;
 
 /// The engine's output at the device's rate, channel count and sample format: the body of the
 /// stream's callback, usable without a device.
@@ -262,17 +456,25 @@ fn build<T: SizedSample + FromSample<f32>>(
     device: &cpal::Device,
     config: StreamConfig,
     mut out: Output,
-    failed: Arc<AtomicBool>,
+    health: Health,
 ) -> Result<cpal::Stream, Error> {
+    let h = health.clone();
     device
         .build_output_stream::<T, _, _>(
             config,
-            move |data: &mut [T], _| out.fill(data),
+            move |data: &mut [T], _| {
+                out.fill(data);
+                h.data(h.now());
+            },
             move |e: cpal::Error| {
-                eprintln!("orb-player: audio output: {e}");
-                // an underrun or a denied real-time priority leaves the stream running
-                if !matches!(e.kind(), ErrorKind::Xrun | ErrorKind::RealtimeDenied) {
-                    failed.store(true, Ordering::Relaxed);
+                // the rule is in `Health`; the log is one line a second, with a count
+                health.error(e.kind(), &e.to_string());
+                if let Some(n) = health.note_error(health.now()) {
+                    if n > 1 {
+                        eprintln!("orb-player: audio output: {e} ({n} errors)");
+                    } else {
+                        eprintln!("orb-player: audio output: {e}");
+                    }
                 }
             },
             None,
@@ -293,8 +495,8 @@ pub fn start(audio: Audio) -> Result<Stream, Error> {
     let (config, format) = choose(&device)?;
     let out = Output::new(audio, config.channels as usize, config.sample_rate)?;
     let resampled = config.sample_rate != RATE;
-    let failed = Arc::new(AtomicBool::new(false));
-    let f = failed.clone();
+    let health = Health::started();
+    let f = health.clone();
     let stream = match format {
         SampleFormat::F32 => build::<f32>(&device, config, out, f),
         SampleFormat::F64 => build::<f64>(&device, config, out, f),
@@ -312,6 +514,105 @@ pub fn start(audio: Audio) -> Result<Stream, Error> {
         config,
         format,
         resampled,
-        failed,
+        health,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ERR: &str = "snd_pcm_avail_delay: I/O error";
+
+    #[test]
+    fn transient_error_that_keeps_playing_does_not_fail() {
+        let h = Health::new(0);
+        for t in (0..5000).step_by(20) {
+            h.data(t);
+            // an error in every cycle, as WSLg's PulseAudio plugin gives
+            h.error(ErrorKind::BackendError, ERR);
+            assert_eq!(h.failure_at(t + 10), None, "t={t}");
+        }
+        // errors with no data callback yet, but not for long
+        h.error(ErrorKind::BackendError, ERR);
+        assert_eq!(h.failure_at(5000 + STALL_MS - 1 - 20), None);
+    }
+
+    #[test]
+    fn lasting_stop_fails() {
+        let h = Health::new(0);
+        h.data(1000);
+        h.error(ErrorKind::BackendError, ERR);
+        assert_eq!(h.failure_at(1000 + STALL_MS - 1), None);
+        let m = h.failure_at(1000 + STALL_MS).expect("stalled");
+        assert!(m.contains(ERR) && m.contains("500 ms"), "{m}");
+        // the data callback running again clears it
+        h.data(2000);
+        assert_eq!(h.failure_at(2001), None);
+        // no error, no data callback (an idle device): not a failure
+        assert_eq!(h.failure_at(60_000), None);
+    }
+
+    #[test]
+    fn device_gone_fails_at_once() {
+        for k in [
+            ErrorKind::DeviceNotAvailable,
+            ErrorKind::HostUnavailable,
+            ErrorKind::StreamInvalidated,
+        ] {
+            let h = Health::new(0);
+            h.data(100);
+            h.error(k, "Device disconnected");
+            let m = h.failure_at(100).expect("fails at once");
+            assert!(m.contains("Device disconnected"), "{m}");
+            // a data callback does not undo it
+            h.data(101);
+            assert!(h.failure_at(102).is_some());
+        }
+    }
+
+    #[test]
+    fn soft_kinds_fail_only_by_a_lasting_silence() {
+        for k in [
+            ErrorKind::Xrun,
+            ErrorKind::RealtimeDenied,
+            ErrorKind::DeviceChanged,
+            ErrorKind::DeviceBusy,
+        ] {
+            // not on the error alone, and not when data follows
+            let h = Health::new(0);
+            h.data(100);
+            h.error(k, "soft");
+            assert_eq!(h.failure_at(100), None);
+            h.data(150);
+            assert_eq!(h.failure_at(10_000), None);
+            // but a silence of STALL_MS after it fails
+            h.error(k, "soft");
+            assert_eq!(h.failure_at(150 + STALL_MS - 1), None);
+            assert!(h.failure_at(150 + STALL_MS).is_some());
+        }
+    }
+
+    #[test]
+    fn log_is_one_line_a_second_with_a_count() {
+        let h = Health::new(0);
+        assert_eq!(h.note_error(0), Some(1));
+        assert_eq!(h.note_error(20), None);
+        assert_eq!(h.note_error(999), None);
+        assert_eq!(h.note_error(1000), Some(3));
+        assert_eq!(h.note_error(1500), None);
+        assert_eq!(h.note_error(2100), Some(2));
+    }
+
+    #[test]
+    fn the_tail_of_a_burst_is_flushed_by_the_poller() {
+        let h = Health::new(0);
+        assert_eq!(h.flush_log(5000), None);
+        assert_eq!(h.note_error(0), Some(1));
+        assert_eq!(h.note_error(10), None);
+        assert_eq!(h.note_error(20), None);
+        assert_eq!(h.flush_log(999), None);
+        assert_eq!(h.flush_log(1000), Some(2));
+        assert_eq!(h.flush_log(5000), None);
+    }
 }

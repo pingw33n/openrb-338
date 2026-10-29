@@ -725,3 +725,22 @@ Nothing is signed or notarized (decided 2026-10-28). Expect:
   Right-click the file > Properties > Unblock (or `Unblock-File`) removes the mark.
   This was not tried here (no download on the test machine).
 - Linux: nothing; `chmod +x` if the file lost its mode.
+
+## Audio errors and WSL (task-139)
+
+cpal reports a stream error through the error callback and, with ALSA, goes on running the
+stream (cpal 0.18.2, `src/host/alsa/mod.rs` `output_stream_worker`: every error but a lost
+device is reported and the loop continues). So orb does not stop at an error:
+`orb_player::output::Health` fails the stream at once for `DeviceNotAvailable`,
+`HostUnavailable` and `StreamInvalidated`. Every other error kind (`Xrun`, `RealtimeDenied`,
+`DeviceChanged` and `DeviceBusy` too) never fails on its own; it fails the stream only when the
+data callback then stays silent for 500 ms. A silent stop with no error reported at all is not
+detected. `orb play` then ends with the reason; OpenRB-338 shows it once in the message box. The
+UI checks on every frame it repaints (during playback), so a device lost while it is idle is
+reported on the next frame. Errors are logged at most once per second, with a count; the count
+held back at the end of a burst is logged by the poller (`orb play`, the UI) a second later.
+
+Under WSL the audio goes through WSLg's PulseAudio, reached through ALSA: the default ALSA
+device needs the pulse plugin (Debian and Ubuntu: `libasound2-plugins`). That plugin is known
+to return `I/O error (5)` from `snd_pcm_avail_delay` now and then; playback should go on with this rule, which is not yet verified under WSL (the
+re-check is in task-134).

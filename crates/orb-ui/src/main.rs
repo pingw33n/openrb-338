@@ -202,6 +202,7 @@ fn main() -> eframe::Result {
     let mut start_errors: Vec<String> = Vec::new();
     // keeps the audio stream alive for the whole run
     let mut _stream = None;
+    let mut audio_health = None;
     if !demo {
         let samples = Some(rbm::standard::builtin_samples());
         app_samples = samples.clone();
@@ -218,7 +219,10 @@ fn main() -> eframe::Result {
             }
         }
         match orb_player::output::start(audio) {
-            Ok(s) => _stream = Some(s),
+            Ok(s) => {
+                audio_health = Some(s.health());
+                _stream = Some(s);
+            }
             Err(e) => {
                 eprintln!("OpenRB-338: audio output: {e}; the panel runs without sound");
                 // the one failure at the launch is an error the user expects to hear of: the
@@ -265,6 +269,7 @@ fn main() -> eframe::Result {
                 None => App::new(panel, shot),
             };
             app.samples = app_samples;
+            app.audio_health = audio_health;
             app.menu = true;
             app.enable_logo_anim();
             app.settings = Settings::load();
