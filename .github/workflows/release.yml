@@ -28,8 +28,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # A tag that is not v<YYYY.MMDD.HHMM> (or names a date that does not exist) fails here,
+      # with the message of version.sh, and every later job is skipped: nothing is built and
+      # no release is created. On a branch (workflow_dispatch) the build time is now.
       - id: env
-        run: scripts/release-env.sh | tee -a "$GITHUB_OUTPUT"
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          tag=""
+          if [ "$REF_TYPE" = tag ]; then tag=$REF_NAME; fi
+          scripts/release-env.sh ${tag:+"$tag"} | tee -a "$GITHUB_OUTPUT"
 
   package:
     name: package (${{ matrix.target }})
@@ -196,3 +205,49 @@ jobs:
           name: appimage-${{ matrix.arch }}
           path: dist/${{ matrix.target }}/OpenRB-338-*.AppImage
           if-no-files-found: error
+
+  release:
+    # The draft release (task-113), only for a tag (a run by hand on a branch builds the
+    # artifacts and stops here). The one job with `contents: write`. It never publishes:
+    # the release stays a draft until the user publishes it by hand. Re-running replaces the
+    # draft of the tag (body and assets); a release already published is not touched.
+    name: draft release
+    if: github.ref_type == 'tag'
+    needs: [prepare, package, dmg, installer, appimage]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: "{package-*,dmg,installer-*,appimage-*}"
+          path: release-in
+          merge-multiple: true
+      - name: Check the packages and write SHA256SUMS.txt
+        run: scripts/release-assets.sh release-in "$TAG"
+      - name: Write the changelog
+        run: scripts/changelog.sh "$TAG" | tee release-notes.md
+      - name: Create or replace the draft release
+        run: |
+          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | \"\(.id) \(.draft)\"")
+          while read -r id draft; do
+            [ -n "$id" ] || continue
+            if [ "$draft" != true ]; then
+              echo "release $TAG is published already; not touching it" >&2
+              exit 1
+            fi
+            echo "replacing the draft $id of $TAG"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          done <<<"$ids"
+          gh release create "$TAG" --draft --verify-tag --title "OpenRB-338 ${TAG#v}" \
+            --notes-file release-notes.md release-in/*

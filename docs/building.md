@@ -230,7 +230,8 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
     Linux installs `libasound2-dev` first.
 - `release.yml`, on a tag `v*` and by hand:
   - `prepare` computes one `SOURCE_DATE_EPOCH` and one `RB_BUILD_BRANCH` (`scripts/release-env.sh`)
-    so all packages agree.
+    so all packages agree. On a tag the build time is the tag's and a tag that is not
+    `v<YYYY.MMDD.HHMM>` fails here, which skips every other job.
   - `package`, one job per target, each on a native runner: `ubuntu-22.04` (x86_64) and
     `ubuntu-22.04-arm` (aarch64) for Linux (the oldest LTS image: glibc 2.35); `windows-latest`
     and `windows-11-arm`; `macos-15-intel` (amd64) and `macos-15` (arm64). Each runs
@@ -257,10 +258,72 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
     result (a stock `ubuntu:22.04` container), and uploads the artifact `appimage-x86_64` or
     `appimage-aarch64` (`OpenRB-338-<YYYY.MMDD.HHMM>-<x86_64|aarch64>.AppImage`). It takes the
     `prepare` build time. Not run yet (the first release run is the check, task-134).
-  - The draft release with the changelog (task-113) is added to this workflow by that task.
+  - `release` (task-113), "draft release", only on a tag, after all the jobs above: see "Cutting a
+    release" below. It is the one job with `contents: write`; the workflow's own permission is
+    `contents: read`.
 
 Validation before merge: `actionlint .github/workflows/*.yml` and `shellcheck scripts/*.sh`
 (both from Homebrew). `act` was not used: it cannot run the macOS and Windows runners.
+
+### Cutting a release (task-113)
+
+The tag names the release moment and the user chooses it: `v` + the version of the packages,
+`v<YYYY.MMDD.HHMM>`, the UTC date and time to the minute (`v2026.1028.1930` is 2026-10-28
+19:30 UTC; "The version is the build time"). The packages' own build time is the tag's
+(`SOURCE_DATE_EPOCH` from `scripts/version.sh --epoch TAG`, seconds 0), so every binary and file
+name of the release carries the tag's version. Tag the commit to release, from the time of the
+tag (UTC), on or off main:
+
+```
+git tag "v$(date -u +%Y.%m%d.%H%M)"        # e.g. v2026.1028.1930
+git push origin v2026.1028.1930
+```
+
+- Preview the changelog first: `scripts/changelog.sh v2026.1028.1930` (the tag, or `HEAD` before
+  tagging).
+- The push starts `release.yml`. `prepare` checks the tag against
+  `^v[0-9]{4}\.[0-9]{4}\.[0-9]{4}$` (and that the date exists); another tag (`v1`, `vfoo`) fails
+  there with a message, the other jobs are skipped and no release is created.
+- When `package`, `dmg`, `installer` and `appimage` all pass, the `release` job:
+  1. downloads `package-*`, `dmg`, `installer-*` and `appimage-*`;
+  2. `scripts/release-assets.sh` checks that exactly the 11 files of a release are there (four
+     `.tar.gz`, two `.zip`, the `.dmg`, the two `-setup.exe`, the two `.AppImage`, all named with
+     the tag's version) and writes `SHA256SUMS.txt` over them (`sha256sum -c` form, sorted);
+     a missing or foreign file fails the job, so a release never ships without a package;
+  3. `scripts/changelog.sh` writes the release body;
+  4. creates a draft release with `gh release create --draft --verify-tag`, titled
+     `OpenRB-338 <version>`, with the 11 files and `SHA256SUMS.txt` attached (12 assets).
+- It never publishes. The release is a draft that only the user can see: read the body and the
+  assets on the Releases page, then press "Publish release" (or `gh release edit TAG --draft=false`).
+  Nothing is signed (Gatekeeper and SmartScreen: "What the system shows for an unsigned
+  download").
+- Running the workflow again for the same tag (Re-run jobs, or "Run workflow" on the tag) deletes
+  the draft of that tag and creates it anew: new body, new assets, still one release. A release
+  already published is never touched: the job fails with a message.
+- Where the tagged commit is on `origin/main`, the binaries show the hash without `dev-`
+  (`RB_BUILD_BRANCH=main`, `scripts/release-env.sh`); a tag on another branch shows `dev-`.
+- `workflow_dispatch` ("Run workflow" on a branch) builds all the artifacts (on the run's page) with the build time now, and creates no release:
+  the `release` job runs only when the ref is a tag. Run on a tag it does what the tag push does.
+
+`scripts/changelog.sh [--since REV] [PREV] NEW` writes the body: the commits of `PREV..NEW`,
+without merge commits and without `backlog:` ones, grouped under `engine`, `cli`, `tools`,
+`tests`, `docs` (then `other` for a subject with no such prefix), each as the subject without its
+prefix and the task ids of its `Task:` lines in parentheses. Without `PREV` it is the greatest
+earlier tag of the release form (text order is version order; `vfoo` and `v2026.1028.1500x` are
+ignored). The first release has no earlier tag: the whole history is listed, and the first line
+says so; `--since REV` lists the commits after REV instead. Example (a scratch clone with fake
+tags):
+
+```
+Changes since v2026.1028.1500 up to v2026.1029.0900: 15 commits, 9 listed (backlog commits are left out).
+
+### tools
+
+- Linux AppImage of OpenRB-338 (x86_64, aarch64), release.yml job (task-112)
+- Windows NSIS installers, GUI-subsystem UI exe with icon (task-111)
+```
+
+Not run on GitHub yet: the `release` job needs a pushed tag; the checks are task-134.
 
 ## The macOS app and .dmg (task-110)
 
