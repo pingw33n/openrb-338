@@ -24,6 +24,7 @@ use crate::document::Document;
 use crate::keys::{self, Action, KeyMode};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
+use crate::logo_anim;
 use crate::menu::{Job, MENU_H, ModEntry, Then};
 use crate::model::Panel;
 use crate::palette::BG;
@@ -164,6 +165,15 @@ pub struct App {
     /// `info_serial`; `App::about_ui`).
     pub(crate) about_open: bool,
     pub(crate) about_serial: u32,
+    /// Whether the logo plays its startup animation (task-114): the panel once, from the first
+    /// frame it is drawn, and the About window at each open. Off by default, so the headless
+    /// tests and `--screenshot` see the final state; `enable_logo_anim` turns it on.
+    pub logo_anim: bool,
+    /// The egui time the panel's animation started at, and the About window's (None until its
+    /// first frame after the open).
+    pub(crate) logo_start: Option<f64>,
+    pub(crate) about_start: Option<f64>,
+    pub(crate) about_start_due: bool,
     /// The Mods > Info window (task-106): open, the number of its opens (its id), the file
     /// details of the kit shown and what it drew of the splash last.
     pub(crate) mod_info_open: bool,
@@ -214,6 +224,10 @@ impl App {
             info_serial: 0,
             about_open: false,
             about_serial: 0,
+            logo_anim: false,
+            logo_start: None,
+            about_start: None,
+            about_start_due: false,
             mod_info_open: false,
             mod_info_serial: 0,
             mod_details: None,
@@ -299,6 +313,12 @@ impl App {
         }
     }
 
+    /// Turns the logo's startup animation on (task-114), except with `--screenshot`, which
+    /// captures the final state.
+    pub fn enable_logo_anim(&mut self) {
+        self.logo_anim = self.shot.is_none();
+    }
+
     /// An app whose panel drives `link`.
     pub fn with_link(panel: Panel, link: Link, shot: Option<Shot>) -> Self {
         let mut app = Self::new(panel, shot);
@@ -317,8 +337,13 @@ impl eframe::App for App {
 }
 
 /// An image of the part `name` painted into `rect`.
-fn paint_part(ui: &Ui, name: &str, rect: Rect) {
+pub(crate) fn paint_part(ui: &Ui, name: &str, rect: Rect) {
     paint_part_rotated(ui, name, rect, None);
+}
+
+/// `paint_part` multiplied by `tint` (the logo's fades, task-114).
+pub(crate) fn paint_part_tinted(ui: &Ui, name: &str, rect: Rect, tint: Color32) {
+    paint_part_with(ui, name, rect, None, tint);
 }
 
 /// The size to rasterize an image of `pixels` at when a side may be at most `max`: None when it
@@ -338,8 +363,14 @@ fn capped_hint(pixels: Vec2, max: usize) -> Option<egui::load::SizeHint> {
 }
 
 fn paint_part_rotated(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>) {
+    paint_part_with(ui, name, rect, rot, Color32::WHITE);
+}
+
+fn paint_part_with(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>, tint: Color32) {
     let part = art::part(name).unwrap_or_else(|| panic!("missing art part {name}"));
-    let mut image = Image::from_bytes(part.uri, part.svg).fit_to_exact_size(rect.size());
+    let mut image = Image::from_bytes(part.uri, part.svg)
+        .fit_to_exact_size(rect.size())
+        .tint(tint);
     // `paint_at` rasterizes the SVG at the rect's size in pixels. A rect that big (a frame
     // drawn before the window settles, a huge window, a high density) would make a texture
     // wider than the GPU allows, which wgpu refuses with a panic. Rasterize it smaller then
@@ -354,7 +385,9 @@ fn paint_part_rotated(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>)
         };
         match source.load(ui.ctx(), egui::TextureOptions::LINEAR, hint) {
             Ok(egui::load::TexturePoll::Ready { texture }) => {
-                image = Image::from_texture(texture).fit_to_exact_size(rect.size());
+                image = Image::from_texture(texture)
+                    .fit_to_exact_size(rect.size())
+                    .tint(tint);
             }
             // not loaded (yet): paint nothing this frame, the uncapped load would crash;
             // egui repaints when the load finishes
@@ -411,6 +444,15 @@ impl App {
 
         for (name, x, y) in layout::backgrounds() {
             let (w, h) = part_size(name);
+            if name == logo_anim::LOGO_PART {
+                // once per app start, from the first frame the logo is drawn
+                if self.logo_anim && self.logo_start.is_none() {
+                    self.logo_start = Some(now);
+                }
+                let t = logo_anim::time_now(now, self.logo_start.filter(|_| self.logo_anim));
+                logo_anim::paint_logo(ui, view.rect(x, y, w, h), t);
+                continue;
+            }
             paint_part(ui, name, view.rect(x, y, w, h));
         }
         for r in 0..4 {
@@ -924,7 +966,7 @@ fn part_size(name: &str) -> (f32, f32) {
     match name {
         "wood" => (16.0, 510.0),
         "bg_transport" => (592.0, 50.0),
-        "logo" => (134.0, 48.0),
+        logo_anim::LOGO_PART => (logo_anim::LOGO_W, logo_anim::LOGO_H),
         "bg_pattern" | "bg_mixer" => (70.0, 115.0),
         "bg_tb303" | "bg_tr808" | "bg_tr909" => (366.0, 115.0),
         "bg_master" => (82.0, 98.0),

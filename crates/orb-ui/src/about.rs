@@ -4,14 +4,11 @@
 
 use eframe::egui::{self, Context, Key, Modifiers, RichText};
 
-use crate::app::App;
-use crate::art;
+use crate::app::{self, App};
+use crate::logo_anim::{self, LOGO_H, LOGO_W};
 use crate::palette::INK_DIM;
 
-/// The wordmark part of the panel (`assets/ui`), its native size and the scale it is shown at.
-pub const LOGO_PART: &str = "logo";
-const LOGO_W: f32 = 134.0;
-const LOGO_H: f32 = 48.0;
+/// The wordmark part of the panel (`logo_anim::LOGO_PART`) is shown at this scale.
 const LOGO_SCALE: f32 = 2.0;
 /// The app icon part and the size it is shown at.
 pub const ICON_PART: &str = "app_icon";
@@ -40,6 +37,8 @@ impl App {
         if !self.about_open {
             // a new id: no stored place, so the window opens at its default, the center
             self.about_serial += 1;
+            // the logo animation starts with the window's first frame (`about_ui`)
+            self.about_start_due = true;
         }
         self.about_open = true;
     }
@@ -63,6 +62,11 @@ impl App {
             self.about_open = false;
             return;
         }
+        let now = ctx.input(|i| i.time);
+        if std::mem::take(&mut self.about_start_due) {
+            self.about_start = Some(now);
+        }
+        let t = logo_anim::time_now(now, self.about_start.filter(|_| self.logo_anim));
         let mut open = true;
         // centered the way File > Info is (info.rs): pivot, default place, an id per open
         egui::Window::new(format!("About {NAME}"))
@@ -81,21 +85,16 @@ impl App {
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(CONTENT_W, CONTENT_H), egui::Sense::hover());
                 let at = |x: f32, y: f32| rect.min + egui::vec2(x, y);
-                let image = |ui: &mut egui::Ui, name: &str, pos: egui::Pos2, size: egui::Vec2| {
-                    let part = art::part(name).expect("the part");
-                    let r = egui::Rect::from_min_size(pos, size);
-                    egui::Image::from_bytes(part.uri, part.svg)
-                        .fit_to_exact_size(size)
-                        .paint_at(ui, r);
-                };
-                image(
+                // the icon fades in with the logo's animation (task-114)
+                let icon_a = t.map_or(1.0, |t| logo_anim::Frame::at(t).icon);
+                app::paint_part_tinted(
                     ui,
                     ICON_PART,
-                    at(18.0, 18.0),
-                    egui::vec2(ICON_SIZE, ICON_SIZE),
+                    egui::Rect::from_min_size(at(18.0, 18.0), egui::vec2(ICON_SIZE, ICON_SIZE)),
+                    egui::Color32::WHITE.gamma_multiply(icon_a),
                 );
                 let logo_size = egui::vec2(LOGO_W, LOGO_H) * LOGO_SCALE;
-                image(ui, LOGO_PART, at(92.0, 14.0), logo_size);
+                logo_anim::paint_logo(ui, egui::Rect::from_min_size(at(92.0, 14.0), logo_size), t);
                 let line = |ui: &mut egui::Ui, y: f32, f: &dyn Fn(&mut egui::Ui)| {
                     let r = egui::Rect::from_min_size(at(TEXT_X, y), egui::vec2(CONTENT_W, 18.0));
                     ui.scope_builder(egui::UiBuilder::new().max_rect(r), f);
@@ -116,6 +115,8 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::art;
+    use crate::logo_anim::LOGO_PART;
 
     /// The About window shows the panel's own wordmark part, at its aspect ratio.
     #[test]

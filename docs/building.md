@@ -216,6 +216,7 @@ and `OPENRB_` names are not read any more and have no deprecated alias.
 | `ORB_MOD_DIR` | `orb render`, `compare`, `play`, `info`; OpenRB-338 | the folder of recrypted `.rbm` mods (`--mod-dir` wins) | `RB_MOD_DIR` |
 | `ORB_RB20FUL` | `orb mod recrypt` | the path of `RB20FUL.DAT` (`--rb20ful` wins); also the default of `tools/rbcorpus.py` | `RB_RB20FUL` |
 | `ORB_UI_CONFIG` | OpenRB-338 | the settings file to use instead of `OpenRB-338/ui.toml` in the configuration folder | `RB_UI_CONFIG` |
+| `ORB_LOGO_T` | OpenRB-338 | seconds: freezes the logo's startup animation at that time (pictures; task-114, `crates/orb-ui/src/logo_anim.rs`) | none |
 | `ORB_GPU_INFO` | OpenRB-338 | `1` prints the graphics adapter wgpu chose (`scripts/appimage-smoke.sh`) | `OPENRB_GPU_INFO` |
 | `ORB_BUILD_BRANCH` | `crates/orb-ui/build.rs`, `scripts/release-env.sh`, `scripts/build.sh` (passed into Docker), `release.yml` | `main` or `other`: makes the About box's hash the main form | `RB_BUILD_BRANCH` |
 | `ORB_UI_VERSION` | set by `crates/orb-ui/build.rs` for rustc (`env!`), never by hand | the version string of the About box | `RB_UI_VERSION` |
@@ -247,6 +248,7 @@ work as ever.
 | | `--browse open\|save\|export\|mod` | starts with the file browser open for that mode |
 | | `--about` | starts with the About window open (task-115) |
 | | `--screenshot OUT.png` | saves the window to a PNG after a few frames and quits |
+| | `ORB_LOGO_T=SECONDS` (variable) | freezes the logo's startup animation (task-114) at that time, on the panel and in About, for pictures of a moment |
 
 `OpenRB-338 --help` (also `-h`) prints `usage: OpenRB-338 [SONG]` and exits 0; a bad option or
 value prints the same and exits 2. `SONG` (one, a path with spaces is one argument) is an RBS 4.x

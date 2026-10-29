@@ -17,6 +17,7 @@ pub mod key_help;
 pub mod keys;
 pub mod layout;
 pub mod link;
+pub mod logo_anim;
 pub mod menu;
 pub mod mod_info;
 pub mod model;

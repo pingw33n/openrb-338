@@ -260,6 +260,7 @@ fn main() -> eframe::Result {
             };
             app.samples = app_samples;
             app.menu = true;
+            app.enable_logo_anim();
             app.settings = Settings::load();
             // the song (or the new empty song) and its mod's startup sound; nothing in the demo,
             // which has no player
