@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 11:55'
+updated_date: '2026-10-29 12:19'
 labels:
   - tools
   - tests
@@ -73,4 +73,9 @@ Supervisor, 2026-10-29, test release run (user's request): tag v2026.1029.1138 o
 - AC #5 (first half): the x86_64 AppImage smoke step passed: WGPU_BACKEND=vulkan gives Vulkan, gl gives Gl, automatic gives Vulkan, and with no Vulkan ICD automatic gives Gl, all on llvmpipe; SMOKE-OK. A real Linux desktop without Vulkan is still to check.
 - AC #6 (first half): both dmg jobs passed on their runners. The real Intel Mac check is still to do.
 - AC #2 (real machines) is still to do.
+
+User, 2026-10-29, real-machine checks of the v2026.1029.1138 draft:
+- Work: both .dmg (aarch64 and x86_64) on the user's Mac; the darwin tar.gz on the same Mac; the x64 setup.exe on Windows 11; the Linux x86_64 UI binary (tar.gz) under WSL on Windows (WSLg).
+- Fails: orb play of the Linux x86_64 binary under WSL. The output was "orb-player: audio output: ALSA function 'snd_pcm_avail_delay' failed with error 'I/O error (5)'", twice, then "orb: error: the audio output stopped with an error". Filed as task-139.
+- Not yet: the AppImage (under WSL it needs libfuse2 or --appimage-extract-and-run), the arm64 installer, uninstall, and a real Intel Mac. The x86_64 .dmg was checked on the user's Mac; whether that is Apple silicon with Rosetta has not been recorded.
 <!-- SECTION:NOTES:END -->
