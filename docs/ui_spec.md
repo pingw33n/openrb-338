@@ -959,7 +959,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the error message box); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
 | Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key orb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
-| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the app icon (the `app_icon` part), the wordmark (the `logo` part, at 2x), `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the link https://github.com/pingw33n/open-rb-338 (task-102, laid out in task-115; below) |
+| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the app icon (the `app_icon` part), the wordmark (the `logo` part, at 2x), `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the links https://github.com/pingw33n/openrb-338, `Song collection:` https://github.com/pingw33n/rb-songs and `Mod collection:` https://github.com/pingw33n/rb-mods (task-102, task-138, laid out in task-115; below) |
 
 The Help menu is last in the bar. Its items are the list `HELP_ITEMS` in `menu.rs`, so a new item
 is one more entry.
@@ -980,12 +980,13 @@ is one more entry.
 
 - **Help > About and the version string** (task-102; `crates/orb-ui/src/about.rs`, `version.rs`,
   `build.rs`). The window is centered as File > Info is (pivot CENTER_CENTER, `default_pos` at
-  the content center, a fresh id per open: `App::about_serial`). Its content is a fixed 380 x
-  156 pt area under the title bar with no inner margin (the mockup session's 360 pt window plus
-  the 20 pt the link needs at its alignment): the 64 pt icon at (18, 18), the wordmark at
-  (92, 14) scaled 2.0 (the subtitle is part of it), and the version and the link left-aligned
-  at x 108 (y 104 and 126); there is no separate name line (the title bar and the wordmark say
-  it). `OpenRB-338 --about` opens it at the start (for `--screenshot`). The version is
+  the content center, a fresh id per open: `App::about_serial`). Its content is a fixed 450 x
+  200 pt area under the title bar with no inner margin (the mockup session's 360 pt window plus
+  the 90 pt the link lines need at their alignment): the 64 pt icon at (18, 18), the wordmark at
+  (92, 14) scaled 2.0 (the subtitle is part of it), and the version and the links left-aligned
+  at x 108 (y 104, 126, 148 and 170; the last two are `Song collection:` and `Mod collection:`
+  followed by their links, task-138); there is no separate name line (the title bar and the
+  wordmark say it). `OpenRB-338 --about` opens it at the start (for `--screenshot`). The version is
   `YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)`, computed by `build.rs` into `ORB_UI_VERSION` (the
   pure formatting is `version.rs`, unit-tested): the number is the build time in UTC to the
   minute (task-133), from `SOURCE_DATE_EPOCH` when set, else the time the script runs. The

@@ -14,15 +14,30 @@ const LOGO_SCALE: f32 = 2.0;
 pub const ICON_PART: &str = "app_icon";
 const ICON_SIZE: f32 = 64.0;
 /// The content area below the title bar and the x of the version and the link. The mockup's
-/// window is 360 wide; the link needs about 20 more at this alignment.
-const CONTENT_W: f32 = 380.0;
-const CONTENT_H: f32 = 156.0;
+/// window is 360 wide; the link lines need about 90 more at this alignment.
+/// Widened from 380 to 450 (task-138): "Song collection: <link>" ends at about 434 pt (x 108 + 326)
+/// and with 380 the line grew the window or touched its edge.
+const CONTENT_W: f32 = 450.0;
+/// The width of the label column of the collection lines (the links start at TEXT_X + this).
+const LABEL_W: f32 = 100.0;
+/// 156 with one link line (task-115), plus two lines at the same 22 pt spacing (task-138).
+const CONTENT_H: f32 = 200.0;
 const TEXT_X: f32 = 108.0;
 
 /// The name of the app.
 pub const NAME: &str = "OpenRB-338";
 /// The project page.
-pub const URL: &str = "https://github.com/pingw33n/open-rb-338";
+pub const URL: &str = "https://github.com/pingw33n/openrb-338";
+/// The user's public collections, shown under the project page as `label url` (task-138).
+/// The user's song collection.
+pub const SONGS_URL: &str = "https://github.com/pingw33n/rb-songs";
+/// The user's mod collection.
+pub const MODS_URL: &str = "https://github.com/pingw33n/rb-mods";
+/// The label and the link of each collection line.
+pub const COLLECTIONS: [(&str, &str); 2] = [
+    ("Song collection:", SONGS_URL),
+    ("Mod collection:", MODS_URL),
+];
 /// The version: `YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` (`src/version.rs`).
 pub const VERSION: &str = env!("ORB_UI_VERSION");
 
@@ -95,9 +110,12 @@ impl App {
                 );
                 let logo_size = egui::vec2(LOGO_W, LOGO_H) * LOGO_SCALE;
                 logo_anim::paint_logo(ui, egui::Rect::from_min_size(at(92.0, 14.0), logo_size), t);
-                let line = |ui: &mut egui::Ui, y: f32, f: &dyn Fn(&mut egui::Ui)| {
-                    let r = egui::Rect::from_min_size(at(TEXT_X, y), egui::vec2(CONTENT_W, 18.0));
+                let line_at = |ui: &mut egui::Ui, x: f32, y: f32, f: &dyn Fn(&mut egui::Ui)| {
+                    let r = egui::Rect::from_min_size(at(x, y), egui::vec2(CONTENT_W - x, 18.0));
                     ui.scope_builder(egui::UiBuilder::new().max_rect(r), f);
+                };
+                let line = |ui: &mut egui::Ui, y: f32, f: &dyn Fn(&mut egui::Ui)| {
+                    line_at(ui, TEXT_X, y, f);
                 };
                 line(ui, 104.0, &|ui| {
                     ui.label(RichText::new(format!("Version {VERSION}")).color(INK_DIM));
@@ -105,6 +123,17 @@ impl App {
                 line(ui, 126.0, &|ui| {
                     ui.hyperlink_to(URL, URL);
                 });
+                for (i, (label, url)) in COLLECTIONS.into_iter().enumerate() {
+                    // the label and the link each in a rect of their own, so the links start at
+                    // exactly the same x whatever the width of the label
+                    let y = 148.0 + 22.0 * i as f32;
+                    line(ui, y, &|ui| {
+                        ui.label(RichText::new(label).color(INK_DIM));
+                    });
+                    line_at(ui, TEXT_X + LABEL_W, y, &|ui| {
+                        ui.hyperlink_to(url, url);
+                    });
+                }
             });
         if !open {
             self.about_open = false;

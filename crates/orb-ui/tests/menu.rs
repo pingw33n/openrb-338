@@ -1738,7 +1738,22 @@ fn the_about_window_opens_centered_and_closes() {
         shapes.contains(orb_ui::about::VERSION),
         "the version is drawn"
     );
+    assert_eq!(orb_ui::about::URL, "https://github.com/pingw33n/openrb-338");
+    assert_eq!(
+        orb_ui::about::SONGS_URL,
+        "https://github.com/pingw33n/rb-songs"
+    );
+    assert_eq!(
+        orb_ui::about::MODS_URL,
+        "https://github.com/pingw33n/rb-mods"
+    );
     assert!(shapes.contains(orb_ui::about::URL), "the link is drawn");
+    for (label, url) in orb_ui::about::COLLECTIONS {
+        assert!(shapes.contains(label), "{label} is drawn");
+        assert!(shapes.contains(url), "{url} is drawn");
+    }
+    assert_eq!(orb_ui::about::COLLECTIONS[0].0, "Song collection:");
+    assert_eq!(orb_ui::about::COLLECTIONS[1].0, "Mod collection:");
     // the icon and the wordmark: two more images than without the window
     assert_eq!(
         images(&shapes),
