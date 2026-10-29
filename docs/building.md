@@ -146,6 +146,13 @@ The Windows build of OpenRB-338 is a GUI-subsystem exe (task-111), see "The Wind
 
 `dist/` is git-ignored. The later packaging scripts take `dist/<target>/bin/` as their input.
 
+`DIST` (default `<checkout>/dist`) sets the output folder of `build.sh` and the packaging scripts.
+`build.sh` creates it and makes it absolute. A Docker build (Linux targets on a macOS or Windows
+host, or on a Linux host of the other architecture) mounts a `DIST` outside the checkout into the container at the same path, so the binaries land
+on the host; after `docker run` the script checks that `orb` and `OpenRB-338` are in
+`<DIST>/<target>/bin/` and exits 1 with a message if not, printing `built ...` only then
+(task-142).
+
 The version string (Help > About, task-102) is made by `crates/orb-ui/build.rs` from two
 environment variables that the scripts pass through, including into Docker: `SOURCE_DATE_EPOCH`
 (the build time; default now) and `ORB_BUILD_BRANCH` (`main` makes the hash the main form; a

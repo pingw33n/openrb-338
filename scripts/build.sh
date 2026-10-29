@@ -8,7 +8,8 @@
 # x86_64/aarch64-apple-darwin. How a target is built depends on the machine (docs/building.md):
 #   native      the host builds it with cargo (a CI runner, or a Mac for macOS targets)
 #   cargo-xwin  Windows targets off Windows (needs `cargo install cargo-xwin`)
-#   docker      Linux targets off a matching Linux host (needs a running Docker)
+#   docker      Linux targets on a macOS or Windows host, or on a Linux host of the other
+#               architecture (needs a running Docker)
 # Environment passed through to the build (the version string, task-102): SOURCE_DATE_EPOCH,
 # ORB_BUILD_BRANCH, GITHUB_REF_NAME. DIST sets the output folder (default: dist/).
 set -euo pipefail
@@ -16,6 +17,9 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 target=${1:?usage: scripts/build.sh TARGET}
 dist=${DIST:-$root/dist}
+# an absolute path: a Docker build mounts it into the container at the same path (task-142)
+mkdir -p "$dist"
+dist=$(cd "$dist" && pwd)
 bin_dir=$dist/$target/bin
 
 case $(uname -s) in
@@ -52,12 +56,27 @@ build_docker() {
     local env=(-e SOURCE_DATE_EPOCH -e ORB_BUILD_BRANCH -e GITHUB_REF_NAME -e "DIST=$dist"
         -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=*"
         -e CARGO_TARGET_DIR=/target)
+    # a DIST outside the checkout is not in the container: mount it at the same path, or the
+    # binaries die with the container
+    case $dist in "$root" | "$root"/*) ;; *) mounts+=(-v "$dist:$dist") ;; esac
+    # stale binaries of an earlier run must not pass the check below
+    rm -rf "$bin_dir"
+    # ${mounts[@]+...}: bash 3.2 (macOS) counts an empty array as unbound under set -u
     docker run --rm --platform "$platform" "${env[@]}" \
-        -v "$root:$root" -w "$root" "${mounts[@]}" \
+        -v "$root:$root" -w "$root" ${mounts[@]+"${mounts[@]}"} \
         -v "openrb-cargo-$arch:/cargo/registry" \
         -v "openrb-rustup-$arch:/rustup" \
         -v "openrb-target-$arch:/target" \
         "$image" scripts/build.sh "$target"
+    # the success line is only true when the files are on the host
+    local b
+    for b in orb OpenRB-338; do
+        [ -f "$bin_dir/$b" ] || {
+            echo "docker build finished but $bin_dir/$b is missing" >&2
+            exit 1
+        }
+    done
+    echo "built $target -> $bin_dir"
 }
 
 # Only a Linux target cares about the host CPU: it builds natively on a Linux host of the
