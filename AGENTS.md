@@ -1,7 +1,7 @@
 # AGENTS.md: the OpenRB-338 repository
 
 OpenRB-338 (the command line tool is `orb`, the crates are `orb-*`, the environment variables
-`ORB_*`; the GitHub repository and the checkout folder are still called `rb`) is a
+`ORB_*`; the GitHub repository is `openrb-338`, the local checkout folder is still called `rb`) is a
 reimplementation in Rust of the audio engine of Propellerhead ReBirth RB-338 2.01. It renders an `.rbs` song, optionally with an `.rbm` mod, to audio. The rendered audio must match the original's "Export Loop as Audio File" output sample for sample, within a tolerance set by a `Decide:` task. A UI with a similar look and feel comes after the engine; it does not have to match the original exactly. MIDI and ReWire are out of scope for now.
 
 The original program (`Rebirth.exe`, `ReBirth.dll`) is not in git: it is copyrighted, so it lives only on the user's machine, in their ReBirth installation, and in the test machine's setup. The user's local IDA databases of it (`Rebirth.exe.i64`, `ReBirth.dll.i64`) are not part of the repository either; agents open a copy through the idalib MCP tools (IDA needs no exe or dll next to the `.i64`). OpenRB-338 needs the program only for the reverse engineering; the tests take the same files from the CD image (`ORB_CD_ISO`, orb-testkit) and skip when it is not set. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
@@ -93,7 +93,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
   - a priority, a milestone and its dependencies.
 
   `--ordinal` is the queue order. `Draft` holds ideas.
-- **Task ownership.** While a task is assigned to an agent, only that agent edits its file. The supervisor adds the merge comment in the task's squashed commit, pushes main to `origin` (github.com/pingw33n/rb, private) after each merge, and runs `backlog doctor` after the push. Agents never push.
+- **Task ownership.** While a task is assigned to an agent, only that agent edits its file. The supervisor adds the merge comment in the task's squashed commit, pushes main to `origin` (github.com/pingw33n/openrb-338, private; renamed from `rb` on 2026-10-29) after each merge, and runs `backlog doctor` after the push. Agents never push.
 - **Standing rules.**
   - Never save or modify the user's IDA databases, and never edit a committed reference render by hand. Never commit an IDA database or its working files, and no test or tool may need the original's exe or dll: use `ORB_CD_ISO` and skip with a message when it is not set.
   - Facts about the original carry addresses and are checked against the disassembly, not only Hex-Rays.
