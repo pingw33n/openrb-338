@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 12:26'
+updated_date: '2026-10-29 12:27'
 labels:
   - tools
   - tests
@@ -42,7 +42,7 @@ File a bug for each failure. Assigned to the user, because it needs a release ru
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Every release.yml job passes on the first release run and every artifact is produced (dmg, installers x64/arm64, tar.gz/zip, AppImages, draft release)
-- [ ] #2 A v<YYYY.MMDD.HHMM> tag run builds every package with the tag's time: the About box/version string of each package equals the tag (v2026.1028.1930 -> 2026.1028.1930), file names carry it, and the hash has no dev- when the tag is on main (ORB_BUILD_BRANCH=main)
+- [x] #2 A v<YYYY.MMDD.HHMM> tag run builds every package with the tag's time: the About box/version string of each package equals the tag (v2026.1028.1930 -> 2026.1028.1930), file names carry it, and the hash has no dev- when the tag is on main (ORB_BUILD_BRANCH=main)
 - [ ] #3 The tag run ends with a DRAFT release with all 12 packages (two .dmg: aarch64 and x86_64) and SHA256SUMS.txt (13 assets) and the changelog body; a re-run replaces the draft (still one release); a tag not matching the pattern (e.g. v1) fails in prepare and creates nothing; nothing is published automatically
 - [ ] #4 On the first release run the x86_64 appimage smoke step passes its four screenshots, the backend asserted for each (WGPU_BACKEND=vulkan gives Vulkan, WGPU_BACKEND=gl gives Gl, automatic gives Vulkan, Vulkan ICDs hidden gives Gl); on a real Linux desktop with no Vulkan driver the AppImage opens through OpenGL (task-135)
 - [x] #5 Spot checks on real machines done (macOS Gatekeeper with both .dmg on the user's Mac, Windows x64 install and uninstall, the Linux UI and AppImage); failures filed as bugs. The arm64 Windows installer is built and checked by CI only, not on real hardware (user decision 2026-10-29)
@@ -90,4 +90,6 @@ Supervisor, 2026-10-29, at the user's decision to accept CI for the hardware the
 - AC #6 is checked: both dmg jobs passed, each image is single-architecture, and the user checked both on their Mac.
 
 User, 2026-10-29: the Windows x64 uninstall works. AC #5 is checked: macOS Gatekeeper with both .dmg, Windows x64 install and uninstall, and the Linux UI and AppImage under WSL all work; the one failure is task-139; arm64 Windows is covered by CI, as the user decided.
+
+Supervisor, 2026-10-29, AC #2: I downloaded all 12 packages of the v2026.1029.1138 draft, and all 12 passed SHA256SUMS.txt. Each was unpacked (tar.gz and zip with tar/unzip, dmg with hdiutil attach -readonly, setup.exe and AppImage with 7zz), and each holds exactly one binary (OpenRB-338) with the About string '2026.1029.1138 (e04aec6)'. None contains dev-e04aec6. Every file name carries 2026.1029.1138. The About box itself was shown on the aarch64-apple-darwin package (--about --screenshot).
 <!-- SECTION:NOTES:END -->
