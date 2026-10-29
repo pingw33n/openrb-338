@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 09:44'
+updated_date: '2026-10-29 11:55'
 labels:
   - tools
   - tests
@@ -65,4 +65,12 @@ task-135 round 1: the smoke script now has four screenshots and asserts the back
 Correction (task-135 round 1): the earlier note saying three screenshots is superseded; there are four, with the backend asserted for each.
 
 From task-136 (2026-10-29): the universal .dmg is gone; there are two, OpenRB-338-<version>-aarch64-apple-darwin.dmg and -x86_64-apple-darwin.dmg, from a dmg job matrix (artifacts dmg-<target>). The release job pattern is now {package-*,dmg-*,installer-*,appimage-*}, release-assets.sh expects 12 files (so the 11 in the notes above are 12, and 13 assets with SHA256SUMS.txt). Done locally: both images built, lipo -archs one arch each, codesign --verify --strict, arm64 app opened from the mounted image, x86_64 app ran under Rosetta (--screenshot). Open: the CI run of the matrix, and a real Intel Mac.
+
+Supervisor, 2026-10-29, test release run (user's request): tag v2026.1029.1138 on e04aec6 (on origin/main, CI green), release.yml run 40866935635.
+- AC #1: all 15 jobs passed (prepare, 6 package, 2 appimage, 2 installer, 2 dmg, draft release).
+- AC #4 (partly): a DRAFT release with 13 assets: 12 packages (two .dmg: aarch64 13,541,173 B and x86_64 14,526,372 B) plus SHA256SUMS.txt, and a changelog body (237 commits, 125 listed). Not tried yet: re-running to replace the draft, and a non-matching tag such as v1.
+- AC #3 (partly): every file name carries 2026.1029.1138. The aarch64-apple-darwin tar.gz passed its SHA256SUMS check, and its OpenRB-338 embeds '2026.1029.1138 (e04aec6)' with no dev- prefix; a --about --screenshot run worked. The other packages' version strings were not opened.
+- AC #5 (first half): the x86_64 AppImage smoke step passed: WGPU_BACKEND=vulkan gives Vulkan, gl gives Gl, automatic gives Vulkan, and with no Vulkan ICD automatic gives Gl, all on llvmpipe; SMOKE-OK. A real Linux desktop without Vulkan is still to check.
+- AC #6 (first half): both dmg jobs passed on their runners. The real Intel Mac check is still to do.
+- AC #2 (real machines) is still to do.
 <!-- SECTION:NOTES:END -->
