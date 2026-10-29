@@ -327,9 +327,15 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
 
 ## 11. A third-party collection (task-058, 2026-10-27)
 
-The user's collection (`~/rb_stuff`: `Mods/`, 172 `.rbm`; `songs/`, 193 distinct songs; and a large
-song archive, `CaveysRebirthStuff/`) is third-party material: it is read in place and nothing of it
-is in the repository. Mod names and counts only below.
+The user's collection of 2026-10-27 (`~/rb_stuff`: `Mods/`, 172 `.rbm`; `songs/`, 193 distinct
+songs; and a large song archive, `CaveysRebirthStuff/`) is third-party material: it is read in place
+and nothing of it is in the repository. Mod names and counts only below.
+
+**The folder since 2026-10-29.** `~/rb-mods/mods` holds 171 recrypted mods: the user removed
+DJ Turn's 8-Track.rbm (a byte-identical copy of 8tRack.rbm, with the same INFO name) on 2026-10-29,
+and its entry was dropped from `tests/refs/thirdparty_mods.json` (task-149). The counts in this
+section are the folder's now (171), except where a run is dated: the 2026-10-27 and 2026-10-28 runs
+of the 172-mod collection, which had that file, are history.
 
 **The check.** `tools/rbm.py check-dir DIR RB20FUL.DAT [--json]` (the reference: every mod's
 parse, key pages, every embedded file descrambled, the 46 slots' AIFFs, JPEG end markers,
@@ -355,27 +361,31 @@ is in the manifest.
 
 ### 11.1 Mods
 
-- **All 172 load**, in `rbm.py` and in `crates/rbm`, with the same 16680 embedded files and the
-  same 7285 slot samples. Every one is a `CAT ` of type `PRBM` with `HEAD` first and a 1280-byte
-  `INFO` last, only `EMBF` between, under 256 chunks, version major 1 (or zero), no duplicate EMBF
-  name. Every slot AIFF is mono, 16-bit, 44100 Hz. [C]
+- **All 171 load**, in `rbm.py` and in `crates/rbm`, with the same 16591 embedded files and the
+  same 7255 slot samples (on 2026-10-28, 172 mods with 16680 and 7285, before the removal). Every
+  one is a `CAT ` of type `PRBM` with `HEAD` first and a 1280-byte `INFO` last, only `EMBF` between,
+  under 256 chunks, version major 1 (or zero), no duplicate EMBF name. Every slot AIFF is mono,
+  16-bit, 44100 Hz. [C]
 - **The key table is right for all of them**: the mean |x[n] - x[n-1]| of the descrambled slot
   audio past byte 1024 is 180..1710 per mod, against 20328..22071 for the stored bytes; and the
   rbhost renders of section 11.4 load the samples through the DLL's own descrambler. [C]
-- **54 mods leave slots built in** (1 to 46 of the 46): the original sends `present = 0` and the
+- **53 mods leave slots built in** (1 to 46 of the 46): the original sends `present = 0` and the
   DLL loads the built-in sample (section 3); `orb` does the same (`Rbm::load_samples`). One mod,
   ReBirth 666, holds no sample at all (panel graphics only): it plays the built-in kit.
-- **Stale AIFF sizes** (3 mods: 8tRack, DJ Turn's 8-Track, a byte-identical copy of it, and DJ
-  Turn's MOD): their `TR808BD.aif` has FORM and SSND sizes smaller than the audio that follows
+- **Stale AIFF sizes** (2 mods in the folder: 8tRack and DJ Turn's MOD; on 2026-10-28 a third,
+  DJ Turn's 8-Track, a byte-identical copy of 8tRack, had it too, and the user removed it on
+  2026-10-29): their `TR808BD.aif` has FORM and SSND sizes smaller than the audio that follows
   (COMM 21064 frames, SSND 15798; 18052 and 13539). `crates/rbm` rejected the sample; the DLL plays
   it whole (section 11.2). Fixed in the engine's AIFF reader.
 - **JPEGs without an end marker** (1 mod, YellowBirth): its 59 panel JPEGs end without `FF D9`
   (progressive JPEGs cut short by its packer [G]); `splash.jpg` decodes with a garbled edge. The
   samples are fine, and the engine uses none of the JPEGs.
-- **Duplicate INFO names** (5 pairs): 8tRack (the two identical files), AXIOM (`AXIOM.rbm`,
-  `axiom(b3).rbm`), dejenerate (`dejenerate.rbm`, `dejenerate(b3).rbm`), Alpha 2.0 (`Alpha2.rbm`,
-  `alpha3.rbm`), AlpJunUV (`AlpJunUV.rbm`, `UVJ.rbm`). Which file the original keeps is section
-  11.3.
+- **Duplicate INFO names** (5 pairs in the 2026-10-28 collection; 4 in the folder since 2026-10-29,
+  when the user removed DJ Turn's 8-Track.rbm, the copy of 8tRack.rbm, so 8tRack has no duplicate
+  left): AXIOM (`AXIOM.rbm`, `axiom(b3).rbm`), dejenerate (`dejenerate.rbm`,
+  `dejenerate(b3).rbm`), Alpha 2.0 (`Alpha2.rbm`, `alpha3.rbm`), AlpJunUV (`AlpJunUV.rbm`,
+  `UVJ.rbm`). The removed pair was 8tRack (the two identical files). Which file the original keeps
+  is section 11.3.
 
 ### 11.2 The AIFF audio is read past a stale SSND size [C for the mono read]
 
@@ -457,8 +467,9 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
 ### 11.5 Every song against rbhost: the songs manifest (task-129, 2026-10-29)
 
 The collection moved to `~/rb-songs/songs` (songs, read recursively: the top level and the
-`CaveysRebirthStuff` archive) and `~/rb-mods/mods` (the 172 recrypted mods). The user asked
-(2026-10-29) that all songs be handled recursively.
+`CaveysRebirthStuff` archive) and `~/rb-mods/mods` (171 recrypted mods since the user removed
+DJ Turn's 8-Track.rbm on 2026-10-29; 172 before). The user asked (2026-10-29) that all songs be
+handled recursively.
 
 **The manifest.** `tests/refs/thirdparty_songs.json` holds, per distinct song (by SHA-256), its
 paths under the folder, its form and version, the mod name and the mod file the original
