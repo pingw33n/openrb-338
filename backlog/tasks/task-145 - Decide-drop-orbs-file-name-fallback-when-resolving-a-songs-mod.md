@@ -1,10 +1,11 @@
 ---
 id: TASK-145
 title: 'Decide: drop orb''s file-name fallback when resolving a song''s mod'
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-29 14:32'
+updated_date: '2026-10-29 15:13'
 labels:
   - decision
   - cli
@@ -30,3 +31,9 @@ Recommendation: B. It keeps the convenience but tells the user that the render i
 
 Acceptance: the user's choice is recorded here; if B or C, a follow-up task implements it (crates/orb-cli/src/mods.rs, docs/rbm.md 10).
 <!-- SECTION:DESCRIPTION:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by @pingw33n on 2026-10-29: a variant of option C. orb finds a song's mod by its INFO name only, ignoring ASCII case, and drops the file-name fallback. This deliberately differs from the original, which compares exactly (sub_4155D1, strcmp): the two 'omega' songs (Mod Demo Songs/omega.rbs, Pack63/FoamBee-NegativeLegSucker.rbs) will load Omega.rbm (INFO 'Omega'), while the original plays the built-in kit. The supervisor's survey of the collection that day: 509 songs match an INFO name exactly, 2 (these two) only ignoring case, and none by file name only. Implemented in task-150.
+<!-- SECTION:FINAL_SUMMARY:END -->
