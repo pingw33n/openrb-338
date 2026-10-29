@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 12:52'
+updated_date: '2026-10-29 13:06'
 labels:
   - tools
   - tests
@@ -43,7 +43,7 @@ File a bug for each failure. Assigned to the user, because it needs a release ru
 <!-- AC:BEGIN -->
 - [x] #1 Every release.yml job passes on the first release run and every artifact is produced (dmg, installers x64/arm64, tar.gz/zip, AppImages, draft release)
 - [x] #2 A v<YYYY.MMDD.HHMM> tag run builds every package with the tag's time: the About box/version string of each package equals the tag (v2026.1028.1930 -> 2026.1028.1930), file names carry it, and the hash has no dev- when the tag is on main (ORB_BUILD_BRANCH=main)
-- [ ] #3 The tag run ends with a DRAFT release with all 12 packages (two .dmg: aarch64 and x86_64) and SHA256SUMS.txt (13 assets) and the changelog body; a re-run replaces the draft (still one release); a tag not matching the pattern (e.g. v1) fails in prepare and creates nothing; nothing is published automatically
+- [x] #3 The tag run ends with a DRAFT release with all 12 packages (two .dmg: aarch64 and x86_64) and SHA256SUMS.txt (13 assets) and the changelog body; a re-run replaces the draft (still one release); a tag not matching the pattern (e.g. v1) fails in prepare and creates nothing; nothing is published automatically
 - [x] #4 On the first release run the x86_64 appimage smoke step passes its four screenshots, the backend asserted for each (WGPU_BACKEND=vulkan gives Vulkan, WGPU_BACKEND=gl gives Gl, automatic gives Vulkan, Vulkan ICDs hidden gives Gl); on a real Linux desktop with no Vulkan driver the AppImage opens through OpenGL (task-135)
 - [x] #5 Spot checks on real machines done (macOS Gatekeeper with both .dmg on the user's Mac, Windows x64 install and uninstall, the Linux UI and AppImage); failures filed as bugs. The arm64 Windows installer is built and checked by CI only, not on real hardware (user decision 2026-10-29)
 - [x] #6 The dmg matrix of release.yml (task-136) passes for both targets, dmg (x86_64-apple-darwin) on macos-15-intel and dmg (aarch64-apple-darwin) on macos-15; each artifact dmg-<target> holds one OpenRB-338-<version>-<target>.dmg whose app has exactly one architecture. The x86_64 app is checked by CI and on the user's Mac, not on a real Intel Mac (user decision 2026-10-29)
@@ -110,4 +110,6 @@ Supervisor, 2026-10-29, AC #3 checks (user's go-ahead):
 task-141 (fix for the prepare tee) is due a bad-tag re-run on GitHub after the merge, with the user's go-ahead; record it in AC 3.
 
 task-139 WSL re-check, for the user: with a build that has task-139, run orb play on a song under WSL (WSLg, libasound2-plugins installed). Expect sound to the end, at most one 'orb-player: audio output: ... I/O error' line per second with a count, and no 'the audio output stopped'. Run OpenRB-338 (tar.gz or AppImage) too: sound as before. A lost device (stop the PulseAudio server) must end orb play with 'the audio device is gone or unusable: ...' and show a box in the UI.
+
+Supervisor, 2026-10-29, AC #3 after task-141 (the user said 'do push'): main 8675f3a pushed, then the bad tag v1 on it (run 40878787260). prepare failed with exit 1, and package, dmg, installer, appimage and draft release were all skipped. Nothing was built and no release was created; the release list still holds only the v2026.1029.1138 draft. The v1 tag was deleted from origin and locally. With the earlier re-run (draft replaced, one release), AC #3 is met.
 <!-- SECTION:NOTES:END -->
