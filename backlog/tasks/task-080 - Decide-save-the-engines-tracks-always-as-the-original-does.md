@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-27 16:28'
-updated_date: '2026-10-27 16:44'
+updated_date: '2026-10-29 14:27'
 labels:
   - decision
   - ui
@@ -32,6 +32,12 @@ B. Always write the engine's tracks (rb_player::Player::tracks is already publis
 
 Recommendation: A for now (no visible difference in what plays; the byte-identity of unedited saves is a useful property and test), revisit if files saved by rb must equal the original's byte for byte.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+User, 2026-10-29: the decision is changed to option B. OpenRB-338 always saves the engine's tracks, as the original does (sub_437CFF reads them back with song msg 22), not the file's own events. The implementation is task-143. Context: 35 songs of the third-party collection carry events past bar 999 that the original drops on load and so never saves; an unedited OpenRB-338 save kept them, along with repeated values the original's stop prune removes.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
