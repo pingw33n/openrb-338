@@ -4,7 +4,7 @@ The synthetic tests build a mod and a sparse RB20FUL.DAT stand-in. The tests on 
 with a message unless the environment names them (Propellerhead material is never committed). The
 user does not set these two variables: the cargo test `the_python_tool_tests_pass_on_the_real_files`
 (crates/rbm/tests/rbm.rs) sets them for this script, with the files it takes out of the CD image
-(`RB_CD_ISO`; task-121):
+(`ORB_CD_ISO`; task-121):
     RBM_TEST_DAT    path of RB20FUL.DAT from the ReBirth CD
     RBM_TEST_MODS   a folder with the shipped mods (PBE2.rbm, MSM2.rbm, Metallicon.rbm,
                     Orbit2.rbm), as shipped (not recrypted)

@@ -7,12 +7,12 @@ files; [G] marks an inference. The reference implementation is `tools/rbm.py` (t
 `tools/rbm_test.py`); `tools/rbhost` loads a mod into the original DLL (`run.py --mod`).
 
 RB20FUL.DAT, its pages, any key table and the mods themselves are Propellerhead material: they stay
-on the user's machine and are never committed. The tests read them from the CD image (`RB_CD_ISO`:
-the crate `rb-testkit` extracts the DAT and the four shipped mods and recrypts them, each checked
-against a pinned SHA-256; task-121); the rb CLI reads only recrypted mods (`RB_MOD_DIR`,
+on the user's machine and are never committed. The tests read them from the CD image (`ORB_CD_ISO`:
+the crate `orb-testkit` extracts the DAT and the four shipped mods and recrypts them, each checked
+against a pinned SHA-256; task-121); the orb CLI reads only recrypted mods (`ORB_MOD_DIR`,
 section 12.4).
 The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte window of section
-12 is embedded in rb (`crates/rbm/src/rb20ful_window.bin`, `embedded.rs`).
+12 is embedded in orb (`crates/rbm/src/rb20ful_window.bin`, `embedded.rs`).
 
 ## 1. Summary
 
@@ -29,10 +29,10 @@ The one exception, decided by the user on 2026-10-27 (task-059): the 2047-byte w
   `256 + sum_j % (0x8000000 - 2048)`, where `sum_j` are two u32 sums over the first 1024 bytes of
   every EMBF payload of the mod. The pages depend only on the mod's bytes: **each mod needs exactly
   4096 bytes of key material**. [C]
-- `rb mod recrypt` rewrites a mod so that it needs only the 2047 bytes of `RB20FUL.DAT` that rb
+- `orb mod recrypt` rewrites a mod so that it needs only the 2047 bytes of `RB20FUL.DAT` that orb
   embeds; the original loads the result unchanged (section 12).
-- `rb mod pack-standard` builds the built-in kit (ReBirth.dll's 46 AIFF resources) and panel
-  (Rebirth.exe's JPEG resources) into such a mod, "Standard ReBirth"; rb embeds the one committed
+- `orb mod pack-standard` builds the built-in kit (ReBirth.dll's 46 AIFF resources) and panel
+  (Rebirth.exe's JPEG resources) into such a mod, "Standard ReBirth"; orb embeds the one committed
   as `assets/Standard.rbm` and takes the built-in samples from it (section 13).
 - The Mods menu changes the mod of an open song in place: song msg 19 `{id}`, which silences the
   808's and the 909's voices and replaces their sample table; the song plays on (section 14).
@@ -171,7 +171,7 @@ in their low 14 bits.
 
 Checked on the real `RB20FUL.DAT` (task-030, all 16384 pages `k`; `tools/rbm.py check-dat DAT`,
 and the test `RealDat` of `tools/rbm_test.py`, run by the cargo test
-`the_python_tool_tests_pass_on_the_real_files` with the DAT of `RB_CD_ISO`): `((g_k & 0xFFFFF000) >> 14)
+`the_python_tool_tests_pass_on_the_real_files` with the DAT of `ORB_CD_ISO`): `((g_k & 0xFFFFF000) >> 14)
 - k == 18` for every `k`, so **stride = 4**, and the 256 words are the 1024 bytes in order. Two more
 uses of the same expression agree: `sub_41FFBC`'s anti-debug branch (an IDT check, 0x41FFE9) sets
 it to 0x12 = 18 directly, and `sub_423048` (the distortion packer) uses it as `X / 18` = index 1.
@@ -214,7 +214,7 @@ The key pages of the shipped mods (`rbm.py info`; the numbers are offsets, not m
 | Metallicon.rbm (Metallicon+) | 0x1909239F | 0x1AEF9F26 | 17382559 | 49264678 |
 | Orbit2.rbm (Orbit 2.0) | 0x12621363 | 0x5C1F52D1 | 39986275 | 69184465 |
 
-Consequences for rb (task-032, task-037): the table of a mod is a pure function of the mod file and
+Consequences for orb (task-032, task-037): the table of a mod is a pure function of the mod file and
 `RB20FUL.DAT`. Descrambling a mod needs 4096 bytes of the DAT, the two pages above; a mod changes
 pages whenever any of its EMBF headers (first 1024 bytes) changes.
 
@@ -279,7 +279,7 @@ The 909 records' stride and the record count are computed through the anti-tampe
 ## 9. The `rbm` crate (task-032, 2026-10-27)
 
 `crates/rbm` implements sections 2 to 5 (`Rbm::parse`, `KeyTable::read` from a reader over
-`RB20FUL.DAT`, `Rbm::file`, `Rbm::load_samples`). Its tests (gated on `RB_CD_ISO`)
+`RB20FUL.DAT`, `Rbm::file`, `Rbm::load_samples`). Its tests (gated on `ORB_CD_ISO`)
 compare every embedded file and the 46 samples of the four shipped mods with `tools/rbm.py extract`.
 
 One fact found on the way: 19 of the 46 AIFFs of Metallicon.rbm have a **12-byte COMM chunk** (the
@@ -299,7 +299,7 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   and returns the first mod whose C string at +1011 equals the name under plain `strcmp`. +1011 is the
   INFO menu name (INFO offset 1003, the object copies INFO at +8): the match is on the INFO
   name, exact and case-sensitive, not on the file name. A name that is not in the list gets the
-  Download / Standard / Cancel dialog (docs/song_load.md section 2). `rb` matches the INFO name
+  Download / Standard / Cancel dialog (docs/song_load.md section 2). `orb` matches the INFO name
   the same way and, as a convenience the original lacks, a file name (`PBE2` or `pbe2.rbm`, case-
   insensitive) when no INFO name matches. `--mod FILE` whose INFO name is not the song's name
   warns, as the original would not load it for that song. [G: the value `strcmp`'s result is
@@ -309,15 +309,15 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   the mod for message 52 (and 58, the preview player). So the engine's input from a mod is its
   46-slot `SampleSet` (a slot the mod lacks keeps the built-in sample). Confirmed by output: with
   only the samples modeled, all 8 `mod` and 3 `modapp` references render byte-exact.
-- **CLI**: `rb render` / `rb compare` take `--mod-dir DIR` (`RB_MOD_DIR`; `RB_RBM_DIR` is a
-  deprecated alias), `--mod FILE` (overrides the song's mod) and `--standard-kit` (a missing mod
+- **CLI**: `orb render` / `orb compare` take `--mod-dir DIR` (`ORB_MOD_DIR`; the old alias `RB_RBM_DIR` was
+  dropped in task-068), `--mod FILE` (overrides the song's mod) and `--standard-kit` (a missing mod
   renders with the built-in kit and a warning). Without it a song naming a mod that is not found
   is an error. A mod is read only when a drum machine plays (the mod holds nothing else).
-  `rb compare --manifest` includes the sets `mod` and `modapp` by default only when a mod folder
+  `orb compare --manifest` includes the sets `mod` and `modapp` by default only when a mod folder
   is given. Since task-063 these commands take no `--rb20ful` and read no `RB20FUL.DAT`: they
-  load recrypted mods only (section 12.4). Task-033 had `--rb20ful PATH` / `RB_RB20FUL` here.
+  load recrypted mods only (section 12.4). Task-033 had `--rb20ful PATH` / `ORB_RB20FUL` here.
   Since task-036 the built-in kit comes from the standard mod, not from `--rebirth-dll`; since
-  task-067 from the one rb embeds, with no option (section 13.4).
+  task-067 from the one orb embeds, with no option (section 13.4).
 - **AIFF rate** [C]: `sub_10001674` (0x100016B2..0x100016DE) converts the 80-bit rate with `fistp`
   under a control word with rounding set to truncate (`| 0xC00`) into a 64-bit slot and keeps the low
   dword; `sub_100016F4` rejects 0. The engine's reader now does the same (a rate below 1 Hz, or
@@ -334,10 +334,10 @@ is in the repository. Mod names and counts only below.
 **The check.** `tools/rbm.py check-dir DIR RB20FUL.DAT [--json]` (the reference: every mod's
 parse, key pages, every embedded file descrambled, the 46 slots' AIFFs, JPEG end markers,
 duplicate INFO names in the original's folder order) and the env-gated cargo test
-`crates/rb-cli/tests/thirdparty.rs` (`RB_THIRDPARTY_MODS_DIR`, the folder of the recrypted mods, and
-`RB_THIRDPARTY_SONGS_DIR`, the folder of songs; since task-121 the test needs no `Mods.orig/` and
+`crates/orb-cli/tests/thirdparty.rs` (`ORB_THIRDPARTY_MODS_DIR`, the folder of the recrypted mods, and
+`ORB_THIRDPARTY_SONGS_DIR`, the folder of songs; since task-121 the test needs no `Mods.orig/` and
 no DAT; run it with
-`cargo test --release -p rb-cli --test thirdparty -- --nocapture --test-threads 1`), whose `mods`
+`cargo test --release -p orb-cli --test thirdparty -- --nocapture --test-threads 1`), whose `mods`
 test compares `crates/rbm` with the committed manifest `tests/refs/thirdparty_mods.json` (the
 output of `check-dir --json` reduced to hashes and names, plus the SHA-256 of each recrypted file:
 the SHA-256 of every embedded file, the channel-0 PCM of every slot) and whose `songs` test reads,
@@ -346,7 +346,7 @@ writes back and renders every distinct song. The manifest is written by
 (on 2026-10-28: 172 mods, 16680 embedded files, 7285 slots, equal to the 2026-10-27 run of the old
 test, which took the originals and the DAT from the environment); regenerate it when the
 collection changes (the test fails on a `.rbm` it does not list). The tool first recrypts the
-originals with the current rb and requires every result to equal the file of `Mods/` byte for
+originals with the current orb and requires every result to equal the file of `Mods/` byte for
 byte, so the manifest pins what the recryptor makes of the originals (2026-10-28: all 172 equal).
 To re-verify the recryptor on the real collection at any time, without the user's `Mods/`:
 `tools/thirdparty_mods_manifest.py --check --orig MODS.ORIG --dat RB20FUL.DAT` recrypts the
@@ -363,7 +363,7 @@ is in the manifest.
   audio past byte 1024 is 180..1710 per mod, against 20328..22071 for the stored bytes; and the
   rbhost renders of section 11.4 load the samples through the DLL's own descrambler. [C]
 - **54 mods leave slots built in** (1 to 46 of the 46): the original sends `present = 0` and the
-  DLL loads the built-in sample (section 3); `rb` does the same (`Rbm::load_samples`). One mod,
+  DLL loads the built-in sample (section 3); `orb` does the same (`Rbm::load_samples`). One mod,
   ReBirth 666, holds no sample at all (panel graphics only): it plays the built-in kit.
 - **Stale AIFF sizes** (3 mods: 8tRack, DJ Turn's 8-Track, a byte-identical copy of it, and DJ
   Turn's MOD): their `TR808BD.aif` has FORM and SSND sizes smaller than the audio that follows
@@ -392,7 +392,7 @@ Open (not checked against the DLL):
 - **A file that really ends early.** The read's result is ignored (0x10003071 goes straight on to
   `sub_10009990`), and what the memory stream does when asked for more than it holds (a short
   read, zeros, stale bytes or an exception) was not traced; no mod in the collection reaches it.
-  rb's policy is an error, and `Rbm::load_samples` propagates it, so the **whole mod** is refused
+  orb's policy is an error, and `Rbm::load_samples` propagates it, so the **whole mod** is refused
   rather than that one slot falling back to its built-in sample.
 - **Stereo.** Only the mono path was read; the multichannel path (0x10003087, `sub_10009DD0`) was
   not examined. Every slot AIFF of the collection is mono.
@@ -413,7 +413,7 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
   per-unit `$UpCase` table, which puts `axiom(b3).rbm` before `AXIOM.rbm` (`(` is 0x28, `.` 0x2E)
   and `dejenerate(b3).rbm` before `dejenerate.rbm`; FAT or a network share may list in directory
   order, so which duplicate wins depends on the user's volume.
-- **rb models NTFS**: it sorted bytewise, which put `AXIOM.rbm` first; `mods.rs` (`folder_order`)
+- **orb models NTFS**: it sorted bytewise, which put `AXIOM.rbm` first; `mods.rs` (`folder_order`)
   now sorts by the name upcased per character (only where the uppercase is one character, so `ß`
   stays `ß` as in `$UpCase`), then compares UTF-16 units. This approximates `$UpCase` (it agrees
   for ASCII, which is every name of the collection).
@@ -426,21 +426,21 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
   check passed again, every mod resolving by its exact INFO name (51 Standard, 14 PBE2, 5 MSM2,
   2 Poison-Box, 1 each of Regulation Issue, Orbit 2.0, Nord Beat, Metallicon+, RedTop 2.0). The
   counts below are those of the first run. **64 are RBS 4.2**: every one reads and writes back byte-identical through
-  `crates/rbs` and renders with `rb render --mod-dir` without a fault. Their mods: 46 Standard
+  `crates/rbs` and renders with `orb render --mod-dir` without a fault. Their mods: 46 Standard
   ReBirth, 12 Pitch Black Edition 2.0, 2 Massen's MSM 2.0, 2 Poison-Box, 1 each Orbit 2.0, Massen
   RedTop 2.0, Regulation Issue, Nord Beat; all resolve by the exact INFO name (none missing, none
   by case only).
 - **129 are ReBirth 1.x songs**: a Standard MIDI File (`MThd`, a meta text "File version 3.1.0")
   named `.rbs`. The original imports them (`sub_425C4D` tries `sub_43037D` first: the MIDI file and
   its "File version %s" text, `sub_431341` at 0x431481; then `sub_430BA0` loads it with the built-in
-  mod, 0x425FCE); `rb` refused them with an error until task-060, which imports them as the exe
+  mod, 0x425FCE); `orb` refused them with an error until task-060, which imports them as the exe
   does (`docs/song_load.md` section 12).
 - **rbhost**: 49 songs from `~/rb_stuff` (mostly the archive, where the mod songs are) over 29
   third-party mods, each with the mod its GLOB names and where that mod is audible (the render
   differs from the built-in kit's). 47 rendered with `run.py --mod --rb20ful --idle-blocks 9088`
-  and **all 47 equal `rb render` byte for byte** (27 mods). The other 2 (the RB-SEMx and TB-909e
+  and **all 47 equal `orb render` byte for byte** (27 mods). The other 2 (the RB-SEMx and TB-909e
   mkII songs) are RBS 4.0 files, which `tools/rbhost/rbsmsg.py` could not convert at the time;
-  task-061 added the 4.0 mixer converter and both then render with rbhost equal to `rb render`
+  task-061 added the 4.0 mixer converter and both then render with rbhost equal to `orb render`
   byte for byte (49 of 49). Also exact: AXIOM.rbs with `AXIOM.rbm` (it differs from the
   `axiom(b3).rbm` render), and two songs each with 8tRack and DJ Turn's MOD (the stale-size
   samples; GLOB renamed in scratch copies).
@@ -448,7 +448,7 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
   own `Mods`; `--startup-boxes 2` for the duplicate-name box; `--restore-prf --startup-sound
   off`) exported AXIOM.rbs (AXIOM, both AXIOM files present), Commutation (Trancer) and Meth X
   State (Poison-Box), each mod found by the app's own scan. `fit.py --all` (200 candidates) found
-  one N each, 3616, 3600 and 3632 (N - N_t = -71, -5, -9), and `rb compare --mod-dir` at that N is
+  one N each, 3616, 3600 and 3632 (N - N_t = -71, -5, -9), and `orb compare --mod-dir` at that N is
   **EQUAL** for all three. AXIOM.rbs against `AXIOM.rbm` matches at no N: the app used
   `axiom(b3).rbm`, as section 11.3 says.
 - `run.py` and `fit.py` take `--remote-dir NAME` (work in `C:\re\rb\NAME`), `rb_export.py`
@@ -456,13 +456,13 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
 
 ## 12. Recrypted mods: one 2047-byte embedded key window (task-059, 2026-10-27)
 
-The user decided on 2026-10-27 (superseding task-053's "nothing bundled" for this only) that rb
+The user decided on 2026-10-27 (superseding task-053's "nothing bundled" for this only) that orb
 embeds a minimum of `RB20FUL.DAT` that lets a mod load without the CD, and that
-`rb mod recrypt IN.rbm -o OUT.rbm [--rb20ful PATH]` rewrites a mod to need only that. Shown the
+`orb mod recrypt IN.rbm -o OUT.rbm [--rb20ful PATH]` rewrites a mod to need only that. Shown the
 trade-off of 12.2 (123 bytes with 113663-chunk mods against 2 KB with compact ones), the user
-chose, the same day, **one 2 KB window and compact mods**: rb embeds `RB20FUL.DAT[W .. W + 2047]`,
+chose, the same day, **one 2 KB window and compact mods**: orb embeds `RB20FUL.DAT[W .. W + 2047]`,
 and a recrypted mod keeps its chunk count and size (plus one 1024-byte chunk). A mod that is not
-recrypted is not loaded by rb at all (section 12.4); `rb mod recrypt` is the one place `RB20FUL.DAT`
+recrypted is not loaded by orb at all (section 12.4); `orb mod recrypt` is the one place `RB20FUL.DAT`
 is read.
 
 ### 12.1 Facts the scheme rests on [C]
@@ -533,8 +533,8 @@ recrypted mod gives the same bytes. Nothing reads such a chunk; no known mod has
 The window is `W = 118280160`, PBE2.rbm's page 0 (section 5.3), a page the original already reads
 for a shipped mod; `crates/rbm/src/rb20ful_window.bin` holds the 2047 bytes and
 `crates/rbm/src/embedded.rs` `W`, their SHA-256 (`2c292d92...56bc`) and the SHA-256 of the DAT
-they came from (`62071e99...2797`), checked against the DAT of `RB_CD_ISO` by the test
-`embedded_window_is_the_dats`. rb's loader (`KeyTable::embedded`, `Rbm::slots_covered`) takes a
+they came from (`62071e99...2797`), checked against the DAT of `ORB_CD_ISO` by the test
+`embedded_window_is_the_dats`. orb's loader (`KeyTable::embedded`, `Rbm::slots_covered`) takes a
 mod whose page offsets are `W` and whose files need no more than the embedded bytes; any other mod
 needs `RB20FUL.DAT`.
 
@@ -545,13 +545,13 @@ On the test machine (a copy of the installation with only the four recrypted mod
 no box (`rb_export.py` expects the MIDI box only), the three songs opened their recrypted mods with
 no Download / Standard dialog, the exports of RSI (PBE2), Fonda Workout (MSM2) and Metallicon City
 (Metallicon+) each matched rbhost with the **original** mod at exactly one N among 200
-(`fit.py --all`), `rb compare` with the recrypted mod and no `RB20FUL.DAT` at that N is EQUAL for
+(`fit.py --all`), `orb compare` with the recrypted mod and no `RB20FUL.DAT` at that N is EQUAL for
 all three, and the panels display clean:
 
 | Form | Chunks | RSI N (N - N_t) | Fonda Workout | Metallicon City |
 |---|---|---|---|---|
 | 123 bytes, fillers | 113663 / 98263 | 3584 (-503) | 3728 (-176) | 3648 (-444) |
-| 2047 bytes (rb's) | 109 | 3600 (-33) | 3552 (+10) | 3568 (-6) |
+| 2047 bytes (orb's) | 109 | 3600 (-33) | 3552 (+10) | 3568 (-6) |
 
 With the original mods N - N_t was -28, -40 and -5 (section 8): the 2 KB form is back in that
 range, and the 123-byte form's gap came with its 113663 chunks [G: the open mod's chunk walk
@@ -560,30 +560,30 @@ delays the export; not measured further].
 All 172 third-party mods of section 11 and the four shipped ones recrypt, and every file and slot
 sample of the result equals the original's (`crates/rbm/tests/rbm.rs`, `thirdparty_mods_recrypt`
 and `real_mods_recrypt`); the corpus mod songs render byte-exact with recrypted mods loaded without
-the DAT (`crates/rb-cli/tests/corpus_mods.rs`). `tools/rbm.py` decodes with each reader's key.
+the DAT (`crates/orb-cli/tests/corpus_mods.rs`). `tools/rbm.py` decodes with each reader's key.
 
-### 12.4 rb reads only recrypted mods (task-063, 2026-10-27)
+### 12.4 orb reads only recrypted mods (task-063, 2026-10-27)
 
-At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `rb mod recrypt` alone:
+At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `orb mod recrypt` alone:
 
-- `rb render`, `rb compare` and `rb play` have no `--rb20ful` and do not read `RB_RB20FUL`; only
-  `rb mod recrypt` has them (it searches: the option, `RB_RB20FUL`, an `RB20FUL.DAT` in the input
+- `orb render`, `orb compare` and `orb play` have no `--rb20ful` and do not read `ORB_RB20FUL`; only
+  `orb mod recrypt` has them (it searches: the option, `ORB_RB20FUL`, an `RB20FUL.DAT` in the input
   mod's folder or its parent, next to the binary, the Windows install folders). `crates/rbm` keeps the
   general descrambler (`KeyTable::read`) for recrypt's own use.
-- A mod that is not recrypted is found like any other by `--mod-dir` / `RB_MOD_DIR` (its INFO is in
+- A mod that is not recrypted is found like any other by `--mod-dir` / `ORB_MOD_DIR` (its INFO is in
   the clear, it keeps its place in the original's folder order, so the duplicate-name rule of
   task-058 is unchanged) and `--mod FILE` takes it; the error comes when its samples are loaded
   (only when a drum machine plays): `FILE: the song plays a drum machine with this mod, which is
-  not recrypted. Run rb mod recrypt --rb20ful RB20FUL.DAT FILE -o OUT.rbm once and use OUT.rbm`
+  not recrypted. Run orb mod recrypt --rb20ful RB20FUL.DAT FILE -o OUT.rbm once and use OUT.rbm`
   (exit 1). The decision is "found, fails at load", not "skipped": a skipped mod would turn into
   "mod not found" and hide the fix. The future UI (m-3, task-047's mod chooser) lists such mods the
-  same way, marked "needs rb mod recrypt".
+  same way, marked "needs orb mod recrypt".
 - The env-gated tests take recrypted mods. Since task-121 the tests read three variables only
-  (`RB_CD_ISO`, `RB_THIRDPARTY_MODS_DIR`, `RB_THIRDPARTY_SONGS_DIR`): `corpus_mods.rs` and the
-  other tests that need the shipped mods use the four mods that `rb-testkit` recrypts from the CD
-  image (pinned SHA-256s, docs/test_machine.md 7); `rb compare` still takes `--mod-dir`
-  (`rb mod recrypt --iso "$RB_CD_ISO" -o DIR` makes the folder); `thirdparty.rs` reads
-  `RB_THIRDPARTY_MODS_DIR` (recrypted) against the committed manifest (section 11);
+  (`ORB_CD_ISO`, `ORB_THIRDPARTY_MODS_DIR`, `ORB_THIRDPARTY_SONGS_DIR`): `corpus_mods.rs` and the
+  other tests that need the shipped mods use the four mods that `orb-testkit` recrypts from the CD
+  image (pinned SHA-256s, docs/test_machine.md 7); `orb compare` still takes `--mod-dir`
+  (`orb mod recrypt --iso "$ORB_CD_ISO" -o DIR` makes the folder); `thirdparty.rs` reads
+  `ORB_THIRDPARTY_MODS_DIR` (recrypted) against the committed manifest (section 11);
   `corpus_mods.rs`'s `recrypt_of_the_originals_matches_the_references` still runs the recrypt (the
   originals and the DAT from the image), requires its bytes to equal the recrypted mods and renders
   the 8 songs from them.
@@ -594,14 +594,14 @@ At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `rb mod 
 originals. The four shipped mods on the test machine: the originals are backed up in
 `C:\re\rb\mods_orig`, `C:\ReBirth RB-338\Mods` holds the recrypted ones (hashes in
 docs/test_machine.md section 7), and an app export of Fonda Workout from the installation equals
-`rb compare` with the recrypted MSM2 at one N of 3400..3707 (3600).
+`orb compare` with the recrypted MSM2 at one N of 3400..3707 (3600).
 
-### 12.5 `rb mod recrypt`: the key file's SHA-256, the file checks, bulk mode (task-064, 2026-10-28)
+### 12.5 `orb mod recrypt`: the key file's SHA-256, the file checks, bulk mode (task-064, 2026-10-28)
 
-Until task-064 `rb mod recrypt` checked only the DAT's magic and length. A different or corrupt
+Until task-064 `orb mod recrypt` checked only the DAT's magic and length. A different or corrupt
 `RB20FUL.DAT` with the right header decrypted to garbage, which was scrambled again against the
 embedded window; the internal round trip passed because it used the same wrong key, and the mod
-played noise. Now (`crates/rbm/src/dat.rs`, `crates/rb-cli/src/recrypt.rs`):
+played noise. Now (`crates/rbm/src/dat.rs`, `crates/orb-cli/src/recrypt.rs`):
 
 - **The key file is verified.** Before any mod is written, the SHA-256 of the whole file is
   compared with `embedded::DAT_SHA256` (`62071e99...2797`, 134,217,984 bytes: the 2001 reissue
@@ -616,7 +616,7 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/rb-cli/src/recrypt.rs`):
   (2 x 2048 bytes). A run in which every mod is recrypted never reads the file.
 - **The files are checked.** Each embedded file of the input, decrypted, must be well formed: a
   slot sample or any `.aif` / `.aiff` must parse with the engine's AIFF reader
-  (`rb_engine::samples::Sample::from_aiff`, the DLL's reader rules of sections 7.4 of
+  (`orb_engine::samples::Sample::from_aiff`, the DLL's reader rules of sections 7.4 of
   `initial_investigation.md` and 11.2 above for the stale SSND size), and a `.jpg` must
   start with `FF D8`; other files (the demo song) are not checked. A failure is an error naming the
   mod file and the embedded name, and nothing is written for that mod. This finds damaged files; it
@@ -627,9 +627,9 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/rb-cli/src/recrypt.rs`):
   with the real file (0 failed, byte-identical to the recrypted set of 12.4), and the 172
   recrypted ones and the four recrypted shipped mods (already recrypted) pass the checks too (no
   false positives).
-- **Bulk.** `rb mod recrypt IN.rbm... DIR... -o OUTDIR [--force]` takes any number of mod files
+- **Bulk.** `orb mod recrypt IN.rbm... DIR... -o OUTDIR [--force]` takes any number of mod files
   and folders (every `.rbm` directly in a folder) and writes each mod under its own file name into
-  `OUTDIR`. The single-file form `rb mod recrypt IN.rbm -o OUT.rbm` stays: one existing input
+  `OUTDIR`. The single-file form `orb mod recrypt IN.rbm -o OUT.rbm` stays: one existing input
   file and an `-o` that is not an existing folder and ends in `.rbm`. An `-o` ending in `.rbm`
   that is not an existing folder is a file name and never becomes a folder: a missing input or
   several inputs with it are a usage error (exit 2). `OUTDIR` is created only when the first mod
@@ -642,13 +642,13 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/rb-cli/src/recrypt.rs`):
   **already recrypted** is checked with the embedded bytes and **copied unchanged**
   (recrypting it again gives the same bytes, so the copy is the cheaper form of the same
   thing).
-- **Tests.** `crates/rb-cli/tests/recrypt.rs`: a stand-in key file (sparse, with the magic and the
+- **Tests.** `crates/orb-cli/tests/recrypt.rs`: a stand-in key file (sparse, with the magic and the
   pages of the synthetic mods) and `Options::expected_sha256` for its hash; bulk over a folder
   and over a list equal recrypting each mod alone and hash the file once (`Report::dat_hashes`);
   a wrong-hash file with the right magic and length is rejected before anything is written (also
   through the binary); a damaged AIFF, a JPEG without `FF D8` and a sample whose header is found
   only with the right pages are caught; `--force` and the folder rules; the already-recrypted
-  path over the recrypted shipped mods. Gated on the real file (`RB_CD_ISO`): bulk over the
+  path over the recrypted shipped mods. Gated on the real file (`ORB_CD_ISO`): bulk over the
   shipped originals equals single and the pinned SHA-256s of the recrypted mods.
   Synthetic, with no input (task-121; `crates/rbm/tests/recrypt_python.rs`): mods built with a
   stand-in key table (ordinals past 255 where the DLL's byte key and the exe's u16 key differ,
@@ -659,10 +659,10 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/rb-cli/src/recrypt.rs`):
 
 ## 13. The standard mod: the built-in kit and panel as a mod (task-036, 2026-10-27)
 
-`rb mod pack-standard --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] -o FILE`
+`orb mod pack-standard --rebirth-dll ReBirth.dll [--rebirth-exe Rebirth.exe] -o FILE`
 (`crates/rbm/src/standard.rs`) builds a mod that holds what the original has built in. By the
 user's decision of 2026-10-27 (task-067) one build of it is committed as `assets/Standard.rbm`
-(the one file of Propellerhead's in the repository; `assets/README.md`) and embedded in rb as its
+(the one file of Propellerhead's in the repository; `assets/README.md`) and embedded in orb as its
 built-in kit (13.4).
 
 ### 13.1 Where the original keeps its standard skin [C]
@@ -722,13 +722,13 @@ ReBirth 1.0 Default Song is a file of the installation, not a resource.
   EMBF x 46    TR808BD.aif .. TR808RS.aif, TR909bd1.aif .. TR909rcy.aif, Startup.aif: ReBirth.dll's
                AIFF resources 1000..1023, 1025..1045, 1024 (the slot order), unchanged
   INFO  1280   name "Standard ReBirth", version BC 01 00 00 (1.0.0, as PBE2, MSM2, Orbit2),
-               a description naming `rb mod pack-standard`, no ftp URL,
+               a description naming `rb mod pack-standard` (the CLI's first name, kept in the committed asset), no ftp URL,
                web http://www.propellerheads.se/
 ```
 
 108 chunks, 106 EMBF (under the 200 of OB-14, every ordinal under 256). It is laid out in the clear
 and passed through `rbm::recrypt` with an all-zero table (the identity), so it is scrambled against
-the embedded window exactly as `rb mod recrypt` output: both key pages are `W`, rb loads it without
+the embedded window exactly as `orb mod recrypt` output: both key pages are `W`, orb loads it without
 `RB20FUL.DAT`. The build is deterministic:
 
 | Built from | Size | SHA-256 |
@@ -737,17 +737,17 @@ the embedded window exactly as `rb mod recrypt` output: both key pages are `W`, 
 | the installed `ReBirth.dll` and `Rebirth.exe` | 2,574,060 | `c8752965...9324` |
 
 The two differ only in `splash.jpg` (13.1). The gated test
-`crates/rb-cli/tests/standard_mod.rs::the_command_reproduces_the_committed_mod`
-(`RB_CD_ISO`: the CD's exe and the DLL come out of the image) rebuilds the asset byte for
+`crates/orb-cli/tests/standard_mod.rs::the_command_reproduces_the_committed_mod`
+(`ORB_CD_ISO`: the CD's exe and the DLL come out of the image) rebuilds the asset byte for
 byte.
 
 The menu name is **"Standard ReBirth"** (task-067): the name songs give the built-in kit (the GLOB
 mod name of a song without a mod; the original's `sub_4166E5` pushes the string at 0x4BB2D0
 and `this + 0x63B` and calls `_strcmp` at 0x4A76E0, 0x4166EC..0x4166FA, returning 1 when it
 gives 0 (`test eax, eax` at 0x416702) [C]; 0x4A76E0 is the CRT's _strcmp (equal strings give
-0 at 0x4A7720; the first difference gives -1 or 1 at 0x4A7724)). The committed mod is rb's
-built-in kit, so a song made with the built-in kit and the mod name the same kit, and rb never
-looks the name up in a mod folder. The mod is for rb only and was not tried in the original app
+0 at 0x4A7720; the first difference gives -1 or 1 at 0x4A7724)). The committed mod is orb's
+built-in kit, so a song made with the built-in kit and the mod name the same kit, and orb never
+looks the name up in a mod folder. The mod is for orb only and was not tried in the original app
 in this form (where a mod of that name would stand beside the built-in entry of the Mods menu).
 task-036 built it as "ReBirth Standard Kit", with a description naming `rb standard-mod`
 (2,574,060 bytes from the installed files, SHA-256 `2d732978...f3e5`); 13.3 is that form's app check.
@@ -760,30 +760,30 @@ started with no extra box, the Mods menu listed `Standard ReBirth` and `ReBirth 
 song whose GLOB names "ReBirth Standard Kit" opened with no Download / Standard dialog, the mod
 checked in the menu and the panel drawn clean. `rb_export.py --app-dir` exported `808_snare` and
 `909_snare` (diag) with GLOB "ReBirth Standard Kit" and, the same session, unchanged ("Standard
-ReBirth"): `rb compare` (the built-in kit from the standard mod) is EQUAL for each of the four WAVs
+ReBirth"): `orb compare` (the built-in kit from the standard mod) is EQUAL for each of the four WAVs
 at one N of 2000..12000 (2704 and 2704 with the mod, 2768 and 2784 with the built-in kit; the N is
 the app's start state, docs/export_state.md section 13). So each export with the standard mod
-equals rb's render with the built-in kit at its own fitted N; the two app WAVs of one song (mod and
+equals orb's render with the built-in kit at its own fitted N; the two app WAVs of one song (mod and
 built-in) differ from each other, as two exports of one song do at different start states. What
 was shown is that the samples the app plays from the standard mod give the built-in kit's output.
 
-### 13.4 rb's built-in kit is the embedded mod (task-067)
+### 13.4 orb's built-in kit is the embedded mod (task-067)
 
 `crates/rbm/src/standard.rs` embeds `assets/Standard.rbm` (`include_bytes!`, `EMBEDDED`):
 `builtin_samples()` loads its 46 samples once (`Rbm::load_all_samples` with the embedded key
-window), `builtin_file(name)` gives any of its files (the UI's splash). `rb render`, `rb compare`,
-`rb play` and OpenRB-338 (the panel, the 808's mod window `App::mod_view`, the export) use it and
+window), `builtin_file(name)` gives any of its files (the UI's splash). `orb render`, `orb compare`,
+`orb play` and OpenRB-338 (the panel, the 808's mod window `App::mod_view`, the export) use it and
 read no file for the kit: `--standard-mod` and `RB_STANDARD_MOD` (task-036's lookup: the option, the
 variable, `Standard.rbm` next to the binary, a "ReBirth Standard Kit" mod in the mod folder) are
-gone (a decision of task-067: the kit is part of rb, like its tables; another kit is a song mod).
-`rb mod pack-standard` needs `-o` (there is no place it is looked for any more) and is the one
+gone (a decision of task-067: the kit is part of orb, like its tables; another kit is a song mod).
+`orb mod pack-standard` needs `-o` (there is no place it is looked for any more) and is the one
 command that reads ReBirth.dll and Rebirth.exe. A song whose GLOB names "Standard ReBirth" plays
 the embedded kit; a third-party mod's missing slots and `--standard-kit` take its samples. The
 samples are ReBirth.dll's byte for byte, so the corpus is unchanged: 164 of 164 EQUAL with no kit
-option, 175 of 175 with the four recrypted shipped mods (`--mod-dir`). The tests (rb-cli,
-rb-engine's corpus tests, rb-player, OpenRB-338) use the embedded kit and need no file of the original;
+option, 175 of 175 with the four recrypted shipped mods (`--mod-dir`). The tests (orb-cli,
+orb-engine's corpus tests, orb-player, OpenRB-338) use the embedded kit and need no file of the original;
 the ones that check the DLL itself or build the mod take the DLL and the exe from the CD image
-(`RB_CD_ISO`, task-121) and skip without it.
+(`ORB_CD_ISO`, task-121) and skip without it.
 
 ## 14. Changing the mod of an open song: the Mods menu (task-056, 2026-10-27)
 
@@ -864,15 +864,15 @@ The "no msg 53" holds for one open song. With more than one song window open, th
 the Mod Selector's OK) also sends top-level 53 for another song and then back for this one
 (inferred, section 14.5).
 
-### 14.3 rb
+### 14.3 orb
 
-`Engine::set_samples` (crates/rb-engine/src/frame/mod.rs) is `sub_10011D84`: the 808, then the
+`Engine::set_samples` (crates/orb-engine/src/frame/mod.rs) is `sub_10011D84`: the 808, then the
 909, each `ChannelDevice::set_samples` = slot 6, then the table. The real-time player sends it as
-`Command::Mod` (`Player::set_mod`, crates/rb-player), to the newest song as every command. The
+`Command::Mod` (`Player::set_mod`, crates/orb-player), to the newest song as every command. The
 audio callback frees nothing: the command's box (`ModSwap`) carries a fixed-capacity
 `samples::Retired` that takes the old tables and the samples the silenced voices still held, and
 goes back to the UI thread through the garbage queue. The original's voices keep their old sample
-pointer; rb's voices let go of it, which changes no output (an inactive voice reads nothing, and
+pointer; orb's voices let go of it, which changes no output (an inactive voice reads nothing, and
 every 808 and 909 trigger passes a sample). Tests: the engine's
 `set_samples_silences_then_replaces_the_table` (808, 909); the player's `mod_change.rs` (a mod
 set on a stopped new song equals building the song with it; on a playing song the tick runs on as
@@ -900,17 +900,17 @@ the id, or 56 {411}, hex `38 01 9B`). Each session: idle 0, pattern mode and pla
 | `mod_808` | `808_cymbal` | 412 Metallicon | 150: 413 MSM2, 250: 411 | `3954a36b…` |
 | `mod_909` | `909_crash` | 412 Orbit2 | 150: 411, 250: 413 PBE2 | `cf414eb6…` |
 
-rb-player's render of the same sessions (`Player::set_mod` with the recrypted mod's samples
-before the same call, `crates/rb-player/tests/live_messages.rs`) has the same hashes: byte for
-byte equal, on the first run, with no change to rb. The same sessions without the changes render
-otherwise in rb (the test checks it), so the changes are audible: the mod swap while playing
+orb-player's render of the same sessions (`Player::set_mod` with the recrypted mod's samples
+before the same call, `crates/orb-player/tests/live_messages.rs`) has the same hashes: byte for
+byte equal, on the first run, with no change to orb. The same sessions without the changes render
+otherwise in orb (the test checks it), so the changes are audible: the mod swap while playing
 (slot 6 on the 808 and the 909, then the new table, the transport untouched), while stopped, to
-and from the built-in kit and between two file mods all do in rb what they do in the DLL. Not
+and from the built-in kit and between two file mods all do in orb what they do in the DLL. Not
 covered: the startup sound (msg 58, task-074) and more than one open song (14.5).
 
 OpenRB-338's Mods menu (task-047, docs/ui_spec.md section 18) is this change: `Link::set_mod`
 forwards the panel's pending events and sends `Player::set_mod`; the song is marked modified, and
-a save writes the mod's INFO name (GLOB) and URLs. The mod's panel bitmaps are not applied (rb
+a save writes the mod's INFO name (GLOB) and URLs. The mod's panel bitmaps are not applied (orb
 draws its own art).
 
 ### 14.5 Several song windows open: the msg 53 round trip (task-075, 2026-10-27)
@@ -972,19 +972,19 @@ dialog being active is not traced].** The marks are split:
   current again: both songs' 303s get the note-off release, their drum voices are silenced, and the
   shared delay line is cleared. [G] Between the two messages an audio callback may render the
   other song (not observed). This is docs/original_bugs.md Q-4.
-- **rb.** rb opens one song, so there is no other song to activate and nothing is modelled.
+- **orb.** orb opens one song, so there is no other song to activate and nothing is modelled.
 
-## 15. `rb mod`: unpack and pack (task-097, 2026-10-28)
+## 15. `orb mod`: unpack and pack (task-097, 2026-10-28)
 
-The `rb mod` group holds every command that works on a mod file: `recrypt` (section 12, the one
-command that reads `RB20FUL.DAT`), `pack-standard` (section 13, `rb mod pack-standard`), `unpack`
-and `pack`. The code is `crates/rbm/src/pack.rs` (the CLI, `crates/rb-cli/src/modcmd.rs`, only
+The `orb mod` group holds every command that works on a mod file: `recrypt` (section 12, the one
+command that reads `RB20FUL.DAT`), `pack-standard` (section 13, `orb mod pack-standard`), `unpack`
+and `pack`. The code is `crates/rbm/src/pack.rs` (the CLI, `crates/orb-cli/src/modcmd.rs`, only
 reads and writes the files).
 
-### 15.1 `rb mod unpack MOD.rbm -o DIR`
+### 15.1 `orb mod unpack MOD.rbm -o DIR`
 
-Takes a recrypted mod (one that loads with `KeyTable::embedded`, i.e. rb's own; any other fails
-with the `rb mod recrypt` hint and `RB20FUL.DAT` is never read). It writes every embedded file
+Takes a recrypted mod (one that loads with `KeyTable::embedded`, i.e. orb's own; any other fails
+with the `orb mod recrypt` hint and `RB20FUL.DAT` is never read). It writes every embedded file
 decrypted with the key of its reader (12.1: the DLL's byte key for the first file of a slot name,
 the exe's u16 key for the others) under its own name, skips the key pad `rb-recrypt.pad`, and
 writes `DIR/mod.toml`. `DIR` must be new or empty unless `--force` is given. The mod must be
@@ -1030,7 +1030,7 @@ Strings are Latin-1 (the original's), each field NUL-terminated in its INFO spac
 bytes between or after its fields); unpack writes it only then. None of the four shipped mods
 (recrypted) has one or a non-standard HEAD.
 
-### 15.3 `rb mod pack DIR -o MOD.rbm`
+### 15.3 `orb mod pack DIR -o MOD.rbm`
 
 Lays the CAT out in the clear (HEAD, the files in `files` order, INFO), then passes it through
 `rbm::recrypt` with an all-zero table (the identity), exactly as the standard mod is built
@@ -1050,23 +1050,23 @@ load without `RB20FUL.DAT` (`slots_covered`, `all_covered`). Errors (exit 1):
 
 `pack(unpack(M)) == M` byte for byte for every recrypted mod: the order is the file order, the
 ordinals and so the keys are the same, the pad is rebuilt from the same files, and INFO and HEAD
-are either rebuilt from the fields or carried raw. Checked (`crates/rb-cli/tests/mod_pack.rs`) on
+are either rebuilt from the fields or carried raw. Checked (`crates/orb-cli/tests/mod_pack.rs`) on
 the standard mod (`assets/Standard.rbm`) and on the four shipped mods, recrypted, in
-`RB_MOD_DIR`. To edit a mod: unpack, change a file or a field, pack. A mod made so loads in rb
+`ORB_MOD_DIR`. To edit a mod: unpack, change a file or a field, pack. A mod made so loads in orb
 and, like a recrypted one, in the original (section 12.3). Since task-067 the standard mod's INFO
-description names `rb mod pack-standard` (13.2).
+description names `rb mod pack-standard` (13.2; the CLI's first name, kept in the committed asset).
 
 ## 16. The CD image: `--iso` (task-065, 2026-10-28)
 
-`rb mod recrypt --iso CD.iso` and `rb mod pack-standard --iso CD.iso` read what they need from the
+`orb mod recrypt --iso CD.iso` and `orb mod pack-standard --iso CD.iso` read what they need from the
 ReBirth CD as an ISO 9660 image, in place: nothing is extracted to disk and no Windows code runs.
-The code is `crates/rb-cli/src/cd.rs`. The image is the user's (the 2001 reissue, 570,923,008
+The code is `crates/orb-cli/src/cd.rs`. The image is the user's (the 2001 reissue, 570,923,008
 bytes); it and anything read from it are never committed.
 
 ### 16.1 What is on the CD [C, read from the user's image]
 
 - **The image.** 2048-byte sectors, a primary volume descriptor and a Joliet one (UCS-2BE long
-  names; the primary names are 8.3 with `;1`). rb's own reader (about 150 lines) takes the Joliet
+  names; the primary names are 8.3 with `;1`). orb's own reader (about 150 lines) takes the Joliet
   tree when there is one, else the primary one; names are compared without case; a multi-extent
   file,
   a block size other than 2048 or a raw 2352-byte image is refused. The root holds `Autorun.inf`,
@@ -1089,13 +1089,13 @@ bytes); it and anything read from it are never committed.
 
 ### 16.2 The commands
 
-- **`rb mod recrypt --iso CD.iso [IN... ] -o OUT`**: `RB20FUL.DAT` is read through a window of the
+- **`orb mod recrypt --iso CD.iso [IN... ] -o OUT`**: `RB20FUL.DAT` is read through a window of the
   image (the SHA-256 of task-064 applies, 0.9 s for the four mods); `--iso` and `--rb20ful` exclude
   each other. With **no input mod** the four shipped mods of the third CAB are the inputs and `-o`
   must be a folder (a name ending in `.rbm` is a usage error). With input mods only the key file
   comes from the image. The result is byte for byte the `--rb20ful` form over the original mods
   (and the `recrypted-mods` set of 12.4).
-- **`rb mod pack-standard --iso CD.iso -o FILE`**: `ReBirth.dll` and `Rebirth.exe` are unpacked from
+- **`orb mod pack-standard --iso CD.iso -o FILE`**: `ReBirth.dll` and `Rebirth.exe` are unpacked from
   the third CAB in memory (0.5 s) and **checked by SHA-256** (`4c3a6441...8b12`, `e69fef41...7004`);
   another hash is an error that says it is another edition of the CD. The result is
   `assets/Standard.rbm` byte for byte (`6355b5f1...5fbe`). `--iso` excludes `--rebirth-dll` and
@@ -1117,12 +1117,12 @@ bytes); it and anything read from it are never committed.
   `rbm::pack::safe_path` (no separator, `..`, drive, device name); any other name is an error and
   nothing is written. The `cab` and `lzxd` crates are not hardened against malformed CAB bytes (a
   panic is possible, not memory unsafety); the image is the user's own.
-- **Tests** (`crates/rb-cli/tests/cd_image.rs`): always on, a synthetic Joliet and a primary-only
+- **Tests** (`crates/orb-cli/tests/cd_image.rs`): always on, a synthetic Joliet and a primary-only
   ISO and an MSZIP CAB (`cab` cannot write LZX) in memory: names, paths, windows, the decoy
   `MSCF`, unsafe mod names, a truncated installer, the errors, the option conflicts; gated on
-  the real image (`RB_CD_ISO`): the DAT's hash, the two
+  the real image (`ORB_CD_ISO`): the DAT's hash, the two
   files' hashes (the DLL's is the hash of the installed `ReBirth.dll`), the shipped mods equal to their
   pinned SHA-256s, `pack-standard --iso` equal to `assets/Standard.rbm` (and to the file form),
   `recrypt --iso` equal to the `--rb20ful` form and to the pinned SHA-256s of the recrypted mods.
-  `standard_mod.rs`'s reproduction test takes the exe and the DLL from `RB_CD_ISO`. The LZX path is
+  `standard_mod.rs`'s reproduction test takes the exe and the DLL from `ORB_CD_ISO`. The LZX path is
   covered only by the gated tests.

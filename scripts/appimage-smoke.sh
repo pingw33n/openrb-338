@@ -7,10 +7,10 @@
 #
 # It installs the runtime libraries the host must provide (docs/building.md), then checks:
 #   - the AppImage extracts, with the desktop entry, the icons and LICENSE, and bundles no
-#     glibc (no libc.so.6, ld-linux, libm, libpthread) and no ELF file but OpenRB-338 and rb;
+#     glibc (no libc.so.6, ld-linux, libm, libpthread) and no ELF file but OpenRB-338 and orb;
 #   - the most recent GLIBC_ version the two programs need;
-#   - `--rb --help` and `--rb info` on a committed song (the CLI inside), also through a
-#     symlink named rb;
+#   - `--orb --help` and `--orb info` on a committed song (the CLI inside), also through a
+#     symlink named orb;
 #   - OpenRB-338 --screenshot under xvfb writes a PNG with Vulkan, with OpenGL, automatically
 #     (it must choose Vulkan) and with the Vulkan ICDs hidden (the fallback: OpenGL).
 set -euo pipefail
@@ -33,7 +33,7 @@ song=$root/tests/songs/shipped/Calm.rbs
 emulated= # never inherited from the environment
 if [ "$(uname -s)" = Darwin ] && [ "$platform" = linux/amd64 ]; then emulated=1; fi
 
-docker run --rm --platform "$platform" -e "OPENRB_APPIMAGE_EMULATED=$emulated" \
+docker run --rm --platform "$platform" -e "ORB_APPIMAGE_EMULATED=$emulated" \
     -v "$appimage:/t/app.AppImage:ro" \
     -v "$song:/t/song.rbs:ro" "$base" bash -euo pipefail -c '
 export DEBIAN_FRONTEND=noninteractive
@@ -47,25 +47,25 @@ cd /tmp
 # run_app ARGS: the AppImage as a user runs it. Docker Desktop on a Mac refuses to exec an
 # x86_64 AppImage (its runtime) under amd64 emulation: then the squashfs is unpacked with
 # unsquashfs (it starts after the ELF runtime) and its AppRun is run, with ARGV0 set by hand.
-if [ "$OPENRB_APPIMAGE_EMULATED" != 1 ]; then
+if [ "$ORB_APPIMAGE_EMULATED" != 1 ]; then
     # the normal path (Linux, CI): the AppImage must run, or the script fails
     ./app.AppImage --appimage-extract >/dev/null
     run_app() { ./app.AppImage --appimage-extract-and-run "$@"; }
-    run_as_rb() { ./links/rb --appimage-extract-and-run "$@"; }
+    run_as_orb() { ./links/orb --appimage-extract-and-run "$@"; }
 else
     echo "EMULATED (local x86_64 on macOS only): running squashfs-root/AppRun, not the runtime"
     off=$(readelf -h app.AppImage | awk "/Start of section headers/ {o=\$5} \
         /Size of section headers/ {s=\$5} /Number of section headers/ {n=\$5} END {print o+s*n}")
     unsquashfs -q -o "$off" -d squashfs-root app.AppImage
     run_app() { squashfs-root/AppRun "$@"; }
-    run_as_rb() { ARGV0=./links/rb squashfs-root/AppRun "$@"; }
+    run_as_orb() { ARGV0=./links/orb squashfs-root/AppRun "$@"; }
 fi
 echo "== AppDir"
 ls -A squashfs-root
 desktop-file-validate squashfs-root/OpenRB-338.desktop && echo "desktop entry valid"
 find squashfs-root/usr/share/icons -name "*.png" | sort
 test -s squashfs-root/LICENSE
-echo "== ELF files (only OpenRB-338 and rb are expected)"
+echo "== ELF files (only OpenRB-338 and orb are expected)"
 find squashfs-root -type f -exec sh -c "head -c4 \"\$1\" | grep -q ELF && echo \"\$1\"" _ {} \; \
     | sort | tee /tmp/elf.txt
 test "$(wc -l < /tmp/elf.txt)" = 2
@@ -82,27 +82,27 @@ for f in $(cat /tmp/elf.txt); do
     top=$(printf "%s\n" "$max" GLIBC_2.35 | sort -V | tail -1)
     test "$top" = GLIBC_2.35
 done
-echo "== rb inside (output goes to files first: no pipe into head)"
-run_app --rb --help > /tmp/help.txt 2>&1
+echo "== orb inside (output goes to files first: no pipe into head)"
+run_app --orb --help > /tmp/help.txt 2>&1
 head -5 /tmp/help.txt
 grep -qi usage /tmp/help.txt
-run_app --rb info /t/song.rbs > /tmp/info.txt 2>&1
+run_app --orb info /t/song.rbs > /tmp/info.txt 2>&1
 cat /tmp/info.txt
 grep -qi tempo /tmp/info.txt
 mkdir links
-ln -s ../app.AppImage links/rb
-run_as_rb --help > /tmp/help2.txt 2>&1
+ln -s ../app.AppImage links/orb
+run_as_orb --help > /tmp/help2.txt 2>&1
 head -3 /tmp/help2.txt
 cmp /tmp/help.txt /tmp/help2.txt
-echo "the symlink named rb ran the CLI"
+echo "the symlink named orb ran the CLI"
 echo "== OpenRB-338 --screenshot under xvfb"
 ls /usr/share/vulkan/icd.d
 # shot LABEL BACKEND VAR=VALUE...: a screenshot with that environment, checked for the PNG
-# signature and for the backend wgpu chose (OPENRB_GPU_INFO=1 makes OpenRB-338 print it).
+# signature and for the backend wgpu chose (ORB_GPU_INFO=1 makes OpenRB-338 print it).
 shot() {
     local label=$1 want=$2; shift 2
     rm -f /tmp/shot.png
-    env OPENRB_GPU_INFO=1 "$@" xvfb-run -a bash -c \
+    env ORB_GPU_INFO=1 "$@" xvfb-run -a bash -c \
         "$(declare -f run_app); run_app --demo --screenshot /tmp/shot.png" > /tmp/ui.txt 2>&1 || {
         echo "$label: failed" >&2
         cat /tmp/ui.txt

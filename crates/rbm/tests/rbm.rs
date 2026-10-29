@@ -1,5 +1,5 @@
 //! Tests of the `rbm` crate. The synthetic ones always run; the real-file ones take the CD's
-//! RB20FUL.DAT and the four shipped mods from the CD image (`RB_CD_ISO`, by `rb-testkit`) and
+//! RB20FUL.DAT and the four shipped mods from the CD image (`ORB_CD_ISO`, by `orb-testkit`) and
 //! skip with a message when it is not set. None of that material is in the repository.
 //! `recrypt_python.rs` checks `recrypt` against `tools/rbm.py` on synthetic mods, with no input.
 
@@ -9,7 +9,7 @@ mod python;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-use rb_engine::samples::{self, Sample, SampleSet};
+use orb_engine::samples::{self, Sample, SampleSet};
 use rbm::*;
 
 // ---------------------------------------------------------------- synthetic material
@@ -323,9 +323,9 @@ fn malformed_input_does_not_panic() {
 // ---------------------------------------------------------------- real files
 
 /// The CD's key file and the four shipped mods (not recrypted), from the CD image
-/// (`RB_CD_ISO`, by `rb-testkit`), or a skip.
+/// (`ORB_CD_ISO`, by `orb-testkit`), or a skip.
 fn real_env() -> Option<(PathBuf, Vec<PathBuf>)> {
-    let cd = rb_testkit::cd_files()?;
+    let cd = orb_testkit::cd_files()?;
     let mut mods: Vec<PathBuf> = std::fs::read_dir(&cd.orig_mods)
         .expect("the extracted mods are not readable")
         .map(|e| e.unwrap().path())
@@ -610,7 +610,7 @@ fn recrypt_limits_and_coverage() {
 #[test]
 fn embedded_window_is_the_dats() {
     use sha2::{Digest, Sha256};
-    let Some(cd) = rb_testkit::cd_files() else {
+    let Some(cd) = orb_testkit::cd_files() else {
         return;
     };
     let bytes = std::fs::read(&cd.dat).unwrap();
@@ -666,7 +666,7 @@ fn real_mods_recrypt() {
 /// the child process only.
 #[test]
 fn the_python_tool_tests_pass_on_the_real_files() {
-    let Some(cd) = rb_testkit::cd_files() else {
+    let Some(cd) = orb_testkit::cd_files() else {
         return;
     };
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

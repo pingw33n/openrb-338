@@ -4,15 +4,15 @@ The art of the bundled UI (milestone m-3): the song window ("the panel") of
 `docs/ui_spec.md`, 624 x 510 px, drawn as scalable SVG parts. The app (task-044) draws them
 through egui's SVG loader (`egui_extras`, usvg + resvg) and places them with `layout.tsv`.
 
-**Everything here is generated.** `crates/rb-ui-art` builds every file from code (the flat look
+**Everything here is generated.** `crates/orb-ui-art` builds every file from code (the flat look
 of the ui-poc experiment: its palette, flat shapes, red seven-segment displays, slate and paper
-sections). Do not edit an SVG by hand; change `crates/rb-ui-art/src/parts.rs` (art) or
+sections). Do not edit an SVG by hand; change `crates/orb-ui-art/src/parts.rs` (art) or
 `layout.rs` (positions) and run
 
 ```
-cargo run --release -p rb-ui-art -- gen      # writes assets/ui/*.svg, panel.svg, layout.tsv
-cargo run --release -p rb-ui-art -- check    # renders everything at 1x/2x/3x into preview/
-cargo test -p rb-ui-art                      # committed files = generator; render + spec checks
+cargo run --release -p orb-ui-art -- gen      # writes assets/ui/*.svg, panel.svg, layout.tsv
+cargo run --release -p orb-ui-art -- check    # renders everything at 1x/2x/3x into preview/
+cargo test -p orb-ui-art                      # committed files = generator; render + spec checks
 ```
 
 ## License and origin
@@ -30,7 +30,7 @@ code identifiers, not art. The labels are vector paths of a built-in stroke font
 
 - Every part's `width`/`height` and `viewBox` are its **native size in panel pixels** (a
   30 x 30 knob is 30 x 30 units). The sections are the original's (`docs/ui_spec.md`); the
-  placement of the controls inside them is rb's own design (task-085), so `layout.tsv`, not the
+  placement of the controls inside them is orb's own design (task-085), so `layout.tsv`, not the
   spec, has the control rectangles. The anchor of a part
   is its top-left corner at the control's top-left; there are no margins to subtract.
 - To draw a part at scale `s` (window scale, `pixels_per_point`) load it with a size hint of
@@ -175,7 +175,7 @@ are in `KNOBS` (`src/parts.rs`) and below:
 
 ## How the app composes them
 
-`rb_ui_art::layout::compose` (`crates/rb-ui-art/src/layout.rs`) is the reference: background,
+`orb_ui_art::layout::compose` (`crates/orb-ui-art/src/layout.rs`) is the reference: background,
 then per control the parts at the control's rectangle (knob: body, arc, rotated pointer; fader:
 track and handle; display: digit frames). `docs/ui_spec.md` has the behavior (which values the
 controls show and send). The test `controls_are_inside_the_panel` checks that every control of
@@ -187,8 +187,8 @@ controls show and send). The test `controls_are_inside_the_panel` checks that ev
   above 8 is the bank's business of the app.
 - The Sync and MIDI indicators (MIDI is out of scope) are not drawn.
 - The art was rendered with resvg directly (`ui-art check`), the same usvg + resvg that
-  `egui_extras` uses. task-044 then ran every part through egui itself (`rb-ui`,
-  `crates/rb-ui/tests/interaction.rs`: all parts load and rasterize at 1x/2x/3x; screenshots
+  `egui_extras` uses. task-044 then ran every part through egui itself (`orb-ui`,
+  `crates/orb-ui/tests/interaction.rs`: all parts load and rasterize at 1x/2x/3x; screenshots
   in `docs/ui_app/`).
 - `layout.tsv` ids are not unique: `tb303_N.accent` is both the accent knob and the accent flag
   button. The app keys controls by kind and id.

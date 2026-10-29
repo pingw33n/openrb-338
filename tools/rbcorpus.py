@@ -21,7 +21,7 @@ Sets (tests/refs/manifest.json is the source, MANIFEST.md is generated from it):
            the mod loaded (message 55: tools/rbm.py, key table from the user's RB20FUL.DAT); sha256 +
            frames only. The entry records the mod: name, file name, sha256 and size of the .rbm (the
            .rbm files and RB20FUL.DAT are Propellerhead material and are not committed); capture and
-           recapture read them from --mod-dir / $RB_MOD_DIR and --rb20ful / $RB_RB20FUL (the dir holds
+           recapture read them from --mod-dir / $ORB_MOD_DIR and --rb20ful / $ORB_RB20FUL (the dir holds
            the .rbm files; the song's mod is found by the name in the file's INFO chunk)
   modapp   the original app's exports of mod songs (the app finds the mod in its own Mods folder), with
            the fitted N of each: the cross-check of the key table of tools/rbm.py; sha256 + frames + N
@@ -126,7 +126,7 @@ def mod_files(mod_dir):
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import rbm
     if not mod_dir:
-        sys.exit("the mods need --mod-dir (or $RB_MOD_DIR): the directory of the .rbm files")
+        sys.exit("the mods need --mod-dir (or $ORB_MOD_DIR): the directory of the .rbm files")
     out = {}
     for p in sorted(glob.glob(os.path.join(mod_dir, "*.rbm"))):
         r = rbm.read(p)
@@ -141,7 +141,7 @@ def mod_args(a, mod_name):
     if mod_name not in files:
         sys.exit("no .rbm named %r in %s (has %s)" % (mod_name, a.mod_dir, sorted(files)))
     if not a.rb20ful:
-        sys.exit("the mods need --rb20ful (or $RB_RB20FUL): the CD's RB20FUL.DAT")
+        sys.exit("the mods need --rb20ful (or $ORB_RB20FUL): the CD's RB20FUL.DAT")
     p = files[mod_name]
     rec = {"name": mod_name, "file": os.path.basename(p), "sha256": sha(p), "size": os.path.getsize(p),
            "id": MOD_ID}
@@ -355,9 +355,9 @@ def write_md(m):
          " of mod songs with their fitted N (hash only: sha256, frames, N; the fit.json files are in tests/refs/modapp/). The .rbm"
          " files and RB20FUL.DAT are Propellerhead material and are NOT committed: each entry records the"
          " mod's name, file, size and sha256; capture and re-capture read the ORIGINAL mods from"
-         " `--mod-dir` / `$RB_MOD_DIR` and `--rb20ful` / `$RB_RB20FUL`; the recorded size and sha256 are"
-         " the originals'. `rb compare` and the cargo tests (since task-063) read recrypted copies"
-         " (`rb mod recrypt`) from `$RB_MOD_DIR`: the original plus 1032 bytes.",
+         " `--mod-dir` / `$ORB_MOD_DIR` and `--rb20ful` / `$ORB_RB20FUL`; the recorded size and sha256 are"
+         " the originals'. `orb compare` and the cargo tests (since task-063) read recrypted copies"
+         " (`orb mod recrypt`) from `$ORB_MOD_DIR`: the original plus 1032 bytes.",
          "- `tool_commit` of the `mod` and `modapp` entries is the last commit that touched the tool before"
          " task-031; the tool they were captured with includes the change of task-031 itself (mod loading"
          " in rbsmsg/run/fit, in the commit that adds these entries, `Task: task-031`), which is why"
@@ -418,10 +418,10 @@ def main():
     c = sub.add_parser("manifest")
     c.set_defaults(f=lambda a: write_md(load()))
     for c in sub.choices.values():
-        c.add_argument("--mod-dir", default=os.environ.get("RB_MOD_DIR"),
-                       help="the directory of the .rbm files (default $RB_MOD_DIR)")
-        c.add_argument("--rb20ful", default=os.environ.get("RB_RB20FUL"),
-                       help="the CD's RB20FUL.DAT (default $RB_RB20FUL)")
+        c.add_argument("--mod-dir", default=os.environ.get("ORB_MOD_DIR"),
+                       help="the directory of the .rbm files (default $ORB_MOD_DIR)")
+        c.add_argument("--rb20ful", default=os.environ.get("ORB_RB20FUL"),
+                       help="the CD's RB20FUL.DAT (default $ORB_RB20FUL)")
     a = ap.parse_args()
     a.f(a)
 

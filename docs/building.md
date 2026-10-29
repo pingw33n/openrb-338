@@ -1,6 +1,6 @@
 # Building and packaging
 
-How rb (the CLI) and OpenRB-338 (the UI, crate `rb-ui`) are built for release on the six
+How orb (the CLI, crate `orb-cli`) and OpenRB-338 (the UI, crate `orb-ui`) are built for release on the six
 targets, locally and in GitHub Actions (task-108). The installers and bundles (.dmg, Windows
 installer, AppImage) and the draft release build on this (tasks 110 to 113; the .dmg is
 described under "The macOS app and .dmg").
@@ -22,7 +22,7 @@ Every OS has an amd64 and an arm64 variant:
 | `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (the `.dmg` has the `lipo` of the two, below) |
 
 A package is `OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` holding a folder of the same
-name with `rb` (`rb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The
+name with `orb` (`orb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The
 binaries are built with `--locked` and the `dist` profile (below).
 
 ### The dist profile (task-132)
@@ -42,16 +42,16 @@ package job of `release.yml`) builds with `--profile dist` and takes the binarie
 `target/<target>/dist/`. `cargo build --release` and `scripts/macos-dev-app.sh` are unchanged
 (`macos-app.sh` renders the icon with a release `ui-art`, which is not shipped). A dist build
 takes minutes more than a release build (about 1.5 to 3 minutes per target here). Nothing reads
-`PROFILE` (`crates/rb-ui/build.rs` uses `OUT_DIR` and the version variables only), so the profile
+`PROFILE` (`crates/orb-ui/build.rs` uses `OUT_DIR` and the version variables only), so the profile
 changes no behavior.
 
-Fidelity: a dist-built `rb` (`target/aarch64-apple-darwin/dist/rb compare --manifest
-tests/refs/manifest.json --mod-dir DIR`, the mods from `rb mod recrypt --iso "$RB_CD_ISO" -o
+Fidelity: a dist-built `orb` (`target/aarch64-apple-darwin/dist/orb compare --manifest
+tests/refs/manifest.json --mod-dir DIR`, the mods from `orb mod recrypt --iso "$ORB_CD_ISO" -o
 DIR`) compares 175 of 175 corpus songs equal, as the release build does.
 
 Sizes on this Mac (2026-10-28, bytes; release profile with `strip = symbols`, then dist):
 
-| Target | Binary `rb` | Binary `OpenRB-338` | Package |
+| Target | Binary `orb` | Binary `OpenRB-338` | Package |
 |---|---|---|---|
 | aarch64-apple-darwin | 5,924,320 to 5,418,736 | 21,058,864 to 14,981,536 | .tar.gz 15,417,562 to 11,888,843 |
 | x86_64-apple-darwin | 6,170,656 to 5,749,832 | 22,011,896 to 16,373,416 | .tar.gz 15,940,752 to 12,531,940 |
@@ -74,7 +74,7 @@ the same string for one `SOURCE_DATE_EPOCH`:
 |---|---|---|
 | `scripts/version.sh` | `YYYY.MMDD.HHMM` | `2026.1028.1930` |
 | file names | `OpenRB-338-<version>-<target>.<ext>` | `OpenRB-338-2026.1028.1930-universal-apple-darwin.dmg` |
-| About box (`crates/rb-ui/src/version.rs`, made by `build.rs`) | `<version> (<hash>)` | `2026.1028.1930 (b472847)` |
+| About box (`crates/orb-ui/src/version.rs`, made by `build.rs`) | `<version> (<hash>)` | `2026.1028.1930 (b472847)` |
 | `README.txt` of a package | `OpenRB-338 <version> (<target>)` | `OpenRB-338 2026.1028.1930 (x86_64-pc-windows-msvc)` |
 | macOS `CFBundleShortVersionString` and `CFBundleVersion` (at most three integers) | `<version>` | `2026.1028.1930` |
 | macOS `OpenRBBuildTime` (the one place with seconds) | `YYYY-MM-DD HH:MM:SS UTC` | `2026-10-28 19:30:00 UTC` |
@@ -90,7 +90,7 @@ builds in one minute have one version. `MMDD` is at most 1231 and `HHMM` at most
 below 65535, as an App Store validation would need (`YYYY.MMDD.HHMMSS` would not).
 
 `CFBundleVersion` is the time too, not a commit count: it orders builds across checkouts and
-branches, and the .dmg's name carries it. Neither `rb` nor `OpenRB-338` has a `--version` flag,
+branches, and the .dmg's name carries it. Neither `orb` nor `OpenRB-338` has a `--version` flag,
 so neither prints the Cargo version. Later packages (the Windows installers, the AppImages, the
 draft release) name themselves the same way.
 
@@ -105,7 +105,7 @@ One time per build: the version comes from `SOURCE_DATE_EPOCH` alone, in the bin
 time of the build script's last run, so a bundle made from it with `scripts/macos-dev-app.sh`
 (which has its own `SOURCE_DATE_EPOCH`, default now) can show a different version in its plist
 than the About box. For a dev bundle that matters, build and wrap with the same variable
-(`SOURCE_DATE_EPOCH=$(date +%s) cargo build --release -p rb-ui && SOURCE_DATE_EPOCH=...
+(`SOURCE_DATE_EPOCH=$(date +%s) cargo build --release -p orb-ui && SOURCE_DATE_EPOCH=...
 scripts/macos-dev-app.sh`), or read the version from the About box.
 
 ### What may ship
@@ -114,14 +114,14 @@ Decided by the user (2026-10-28): the built-in kit `assets/Standard.rbm` (the "S
 ReBirth" drum samples), embedded in both binaries, may ship in the public release packages:
 the `.tar.gz`, the `.zip`, the `.dmg`, and the later installer and AppImages.
 
-On Linux, both `rb` and OpenRB-338 link `libasound.so.2` (ALSA, package `libasound2`), so even
-`rb --help` fails without it. OpenRB-338 also loads X11 or Wayland and the GL or Vulkan driver at
+On Linux, both `orb` and OpenRB-338 link `libasound.so.2` (ALSA, package `libasound2`), so even
+`orb --help` fails without it. OpenRB-338 also loads X11 or Wayland and the GL or Vulkan driver at
 run time (dlopen): on a bare Ubuntu 22.04 it needed `libxcursor1`, `libxrandr2`, `libxi6`,
 `libxkbcommon-x11-0`, `libegl1` and a driver (`mesa-vulkan-drivers` for software Vulkan, or
 Mesa's OpenGL and EGL drivers, `libgl1-mesa-dri` and `libegl-mesa0`; see "The AppImage"). The most
-recent glibc symbol the binaries use is `GLIBC_2.35` (OpenRB-338) and `GLIBC_2.34` (rb), on both
+recent glibc symbol the binaries use is `GLIBC_2.35` (OpenRB-338) and `GLIBC_2.34` (orb), on both
 architectures, so the minimum is glibc 2.35. Both Linux packages were smoke-tested in
-`ubuntu:22.04` containers (`rb --help`, `rb info` on a shipped song, and OpenRB-338
+`ubuntu:22.04` containers (`orb --help`, `orb info` on a shipped song, and OpenRB-338
 `--screenshot` under xvfb, which wrote a PNG), amd64 and arm64.
 
 The Windows build of OpenRB-338 is a GUI-subsystem exe (task-111), see "The Windows installer".
@@ -130,7 +130,7 @@ The Windows build of OpenRB-338 is a GUI-subsystem exe (task-111), see "The Wind
 
 | Script | Does |
 |---|---|
-| `scripts/build.sh TARGET` | builds `rb` and `OpenRB-338` (profile `dist`) for the target into `dist/<target>/bin/` |
+| `scripts/build.sh TARGET` | builds `orb` and `OpenRB-338` (profile `dist`) for the target into `dist/<target>/bin/` |
 | `scripts/package.sh TARGET` | `build.sh`, then packs `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` (`SKIP_BUILD=1` packs the existing `bin/`) |
 | `scripts/build-all.sh [TARGET...]` | packages every target practical from this machine, and lists the skipped and failed ones |
 | `scripts/package-dmg.sh` | builds both macOS targets, then `dist/universal-apple-darwin/OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg` (`SKIP_BUILD=1` uses the existing `bin/` folders) |
@@ -138,19 +138,19 @@ The Windows build of OpenRB-338 is a GUI-subsystem exe (task-111), see "The Wind
 | `scripts/installer/openrb.nsi`, `scripts/installer/path.ps1` | the installer's script, and the helper that edits the user's PATH |
 | `scripts/package-appimage.sh TARGET` | `build.sh` for a Linux target, then `dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x86_64\|aarch64>.AppImage` with appimagetool (`SKIP_BUILD=1` uses the existing `bin/`) |
 | `scripts/appimage-pack.sh TOOL APPDIR OUT` | runs appimagetool (called by `package-appimage.sh`, in the build image off Linux; unpacks the tool with `unsquashfs` where the AppImage cannot be exec-ed) |
-| `scripts/appimage-smoke.sh APPIMAGE` | runs an AppImage in a stock `ubuntu:22.04` container: contents, no glibc bundled, `rb`, `--screenshot` under xvfb |
+| `scripts/appimage-smoke.sh APPIMAGE` | runs an AppImage in a stock `ubuntu:22.04` container: contents, no glibc bundled, `orb`, `--screenshot` under xvfb |
 | `scripts/macos-app.sh OUT_DIR UI [CLI]` | makes `OUT_DIR/OpenRB-338.app` from the binaries (Info.plist, icon, ad-hoc signature) |
 | `scripts/macos-dev-app.sh` | wraps `target/release/OpenRB-338` into `target/OpenRB-338.app` for everyday runs |
 | `scripts/version.sh` | prints the version `YYYY.MMDD.HHMM` (the UTC build time from `SOURCE_DATE_EPOCH`, to the minute); `--time` the full time, `--epoch v2026.1028.1930` the `SOURCE_DATE_EPOCH` of a release tag |
-| `scripts/release-env.sh` | prints the build environment all packages of a release share (`SOURCE_DATE_EPOCH`, `RB_BUILD_BRANCH`) |
+| `scripts/release-env.sh` | prints the build environment all packages of a release share (`SOURCE_DATE_EPOCH`, `ORB_BUILD_BRANCH`) |
 | `scripts/docker/linux-build.Dockerfile` | the Linux build image (Ubuntu 22.04, build tools, ALSA headers) |
 
 `dist/` is git-ignored. The later packaging scripts take `dist/<target>/bin/` as their input.
 
-The version string (Help > About, task-102) is made by `crates/rb-ui/build.rs` from two
+The version string (Help > About, task-102) is made by `crates/orb-ui/build.rs` from two
 environment variables that the scripts pass through, including into Docker: `SOURCE_DATE_EPOCH`
-(the build time; default now) and `RB_BUILD_BRANCH` (`main` makes the hash the main form; a
-tag's detached HEAD needs it). Example: `SOURCE_DATE_EPOCH=1793181022 RB_BUILD_BRANCH=main
+(the build time; default now) and `ORB_BUILD_BRANCH` (`main` makes the hash the main form; a
+tag's detached HEAD needs it). Example: `SOURCE_DATE_EPOCH=1793181022 ORB_BUILD_BRANCH=main
 scripts/package.sh aarch64-apple-darwin`.
 
 ### What each host builds
@@ -204,6 +204,35 @@ the cargo registry and the target dir are in the named volumes `openrb-rustup-<a
 `openrb-cargo-<arch>` and `openrb-target-<arch>`, so a second run is incremental.
 `docker volume rm` them to start clean.
 
+## Environment variables
+
+Every variable of the project has the prefix `ORB_` (task-068; the CLI is `orb`). The old `RB_`
+and `OPENRB_` names are not read any more and have no deprecated alias.
+
+| Variable | Read by | Meaning | Old name |
+|---|---|---|---|
+| `ORB_CD_ISO` | `orb-testkit` (the gated tests; the `orb` commands take the image as `--iso`) | the ReBirth 2.01 CD image; the tests skip when it is unset | `RB_CD_ISO` |
+| `ORB_THIRDPARTY_MODS_DIR` | `orb-testkit` | the user's folder of RECRYPTED third-party mods, read in place | `RB_THIRDPARTY_MODS_DIR` |
+| `ORB_THIRDPARTY_SONGS_DIR` | `orb-testkit` | the user's folder of songs, read in place | `RB_THIRDPARTY_SONGS_DIR` |
+| `ORB_MOD_DIR` | `orb render`, `compare`, `play`, `info`; OpenRB-338 | the folder of recrypted `.rbm` mods (`--mod-dir` wins) | `RB_MOD_DIR` |
+| `ORB_RB20FUL` | `orb mod recrypt` | the path of `RB20FUL.DAT` (`--rb20ful` wins); also the default of `tools/rbcorpus.py` | `RB_RB20FUL` |
+| `ORB_UI_CONFIG` | OpenRB-338 | the settings file to use instead of `OpenRB-338/ui.toml` in the configuration folder | `RB_UI_CONFIG` |
+| `ORB_GPU_INFO` | OpenRB-338 | `1` prints the graphics adapter wgpu chose (`scripts/appimage-smoke.sh`) | `OPENRB_GPU_INFO` |
+| `ORB_BUILD_BRANCH` | `crates/orb-ui/build.rs`, `scripts/release-env.sh`, `scripts/build.sh` (passed into Docker), `release.yml` | `main` or `other`: makes the About box's hash the main form | `RB_BUILD_BRANCH` |
+| `ORB_UI_VERSION` | set by `crates/orb-ui/build.rs` for rustc (`env!`), never by hand | the version string of the About box | `RB_UI_VERSION` |
+| `ORB_APPIMAGE_EMULATED` | `scripts/package-appimage.sh`, `appimage-pack.sh`, `appimage-smoke.sh` | `1` on an x86_64 AppImage built or checked on a Mac (local only) | `OPENRB_APPIMAGE_EMULATED` |
+| `ORB_PYTHON` | `tests/common/python.rs` (the tests that run `tools/*.py`) | the Python 3 program or command | `RB_PYTHON` |
+| `ORB_LIVE_OUT` | `orb-player`'s `live_messages` test | an output folder for the session files rbhost replays | `RB_LIVE_OUT` |
+| `ORB_REBIRTH_DLL` | `tools/gen_static_tables.py` | the path of `ReBirth.dll` | `RB_REBIRTH_DLL` |
+
+Removed instead of renamed, because nothing reads them: `RB_RBM_DIR` (the deprecated alias of
+`RB_MOD_DIR`), `RB_STANDARD_MOD` (the standard-mod lookup went with task-067; until task-068 one test
+still set it, to check that it is ignored), `RB_MOD_ORIG_DIR`, `RB_CD_REBIRTH_EXE` and `RB_THIRDPARTY_DIR`
+(named in old notes only). Not renamed: `RBM_TEST_DAT` and `RBM_TEST_MODS` (a cargo test sets them
+for `tools/rbm_test.py` only; `RBM` is the mod format), and the variables of other tools
+(`SOURCE_DATE_EPOCH`, `GITHUB_REF_NAME`, `WGPU_BACKEND`). The settings folder is `OpenRB-338`
+(`OpenRB-338/ui.toml`); settings of the old `rb/` folder are not carried over (no migration).
+
 ## GitHub Actions (`.github/workflows/`)
 
 Decisions of the user (2026-10-28): the cost of six release package jobs and the three-OS CI
@@ -221,16 +250,16 @@ Actions are pinned to a commit SHA (the version in a comment). No workflow uses 
   - `test` on `ubuntu-latest`, `windows-latest` and `macos-latest`:
     `cargo clippy --workspace --all-targets --locked -- -D warnings` and
     `cargo test --workspace --locked --no-fail-fast` (one run shows every failure). Some tests
-    run `tools/*.py` with Python 3 (every runner has it): `RB_PYTHON` if set, else the first of
+    run `tools/*.py` with Python 3 (every runner has it): `ORB_PYTHON` if set, else the first of
     `python3`, `python`, `py -3` on PATH that is Python 3 (`tests/common/python.rs`); none found
-    fails the test with a message naming `RB_PYTHON`. The tests that need `RB_CD_ISO`,
-    `RB_THIRDPARTY_MODS_DIR` or `RB_THIRDPARTY_SONGS_DIR` (the only external inputs of the
+    fails the test with a message naming `ORB_PYTHON`. The tests that need `ORB_CD_ISO`,
+    `ORB_THIRDPARTY_MODS_DIR` or `ORB_THIRDPARTY_SONGS_DIR` (the only external inputs of the
     tests; AGENTS.md) skip when those are absent (checked locally with all of them unset). The
     synthetic recrypt tests (`crates/rbm/tests/recrypt_python.rs`, which run `tools/rbm.py`)
     need none of them.
     Linux installs `libasound2-dev` first.
 - `release.yml`, on a tag `v*` and by hand:
-  - `prepare` computes one `SOURCE_DATE_EPOCH` and one `RB_BUILD_BRANCH` (`scripts/release-env.sh`)
+  - `prepare` computes one `SOURCE_DATE_EPOCH` and one `ORB_BUILD_BRANCH` (`scripts/release-env.sh`)
     so all packages agree. On a tag the build time is the tag's and a tag that is not
     `v<YYYY.MMDD.HHMM>` fails here, which skips every other job.
   - `package`, one job per target, each on a native runner: `ubuntu-22.04` (x86_64) and
@@ -302,7 +331,7 @@ git push origin v2026.1028.1930
   the draft of that tag and creates it anew: new body, new assets, still one release. A release
   already published is never touched: the job fails with a message.
 - Where the tagged commit is on `origin/main`, the binaries show the hash without `dev-`
-  (`RB_BUILD_BRANCH=main`, `scripts/release-env.sh`); a tag on another branch shows `dev-`.
+  (`ORB_BUILD_BRANCH=main`, `scripts/release-env.sh`); a tag on another branch shows `dev-`.
 - `workflow_dispatch` ("Run workflow" on a branch) builds all the artifacts (on the run's page) with the build time now, and creates no release:
   the `release` job runs only when the ref is a tag. Run on a tag it does what the tag push does.
 
@@ -338,7 +367,7 @@ only sets the Dock icon at run time). The `.app` bundle fixes both.
 - `OpenRB-338.app`, made by `scripts/macos-app.sh`: `Contents/MacOS/OpenRB-338` is the UI as a
   universal binary (`lipo` of the aarch64 and x86_64 builds; `lipo -archs` says `x86_64 arm64`),
   `Contents/Resources/OpenRB-338.icns` is the `app_icon` part rendered at 16 to 1024 px
-  (`cargo run -p rb-ui-art --bin ui-art -- iconset DIR`, DIR required, with the same resvg as
+  (`cargo run -p orb-ui-art --bin ui-art -- iconset DIR`, DIR required, with the same resvg as
   the panel, then `iconutil`), and `Contents/Info.plist` has `CFBundleName` and
   `CFBundleDisplayName` OpenRB-338, the identifier `net.emphased.openrb338` (the user's choice,
   2026-10-28), `CFBundleShortVersionString` and `CFBundleVersion` = the build time as
@@ -347,16 +376,15 @@ only sets the Dock icon at run time). The `.app` bundle fixes both.
   `MACOSX_DEPLOYMENT_TARGET=11.0` for both macOS targets, so both slices need macOS 11.0;
   `macos-app.sh` fails if it finds no `minos`), `NSHighResolutionCapable` and
   `LSApplicationCategoryType` `public.app-category.music`.
-- The CLI `rb` (later `orb`, task-068) is inside the bundle, `Contents/MacOS/rb`, also
-  universal. Why inside and not next to the app: dragging the app to Applications installs both
+- The CLI `orb` is inside the bundle, `Contents/MacOS/orb`, also universal. Why inside and not next to the app: dragging the app to Applications installs both
   and nothing is left behind, the bundle's seal covers both, and an update replaces both.
   The cost is a longer path; `README.txt` in the image gives
-  `sudo ln -s /Applications/OpenRB-338.app/Contents/MacOS/rb /usr/local/bin/rb`.
-- An `Applications` link, `LICENSE` and `README.txt` (install, Gatekeeper, the `rb` link). There
+  `sudo ln -s /Applications/OpenRB-338.app/Contents/MacOS/orb /usr/local/bin/orb`.
+- An `Applications` link, `LICENSE` and `README.txt` (install, Gatekeeper, the `orb` link). There
   is no background picture or icon layout (that needs Finder scripting, which is not
   reproducible on a runner).
 - Signing is ad hoc only (Apple silicon refuses an unsigned bundle; no Developer ID, no
-  notarization): `rb` is signed explicitly (`codesign --force -s -`; before, only the linker had
+  notarization): `orb` is signed explicitly (`codesign --force -s -`; before, only the linker had
   signed it on its own), then the bundle without `--deep`, whose seal covers both executables,
   then `codesign --verify --deep --strict`.
 - Reproducibility: `cp -p` and `touch -t` from `SOURCE_DATE_EPOCH` fix the times of the bundle
@@ -365,7 +393,7 @@ only sets the Dock icon at run time). The `.app` bundle fixes both.
   themselves differ (`cmp`: the header; hdiutil writes a new volume UUID and creation date),
   and hdiutil has no option for a fixed one, so the image is not byte-reproducible.
 
-`scripts/macos-dev-app.sh` is for everyday runs: after `cargo build --release -p rb-ui` it copies
+`scripts/macos-dev-app.sh` is for everyday runs: after `cargo build --release -p orb-ui` it copies
 `target/release/OpenRB-338` into `target/OpenRB-338.app` (same Info.plist, icon, ad-hoc
 signature); `open target/OpenRB-338.app`. Run it again after each build.
 
@@ -390,7 +418,7 @@ itself is a 32-bit x86 program (the NSIS stub), which Windows on Arm runs under 
 it installs is the native x64 or arm64 build.
 
 **What it installs.** Per user, to `%LOCALAPPDATA%\Programs\OpenRB-338` (`/D=DIR` changes it):
-`OpenRB-338.exe`, `rb.exe` (later `orb.exe`, task-068), `LICENSE.txt` (the GPLv3, also the
+`OpenRB-338.exe`, `orb.exe`, `LICENSE.txt` (the GPLv3, also the
 installer's license page) and `README.txt`, and `Uninstall.exe`. Per user, not per machine,
 because the program is two executables with no service, driver or shared file; because an
 unsigned installer that also asks for administrator rights shows a second warning for nothing
@@ -400,10 +428,10 @@ welcome, license, components, folder, install, finish (start the app, show the r
 
 | Component | Default | Does |
 |---|---|---|
-| OpenRB-338 and rb | required | the files above; the uninstaller; the entry in Settings > Apps > Installed apps (Add or remove programs) under `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenRB-338`: `DisplayName`, `DisplayVersion` = `YYYY.MMDD.HHMM`, `Publisher`, `DisplayIcon`, `InstallLocation`, `UninstallString`, `QuietUninstallString`, `EstimatedSize`, no Modify or Repair |
+| OpenRB-338 and orb | required | the files above; the uninstaller; the entry in Settings > Apps > Installed apps (Add or remove programs) under `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenRB-338`: `DisplayName`, `DisplayVersion` = `YYYY.MMDD.HHMM`, `Publisher`, `DisplayIcon`, `InstallLocation`, `UninstallString`, `QuietUninstallString`, `EstimatedSize`, no Modify or Repair |
 | Start menu shortcut | on | `OpenRB-338` in the user's Start menu |
 | Desktop shortcut | off | `OpenRB-338` on the desktop |
-| Add rb to the PATH of the current user | off | appends the folder to `HKCU\Environment\Path` |
+| Add orb to the PATH of the current user | off | appends the folder to `HKCU\Environment\Path` |
 
 Silent install: `setup.exe /S [/STARTMENU=0|1] [/DESKTOP=0|1] [/PATH=0|1] [/D=DIR]` (`/D=` must
 be the last argument and unquoted, an NSIS rule). Silent uninstall: `Uninstall.exe /S`, which
@@ -427,10 +455,10 @@ whenever `path.ps1` is in the folder.
 
 **The uninstaller** removes the files, the shortcuts, the PATH entry and both registry keys, and
 the folder if it is empty. It keeps the user's own files in the folder, and the settings file
-(`%APPDATA%\rb\ui.toml`) and songs.
+(`%APPDATA%\OpenRB-338\ui.toml`) and songs.
 
 **Running programs, upgrades.** Before it changes anything, the installer and the uninstaller try
-to open `OpenRB-338.exe` and `rb.exe` of the folder for writing, which fails while one runs from
+to open `OpenRB-338.exe` and `orb.exe` of the folder for writing, which fails while one runs from
 it. Then a box asks to close the program (Retry or Cancel); under `/S`, or on Cancel, nothing is
 changed and the exit code is 5 (tested on the test machine for both). If a file still cannot be
 deleted after that (it appeared meanwhile), the uninstaller keeps the entry in Apps and the
@@ -443,10 +471,10 @@ component is ticked), moves the Apps entry to the new folder and leaves the earl
 files, which can be deleted by hand. The shortcuts are overwritten. Start menu and desktop are
 the current user's (`SetShellVarContext current`).
 
-**The GUI subsystem.** `crates/rb-ui/src/main.rs` has
+**The GUI subsystem.** `crates/orb-ui/src/main.rs` has
 `#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]`: the release
-and dist builds of `OpenRB-338.exe` open no console window; a debug build keeps one. `rb.exe`
-(crate `rb-cli`) is unchanged, a console program. What a GUI-subsystem program loses:
+and dist builds of `OpenRB-338.exe` open no console window; a debug build keeps one. `orb.exe`
+(crate `orb-cli`) is unchanged, a console program. What a GUI-subsystem program loses:
 `eprintln!` has nowhere to go. `attach_parent_console` (same file) attaches to the console of the
 program that started it (`cmd`, PowerShell) with `AttachConsole` and points stdout and stderr at
 `CONOUT$`, unless they were redirected (then they stay), so the usage text, a song that does not
@@ -457,14 +485,14 @@ nowhere (the errors that matter also show in the app's message box). `--screensh
 writes a file and is not affected.
 
 **The icon and the version resource** (Windows targets only). `assets/app_icon.ico` is the
-`app_icon` part of `assets/ui` rendered by `cargo run --release -p rb-ui-art --bin ui-art -- ico`
+`app_icon` part of `assets/ui` rendered by `cargo run --release -p orb-ui-art --bin ui-art -- ico`
 (same resvg as the panel and the macOS iconset): 16, 24, 32, 48, 64, 96, 128 and 256 pixels, PNG
-entries. `crates/rb-ui/build.rs` writes an `.rc` with that icon and a `VERSIONINFO` (file and
+entries. `crates/orb-ui/build.rs` writes an `.rc` with that icon and a `VERSIONINFO` (file and
 product version `YYYY.MMDD.HHMM` as the four 16-bit numbers 2026, 1028, 1930, 0 and as text;
 product name OpenRB-338, license GPL-3.0-only) and `embed-resource` compiles it (`llvm-rc` from
-Homebrew LLVM on this Mac, `rc.exe` on a Windows runner) into the binary of `rb-ui` only, only
+Homebrew LLVM on this Mac, `rc.exe` on a Windows runner) into the binary of `orb-ui` only, only
 when the target is Windows. A failure fails the build. The test
-`ico_has_the_sizes_and_the_committed_file_matches` (`crates/rb-ui-art/tests/art.rs`) checks the
+`ico_has_the_sizes_and_the_committed_file_matches` (`crates/orb-ui-art/tests/art.rs`) checks the
 committed file's sizes; the pixels are not compared byte for byte (two CPUs can round the last
 bit differently), so regenerate the file when `app_icon.svg` changes.
 
@@ -487,6 +515,8 @@ runs over the same binaries give byte-identical installers (checked here, both a
 Installer self-extracting archive`, `7zz l` lists its files.
 
 ### Checked (2026-10-28, this Mac and the Windows test machine)
+
+The command line tool was still called `rb` (`rb.exe`) in these runs; task-068 renamed it `orb`.
 
 With `SOURCE_DATE_EPOCH=1793215800` (version `2026.1028.1930`):
 
@@ -554,23 +584,23 @@ toolchain. The AppDir:
 
 | Path | Contents |
 |---|---|
-| `AppRun` | runs `usr/bin/OpenRB-338`; runs the bundled CLI when the AppImage is started through a symlink named `rb` or with `--rb` as the first argument |
+| `AppRun` | runs `usr/bin/OpenRB-338`; runs the bundled CLI when the AppImage is started through a symlink named `orb` or with `--orb` as the first argument |
 | `OpenRB-338.desktop` (and `usr/share/applications/`) | `Name=OpenRB-338`, `Exec=OpenRB-338 %f`, `Categories=AudioVideo;Audio;Music;`, `StartupWMClass=OpenRB-338` (the app id the window sets, so Wayland and X11 shells match the window to the entry) |
 | `OpenRB-338.png`, `.DirIcon`, `usr/share/icons/hicolor/{16,32,64,128,256,512}.../apps/OpenRB-338.png` | `assets/ui/app_icon.svg` rendered by `ui-art iconset` |
-| `usr/bin/OpenRB-338`, `usr/bin/rb` | the two programs |
+| `usr/bin/OpenRB-338`, `usr/bin/orb` | the two programs |
 | `LICENSE`, `usr/share/doc/OpenRB-338/LICENSE` | GPL-3.0-only |
 
 **The CLI is inside** (decision of this task, since nothing decided otherwise). A user who has
-only the AppImage then also has the command line tool, and `rb` costs only a second binary of the
+only the AppImage then also has the command line tool, and `orb` costs only a second binary of the
 same code (the engine and the embedded standard kit are in both). Use it as
-`OpenRB-338-<version>-x86_64.AppImage --rb render SONG.rbs -o SONG.flac`, or make a symlink
-`ln -s OpenRB-338-<version>-x86_64.AppImage ~/bin/rb` and run `rb render ...`: the AppImage
+`OpenRB-338-<version>-x86_64.AppImage --orb render SONG.rbs -o SONG.flac`, or make a symlink
+`ln -s OpenRB-338-<version>-x86_64.AppImage ~/bin/orb` and run `orb render ...`: the AppImage
 runtime sets `ARGV0` to the name it was called by, and `AppRun` tests it. Measured on the
 aarch64 AppImage in an `ubuntu:22.04` container, under `--appimage-extract-and-run` too: a
-symlink named `rb` printed the same help as `--rb --help`. The `.tar.gz` stays for anyone who
-wants a plain `rb` without the AppImage.
+symlink named `orb` printed the same help as `--orb --help`. The `.tar.gz` stays for anyone who
+wants a plain `orb` without the AppImage.
 
-**What is bundled and why.** Only `OpenRB-338` and `rb`. No library: both binaries are Rust
+**What is bundled and why.** Only `OpenRB-338` and `orb`. No library: both binaries are Rust
 with the C parts (the vendored libvorbis) linked in statically, and what remains is the system
 set below, which must come from the host (a bundled `libasound`, GL or X11 would have to match
 the host's sound server, driver and display stack, and bundling glibc or the GL stack is what
@@ -581,7 +611,7 @@ exactly two ELF files and no `libc.so`, `ld-linux`, `libm`, `libpthread` or `lib
 - glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and newer; the most recent symbol the
   programs use is `GLIBC_2.35`, see "What may ship"; both architectures);
 - `libasound.so.2` (`libasound2` on Debian and Ubuntu, `alsa-lib` on Fedora and Arch): without
-  it even `rb --help` fails; a PipeWire or PulseAudio system has the ALSA plugins for it;
+  it even `orb --help` fails; a PipeWire or PulseAudio system has the ALSA plugins for it;
 - for the window: X11 (`libxcursor1`, `libxrandr2`, `libxi6`, `libxkbcommon-x11-0`; the X11
   libraries are loaded at run time) or Wayland (`libwayland-client0`, `libxkbcommon0`), and
   a graphics driver, Vulkan or OpenGL, either one. The window is drawn by wgpu, whose backends
@@ -597,7 +627,7 @@ exactly two ELF files and no `libc.so`, `ld-linux`, `libm`, `libpthread` or `lib
   `libEGL.so.1` and without a Vulkan ICD the program stops with
   "FailedToCreateSurfaceForAnyBackend"; that was the error of the first task-112 smoke run,
   whose OpenGL run only lacked `libegl1` (task-135: the fallback needed no wgpu setting).
-  `OPENRB_GPU_INFO=1` makes OpenRB-338 print the adapter it chose (`gpu: Vulkan Cpu
+  `ORB_GPU_INFO=1` makes OpenRB-338 print the adapter it chose (`gpu: Vulkan Cpu
   llvmpipe ...`). The smoke test (xvfb, `ubuntu:22.04`, aarch64) takes a `--screenshot` with
   `WGPU_BACKEND=vulkan`, with `WGPU_BACKEND=gl`, with nothing forced and a Vulkan ICD present
   (it chose Vulkan: lavapipe and Mesa's OpenGL are both device type CPU, a tie, so the backend
@@ -608,7 +638,8 @@ FUSE 2 (`libfuse2`) lets the AppImage mount itself. Without it, run
 `./OpenRB-338-<version>-x86_64.AppImage --appimage-extract-and-run`, or `--appimage-extract` and
 `squashfs-root/AppRun`.
 
-**Checked (2026-10-29, this Mac, Docker Desktop on Apple silicon).** Both AppImages were built
+**Checked (2026-10-29, this Mac, Docker Desktop on Apple silicon; the CLI was still called `rb`
+then, task-068 renamed it `orb`).** Both AppImages were built
 for real with `scripts/package-appimage.sh` (binaries from `scripts/build.sh` in the Docker
 image, `SOURCE_DATE_EPOCH=1793215800`) and passed `scripts/appimage-smoke.sh`:
 
@@ -626,7 +657,7 @@ through Vulkan (lavapipe). The aarch64 AppImage ran as an AppImage (`--appimage-
 native on Apple silicon). **The x86_64 one could not be exec-ed in Docker Desktop's amd64
 emulation** (`Exec format error` for the AppImage runtime and for the x86_64 appimagetool: the
 ELF header has the AppImage marker in `e_ident`, ABI version 65), although the static x86_64
-programs inside run. So, only when `OPENRB_APPIMAGE_EMULATED` is `1` (the scripts compute it from `uname`
+programs inside run. So, only when `ORB_APPIMAGE_EMULATED` is `1` (the scripts compute it from `uname`
 for x86_64 on a macOS host and never inherit it; `release.yml` never sets it, and on Linux and in CI a runtime that does not run fails the
 script), `scripts/appimage-pack.sh` unpacks appimagetool with `unsquashfs`, and the smoke test
 unpacks the x86_64 AppImage's squashfs and runs its `AppRun` (with `ARGV0` set by hand for the
@@ -654,7 +685,7 @@ Nothing is signed or notarized (decided 2026-10-28). Expect:
   an unrecognized app from starting": the publisher is shown as "Unknown publisher" (an
   Authenticode certificate would name it). Click "More info", then "Run anyway". It applies to a
   file downloaded in a browser (it carries the Mark of the Web), to the installer, and again to
-  `OpenRB-338.exe` and `rb.exe` from the `.zip`. The installer asks for no administrator rights,
+  `OpenRB-338.exe` and `orb.exe` from the `.zip`. The installer asks for no administrator rights,
   so there is no UAC prompt with "Unknown publisher" on top of it. The warning fades with
   SmartScreen's reputation for the file's hash, which a new build per version starts again.
   Right-click the file > Properties > Unblock (or `Unblock-File`) removes the mark.

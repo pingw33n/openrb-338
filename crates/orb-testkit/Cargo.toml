@@ -1,0 +1,12 @@
+[package]
+name = "orb-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Test support: the external inputs of the gated tests (task-121)"
+
+[dependencies]
+orb-cli = { path = "../orb-cli" }
+rbm = { path = "../rbm" }
+sha2 = "0.10"

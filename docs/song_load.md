@@ -9,8 +9,8 @@ Everything was also checked against the 18 songs in `tests/songs/shipped/` (17 a
 `ReBirth 1.0 Default Song.rbs` is 4.2).
 
 Two implementations follow this document: `tools/rbhost/rbsmsg.py` (for rbhost) and
-`crates/rb-engine/src/load.rs` (the engine, task-018), which also covers the 4.0 paths. The test
-`crates/rb-engine/tests/rbsmsg_corpus.rs` checks that both give the same messages for every
+`crates/orb-engine/src/load.rs` (the engine, task-018), which also covers the 4.0 paths. The test
+`crates/orb-engine/tests/rbsmsg_corpus.rs` checks that both give the same messages for every
 shipped and diagnostic song.
 
 ## 1. Transport [C]
@@ -159,7 +159,7 @@ pack `sub_10018B00` (0x10018B8B), which echoes it to the exe. A scan of the whol
 byte access at `+0x16` outside the globals struct's own functions (`sub_10018AC0`,
 `sub_10018B00`, `sub_10018BA0`) and the parameter-block functions of other structs; msg 20's
 query answers only ids 0..2 (switch at 0x10011FC2). The exe always sends 1. What the exe means by
-it is not traced [G]; for rb it is a stored byte (`Globals::byte22`).
+it is not traced [G]; for orb it is a stored byte (`Globals::byte22`).
 
 **The sound-model byte (`song+0x16D`, "+21" of the global struct).** It is GLOB[482] unchanged; the
 exe never inverts it. The menu item "Vintage ReBirth Synth Sound" (command 323, handler 0x42C32E)
@@ -230,7 +230,7 @@ is 0 in every shipped song; the TRAK values are 0..4.
 
 The 4.0 layout has 7 bytes per channel: `[?, level, pan, send, dist, PCF flag, comp flag]`. The
 converter (0x4352C0) sets enabled = 1, compressor id = (MIXR[1] != 0) or `c+2` for a channel with the
-comp flag, PCF id = `c+1` for a channel with the PCF flag. Two 4.0 songs render equal in rb and in
+comp flag, PCF id = `c+1` for a channel with the PCF flag. Two 4.0 songs render equal in orb and in
 the original DLL through rbhost (task-061; see the open items at the end).
 [C] (task-018) The parse `sub_433B86` copies MIXR[0], MIXR[1] and the four 7-byte channels at
 `MIXR[16 + 12c]`, the same offsets as the 5-byte channels of later versions. The target struct starts
@@ -376,7 +376,7 @@ bytes `+0xC`, `+0xD` 0; the channels follow at `+0x10 + 6c`
 (enabled, level, pan, send, dist, 0). The msg-41 unpack `sub_10019D14` / `sub_10019DE0` fills the
 same fields. The defaults equal the exe's own chunk defaults (§4.2 to §4.5) for the four effects.
 
-rb: `MixerParams::default`, `tb303::DEFAULT_PARAMS`, `tr808::DEFAULT_PARAMS`,
+orb: `MixerParams::default`, `tb303::DEFAULT_PARAMS`, `tr808::DEFAULT_PARAMS`,
 `tr909::DEFAULT_PARAMS`, `delay::DEFAULTS`, `dist::DEFAULTS`, `pcf::DEFAULTS`, `comp::DEFAULTS`
 hold these values, and every device's `SongDevice::init_track` models its slot 8; the mixer's
 (0x100160F0) was missing until task-034 (`frame::tests::constructor_tracks_hold_the_defaults`,
@@ -436,8 +436,8 @@ sub that changes state does (`p` pattern, `s` step; offsets in the device object
 | 303: 40 (0x10025CFC) | ctrl 0..8 the live byte `+0xC7C + ctrl`, then the record hook; 9 nothing; 10 the unused live byte `+0xC86`; every ctrl then clears its changed flag `+0xC88 + ctrl` |
 | 808: 57 (0x100288C5) | ctrl 0..28 `+0x1890 + ctrl` and the hook; 29 nothing (the last-step byte); 30 `+0x18AE`; clears `+0x18B0 + ctrl` |
 | 909: 74 (0x1002BF12) | ctrl 0..29 `+0x1891 + ctrl` with 20, 21, 22 at `+0x18A6`, `+0x18A7`, `+0x18A5` (the permutation of §4.8), and the hook; 30 nothing (the last-step byte); 31 `+0x18B0`; clears `+0x18B2 + ctrl` |
-| Delay: 84 (0x1000FCE5) | k 0..4 `+0x34 + k`, raw (rb clamps the pan to 127, below); 5 (the meter) nothing; clears `+0x40 + k`; the hook for every k |
-| Distortion: 92 (0x10010EF1) | k 0..2 `+0x39 + k`, raw (rb clamps amount and shape to 127, below); clears `+0x4C + k`; the hook |
+| Delay: 84 (0x1000FCE5) | k 0..4 `+0x34 + k`, raw (orb clamps the pan to 127, below); 5 (the meter) nothing; clears `+0x40 + k`; the hook for every k |
+| Distortion: 92 (0x10010EF1) | k 0..2 `+0x39 + k`, raw (orb clamps amount and shape to 127, below); clears `+0x4C + k`; the hook |
 | PCF: 114 (0x10016DFB) | k 0..6 `+0x38 + k`; the hook; clears `+0x48 + k` |
 | Compressor: 102 (0x1000F178) | k 0..2 `+0x38 + k`; 3, 4 nothing; clears `+0x42 + k`; the hook |
 | Mixer: 145 (0x10015900) | id 0 the live master `+0x30` (no hook); 1 the compressor id, dword `+0x34`, and 2 the PCF id, dword `+0x38` (each clears `+0x81` / `+0x82`, then the hook with controller 1 / 2); 3, 4 nothing |
@@ -480,16 +480,16 @@ Notes:
   entering song mode, msg 41 overwrites it), so the queries need no model. The mixer's 137
   replies the live set without copying.
 
-rb: `Engine::device_param` (the `{ctrl, v}` subs; `SongDevice::param_message`),
+orb: `Engine::device_param` (the `{ctrl, v}` subs; `SongDevice::param_message`),
 `Engine::mixer_global` (145), `Engine::mixer_channel` (147), `Engine::pattern_field`,
 `Engine::pattern_header`, `Engine::pattern`, `Engine::step_field`, `Engine::step`
-(`crates/rb-engine/src/frame/edit.rs`), sent by the `rb_player::Command` variants
+(`crates/orb-engine/src/frame/edit.rs`), sent by the `orb_player::Command` variants
 `DeviceParam`, `MixerGlobal`, `MixerChannel`, `PatternField`, `PatternHeader`, `Pattern`,
 `StepField`, `Step`. The controller messages call the record hook as the DLL's do
-(`frame::edit::hooks`, `Sequencer::record_hook`, task-057). Where rb differs from the
+(`frame::edit::hooks`, `Sequencer::record_hook`, task-057). Where orb differs from the
 DLL's stores:
 - **Delay pan and distortion amount/shape above 127.** The DLL's subs 84 and 92 store the byte
-  raw; rb's slot 11, which `Engine::device_param` uses, clamps the delay's pan
+  raw; orb's slot 11, which `Engine::device_param` uses, clamps the delay's pan
   (`delay.rs:74-76`) and the distortion's amount and shape (`dist.rs:116-118`) to 127, because
   the DLL's updates then index past their tables (OB-9, OB-10). The panel sends 0..127 only, so
   the messages render alike. The same clamp is on the load path (msg 86 and 94,
@@ -497,15 +497,15 @@ DLL's stores:
   and DIST parses (`sub_43465C` at 0x43589A, `sub_4345A6` at 0x435B28) and their packers
   (`sub_422EB7`, `sub_423048`) copy the chunk bytes unchanged [C]; a TRAK event cannot (the
   track load's range is 0..127). A hand-made file with such a byte therefore renders
-  differently in rb; no shipped or corpus song has one. Whether to keep the clamp is task-071.
+  differently in orb; no shipped or corpus song has one. Whether to keep the clamp is task-071.
 - **Mixer channel above 3.** Sub 147 does not bound c (OB-17); `Engine::mixer_channel` drops a
   channel above 3 (`edit.rs`), and so do the pattern messages past the pattern array.
 
 Checked against the DLL: a
 600-call session over `full_mix` with 135 of these messages, in pattern mode and in song mode
-while playing, rendered by rbhost (`--live`, `tools/rbhost/README.md`) and by rb-player, is
-byte-identical (`crates/rb-player/tests/live_messages.rs`). The one difference that session
-work found is not a message: rb's PCF step after a return to pattern mode while playing
+while playing, rendered by rbhost (`--live`, `tools/rbhost/README.md`) and by orb-player, is
+byte-identical (`crates/orb-player/tests/live_messages.rs`). The one difference that session
+work found is not a message: orb's PCF step after a return to pattern mode while playing
 (task-069).
 
 ## 5. Msg 37: track events [C]
@@ -626,13 +626,13 @@ and whether other lists hold nodes then, is not counted here. An RBS track is se
 in batches of 1284 file events, track after track; a 1.x song's track buffers are sent as they fill
 (section 12.2), then what is left of them in track order.
 
-**rb.** `load::load` and `load::load_1x` keep the send order and each batch's count in
+**orb.** `load::load` and `load::load_1x` keep the send order and each batch's count in
 `song::Song::batches`; `Engine::load` sends the tracks in those batches and
 `Sequencer::add_events` refuses a batch as `sub_10021010` does. A refused batch ends the load with
 `Err(LoadRefused)` (also `Engine::load_refused`): the engine keeps the earlier batches, as the DLL
-does, and sends no msg 32; `rb render` fails with the alert's text. rb's pool is one per song
-(task-082), so rb's free count at a load is that of an engine with no other song: an RBS song the
-app refuses because the Untitled song holds nodes can still load in rb. The player and the UI do
+does, and sends no msg 32; `orb render` fails with the alert's text. orb's pool is one per song
+(task-082), so orb's free count at a load is that of an engine with no other song: an RBS song the
+app refuses because the Untitled song holds nodes can still load in orb. The player and the UI do
 not act on a refused load yet (task-088).
 
 ## 6. What decides the state at an export [C]
@@ -672,7 +672,7 @@ do not change the result: each batch starts its insert hint at null (`mov edi, 0
 and `sub_10014750` uses a hint only when its tick is below the new tick, so its walk ends at the
 same node as a walk from the head of the sorted list. Every export's first stop
 also prunes the tracks (`sub_100149F0`): an event repeating its controller's previous value is
-removed unless it is at tick 0. `crates/rb-engine/tests/corpus_seq.rs` checks the load's resulting
+removed unless it is at tick 0. `crates/orb-engine/tests/corpus_seq.rs` checks the load's resulting
 sequencer and mixer state over the corpus.
 
 ## 7. Byte `+0x16D` (task-003 item "mixer flag")
@@ -786,7 +786,7 @@ Every engine-side point of task-003 is now answered:
 Still open:
 - [G] task-061: two 4.0 songs (RB-SEMx, TB-909e mkII b7x7) rendered by the original DLL through
   rbhost (messages from `tools/rbhost/rbsmsg.py`, a second port of 0x4352C0 and `sub_437380`
-  written from this section) equal `rb render` byte for byte: the Rust and Python ports agree
+  written from this section) equal `orb render` byte for byte: the Rust and Python ports agree
   and the DLL accepts their messages. The app's own export of a 4.0 song was not run, so the
   conversion is not checked against the exe itself.
 - [G] What the exe uses byte 22 for (it always sends 1, and the load sends no msg 21 that would
@@ -796,7 +796,7 @@ Still open:
 
 ReBirth 1.x saved its songs as a Standard MIDI File with the `.rbs` extension (`MThd`). 2.01
 opens them through a separate reader, traced in `Rebirth.exe.i64` (a read-only copy,
-2026-10-27). rb: `crates/rbs/src/rb1x.rs` (the file), `crates/rb-engine/src/load/rb1x.rs`
+2026-10-27). orb: `crates/rbs/src/rb1x.rs` (the file), `crates/orb-engine/src/load/rb1x.rs`
 (`load_1x`, the import), `tools/rb1x.py` (the Python twin, which `tools/rbhost/rbsmsg.py`,
 `run.py`, `fit.py` and `tools/rb_export.py` use for these songs).
 
@@ -857,7 +857,7 @@ opens them through a separate reader, traced in `Rebirth.exe.i64` (a read-only c
     of the pre-4.2 RBS files (section 5).
   - A cc that neither table maps gives device -1, and 0x430FEF loads the buffer pointer
     `[ebp + 0xFF*4 + var_3C]`, far outside the nine-pointer array: [OB-15](original_bugs.md).
-    No song of the collection has one; rb refuses such a song (`LoadError::Rb1x`).
+    No song of the collection has one; orb refuses such a song (`LoadError::Rb1x`).
 - A sysex (`F0`) goes to `sub_4304C5` (below); `FF 2F` ends the track; every other event is
   skipped by its length (`sub_4A0D77`). The collection has only control changes on tracks 2..5.
 
@@ -924,17 +924,17 @@ exe's defaults (section 4.9). Bytes from 12640 (`0x3160`) hold the song informat
 and the show-on-open byte (+343), which `sub_430BA0` copies into the document's USRI fields
 (0x431039..0x431078); no message.
 
-### 12.5 What rb does and how it was checked
+### 12.5 What orb does and how it was checked
 
-`rb_engine::song::LoadForm::Rb1x` marks such a song: `Engine::load` sends the seven blocks in the
+`orb_engine::song::LoadForm::Rb1x` marks such a song: `Engine::load` sends the seven blocks in the
 order above, then the 909's controller 0 = 0, then the tracks (in the buffers' order, which
 `Loaded::order` keeps for the message stream). A song the exe would refuse (format other than 1,
 version below 3.1, a bad sysex, no sysex) or one that reaches OB-15 is an error.
 
-- The env-gated `crates/rb-cli/tests/thirdparty.rs` renders every 1.x song of the collection and
+- The env-gated `crates/orb-cli/tests/thirdparty.rs` renders every 1.x song of the collection and
   compares `load_1x`'s message stream with `tools/rb1x.py`'s: 129 of 129 render, 129 equal
-  (`crates/rb-engine/tests/rb1x_messages.rs` does the same on synthetic songs).
-- rbhost (the original DLL fed `tools/rb1x.py`'s messages, idle 0) against `rb render
+  (`crates/orb-engine/tests/rb1x_messages.rs` does the same on synthetic songs).
+- rbhost (the original DLL fed `tools/rb1x.py`'s messages, idle 0) against `orb render
   --idle-blocks 0`: **129 of 129 equal** byte for byte (`tools/rbhost/hashcmp.py`, the WAV
   sha256 taken on the machine, 2026-10-27; the per-song hashes are in the task-060 notes), the
   two pattern-mode songs included (rbhost exports them; the app cannot).
@@ -943,7 +943,7 @@ version below 3.1, a bad sysex, no sysex) or one that reaches OB-15 is an error.
   love, Virus 303, MagneticFields, Galaxy Defender, pre2, DISFUNKT (3.2.0), Venom Surf, speed,
   Gizmo). The exports of Eternal Darkness and DISFUNKT are silent, so they equal a render at
   any N and confirm little. Of the 9 audible ones, **8 match at a unique N** (`fit.py --all` over
-  200 candidates: 3536..3616, `N - N_t` = -42 .. -246), and `rb compare` at that N is EQUAL for
+  200 candidates: 3536..3616, `N - N_t` = -42 .. -246), and `orb compare` at that N is EQUAL for
   each. Venom Surf matches too, but not uniquely: at 80 of the 200 candidates (2000..5184), so
   its fit pins no N and is weak evidence. The 8 unique fits, with the byte-exact 129 of 129
   rbhost result above, show that the message stream of this section is what the app sends, end
@@ -972,7 +972,7 @@ and in the msg-37 batch.
 
 So every list is sorted by tick whatever the order of the batches. Among the events of one tick, a
 new controller goes before those already there, so a later insert comes first, and a repeated
-(tick, controller) keeps its place and takes the last value. rb's engine stores them the same way:
+(tick, controller) keeps its place and takes the last value. orb's engine stores them the same way:
 `seq::insert_into` (`partition_point(|e| t > e.tick)`, the replace on tick and controller), and the
 1.x renders equal the DLL's (section 12.5, 129 of 129 through rbhost).
 
@@ -994,14 +994,14 @@ every event of a 1.x import replaces a constructor node, because the import's co
 among the constructor's. So a save and a reopen give the import's lists with each tick's events
 reversed, tick 0 excepted. The original does the same.
 
-**rb.** rb-ui gives a 1.x song's document the tracks of the engine it built
+**orb.** orb-ui gives a 1.x song's document the tracks of the engine it built
 (`Link::loaded_tracks`, `document::set_engine_tracks`, `App::adopt_as`), which is what msg 22
 would read back right after the load. It does not copy `load_1x`'s buffers, which made
 `rbs::Track::build` refuse the save ("events not sorted by position"). The mod does not matter:
 `compose` takes only the mod's name, and the save failed without a mod change too. Checked by
-`crates/rb-ui/tests/menu.rs`:
+`crates/orb-ui/tests/menu.rs`:
 - `a_1x_song_with_unsorted_imports_saves_and_reopens_the_same`: a synthetic song.
-- `every_1x_song_of_the_collection_saves`, gated on `RB_THIRDPARTY_SONGS_DIR`: 131 files (129
+- `every_1x_song_of_the_collection_saves`, gated on `ORB_THIRDPARTY_SONGS_DIR`: 131 files (129
   distinct) save, and reopen with the import's lists in the order above. Razor Topz.RBS plays the
   same, 200 engine calls, after the save, and saves after a change to Pitch Black Edition 2.0.
 
@@ -1016,11 +1016,11 @@ unless `max` is reached, and that byte counts. So a saved 1.x song keeps its tit
 CR LF where the file had CR) and web page in its USRI chunk, and it has no copyright (the HEAD is
 the constructor's).
 
-**rb.** `rb_cli::info::Usri1x::of` does that copy (`usri_copy`); `document::source_of_1x` puts it
-into the stand-in song's USRI, so Save writes it, and `rb info` and File > Info show it
+**orb.** `orb_cli::info::Usri1x::of` does that copy (`usri_copy`); `document::source_of_1x` puts it
+into the stand-in song's USRI, so Save writes it, and `orb info` and File > Info show it
 (`SongFacts::of_1x`). Checked by `file_info_of_a_1x_song_shows_its_own_facts` and
-`song_information_of_a_1x_song_is_copied_like_the_original` in `crates/rb-ui/tests/menu.rs`.
+`song_information_of_a_1x_song_is_copied_like_the_original` in `crates/orb-ui/tests/menu.rs`.
 
 [G] The original's Save of a 1.x song was not run on the test machine. What it writes is read
-from the disassembly above. That rb's lists equal the DLL's after a load rests on the msg-22
+from the disassembly above. That orb's lists equal the DLL's after a load rests on the msg-22
 comparison of task-057 (RBS songs) and on the 1.x renders.

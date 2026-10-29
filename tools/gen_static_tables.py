@@ -1,10 +1,10 @@
 #!/usr/bin/python3
-"""Generate crates/rb-engine/src/tables/data.rs, the engine's static tables, from the DLL.
+"""Generate crates/orb-engine/src/tables/data.rs, the engine's static tables, from the DLL.
 
-    gen_static_tables.py --dll PATH/ReBirth.dll [-o crates/rb-engine/src/tables/data.rs]
+    gen_static_tables.py --dll PATH/ReBirth.dll [-o crates/orb-engine/src/tables/data.rs]
 
---dll defaults to the environment variable RB_REBIRTH_DLL. The DLL is the one of your ReBirth 2.01
-installation (SHA-256 4c3a6441...8b12), or the one on the CD (RB_CD_ISO, rb-testkit).
+--dll defaults to the environment variable ORB_REBIRTH_DLL. The DLL is the one of your ReBirth 2.01
+installation (SHA-256 4c3a6441...8b12), or the one on the CD (ORB_CD_ISO, orb-testkit).
 
 Reads each table from ReBirth.dll by virtual address through the PE section map (image base
 0x10000000), writes the Rust constants and formats the file with rustfmt. The unit test
@@ -155,13 +155,13 @@ def generate(dll):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--dll", default=os.environ.get("RB_REBIRTH_DLL"),
-                    help="ReBirth.dll (default: $RB_REBIRTH_DLL)")
-    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "crates", "rb-engine", "src", "tables", "data.rs"))
+    ap.add_argument("--dll", default=os.environ.get("ORB_REBIRTH_DLL"),
+                    help="ReBirth.dll (default: $ORB_REBIRTH_DLL)")
+    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "crates", "orb-engine", "src", "tables", "data.rs"))
     args = ap.parse_args()
     if not args.dll:
         sys.exit("gen_static_tables.py: no DLL. Pass --dll PATH/ReBirth.dll (your ReBirth 2.01 "
-                 "installation) or set RB_REBIRTH_DLL.")
+                 "installation) or set ORB_REBIRTH_DLL.")
     if not os.path.isfile(args.dll):
         sys.exit("gen_static_tables.py: %s not found." % args.dll)
     text = generate(Pe(args.dll))

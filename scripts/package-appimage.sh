@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x86_64|aarch64>.AppImage, the Linux package of
-# OpenRB-338 and rb (task-112; the version is the UTC build time, scripts/version.sh).
+# OpenRB-338 and orb (task-112; the version is the UTC build time, scripts/version.sh).
 #
 #   scripts/package-appimage.sh x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu
 #
@@ -39,7 +39,7 @@ version=$("$root/scripts/version.sh")
 
 [ -n "${SKIP_BUILD:-}" ] || "$root/scripts/build.sh" "$target"
 bin=$dist/$target/bin
-for f in OpenRB-338 rb; do
+for f in OpenRB-338 orb; do
     [ -f "$bin/$f" ] || { echo "missing $bin/$f (run scripts/build.sh $target)" >&2; exit 1; }
 done
 
@@ -66,30 +66,30 @@ fi
 appdir=$dist/$target/OpenRB-338.AppDir
 rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" "$appdir/usr/share/doc/OpenRB-338"
-cp "$bin/OpenRB-338" "$bin/rb" "$appdir/usr/bin/"
-chmod 755 "$appdir/usr/bin/OpenRB-338" "$appdir/usr/bin/rb"
+cp "$bin/OpenRB-338" "$bin/orb" "$appdir/usr/bin/"
+chmod 755 "$appdir/usr/bin/OpenRB-338" "$appdir/usr/bin/orb"
 cp "$root/LICENSE" "$appdir/LICENSE"
 cp "$root/LICENSE" "$appdir/usr/share/doc/OpenRB-338/LICENSE"
 
-# AppRun: OpenRB-338 by default; the bundled CLI as `rb`, when the AppImage is run through a
-# symlink named rb (the runtime puts the name in ARGV0) or with --rb as the first argument.
+# AppRun: OpenRB-338 by default; the bundled CLI as `orb`, when the AppImage is run through a
+# symlink named orb (the runtime puts the name in ARGV0) or with --orb as the first argument.
 cat > "$appdir/AppRun" <<'EOF'
 #!/bin/sh
 here=$(dirname "$(readlink -f "$0")")
 self=${ARGV0:-$0}
-if [ "${self##*/}" = rb ]; then
-    exec "$here/usr/bin/rb" "$@"
+if [ "${self##*/}" = orb ]; then
+    exec "$here/usr/bin/orb" "$@"
 fi
-if [ "${1:-}" = --rb ]; then
+if [ "${1:-}" = --orb ]; then
     shift
-    exec "$here/usr/bin/rb" "$@"
+    exec "$here/usr/bin/orb" "$@"
 fi
 exec "$here/usr/bin/OpenRB-338" "$@"
 EOF
 chmod 755 "$appdir/AppRun"
 
 # The desktop entry: the file name and StartupWMClass are the app id the window sets
-# (with_app_id("OpenRB-338") in rb-ui), so Wayland and X11 shells match the window to it.
+# (with_app_id("OpenRB-338") in orb-ui), so Wayland and X11 shells match the window to it.
 cat > "$appdir/usr/share/applications/OpenRB-338.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -109,7 +109,7 @@ cp "$appdir/usr/share/applications/OpenRB-338.desktop" "$appdir/OpenRB-338.deskt
 # at 16 to 512 px (the 64 px one is the 32 px size at 2x).
 icons=$(mktemp -d)
 trap 'rm -rf "$icons"' EXIT
-cargo run --manifest-path "$root/Cargo.toml" --release --locked -q -p rb-ui-art --bin ui-art \
+cargo run --manifest-path "$root/Cargo.toml" --release --locked -q -p orb-ui-art --bin ui-art \
     -- iconset "$icons" >/dev/null
 for pair in 16:icon_16x16 32:icon_32x32 64:icon_32x32@2x 128:icon_128x128 256:icon_256x256 \
     512:icon_512x512; do
@@ -138,7 +138,7 @@ if [ "$(uname -s)" = Linux ]; then
 fi
 if [ "$host_arch" = "$arch" ]; then
     # never inherited: the fallback is for Docker on macOS only
-    OPENRB_APPIMAGE_EMULATED='' ARCH=$arch "$root/scripts/appimage-pack.sh" "$tool" "$appdir" "$out"
+    ORB_APPIMAGE_EMULATED='' ARCH=$arch "$root/scripts/appimage-pack.sh" "$tool" "$appdir" "$out"
 else
     # packing in the Ubuntu 22.04 image of build.sh (the other architecture runs emulated)
     image=openrb-linux-build:$arch
@@ -148,7 +148,7 @@ else
     emulated=
     if [ "$(uname -s)" = Darwin ] && [ "$arch" = x86_64 ]; then emulated=1; fi
     docker run --rm --platform "$platform" -e "ARCH=$arch" -e SOURCE_DATE_EPOCH \
-        -e "OPENRB_APPIMAGE_EMULATED=$emulated" \
+        -e "ORB_APPIMAGE_EMULATED=$emulated" \
         -v "$root:$root" -v "$dist:$dist" -w "$root" "$image" \
         "$root/scripts/appimage-pack.sh" "$tool" "$appdir" "$out"
 fi

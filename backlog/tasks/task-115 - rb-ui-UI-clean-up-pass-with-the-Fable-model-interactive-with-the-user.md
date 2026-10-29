@@ -5,16 +5,16 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 11:57'
-updated_date: '2026-10-28 12:05'
+updated_date: '2026-10-29 08:52'
 labels:
   - ui
 milestone: m-3
 dependencies: []
 references:
-  - crates/rb-ui-art/src/parts.rs
-  - crates/rb-ui-art/src/layout.rs
   - assets/ui/README.md
   - docs/ui_spec.md
+  - crates/orb-ui-art/src/parts.rs
+  - crates/orb-ui-art/src/layout.rs
 priority: low
 type: enhancement
 ordinal: 135000
@@ -25,7 +25,7 @@ ordinal: 135000
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Why: the user wants to try cleaning up the UI's look with the Fable model (claude-fable-5-1), in an interactive design session the user drives (2026-10-28). Agents do not start it on their own.
 
-Scope, to be set in the session: the panel art and layout (crates/rb-ui-art: parts.rs, layout.rs, font.rs; regenerated assets/ui with `cargo run --release -p rb-ui-art -- gen`), and the egui windows and menus (the file browser, Song Information, Mods > Info, About, Keyboard Shortcuts, prompts). Examples: spacing and alignment, label sizes and colors, consistency between sections, window styling.
+Scope, to be set in the session: the panel art and layout (crates/orb-ui-art: parts.rs, layout.rs, font.rs; regenerated assets/ui with `cargo run --release -p orb-ui-art -- gen`), and the egui windows and menus (the file browser, Song Information, Mods > Info, About, Keyboard Shortcuts, prompts). Examples: spacing and alignment, label sizes and colors, consistency between sections, window styling.
 
 Constraints:
 - The panel's controls keep their ids and behavior: assets/ui/layout.tsv drives the app, and the wired and interaction tests must still pass.
@@ -44,7 +44,7 @@ Constraints:
 
 <!-- SECTION:NOTES:BEGIN -->
 The user's list for the session (2026-10-28):
-- Rewrite the app icon (the app_icon part in crates/rb-ui-art/src/parts.rs; it feeds the window icon, the .icns of task-110, the AppImage of task-112 and the installer of task-111).
+- Rewrite the app icon (the app_icon part in crates/orb-ui-art/src/parts.rs; it feeds the window icon, the .icns of task-110, the AppImage of task-112 and the installer of task-111).
 - What the user does not like:
   - TB-303 layout: there is empty space; the 'EDIT STEP' placement doesn't feel right; the leftmost section (pitch mode, clear) has too much padding.
   - Pattern number and bank buttons: they look too bare without any style, and are maybe too big and too dense.

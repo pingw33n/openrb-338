@@ -13,7 +13,7 @@ The facts it relies on are in `docs/export_state.md` (sections 2.7, 4 and 12) an
 | `build.sh` | builds `build/rbhost.exe` on the Mac with llvm-mingw |
 | `rbsmsg.py` | `.rbs` to the engine's load messages, written as a `.rbhm` message file |
 | `run.py` | build, convert, upload to `C:\re\rb\rbhost`, run under one permit, download |
-| `hashcmp.py` | rbhost against `rb render` by the WAV sha256 taken on the machine (nothing downloaded) |
+| `hashcmp.py` | rbhost against `orb render` by the WAV sha256 taken on the machine (nothing downloaded) |
 | `rbsmsg_test.py` | unit tests of the conversion |
 
 ## Toolchain
@@ -61,12 +61,12 @@ load, the activation and `--idle-blocks`, a number of 1024-frame realtime calls 
 with song messages written to the port before given calls and dispatched there (as the app's
 `SafeSoundCallback` drains the panel's messages before it renders); OUT.wav holds the calls. The
 `.rblv` file ("RBLV", u32 version 1, u32 calls, u32 count, then per message u32 call, u32 length and
-the message `{78, slot, msg, ...}`, slot filled in by rbhost, sorted by call) is written by rb-player's
-test `crates/rb-player/tests/live_messages.rs` with `RB_LIVE_OUT=DIR`, which compares the player's
+the message `{78, slot, msg, ...}`, slot filled in by rbhost, sorted by call) is written by orb-player's
+test `crates/orb-player/tests/live_messages.rs` with `ORB_LIVE_OUT=DIR`, which compares the player's
 output of the same session with rbhost's hash. `--live-replies FILE` (task-057) also writes every
 reply the session's messages get, as records of u32 call, u32 length and the reply's bytes: the
 recording sessions query the tracks with song msg 22 `{track, u32 from, u32 to}` and compare the
-msg 37 replies `{78, slot, 37, track, u32 from, u32 to, [99, u32 tick, ctrl, value]...}` with rb's
+msg 37 replies `{78, slot, 37, track, u32 from, u32 to, [99, u32 tick, ctrl, value]...}` with orb's
 tracks (the test writes its own as `DIR/NAME.tracks`, the payloads after the 3-byte head). run.py has no option for it: upload `rbhost.exe`, the
 `.rbhm` and the `.rblv` and run it with `rcs_client.py exec` under one permit.
 

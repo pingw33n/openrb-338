@@ -3,7 +3,7 @@
 # Dock and Activity Monitor show the app icon (an unbundled binary has none), without building
 # the .dmg:
 #
-#   cargo build --release -p rb-ui && scripts/macos-dev-app.sh && open target/OpenRB-338.app
+#   cargo build --release -p orb-ui && scripts/macos-dev-app.sh && open target/OpenRB-338.app
 #
 #   scripts/macos-dev-app.sh [UI_BINARY]
 #
@@ -14,5 +14,5 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 ui=${1:-${CARGO_TARGET_DIR:-$root/target}/release/OpenRB-338}
-[ -f "$ui" ] || { echo "no $ui: cargo build --release -p rb-ui" >&2; exit 1; }
+[ -f "$ui" ] || { echo "no $ui: cargo build --release -p orb-ui" >&2; exit 1; }
 exec "$root/scripts/macos-app.sh" "${CARGO_TARGET_DIR:-$root/target}" "$ui"

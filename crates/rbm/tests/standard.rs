@@ -1,15 +1,15 @@
 //! The standard mod (task-036): the embedded `assets/Standard.rbm` (task-067), and the mod
-//! built from the CD's `ReBirth.dll` and `Rebirth.exe` (taken from the CD image, `RB_CD_ISO`, by
-//! `rb-testkit`; nothing of them is written to the repository, and the built mod lives in
+//! built from the CD's `ReBirth.dll` and `Rebirth.exe` (taken from the CD image, `ORB_CD_ISO`, by
+//! `orb-testkit`; nothing of them is written to the repository, and the built mod lives in
 //! memory). The tests that need them skip without the image.
 
-use rb_engine::samples::{self, SampleSet, pe};
+use orb_engine::samples::{self, SampleSet, pe};
 use rbm::*;
 
-/// `ReBirth.dll` or `Rebirth.exe` of the CD image (`RB_CD_ISO`, by `rb-testkit`), or `None` (a
+/// `ReBirth.dll` or `Rebirth.exe` of the CD image (`ORB_CD_ISO`, by `orb-testkit`), or `None` (a
 /// skip with the message) when it is not set.
 fn original(name: &str) -> Option<Vec<u8>> {
-    let cd = rb_testkit::cd_files()?;
+    let cd = orb_testkit::cd_files()?;
     let p = match name {
         "ReBirth.dll" => &cd.dll,
         "Rebirth.exe" => &cd.exe,

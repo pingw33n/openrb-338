@@ -8,7 +8,7 @@
 #                      (task-113), the time of the tag (`scripts/version.sh --epoch TAG`, seconds
 #                      0); a text that is not such a tag fails. Without one, SOURCE_DATE_EPOCH
 #                      if set, else now.
-#   RB_BUILD_BRANCH    "main" when HEAD is on origin/main (a tag's detached HEAD has no branch)
+#   ORB_BUILD_BRANCH    "main" when HEAD is on origin/main (a tag's detached HEAD has no branch)
 #
 #   scripts/release-env.sh [TAG]
 #
@@ -20,7 +20,7 @@ if [ $# -ge 1 ]; then
 fi
 echo "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(date +%s)}"
 if git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
-    echo "RB_BUILD_BRANCH=main"
+    echo "ORB_BUILD_BRANCH=main"
 else
-    echo "RB_BUILD_BRANCH=other"
+    echo "ORB_BUILD_BRANCH=other"
 fi

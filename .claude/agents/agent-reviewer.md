@@ -7,7 +7,7 @@ autoCompactWindow: 700000
 tools: Read, Grep, Glob, Bash, mcp__backlog__task_view, mcp__backlog__task_list, mcp__backlog__task_search, mcp__backlog__document_view, mcp__backlog__document_search
 ---
 
-You review a task agent's branch in the rb repository. The root AGENTS.md (the standing rules and the commit message format) is already in your context, because Claude Code loads AGENTS.md: do not read it again.
+You review a task agent's branch in the OpenRB-338 repository. The root AGENTS.md (the standing rules and the commit message format) is already in your context, because Claude Code loads AGENTS.md: do not read it again.
 
 What to read:
 - The task as the branch has it: `git show <branch>:"backlog/tasks/<its file>"`. The backlog MCP tools read the main checkout, where the task is still To Do.

@@ -1,10 +1,10 @@
 //! The Python 3 interpreter the tests run `tools/*.py` with, shared by every crate's tests
 //! (`#[path = "../../../tests/common/python.rs"] mod python;`).
 //!
-//! `RB_PYTHON` (a program path, or a command split on whitespace such as `py -3`) if set, else the
+//! `ORB_PYTHON` (a program path, or a command split on whitespace such as `py -3`) if set, else the
 //! first of `python3`, `python`, `py -3` on PATH that runs and is Python 3. Found once per test
-//! binary. No interpreter is a panic naming `RB_PYTHON`: CI has Python 3 on every runner, so a test
-//! never skips for it.
+//! binary. No interpreter is a panic naming `ORB_PYTHON`: CI has Python 3 on every runner, so a
+//! test never skips for it.
 #![allow(dead_code)]
 
 use std::process::Command;
@@ -25,7 +25,7 @@ fn interpreter() -> &'static (String, Vec<String>) {
                 .output()
                 .is_ok_and(|o| o.status.success())
         };
-        if let Some(p) = std::env::var_os("RB_PYTHON").filter(|p| !p.is_empty()) {
+        if let Some(p) = std::env::var_os("ORB_PYTHON").filter(|p| !p.is_empty()) {
             let p = p.to_string_lossy().into_owned();
             // The whole value is a program path (it may contain spaces), else split on
             // whitespace into a program and arguments (`py -3`).
@@ -38,7 +38,7 @@ fn interpreter() -> &'static (String, Vec<String>) {
             let pre_ref: Vec<&str> = pre.iter().map(String::as_str).collect();
             assert!(
                 works(&prog, &pre_ref),
-                "RB_PYTHON={p} does not run as Python 3"
+                "ORB_PYTHON={p} does not run as Python 3"
             );
             return (prog, pre);
         }
@@ -53,7 +53,7 @@ fn interpreter() -> &'static (String, Vec<String>) {
         }
         panic!(
             "no Python 3 found: tried python3, python and py -3 on PATH; \
-             set RB_PYTHON to a Python 3 interpreter"
+             set ORB_PYTHON to a Python 3 interpreter"
         );
     })
 }

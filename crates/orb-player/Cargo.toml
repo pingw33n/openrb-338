@@ -1,0 +1,26 @@
+[package]
+name = "orb-player"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+orb-engine = { path = "../orb-engine" }
+# Audio output (task-040).
+cpal = "0.18.2"
+# The lock-free single-producer single-consumer queues between the UI thread and the callback.
+rtrb = "0.4.1"
+# The lock-free snapshot the callback publishes and the UI thread reads.
+triple_buffer = "9.0.0"
+# The resampler for a device that does not offer 44.1 kHz (sinc only: no FFT resampler).
+rubato = { version = "5.0.1", default-features = false }
+
+[dev-dependencies]
+rbs = { path = "../rbs" }
+# The recrypted mods of the mod-change sessions (tests/live_messages.rs).
+rbm = { path = "../rbm" }
+# The gated tests' external inputs (task-121).
+orb-testkit = { path = "../orb-testkit" }
+serde_json = "1"
+sha2 = "0.10"

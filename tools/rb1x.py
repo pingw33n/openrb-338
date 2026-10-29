@@ -9,7 +9,7 @@ The import is traced in docs/song_load.md section 12 (exe sub_430BA0, sub_4304C5
 the msg-41 blocks of the mixer, delay, distortion, PCF, the two 303s and the 808, the 909's
 `4/74 {0, 0}`, the msg-37 batches as the exe's nine track buffers flush (sub_4300E0 at 1284
 events, then tracks 0..8 at the end), and msg 32. `tools/rbhost/rbsmsg.py` writes them as a
-message file; `crates/rbs/src/rb1x.rs` and `crates/rb-engine/src/load.rs` are the Rust side.
+message file; `crates/rbs/src/rb1x.rs` and `crates/orb-engine/src/load.rs` are the Rust side.
 Stdlib only.
 """
 import os

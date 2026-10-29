@@ -3,9 +3,9 @@ id: doc-001
 title: agent-brief
 type: guide
 created_date: '2026-10-26 09:03'
-updated_date: '2026-10-29 07:51'
+updated_date: '2026-10-29 08:30'
 ---
-The shared brief for agents working on rb, the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. Read in this order:
+The shared brief for agents working on OpenRB-338 (the command is `orb`), the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. Read in this order:
 1. The root `AGENTS.md` (the backlog and commit rules).
 2. This brief.
 3. The task (`backlog task view task-N --plain`).
@@ -36,7 +36,7 @@ You work in your own git worktree on your own branch, and everything is relative
 
 | Path | Contents |
 |---|---|
-| the IDA databases | **Not in the repository**, absent in your worktree: the user's local IDA databases of the original program, `Rebirth.exe.i64` (the UI, song loading, the export driver, the RBM container) and `ReBirth.dll.i64` (the engine). IDA opens a `.i64` by itself and needs no exe or dll next to it. They are references: agents never save or modify them. They live outside the repository; the supervisor gives their path in each agent's prompt, and an agent without a path asks the supervisor and does not search the disk. Take a copy, reading only; the IDA working files (`*.id0` …) belong to the user's open IDA. The original program itself (`Rebirth.exe`, `ReBirth.dll`) is not in the repository and no test or tool may need it: the tests take the same files from the CD image (`RB_CD_ISO`, rb-testkit) and skip with a message when it is not set. |
+| the IDA databases | **Not in the repository**, absent in your worktree: the user's local IDA databases of the original program, `Rebirth.exe.i64` (the UI, song loading, the export driver, the RBM container) and `ReBirth.dll.i64` (the engine). IDA opens a `.i64` by itself and needs no exe or dll next to it. They are references: agents never save or modify them. They live outside the repository; the supervisor gives their path in each agent's prompt, and an agent without a path asks the supervisor and does not search the disk. Take a copy, reading only; the IDA working files (`*.id0` …) belong to the user's open IDA. The original program itself (`Rebirth.exe`, `ReBirth.dll`) is not in the repository and no test or tool may need it: the tests take the same files from the CD image (`ORB_CD_ISO`, orb-testkit) and skip with a message when it is not set. |
 | `docs/` | Knowledge documents, edited like source. `RBS42.txt` is the official RBS file format; `initial_investigation.md` holds the engine's facts. New facts about the original go into a document here, in the same commit as the task. `original_bugs.md` lists the defects of the original: a newly found defect goes into `docs/original_bugs.md` as well as its home document. |
 | `tools/` | Python tools: the test-machine runners, the `.rbs` writer, the comparator and the like. |
 | `tests/` | Test songs and reference renders (their storage is decided in a `Decide:` task). |
@@ -66,7 +66,7 @@ The original ReBirth runs on a Windows machine, reached with dcre's `~/dev/dcre/
 - Start the app with `exec cmd.exe /c start "" /D "C:\ReBirth RB-338" "C:\ReBirth RB-338\Rebirth.exe"`, then find its PID with `tasklist`, and stop it with `taskkill /PID <pid>`.
 - At start the app shows a modal "Failed opening MIDI input" box, window title "ReBirth RB-338". Dismiss it with `rcs_client.py input --window "ReBirth RB-338" key:enter`.
 
-**rb's working folder.** Everything rb puts on the machine (songs, renders, tools) lives under `rb/` on the server's root, i.e. `C:\re\rb`.
+**The project's working folder.** Everything OpenRB-338 puts on the machine (songs, renders, tools) lives under `rb/` on the server's root, i.e. `C:\re\rb` (the machine's layout, not renamed with the project).
 
 **The full description.** The installation's layout and how to drive the app are written in `docs/test_machine.md`, created by task-002. Read it before you use the machine.
 
@@ -76,7 +76,7 @@ The original ReBirth runs on a Windows machine, reached with dcre's `~/dev/dcre/
   - Acquire: `locky acquire redc-win-run N --owner YOURBRANCH --acquire-timeout 3600 --lease-timeout 1800`
   - Keep the lease alive: `locky refresh redc-win-run --owner YOURBRANCH --lease-timeout 1800`
   - Release when done: `locky release redc-win-run all --owner YOURBRANCH`
-- An rb runner tool, once one exists, takes and releases the permits itself.
+- An orb runner tool, once one exists, takes and releases the permits itself.
 - Never `locky release-all`.
 - Never stop a process you did not start: stop only your own, by the id rcs gave you.
 

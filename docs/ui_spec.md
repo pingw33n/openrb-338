@@ -1,8 +1,8 @@
 # UI spec: the ReBirth RB-338 2.01 panel
 
-The layout and behavior of the original's song window ("the panel"), written for rb's own UI
+The layout and behavior of the original's song window ("the panel"), written for OpenRB-338's own UI
 (milestone m-3: task-042 draws the art, task-044 builds the widgets, task-045 wires them to the
-engine, task-047 adds the menu). It describes the original, not its art: rb draws its own
+engine, task-047 adds the menu). It describes the original, not its art: OpenRB-338 draws its own
 graphics at these positions. Written for task-041 (2026-10-27).
 
 **Sources.**
@@ -87,7 +87,7 @@ click on a focus bar, the selection of a pattern in a row, and the Up/Down arrow
 'T' and 'V'). The focus decides where the computer keyboard's synth and tap keys go and which
 pattern the Edit menu's pattern items act on.
 
-**The theme is always dark (task-127).** The colors of rb-ui's windows (`INK`, `INK_DIM`, the
+**The theme is always dark (task-127).** The colors of orb-ui's windows (`INK`, `INK_DIM`, the
 panel fill) assume a dark background, so the UI ignores the system theme: `main.rs` calls
 `set_theme(ThemePreference::Dark)` at start and `App::show` sets it again on every frame when it
 differs. The preference is Dark and the window theme is set to Dark, so a change of the system
@@ -95,7 +95,7 @@ theme at run time cannot alter the visuals (winit 0.30 reports `WM_SETTINGCHANGE
 event only for a window without a preferred theme). The menu bar, the menus, the file browser and
 every window are egui-drawn and follow; nothing is a native dialog. egui's `sync_window_theme`
 (on by default) then sends `ViewportCommand::SetTheme(Dark)`, which winit applies to the native
-title bar (on Windows, its dark mode). `crates/rb-ui/tests/theme.rs` runs frames with a light
+title bar (on Windows, its dark mode). `crates/orb-ui/tests/theme.rs` runs frames with a light
 system theme and checks dark visuals, the text contrast and that only Dark is sent to the window.
 The Windows title bar itself is unverified (no Windows machine for the UI).
 
@@ -246,7 +246,7 @@ Behavior (all [C], `sub_42A058` and its callees, ticks: 768 per bar):
 - **Logo click** (`sub_42A799`) sends top-level msg 58 with the current mod: the mod's startup
   sound plays. It does not test the preference "Play Mod Startup Sound" nor the mod's user count
   (0x42A7D3..0x42A7F1: `sub_40CB32`, the document's mod id `sub_4166D0`, `sub_40ABB5`), so a
-  click plays the sound with the preference off [C, task-074]. rb: `layout::on_logo` and
+  click plays the sound with the preference off [C, task-074]. OpenRB-338: `layout::on_logo` and
   `Link::startup_sound` (`App::focus_click`). The code's hit rectangle is `sub_479B06(458, 1, 608, 49)` = left 458, top 1,
   right 608, bottom 49, all four in transport coordinates; its right edge lies 16 px beyond the
   transport's own right edge (592 in transport coordinates), so the effective area is clipped to
@@ -442,7 +442,7 @@ UI state (BD at start: observed, the steps showed the BD column and a drag paint
 - Mouse down on a legend selects; dragging over the legends keeps selecting while the button is
   held (`sub_4432F9` loops while `sub_492E05`, button down).
 - Selector knob: a knob (span 40) whose value v maps to instrument `(11 * v + 63) / 127`; the
-  knob shows `(127 * i + 5) / 11` for the selected instrument i (`sub_441E79`). rb has no
+  knob shows `(127 * i + 5) / 11` for the selected instrument i (`sub_441E79`). OpenRB-338 has no
   selector knob (the user's change of 2026-10-28): the legend selects, and the knob's place
   right of the legend shows the mod's window, the `splash.jpg` of the kit that plays (the
   embedded standard mod's for the built-in kit) above the song's mod name (`App::mod_view`).
@@ -719,7 +719,7 @@ the row-to-section assignment is the manual's (page 224), the handler hides whic
   (`+1645`, `sub_4430DC` -> `sub_44305C(i, step, 1)`): tap recording. Shift+Tab deletion for the
   drums is in the manual (page 33) [G: not found in the drum handler].
 
-**How rb maps the keys (task-070, decision task-054).** `crates/rb-ui/src/keys.rs` maps a key by
+**How OpenRB-338 maps the keys (task-070, decision task-054).** `crates/orb-ui/src/keys.rs` maps a key by
 its physical US position (egui `Event::Key::physical_key`, the scancode winit reports), whatever
 the layout: the Note/Pause and AC key is the key right of `0` (`-` on a US keyboard) and `=` is
 an alias, as the manual pictures. A key event without a `physical_key` (a platform that does not
@@ -733,7 +733,7 @@ egui 0.37 cannot tell numpad keys from the keys they share a name with (egui-win
 `key_from_key_code`: `Numpad0..9` = `Num0..9`, `NumpadEnter` = `Enter`, `NumpadSubtract` =
 `Minus`, `NumpadDivide` = `Slash`; `NumpadAdd` = `Plus` is distinct; `NumpadMultiply` gives no key
 at all, so Insert is the only record key). What works everywhere: Space, Insert, numpad `+`. The
-original keeps the others on separate codes; rb resolves them by mode and focus (`keys::map`):
+original keeps the others on separate codes; OpenRB-338 resolves them by mode and focus (`keys::map`):
 - digits `1`..`8` are pattern keys in Select Patterns mode (so numpad 1 2 4 5 7 8 are not
   transport keys there; numpad 0 still stops); in Program Synth mode digits are the numpad's;
 - Enter is the 303's Step when a 303 has the focus in Program Synth mode, else Play;
@@ -742,12 +742,12 @@ original keeps the others on separate codes; rb resolves them by mode and focus 
   Synth mode tempo down has no key.
 - `=` with Shift (`+` on a US keyboard) is tempo up, not the Note/Pause/AC alias.
 
-**Where rb differs from the original here.** In Program Synth mode (the default) the main-row
+**Where OpenRB-338 differs from the original here.** In Program Synth mode (the default) the main-row
 digits `0 1 2 4 5 7 8` act as transport keys, Enter as Play outside a 303 and `/` as loop,
 whereas the original's main-row digits do nothing in that mode; the pattern keys work only in
 Select Patterns mode. This is a trade-off forced by egui 0.37 (no numpad identity).
 
-**PgUp / PgDn are not wired.** rb's panel is a fixed, letterboxed 624 x 510 image with no
+**PgUp / PgDn are not wired.** OpenRB-338's panel is a fixed, letterboxed 624 x 510 image with no
 scrolling rack, so there is nothing to scroll (the open [G] in section 15 stays open).
 
 Numpad 1 / 2 locate to the loop start / end [C] task-081: `sub_42D1D3` maps key codes 100 / 101
@@ -857,28 +857,28 @@ Each item says what would settle it.
 - [G] What Clear does to the length and shuffle flag. Settle: read `sub_43CB97` (called from
   `sub_43F5F5`); or set a 303 pattern to 8 steps with shuffle on, Clear, and save the song.
 
-## 16. How rb wires the panel (task-045)
+## 16. How OpenRB-338 wires the panel (task-045)
 
-`crates/rb-ui/src/link.rs` connects the panel model to the real-time player. rb does what the
-sections above say; this section lists what rb's wiring decides where the original's code was not
+`crates/orb-ui/src/link.rs` connects the panel model to the real-time player. OpenRB-338 does what the
+sections above say; this section lists what OpenRB-338's wiring decides where the original's code was not
 read, and what it leaves out.
 
 - **Messages.** Each control sends the messages of `docs/song_load.md` section 4.10 (`Link::log`
-  records them; `crates/rb-ui/tests/wired.rs` checks every knob, fader, switch, toggle, arrow, step
+  records them; `crates/orb-ui/tests/wired.rs` checks every knob, fader, switch, toggle, arrow, step
   and transport button against them, and against the engine's live block and pattern arrays).
   The Clear button sends the whole pattern (sub 44, 98 bytes) with the pattern's own shuffle and
   length bytes [G, section 5]. Loop start up/down sends `{12, start}` then `{16, end}`, loop length
   `{16, end}`. Stop while stopped sends the locate `{8, t}`. Record sends `{2, v}`
-  (`rb_player::Command::Record`, task-057), in song mode only; the switch to pattern mode sends
+  (`orb_player::Command::Record`, task-057), in song mode only; the switch to pattern mode sends
   `{2, 0}` after `{0, 0}`. The Record LED follows the engine's byte (`Snapshot::recording`).
 - **Saving a recorded song** (task-057). Once a merge has put recorded events into the song's
   tracks (the loop wrap, record off, the song end), the song is modified and Save writes the
-  engine's tracks (`rb_player::Player::tracks`, copied by the callback whenever they change;
+  engine's tracks (`orb_player::Player::tracks`, copied by the callback whenever they change;
   `Link::recorded_tracks`), as the original's save writes what it reads back from the DLL
   (`sub_437CFF`, song msg 22). A song that was not recorded keeps the tracks of its file, so an
   unedited save gives back the file; the original would write the DLL's tracks there too (with
   the stop prune's removals and the ctor's tick-0 events, which shipped songs already have):
-  task-080 decides whether rb should always do so.
+  task-080 decides whether OpenRB-338 should always do so.
 - **The panel follows the engine** after each engine call: position, play, mode, loop, tempo, every
   controller's live value (the knobs follow the song's automation), the mixer, the pattern each
   section selects (the bank follows it [G]), the drum running lights, the meters. The values of a
@@ -895,9 +895,9 @@ read, and what it leaves out.
 
 ## 17. The in-app file browser (task-046)
 
-rb uses no native file dialog. `crates/rb-ui/src/browser.rs` is a modal overlay (egui `Modal`,
+OpenRB-338 uses no native file dialog. `crates/orb-ui/src/browser.rs` is a modal overlay (egui `Modal`,
 the art's slate palette) for four modes: open a song (`*.rbs`), save a song (`*.rbs`), export audio
-(`*.wav`, `*.flac`, `*.ogg`: the containers `rb render` writes, chosen by the extension, with a
+(`*.wav`, `*.flac`, `*.ogg`: the containers `orb render` writes, chosen by the extension, with a
 format button row that rewrites the name's extension) and choose a mod (`*.rbm`). It is a component
 for the menu (task-047): `Browser::new(mode, &settings)`, then `show(ctx, &mut settings)` each frame
 returns `Poll::Open`, `Chosen(path)` or `Cancelled`. `App::open_browser(mode)` opens one over the
@@ -920,25 +920,25 @@ starts with it open. The panel takes no key or click while a browser is open. Th
   folder, an unreadable folder) show in red in the dialog.
 - **Mods.** A `.rbm` is checked when its row is drawn (parse, embedded key window, as
   the embedded kit is loaded, `rbm::standard::builtin_samples`): one that is not recrypted is
-  listed in amber marked "needs rb recrypt" and cannot be chosen (the error tells the `rb mod
+  listed in amber marked "needs orb mod recrypt" and cannot be chosen (the error tells the `orb mod
   recrypt` command, docs/rbm.md 12.4); a file that is not an RBM is marked "not a mod".
-- **Defaults and settings** (`crates/rb-ui/src/settings.rs`): the start folder is the songs folder
+- **Defaults and settings** (`crates/orb-ui/src/settings.rs`): the start folder is the songs folder
   (songs, export) or the mods folder (mods) of the settings, else the documents folder
   (`~/Documents`, else the home folder). "Use as songs/mods folder" in the dialog sets them to the
   folder shown. The last 8 folders a file was chosen in are the recent folders. All of it is a
   TOML file (task-107) of `songs_dir`, `mods_dir`, `recent` (an array) and `startup_sound` at
-  `$RB_UI_CONFIG`, else `rb/ui.toml` in `$XDG_CONFIG_HOME` (Linux `~/.config`, macOS
+  `$ORB_UI_CONFIG`, else `OpenRB-338/ui.toml` (task-068; settings of the old `rb/` folder are not carried over) in `$XDG_CONFIG_HOME` (Linux `~/.config`, macOS
   `~/Library/Application Support`, Windows `%APPDATA%`); it is rewritten whole, through a
   temporary file and a rename, when a path is chosen or a folder set. A missing or damaged file
   means the defaults (a damaged one stays until the next save), a key of the wrong type is
   skipped, unknown keys are ignored. A path that is not valid UTF-8 is left out of the file on
   save (a `recent` entry is dropped; `songs_dir`, `mods_dir` are omitted and so fall back to the
-  default), never stored lossy. An empty `$RB_UI_CONFIG` counts as unset. The old `ui.conf` is
+  default), never stored lossy. An empty `$ORB_UI_CONFIG` counts as unset. The old `ui.conf` is
   neither read nor deleted. egui's own persistence is not used.
 
 ## 18. The menu (task-047)
 
-`crates/rb-ui/src/menu.rs` is the menu bar above the panel (22 points; the panel takes the rest of
+`crates/orb-ui/src/menu.rs` is the menu bar above the panel (22 points; the panel takes the rest of
 the window, `App::menu`; the headless panel tests run without it) and the commands behind it
 (`App::command(Cmd)`). It is the user's reduced menu (2026-10-26): of the original's menu
 (section 12) only the song files, the mod and the Vintage flag, plus the keyboard mode of section
@@ -958,19 +958,19 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | Options | Vintage ReBirth Synth Sound | the song's sound model (the original has it in the Edit menu) |
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the error message box); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
-| Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key rb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
+| Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key orb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
 | Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the logo (the `app_icon` part), the name, `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the link https://github.com/pingw33n/open-rb-338 (task-102; below) |
 
 The Help menu is last in the bar. Its items are the list `HELP_ITEMS` in `menu.rs`, so a new item
 is one more entry.
 
-- **Help > Keyboard Shortcuts** (task-105; `crates/rb-ui/src/key_help.rs`). Centered as About is
+- **Help > Keyboard Shortcuts** (task-105; `crates/orb-ui/src/key_help.rs`). Centered as About is
   (`App::key_help_serial`); Escape is consumed after the other windows. The text is one table,
   `key_help::groups(is_mac)`: each line carries the binds it stands for (key, Shift state, the
   modes and focused rows it holds in, the `keys::Action` it must give). Two unit tests keep it
   true: every bind is run through `keys::map`, and every (key, Shift, mode, row) for which
   `keys::map` gives an action (over all of egui's `Key::ALL`) must be covered by a bind with
-  that action. The menu lines take their text from `shortcuts.rs`. rb's deviations from the
+  that action. The menu lines take their text from `shortcuts.rs`. OpenRB-338's deviations from the
   original (section 10) are written in the window: tempo down has no key in Program Synth mode,
   Enter and `/` change meaning with a 303 focused, PgUp / PgDn do nothing, numpad `*` gives no
   key. The groups "Windows and the file browser" and "Prompts and questions" (the unsaved-changes
@@ -978,36 +978,36 @@ is one more entry.
   Enter/Esc/N go back) are listed by hand from `prompt_ui` (`menu.rs`) and the browser's key
   handler (`browser.rs`); no test checks them.
 
-- **Help > About and the version string** (task-102; `crates/rb-ui/src/about.rs`, `version.rs`,
+- **Help > About and the version string** (task-102; `crates/orb-ui/src/about.rs`, `version.rs`,
   `build.rs`). The window is centered as File > Info is (pivot CENTER_CENTER, `default_pos` at
   the content center, a fresh id per open: `App::about_serial`). The version is
-  `YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)`, computed by `build.rs` into `RB_UI_VERSION` (the
+  `YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)`, computed by `build.rs` into `ORB_UI_VERSION` (the
   pure formatting is `version.rs`, unit-tested): the number is the build time in UTC to the
   minute (task-133), from `SOURCE_DATE_EPOCH` when set, else the time the script runs. The
   hash part is
   `git rev-parse --short HEAD`, prefixed `dev-` when the build is not of main and suffixed
   `-dirty` when `git status --porcelain --untracked-files=no` is not empty (untracked files do
   not count, as with `git describe --dirty`); `(unknown)` when git or the repository is
-  absent (the build never fails for it). Main is decided by, in order: `RB_BUILD_BRANCH` (main
+  absent (the build never fails for it). Main is decided by, in order: `ORB_BUILD_BRANCH` (main
   or anything else; for release builds, whose tag builds are on a detached HEAD), the branch
   `git rev-parse --abbrev-ref HEAD` reports, `GITHUB_REF_NAME` on a detached HEAD, else not
   main. The script reruns on a change of HEAD, the branch ref, `packed-refs` (each watched only
   when the file exists: cargo treats a missing path as always stale and would rerun every
-  build), the index, any file under `crates/rb-ui` or `assets/ui`, and the three variables. So
+  build), the index, any file under `crates/orb-ui` or `assets/ui`, and the three variables. So
   a commit, a branch switch, a stage or an edit of the UI updates the string; an edit of
   another crate or of a doc is seen once staged (the index changes), and until then leaves the
   dirty flag and the time as they were.
 
 - **Save** (`document::compose`). The original saves by asking every device for its data block
   (`sub_43920E` .. `sub_43A1F4`, `docs/song_load.md` section 4.10) and passing them to the RBS
-  writer `sub_438025`. rb's panel and link hold the same blocks, so the song written is the song
+  writer `sub_438025`. OpenRB-338's panel and link hold the same blocks, so the song written is the song
   file as read, with over it: the controllers (`link::controls`, controller c = parameter c), the
   pattern selection and on/off switches, the 32 patterns of the four pattern devices
   (`Link::patterns`), the mixer, the tempo, mode, loop and shuffle, GLOB's vintage byte 482, and the
   mod name and its INFO URLs. The track events, the user text, unknown chunks and unused bytes stay
   as read. The values are those the panel shows, which follow the song's automation while it plays
   (the original also saves the live blocks). The version is written as 4.2 [G: the original's
-  version write in `sub_438025` was not read; rb writes the version it reads, 4.2]. A 4.2 file whose
+  version write in `sub_438025` was not read; OpenRB-338 writes the version it reads, 4.2]. A 4.2 file whose
   controls were not touched is saved byte for byte, including the bytes the load changes
   (the 909's mid tom decay is the low tom's after a load: such a byte keeps the file's value until
   the control is changed; 146 songs of the corpus are saved byte for byte, the 17 older ones load to the same engine
@@ -1019,15 +1019,15 @@ is one more entry.
   constructor's tick-0 events included), as the original's save writes them (task-125,
   `docs/song_load.md` section 12.6). A new song is saved from the empty 4.2 song (`rbs::Song::empty`) and the panel.
   The file is written next to itself and renamed over it; an error is shown in the error message box.
-- **Export** uses `rb render`'s code (`rb_cli::render`, the `rb-cli` library: `Renderer::render_to_file`,
+- **Export** uses `orb render`'s code (`orb_cli::render`, the `orb-cli` library: `Renderer::render_to_file`,
   the same encoders, 9088 idle blocks, Ogg quality 0.5): the song as saved (composed, written, parsed
-  and converted again) is rendered on a thread and written, so the file is the one `rb render`
+  and converted again) is rendered on a thread and written, so the file is the one `orb render`
   writes for the saved song with the same kit (`tests/menu.rs` compares WAV, FLAC and Ogg byte for byte; the
-  Ogg stream serial is fixed, so `rb render` .ogg files are reproducible). The built-in kit
-  is the one rb embeds (`assets/Standard.rbm`), as in `rb render`. Errors are shown in the
+  Ogg stream serial is fixed, so `orb render` .ogg files are reproducible). The built-in kit
+  is the one orb embeds (`assets/Standard.rbm`), as in `orb render`. Errors are shown in the
   error message box, progress and the result in the status line.
 - **The mod** (`docs/rbm.md` section 14). Opening a song looks its GLOB mod name up in the Mods
-  folder (the settings' folder, else `RB_MOD_DIR` and the defaults of `rb render`); "Standard
+  folder (the settings' folder, else `ORB_MOD_DIR` and the defaults of `orb render`); "Standard
   ReBirth" is the built-in kit; a mod that is not found, or not recrypted, plays the built-in kit
   with an error box and the song keeps the name. A choice in the Mods menu is `sub_426FB3`: the same
   kit again does nothing; else the song is marked modified, its mod name is the mod's INFO menu
@@ -1035,7 +1035,7 @@ is one more entry.
   the kit; the save writes the name. The entries are the INFO names of the folder in the original's
   folder order, the first file of a duplicated name owning it. The mod's panel art is not
   drawn: the original redraws the window with the mod's bitmaps (`sub_42D80D`), and the user
-  decided (task-078, 2026-10-27) that rb keeps its SVG art and a mod changes the sound only.
+  decided (task-078, 2026-10-27) that OpenRB-338 keeps its SVG art and a mod changes the sound only.
   After the change the new mod's startup sound plays (`sub_426C67`, `Link::startup_sound`,
   task-074) when the preference "Play Mod Startup Sound" is on: `Settings::startup_sound`, on by
   default as the original's (the preferences' constructor `sub_41CAA4` sets prefs `+536` = 1 at
@@ -1064,11 +1064,11 @@ is one more entry.
   (`sub_426F83`, called at 0x40BE23; its body was not read, that it returns the song's mod
   object is [G]) is that item's mod object (`cmp edx, [ebp-134h]`, 0x40BF0C) [C: the loop,
   the item id, the name offset and the compare are read in the disassembly]. The
-  original compares mod objects, rb compares the kit's mod file with the entry's file.
+  original compares mod objects, OpenRB-338 compares the kit's mod file with the entry's file.
 - **Demo Song** (task-094). Every shipped mod carries an embedded `Demo.rbs`, the standard mod
   and the built-in kit none (`docs/rbm.md` 13.1; the original only enables a button of the mod
   info dialog, `sub_417000` at 0x417000, `sub_41A0C5` (the instruction at
-  0x41A3E0 in it), that saves it (docs/rbm.md 13.1, the Demo.rbs paragraph), so rb's menu item
+  0x41A3E0 in it), that saves it (docs/rbm.md 13.1, the Demo.rbs paragraph), so OpenRB-338's menu item
   is new).
   The item is below the separator after "Refresh List" and is enabled when the current song's
   resolved kit (`doc.kit`) is a mod file with that chunk (`App::has_demo`, the answer kept per
@@ -1081,7 +1081,7 @@ is one more entry.
   name and URLs are the mod's INFO. Opening the demo plays the mod's startup sound by the
   preference, as any open does (18.1): it goes through `App::adopt_as` -> `settle` ->
   `mod_opened`.
-- **Mods > Info** (task-106; `crates/rb-ui/src/mod_info.rs`). A centered window "Mod Information"
+- **Mods > Info** (task-106; `crates/orb-ui/src/mod_info.rs`). A centered window "Mod Information"
   (pivot CENTER_CENTER, `default_pos` at the content center, a fresh id per open:
   `App::mod_info_serial`; Escape is consumed after the other windows' Escape) for the kit that
   plays (`doc.kit`): the built-in kit is the embedded `assets/Standard.rbm`. It shows the splash
@@ -1113,18 +1113,18 @@ is one more entry.
   given DPIs. On the developer's MacBook (main display 345.44 mm, 2992 px wide: 8.66 px/mm) a
   256 px splash is 702.9 px, i.e. 351.4 points at 2 pixels per point.
 - **File > Info** (task-095). Below "Save As...", a closable window "Song Information"
-  (`crates/rb-ui/src/info.rs`; the close button or Escape closes it). It is read-only and shows
+  (`crates/orb-ui/src/info.rs`; the close button or Escape closes it). It is read-only and shows
   the current document each frame, so it follows an open of another song. It lists the file
   name and folder (Untitled for a song with no file), the song info chunk's window title, more
   text (0x0d shown as a line break) and web page (a link), the mod's name with its state
   (built-in kit, loaded, or missing with the built-in kit playing) and the mod's web and ftp
   addresses, the format version and copyright of the file as read, and the tempo, mode, loop,
   shuffle and synth sound of the file, and "Last event": `bar N` (1-based) of the song's last
-  track event, or `none` (task-124; `SongFacts::last_event_bar`, the same facts `rb info`
+  track event, or `none` (task-124; `SongFacts::last_event_bar`, the same facts `orb info`
   prints, for a 4.x and a 1.x song; an .rbs song has no length field, so this is its useful
   length). The row follows the song as it is now: after a recording (the Link's recorded
   tracks, which Save writes) it is the latest tick over those tracks
-  (`rb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), and a
+  (`orb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), and a
   successful Save of any song makes the document's song the one written, so the document
   matches the file. `SongInfo::of` builds the facts from the document (and the recorded
   tracks) without a player. Editing the song information is not done. "Show song info on open" (the
@@ -1134,14 +1134,14 @@ is one more entry.
 
 ### 18.0 The status line and the error message box (task-130)
 
-rb-specific (a UI decision of the user, not a fact about the original).
+OpenRB-338-specific (a UI decision of the user, not a fact about the original).
 
 - **The status line** is the 22-point bar at the bottom of the window, for information and for
   repeating notifications: "Saved PATH", "Exporting PATH ...", "Exported PATH", "Mod list
   refreshed: N mods in FOLDER (+a, -b)", and the notifications of errors that repeat (below).
   A click (outside any box, prompt or browser) dismisses it, except while an export runs. It
   never shows the error of a one-time action: that is the box.
-- **The error message box** (`rb-ui/src/error_box.rs`, `App::fail`) shows every error, one at a
+- **The error message box** (`orb-ui/src/error_box.rs`, `App::fail`) shows every error, one at a
   time, in the order they came (`App::errors`; "N more" under the text when others wait). It is
   a modal over the panel, drawn above every other window and dark like them: the title "Error"
   with a close button (X) at the right of the title bar, the message (wrapped, selectable to
@@ -1230,7 +1230,7 @@ disassembly (IDA's cross references, each re-read with llvm-objdump on the insta
   `sub_481050` opens a file through `sub_49381B` and slot 13 was not traced past `sub_49381B`.]
 - The Benchmark song (`sub_4269CE`) opens `dword_4DA788` (0x426B1D) and sends no msg 58.
 
-rb (`App::adopt`, `App::start`, crates/rb-ui/src/menu.rs): OpenRB-338 has one song, and its Open
+OpenRB-338 (`App::adopt`, `App::start`, crates/orb-ui/src/menu.rs): OpenRB-338 has one song, and its Open
 asks the unsaved prompt that is the original's close, so the open song is closed and the new
 one is its mod's only user: a song that opens plays its mod's startup sound when
 `Settings::startup_sound` is on and the kit changed (`Link::startup_sound` after `Link::load`;
@@ -1239,14 +1239,14 @@ kit plays" bullet below, task-099, is the rule). At the start, the song named on
 line is opened that way; without one the new empty song plays the built-in kit's sound. File
 New (task-091) is the start without a song (`App::fresh`), so it plays the sound when the kit
 changes (from a mod song to the built-in kit).
-Where rb differs: the original plays nothing when another window has the same mod open (count 2), or
-when the file is already open (the window is activated); rb has no second window, and reopening
-the open file reloads it and plays the sound. Tests (crates/rb-ui/tests/menu.rs):
+Where OpenRB-338 differs: the original plays nothing when another window has the same mod open (count 2), or
+when the file is already open (the window is activated); OpenRB-338 has no second window, and reopening
+the open file reloads it and plays the sound. Tests (crates/orb-ui/tests/menu.rs):
 `a_song_open_plays_its_mods_startup_sound_when_the_preference_is_on` (the built-in kit's and a
 mod's sound, mixed as the player mixes it, none with the preference off) and
 `the_start_plays_the_startup_sound_when_the_preference_is_on` (with and without a song, once).
-- **Only a changed kit plays** (task-099, the user's requirement, 2026-10-28; rb's deviation
-  from the original: the rule is rb's, set at the user's request; what the original does for
+- **Only a changed kit plays** (task-099, the user's requirement, 2026-10-28; OpenRB-338's deviation
+  from the original: the rule is OpenRB-338's, set at the user's request; what the original does for
   the same mod again was not verified).
   `App::settle` and `App::use_kit` play the sound only when the resolved kit after the change
   (`Document::kit`: Standard or Mod(path)) differs from the one before. This covers a song
@@ -1257,7 +1257,7 @@ mod's sound, mixed as the player mixes it, none with the preference off) and
   does not load, or a failed mod change, leaves the built-in or current kit and plays nothing
   new. The preference still gates it; the logo click (`sub_42A799`) plays whatever the
   preference and whatever changed. Test:
-  `the_startup_sound_plays_only_when_the_kit_changes` (crates/rb-ui/tests/menu.rs).
+  `the_startup_sound_plays_only_when_the_kit_changes` (crates/orb-ui/tests/menu.rs).
 - **An open stops the playing song** (task-090, the user's requirement, 2026-10-28). Opening a
   song (File Open, the start's command-line song, and any later path that replaces the song)
   while the open song plays leaves the transport stopped and the new song at its start. The stop
@@ -1266,11 +1266,11 @@ mod's sound, mixed as the player mixes it, none with the preference off) and
   current song stopped and makes the new one current at once (docs/export_state.md section 3).
   An open that is refused leaves the song playing: the unsaved prompt cancelled, a file that
   does not read or parse, and the node pool refusal (`Link::load` returns before the stop).
-  Where rb differs, as far as docs/export_state.md section 3 supports: the engine makes a new
+  Where OpenRB-338 differs, as far as docs/export_state.md section 3 supports: the engine makes a new
   song current at once only when the current one is stopped, otherwise it waits as the pending
-  song until its Play (msg 53 / `sub_1001BDA4`); rb stops the open song first. [G] that the
+  song until its Play (msg 53 / `sub_1001BDA4`); OpenRB-338 stops the open song first. [G] that the
   original's UI neither stops the open song on an open nor keeps it playing in a window of its
-  own; the UI code was not traced. Test (crates/rb-ui/tests/menu.rs):
+  own; the UI code was not traced. Test (crates/orb-ui/tests/menu.rs):
   `opening_a_song_while_playing_stops_it_and_a_refused_open_does_not`.
 - **The Vintage flag** is song message 35 id 21 (`Command::Vintage`); the menu item shows the
   engine's byte and a change marks the song modified.

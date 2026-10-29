@@ -28,8 +28,8 @@ cp "$dist/$target/bin/"* "$stage/"
 cp "$root/LICENSE" "$stage/LICENSE"
 
 case $target in
-    *-windows-*) run="OpenRB-338.exe (the app) and rb.exe (the command line)" ;;
-    *) run="OpenRB-338 (the app) and rb (the command line)" ;;
+    *-windows-*) run="OpenRB-338.exe (the app) and orb.exe (the command line)" ;;
+    *) run="OpenRB-338 (the app) and orb (the command line)" ;;
 esac
 cat > "$stage/README.txt" <<EOF
 OpenRB-338 $version ($target)
@@ -39,8 +39,8 @@ A reimplementation of the audio engine of Propellerhead ReBirth RB-338 2.01.
 This package holds $run.
 Neither needs any file of the original program: the standard drum kit is built in.
 
-  rb render SONG.rbs -o SONG.flac     render a song to FLAC, Ogg Vorbis or WAV
-  rb --help                           all commands
+  orb render SONG.rbs -o SONG.flac    render a song to FLAC, Ogg Vorbis or WAV
+  orb --help                          all commands
   OpenRB-338                          the desktop UI
 
 The binaries are not signed (docs/building.md says what the system shows for that).

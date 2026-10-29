@@ -221,7 +221,7 @@ nothing calls or jumps to 0x1001C520. The only caller of `sub_1001C524` is `Engi
 status byte 0xFA, **MIDI Start** (the table `stru_101528C8 + 4*status`, entries at 0x10152C90: 0xF2
 Song Position → `sub_1001C5C4`, 0xF8 clock → `sub_1001C614`, 0xFA Start → `sub_1001C524`, 0xFB
 Continue → `sub_1001C574`, 0xFC Stop → `sub_1001E0B0`); it also tests `transport+0x160` first
-(0x1001C52A). Without MIDI (out of rb's scope) it never runs. The other caller of `sub_1001BE74`
+(0x1001C52A). Without MIDI (out of orb's scope) it never runs. The other caller of `sub_1001BE74`
 is `sub_1001BF50` (0x1001BF5D), **play**, called from the song-message handler `sub_10011ED0`
 at 0x1001259D (song msg 35 `{1,1}`) and at 0x10012711 (msg 36 with its play byte, globals byte
 1, set), with the song the message is addressed to.
@@ -233,7 +233,7 @@ value means, and `sub_1001BE14`, are not traced]. This is the on-the-fly song sw
 playing, not a defect. In the corpus the replaced song (rbhost's untitled song, the app's
 "Untitled song") is never played, so the refill is always taken; `Engine::activate` takes the flag
 as `Activation::ReplacesCurrent { current_playing }`, `false` for the corpus, and does nothing when
-it is `true`. The real-time player (`crates/rb-player`, task-043) models the switch itself: a song
+it is `true`. The real-time player (`crates/orb-player`, task-043) models the switch itself: a song
 loaded over a playing one is pending (not rendered, but every command goes to it), and its Play
 halts the old song, runs slot 6 on it, plays the new one and makes it current. Otherwise the old
 song's devices get slot 6 (`sub_10013D40`:
@@ -280,7 +280,7 @@ the table's): its stop at 0x427A02 is the message, not the transport's Stop butt
 on, the locate to the loop start applies the events forward instead of chasing when the loop
 start is after the stopped position, the hold mask of controllers recorded since the last merge
 still skips their events, and the loop end merges the recording (`docs/initial_investigation.md`
-§5.3) [G: the effect on an export not captured; every reference capture and rb's export run
+§5.3) [G: the effect on an export not captured; every reference capture and orb's export run
 with record off, which the load leaves at 0].
 
 **No realtime callback runs during the export**: the channel is stopped first. [G] The MME worker is
@@ -509,11 +509,11 @@ Details (task-074, read in the disassembly) [C]:
   `sub_40D1D2` sets app `+0x533` = 1 (0x40D338). The logo click `sub_42A799` sends 58 without
   testing the preference or the user count (docs/ui_spec.md section 3).
 
-rb (task-074): `rb_player::Command::Preview` (built by `Player::startup_sound`, the slot-46
+orb (task-074): `orb_player::Command::Preview` (built by `Player::startup_sound`, the slot-46
 sample of a `SampleSet`) and `Command::PreviewStop` (msg 57's clear); the callback mixes it into
-each 1024-frame call's int16 output after the song (`rb_player::mix_preview`) and keeps the
+each 1024-frame call's int16 output after the song (`orb_player::mix_preview`) and keeps the
 sample's box until a new preview replaces it, which goes back through the garbage queue, so the
-callback frees nothing. rb's offline renders (`rb render`, the export) send no msg 58, as the
+callback frees nothing. orb's offline renders (`orb render`, the export) send no msg 58, as the
 capture protocol's renders have the startup sound off. Tests: the unit tests of `mix_preview`
 (every int16 value against the add/adc/sar sequence, the saturation of L and R), the player's
 `preview.rs` (over the empty and a playing song, the end, a restart, the stop), `no_alloc.rs`.

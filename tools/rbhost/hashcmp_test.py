@@ -118,7 +118,7 @@ class HashcmpTest(unittest.TestCase):
         client = FakeClient([0, 0], [sha(b"A"), sha(b"X")])
         res, _ = self.run_compare(client, [b"A", b"B"])
         self.assertEqual([e["equal"] for e in res], [True, False])
-        self.assertEqual((res[1]["rbhost_sha256"], res[1]["rb_sha256"]), (sha(b"X"), sha(b"B")))
+        self.assertEqual((res[1]["rbhost_sha256"], res[1]["orb_sha256"]), (sha(b"X"), sha(b"B")))
         self.assert_cleaned(client)
 
     def test_failure_mid_run_cleans_up(self):

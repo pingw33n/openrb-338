@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the dist-profile binaries of rb (the CLI) and OpenRB-338 (rb-ui) for one target triple and
+# Builds the dist-profile binaries of orb (the CLI) and OpenRB-338 (orb-ui) for one target triple and
 # copies them to dist/<target>/bin/ (task-108). scripts/package.sh packs them.
 #
 #   scripts/build.sh TARGET
@@ -10,7 +10,7 @@
 #   cargo-xwin  Windows targets off Windows (needs `cargo install cargo-xwin`)
 #   docker      Linux targets off a matching Linux host (needs a running Docker)
 # Environment passed through to the build (the version string, task-102): SOURCE_DATE_EPOCH,
-# RB_BUILD_BRANCH, GITHUB_REF_NAME. DIST sets the output folder (default: dist/).
+# ORB_BUILD_BRANCH, GITHUB_REF_NAME. DIST sets the output folder (default: dist/).
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -36,7 +36,7 @@ esac
 # The dist profile of Cargo.toml: fat LTO, one codegen unit, stripped (task-132). Its binaries
 # are in target/<target>/dist/.
 profile=dist
-cargo_args=(--profile "$profile" --locked --target "$target" -p rb-cli -p rb-ui)
+cargo_args=(--profile "$profile" --locked --target "$target" -p orb-cli -p orb-ui)
 target_dir=${CARGO_TARGET_DIR:-$root/target}
 
 build_docker() {
@@ -49,7 +49,7 @@ build_docker() {
     git_common=$(cd "$root" && git rev-parse --path-format=absolute --git-common-dir)
     # a worktree's .git file points into the common git dir, so mount it at its own path
     case $git_common in "$root"/*) ;; *) mounts+=(-v "$git_common:$git_common:ro") ;; esac
-    local env=(-e SOURCE_DATE_EPOCH -e RB_BUILD_BRANCH -e GITHUB_REF_NAME -e "DIST=$dist"
+    local env=(-e SOURCE_DATE_EPOCH -e ORB_BUILD_BRANCH -e GITHUB_REF_NAME -e "DIST=$dist"
         -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e "GIT_CONFIG_VALUE_0=*"
         -e CARGO_TARGET_DIR=/target)
     docker run --rm --platform "$platform" "${env[@]}" \
@@ -112,7 +112,7 @@ case $os in
 esac
 
 mkdir -p "$bin_dir"
-for b in rb OpenRB-338; do
+for b in orb OpenRB-338; do
     cp "$target_dir/$target/$profile/$b$exe" "$bin_dir/$b$exe"
 done
 echo "built $target -> $bin_dir"

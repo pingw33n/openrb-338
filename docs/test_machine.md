@@ -11,7 +11,7 @@ Commands below use `rcs` for `~/dev/dcre/common/tools/rcs_client.py`.
 | What | Where |
 |---|---|
 | rcs server root | `C:\re` |
-| rb's working folder (create once) | `C:\re\rb` (rcs path `rb/`) |
+| The project's working folder (create once; the machine's layout, so it keeps the old name `rb`) | `C:\re\rb` (rcs path `rb/`) |
 | The installation | `C:\ReBirth RB-338` (outside the rcs root; since dcre bd32edb rcs takes absolute paths anywhere: `rcs ls 'C:/ReBirth RB-338'`, `rcs get 'C:/ReBirth RB-338/Demo Songs/Calm.rbs' .`, `exec --cwd 'C:/ReBirth RB-338'`) |
 | Preferences file | `C:\Users\pingw33n\AppData\Local\VirtualStore\Windows\ReBirth RB-338 2.prf` |
 | The ReBirth CD (2026-10-27) | drive `E:` (label `RB338V20`): `Install ReBirth RB-338.exe`, `RB20FUL.DAT`, ... (`rcs ls E:/`, read-only). Its installer's Rebirth.exe is not the installed one (docs/rbm.md 13.1) |
@@ -181,7 +181,7 @@ What follows from the file and the app:
 
 After the app was closed with `taskkill /PID` the file differed from before at 195 bytes, all in the recent
 list (`Calm.rbs` was added); the template at 0x4000 and the driver name did not change. Because the file is
-in the user's profile and is rewritten at exit, it is part of the machine state, not of rb: an
+in the user's profile and is rewritten at exit, it is part of the machine state, not of orb: an
 experiment that needs a fixed state should copy `prf_before.prf` back
 (`cmd /c copy`) with the app closed.
 
@@ -209,7 +209,7 @@ Applied to this app (doc-001): `locky acquire redc-win-run N --owner <branch> --
 starts the app, sends input to it or screenshots it runs under that lease, refreshed with `locky
 refresh` at least every 25 minutes; release with `locky release redc-win-run all --owner <branch>` once
 the app has been stopped. The read-only `cmd /c dir` and `rcs get` of the installation or of `C:\re\rb`
-do not need them. An rb runner tool takes and releases them itself.
+do not need them. An orb runner tool takes and releases them itself.
 
 ## 7. The shipped songs and mods
 
@@ -248,7 +248,7 @@ Mods (`C:\ReBirth RB-338\Mods`, not committed; the rcs copies are in `C:\re\rb\i
 
 **The installation's Mods are recrypted (task-063, 2026-10-27).** At the user's explicit request (the one
 exception to "never write into the installation", for these four files only) the files in
-`C:\ReBirth RB-338\Mods` were replaced by their `rb mod recrypt` form (docs/rbm.md section 12), after the
+`C:\ReBirth RB-338\Mods` were replaced by their `orb mod recrypt` form (docs/rbm.md section 12), after the
 originals were copied to **`C:\re\rb\mods_orig`** (`robocopy`, hashes equal to the table above; never
 delete it). The table above is the ORIGINALS' (also the committed manifest's); the installation now has:
 
@@ -260,7 +260,7 @@ delete it). The table above is the ORIGINALS' (also the committed manifest's); t
 | PBE2.rbm | 3,624,056 | `62789353966b7ca7d4c0bd55b14981fdb49b94371c535224bb1f581eb15ccb97` |
 
 The app loaded them with no extra box; one export of Fonda Workout (MSM2) from the installation
-(`rb_export.py --restore-prf`, the wav `548cece4...fff15`) equals `rb compare ... --idle-blocks 3600`
+(`rb_export.py --restore-prf`, the wav `548cece4...fff15`) equals `orb compare ... --idle-blocks 3600`
 with the recrypted MSM2 (one EQUAL among N 3400..3707). After the export `rb_export.py` restored the user's preferences file
 (sha256 `6309526e1574...`, checked) and released the permits. `C:\re\rb\install\Mods` still holds the
 original copies. To go back: copy `C:\re\rb\mods_orig\*.rbm` over the installation's Mods (only with
@@ -269,13 +269,13 @@ no Rebirth.exe running, under all permits).
 The installation's `Rebirth.exe` and `ReBirth.dll` hashes are in task-001's notes.
 
 **The cargo tests use these hashes (task-121, 2026-10-28).** The first table (the originals) and
-the second (the recrypted mods) are pinned in `crates/rb-testkit/src/lib.rs`: with `RB_CD_ISO`, the
+the second (the recrypted mods) are pinned in `crates/orb-testkit/src/lib.rs`: with `ORB_CD_ISO`, the
 image of the ReBirth 2.01 CD, the crate extracts the four originals (and `RB20FUL.DAT`,
 `ReBirth.dll`, `Rebirth.exe`) once per test process, checks each against its SHA-256, recrypts the
 four mods and checks the result against the second table. The tests have no other input of the
-original program: no `RB_RB20FUL`, `RB_MOD_DIR`, `RB_MOD_ORIG_DIR` or `RB_CD_REBIRTH_EXE`, and no
+original program: no variable for `RB20FUL.DAT`, the mods or `Rebirth.exe`, and no
 file of the installed program. The user's third-party files are the other two variables,
-`RB_THIRDPARTY_MODS_DIR` (recrypted mods) and `RB_THIRDPARTY_SONGS_DIR` (songs); see AGENTS.md.
+`ORB_THIRDPARTY_MODS_DIR` (recrypted mods) and `ORB_THIRDPARTY_SONGS_DIR` (songs); see AGENTS.md.
 
 ## 8. The export runner `tools/rb_export.py` (task-008)
 

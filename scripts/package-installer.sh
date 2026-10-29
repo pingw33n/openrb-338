@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x64|arm64>-setup.exe, the NSIS installer of
-# OpenRB-338 and rb for a Windows target (task-111; the version is the UTC build time,
+# OpenRB-338 and orb for a Windows target (task-111; the version is the UTC build time,
 # scripts/version.sh).
 #
 #   scripts/package-installer.sh x86_64-pc-windows-msvc|aarch64-pc-windows-msvc
@@ -33,7 +33,7 @@ version=$("$root/scripts/version.sh")
 
 [ -n "${SKIP_BUILD:-}" ] || "$root/scripts/build.sh" "$target"
 bin=$dist/$target/bin
-for f in OpenRB-338.exe rb.exe; do
+for f in OpenRB-338.exe orb.exe; do
     [ -f "$bin/$f" ] || { echo "missing $bin/$f (run scripts/build.sh $target)" >&2; exit 1; }
 done
 
@@ -49,15 +49,15 @@ OpenRB-338 $version ($arch)
 A reimplementation of the audio engine of Propellerhead ReBirth RB-338 2.01.
 It needs no file of the original program: the standard drum kit is built in.
 
-OpenRB-338.exe is the desktop app (Start menu: OpenRB-338). rb.exe is the command line tool:
+OpenRB-338.exe is the desktop app (Start menu: OpenRB-338). orb.exe is the command line tool:
 
-  rb render SONG.rbs -o SONG.flac     render a song to FLAC, Ogg Vorbis or WAV
-  rb --help                           all commands
+  orb render SONG.rbs -o SONG.flac    render a song to FLAC, Ogg Vorbis or WAV
+  orb --help                          all commands
 
-To run rb from any folder, add this folder to your PATH: run the installer again with "Add rb to
+To run orb from any folder, add this folder to your PATH: run the installer again with "Add orb to
 the PATH of the current user" ticked, or add it in Settings > System > About > Advanced system
 settings > Environment Variables. The uninstaller (Settings > Apps) removes what the installer
-added; your songs and the settings file (%APPDATA%\rb) are kept.
+added; your songs and the settings file (%APPDATA%\OpenRB-338) are kept.
 
 The installer and the programs are not signed, so Windows SmartScreen may say "Windows protected
 your PC": choose "More info", then "Run anyway".
@@ -67,7 +67,7 @@ crlf "$stage/readme.in" "$stage/README.txt"
 rm "$stage/readme.in"
 # NSIS stores the time of every file it packs: copy all of them here and give them the build
 # time, so two runs of one build make the same installer (BSD date -r, GNU date -d)
-cp "$bin/OpenRB-338.exe" "$bin/rb.exe" "$root/scripts/installer/path.ps1" "$stage/"
+cp "$bin/OpenRB-338.exe" "$bin/orb.exe" "$root/scripts/installer/path.ps1" "$stage/"
 stamp=$(TZ=UTC date -r "$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S 2>/dev/null \
     || TZ=UTC date -d "@$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S)
 touch -t "$stamp" "$stage"/*

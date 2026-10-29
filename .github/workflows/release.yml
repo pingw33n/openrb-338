@@ -1,4 +1,4 @@
-# Builds the packages of rb (the CLI) and OpenRB-338 (the UI) for the six targets on native
+# Builds the packages of orb (the CLI) and OpenRB-338 (the UI) for the six targets on native
 # runners and uploads them as workflow artifacts (task-108). Runs on a release tag (v*) or by
 # hand. Needs no secret, and fetches no Propellerhead file: the standard mod is in the
 # repository (assets/Standard.rbm). The draft release, the installers, the .dmg and the
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       source_date_epoch: ${{ steps.env.outputs.SOURCE_DATE_EPOCH }}
-      build_branch: ${{ steps.env.outputs.RB_BUILD_BRANCH }}
+      build_branch: ${{ steps.env.outputs.ORB_BUILD_BRANCH }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,7 +57,7 @@ jobs:
           - { target: aarch64-apple-darwin, os: macos-15 }
     env:
       SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
-      RB_BUILD_BRANCH: ${{ needs.prepare.outputs.build_branch }}
+      ORB_BUILD_BRANCH: ${{ needs.prepare.outputs.build_branch }}
     defaults:
       run:
         shell: bash
@@ -104,7 +104,7 @@ jobs:
     runs-on: macos-15
     env:
       SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source_date_epoch }}
-      RB_BUILD_BRANCH: ${{ needs.prepare.outputs.build_branch }}
+      ORB_BUILD_BRANCH: ${{ needs.prepare.outputs.build_branch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

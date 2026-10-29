@@ -8,8 +8,8 @@
 #
 # Builds both macOS targets with scripts/build.sh first (on a Mac only); SKIP_BUILD=1 uses the
 # binaries already in dist/<target>/bin/ (release.yml downloads them from the two macOS package
-# jobs). The CLI sits in the bundle, at OpenRB-338.app/Contents/MacOS/rb: dragging the app to
-# Applications installs both, the bundle's ad-hoc seal covers both (rb is signed first), and `rb`
+# jobs). The CLI sits in the bundle, at OpenRB-338.app/Contents/MacOS/orb: dragging the app to
+# Applications installs both, the bundle's ad-hoc seal covers both (orb is signed first), and `orb`
 # goes on PATH with one `ln -s` (README.txt). A second file next to the app would be left
 # behind by the drag.
 # Environment as scripts/build.sh and scripts/macos-app.sh.
@@ -31,7 +31,7 @@ fi
 
 rm -rf "$out"
 mkdir -p "$out/bin"
-for b in rb OpenRB-338; do
+for b in orb OpenRB-338; do
     lipo -create "$dist/$arm/bin/$b" "$dist/$x86/bin/$b" -output "$out/bin/$b"
     chmod 755 "$out/bin/$b"
     archs=$(lipo -archs "$out/bin/$b" | tr ' ' '\n' | sort | tr '\n' ' ')
@@ -40,7 +40,7 @@ done
 
 stage=$out/stage
 mkdir -p "$stage"
-"$root/scripts/macos-app.sh" "$stage" "$out/bin/OpenRB-338" "$out/bin/rb"
+"$root/scripts/macos-app.sh" "$stage" "$out/bin/OpenRB-338" "$out/bin/orb"
 ln -s /Applications "$stage/Applications"
 cp "$root/LICENSE" "$stage/LICENSE"
 cat > "$stage/README.txt" <<EOF
@@ -60,10 +60,10 @@ the developer cannot be verified"). Pick one:
   - Any version, in Terminal:
         xattr -dr com.apple.quarantine /Applications/OpenRB-338.app
 
-The command line tool rb is inside the app. To use it from a terminal:
-    sudo ln -s /Applications/OpenRB-338.app/Contents/MacOS/rb /usr/local/bin/rb
-    rb render SONG.rbs -o SONG.flac     render a song to FLAC, Ogg Vorbis or WAV
-    rb --help                           all commands
+The command line tool orb is inside the app. To use it from a terminal:
+    sudo ln -s /Applications/OpenRB-338.app/Contents/MacOS/orb /usr/local/bin/orb
+    orb render SONG.rbs -o SONG.flac    render a song to FLAC, Ogg Vorbis or WAV
+    orb --help                          all commands
 
 Licensed under the GNU General Public License, version 3 only (GPL-3.0-only; see LICENSE).
 EOF

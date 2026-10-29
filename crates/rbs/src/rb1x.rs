@@ -5,7 +5,7 @@
 //! track holds a sysex `F0 00 00 66 ...` whose data, 7 bits per byte, decodes to the 16 KB
 //! [`Block`] (globals, mixer, effects, the 303 and 808 patterns, the song information); the other
 //! tracks hold controller changes (`Bn cc v`), one MIDI track per device group. This module reads
-//! the file into that raw form; `rb_engine::load::load_1x` turns it into the engine's messages
+//! the file into that raw form; `orb_engine::load::load_1x` turns it into the engine's messages
 //! the way the exe does. `tools/rb1x.py` is the Python twin.
 
 use crate::Error;

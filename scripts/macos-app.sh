@@ -5,10 +5,10 @@
 #
 # OUT_DIR/OpenRB-338.app gets:
 #   Contents/MacOS/OpenRB-338      the UI (CFBundleExecutable)
-#   Contents/MacOS/rb              the CLI, if given
+#   Contents/MacOS/orb             the CLI, if given
 #   Contents/Resources/OpenRB-338.icns   the app_icon part, rendered by `ui-art iconset`
 #   Contents/Info.plist
-# and is signed ad hoc (`codesign -s -`; rb first, then the bundle, whose seal covers both):
+# and is signed ad hoc (`codesign -s -`; orb first, then the bundle, whose seal covers both):
 # Apple silicon refuses an unsigned bundle, and there is no Developer ID signing or
 # notarization (docs/building.md). The bundle is what gives the Dock
 # and Activity Monitor the name and the icon: an unbundled binary has no CFBundleIconFile.
@@ -43,8 +43,8 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -p "$ui" "$app/Contents/MacOS/OpenRB-338"
 chmod 755 "$app/Contents/MacOS/OpenRB-338"
 if [ -n "$cli" ]; then
-    cp -p "$cli" "$app/Contents/MacOS/rb"
-    chmod 755 "$app/Contents/MacOS/rb"
+    cp -p "$cli" "$app/Contents/MacOS/orb"
+    chmod 755 "$app/Contents/MacOS/orb"
 fi
 
 # The icon: the committed app_icon part at the iconset sizes (16 to 1024), then iconutil.
@@ -53,7 +53,7 @@ if [ -n "${ICNS:-}" ]; then
 else
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
-    cargo run --manifest-path "$root/Cargo.toml" --release --locked -q -p rb-ui-art --bin ui-art \
+    cargo run --manifest-path "$root/Cargo.toml" --release --locked -q -p orb-ui-art --bin ui-art \
         -- iconset "$tmp/OpenRB-338.iconset" >/dev/null
     iconutil -c icns "$tmp/OpenRB-338.iconset" -o "$app/Contents/Resources/OpenRB-338.icns"
 fi
@@ -110,7 +110,7 @@ plutil -lint "$app/Contents/Info.plist" >/dev/null
 # Ad hoc: the CLI first (explicitly: the linker only signed it on its own), then the bundle,
 # whose seal covers both executables. No --deep.
 if [ -n "$cli" ]; then
-    codesign --force --sign - "$app/Contents/MacOS/rb"
+    codesign --force --sign - "$app/Contents/MacOS/orb"
 fi
 codesign --force --sign - "$app"
 codesign --verify --deep --strict "$app"

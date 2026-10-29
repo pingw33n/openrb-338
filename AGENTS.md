@@ -1,8 +1,10 @@
-# AGENTS.md: the rb repository
+# AGENTS.md: the OpenRB-338 repository
 
-rb is a reimplementation in Rust of the audio engine of Propellerhead ReBirth RB-338 2.01. It renders an `.rbs` song, optionally with an `.rbm` mod, to audio. The rendered audio must match the original's "Export Loop as Audio File" output sample for sample, within a tolerance set by a `Decide:` task. A UI with a similar look and feel comes after the engine; it does not have to match the original exactly. MIDI and ReWire are out of scope for now.
+OpenRB-338 (the command line tool is `orb`, the crates are `orb-*`, the environment variables
+`ORB_*`; the GitHub repository and the checkout folder are still called `rb`) is a
+reimplementation in Rust of the audio engine of Propellerhead ReBirth RB-338 2.01. It renders an `.rbs` song, optionally with an `.rbm` mod, to audio. The rendered audio must match the original's "Export Loop as Audio File" output sample for sample, within a tolerance set by a `Decide:` task. A UI with a similar look and feel comes after the engine; it does not have to match the original exactly. MIDI and ReWire are out of scope for now.
 
-The original program (`Rebirth.exe`, `ReBirth.dll`) is not in git: it is copyrighted, so it lives only on the user's machine, in their ReBirth installation, and in the test machine's setup. The user's local IDA databases of it (`Rebirth.exe.i64`, `ReBirth.dll.i64`) are not part of the repository either; agents open a copy through the idalib MCP tools (IDA needs no exe or dll next to the `.i64`). rb needs the program only for the reverse engineering; the tests take the same files from the CD image (`RB_CD_ISO`, rb-testkit) and skip when it is not set. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
+The original program (`Rebirth.exe`, `ReBirth.dll`) is not in git: it is copyrighted, so it lives only on the user's machine, in their ReBirth installation, and in the test machine's setup. The user's local IDA databases of it (`Rebirth.exe.i64`, `ReBirth.dll.i64`) are not part of the repository either; agents open a copy through the idalib MCP tools (IDA needs no exe or dll next to the `.i64`). OpenRB-338 needs the program only for the reverse engineering; the tests take the same files from the CD image (`ORB_CD_ISO`, orb-testkit) and skip when it is not set. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
 
 Planning, progress and decisions live in `backlog/` (Backlog.md). The shared agent brief covers the worktree, IDA, the Windows test machine and its permits, testing and rebasing. It is the backlog doc `agent-brief`: run `backlog doc view doc-001 --plain`, or read its file under `backlog/docs/`.
 
@@ -27,7 +29,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
 
 **Milestones.**
 - `m-0`: deterministic reference renders from the original, and the tools around them.
-- `m-1`: the Rust engine and the `rb` CLI (`.rbs` to FLAC, Ogg or WAV).
+- `m-1`: the Rust engine and the `orb` CLI (`.rbs` to FLAC, Ogg or WAV).
 - `m-2`: RBM mods.
 - `m-3`: the desktop UI (egui, scalable SVG panel): play and edit songs live.
 
@@ -35,7 +37,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
 - `docs/initial_investigation.md` is the engine survey; its [C] items are confirmed and its [G] items are guessed.
 - `docs/RBS42.txt` is the file format.
 - Later tasks add `test_machine.md`, `song_load.md`, `export_state.md` and `rbm.md`.
-- `docs/original_bugs.md` lists the defects of the original (what, addresses, trigger, effect, corpus songs, rb's model, [C]/[G]). A newly found defect of the original goes into `docs/original_bugs.md` as well as its home document.
+- `docs/original_bugs.md` lists the defects of the original (what, addresses, trigger, effect, corpus songs, orb's model, [C]/[G]). A newly found defect of the original goes into `docs/original_bugs.md` as well as its home document.
 - A new fact about the original goes into the document it belongs to, with addresses, in the same commit as the work.
 
 **Assignees.**
@@ -93,7 +95,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
   `--ordinal` is the queue order. `Draft` holds ideas.
 - **Task ownership.** While a task is assigned to an agent, only that agent edits its file. The supervisor adds the merge comment in the task's squashed commit, pushes main to `origin` (github.com/pingw33n/rb, private) after each merge, and runs `backlog doctor` after the push. Agents never push.
 - **Standing rules.**
-  - Never save or modify the user's IDA databases, and never edit a committed reference render by hand. Never commit an IDA database or its working files, and no test or tool may need the original's exe or dll: use `RB_CD_ISO` and skip with a message when it is not set.
+  - Never save or modify the user's IDA databases, and never edit a committed reference render by hand. Never commit an IDA database or its working files, and no test or tool may need the original's exe or dll: use `ORB_CD_ISO` and skip with a message when it is not set.
   - Facts about the original carry addresses and are checked against the disassembly, not only Hex-Rays.
   - Engine code computes in f64, rounds to f32 exactly where the original stores a float, uses no FMA, and keeps the original's operand order.
   - An engine change is checked against the reference corpus.
@@ -116,39 +118,39 @@ Everything else goes into the task's notes or a knowledge document.
 
 ## Build and test
 
-The Rust workspace is at the repository root (`crates/rbs`, `crates/rb-engine`, `crates/rb-cli`, whose binary is `rb`). The toolchain is pinned in `rust-toolchain.toml`.
+The Rust workspace is at the repository root (`crates/rbs`, `crates/rbm`, `crates/orb-engine`, `crates/orb-cli`, whose binary is `orb`, `orb-player`, `orb-ui`, `orb-ui-art` and `orb-testkit`; `rbs` and `rbm` keep their names because they are ReBirth's file formats). The toolchain is pinned in `rust-toolchain.toml`.
 
 - Build: `cargo build --release`
-- Test: `cargo test`. Tests that run `tools/*.py` find Python 3 through `tests/common/python.rs`: `RB_PYTHON` (a program path, or a command split on whitespace such as `py -3`) if set, else `python3`, `python` or `py -3` on PATH; none is a failure naming `RB_PYTHON`, not a skip.
+- Test: `cargo test`. Tests that run `tools/*.py` find Python 3 through `tests/common/python.rs`: `ORB_PYTHON` (a program path, or a command split on whitespace such as `py -3`) if set, else `python3`, `python` or `py -3` on PATH; none is a failure naming `ORB_PYTHON`, not a skip.
 - Lint: `cargo clippy --all-targets -- -D warnings`
 - Format: `cargo +nightly fmt --all`; check: `cargo +nightly fmt --all --check`. `rustfmt.toml` uses unstable options (the 100-column limit, comment wrapping), so formatting needs nightly rustfmt. CI pins `nightly-2026-10-18` (`rustup toolchain install nightly-2026-10-18 --profile minimal --component rustfmt`, then `cargo +nightly-2026-10-18 fmt --all --check`); any recent nightly with rustfmt gives the same result locally. Plain `cargo fmt` (stable) still formats, but does not enforce the limit and warns about the unstable options. Only formatting uses nightly; the build and clippy use the pinned stable toolchain.
-- Packages: `scripts/package.sh TARGET` builds `rb` and `OpenRB-338` for one of the six targets (x86_64/aarch64 for `unknown-linux-gnu`, `pc-windows-msvc`, `apple-darwin`) into `dist/<target>/` as `.tar.gz` (`.zip` on Windows); `scripts/build-all.sh` does all the targets this machine can build and lists the skipped ones. Linux targets need a running Docker off Linux, Windows targets need `cargo-xwin` off Windows. CI: `.github/workflows/ci.yml` (nightly fmt, clippy, tests on Linux, Windows and macOS) and `release.yml` (the six packages on native runners, on a `v*` tag or by hand). No signing (the macOS app is ad-hoc signed only). `scripts/package-dmg.sh` makes the universal `OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg` (package names carry the UTC build time, not the Cargo version; docs/building.md) (`scripts/macos-dev-app.sh` wraps the dev build into `target/OpenRB-338.app`). docs/building.md has the tools to install, the limits and the environment (`SOURCE_DATE_EPOCH`, `RB_BUILD_BRANCH`).
-- Run: `cargo run --release -p rb-cli -- <args>`
-- Golden test: `cargo test --release -p rb-engine --test corpus_golden` renders every corpus entry (diag, app at its fitted N, shipped) and prints each failing song's first difference. A debug `cargo test` skips the shipped songs (24 s in debug).
-- Mods: rb loads only recrypted mods (`rb mod recrypt --rb20ful RB20FUL.DAT IN.rbm -o OUT.rbm`, the one command that reads `RB20FUL.DAT`; docs/rbm.md 12.4). `render`, `compare`, `play` and the mod tests take a folder of recrypted mods (`--mod-dir` / `RB_MOD_DIR`) and no `--rb20ful`.
-- The built-in kit: rb embeds the standard mod `assets/Standard.rbm` ("Standard ReBirth",
+- Packages: `scripts/package.sh TARGET` builds `orb` and `OpenRB-338` for one of the six targets (x86_64/aarch64 for `unknown-linux-gnu`, `pc-windows-msvc`, `apple-darwin`) into `dist/<target>/` as `.tar.gz` (`.zip` on Windows); `scripts/build-all.sh` does all the targets this machine can build and lists the skipped ones. Linux targets need a running Docker off Linux, Windows targets need `cargo-xwin` off Windows. CI: `.github/workflows/ci.yml` (nightly fmt, clippy, tests on Linux, Windows and macOS) and `release.yml` (the six packages on native runners, on a `v*` tag or by hand). No signing (the macOS app is ad-hoc signed only). `scripts/package-dmg.sh` makes the universal `OpenRB-338-<YYYY.MMDD.HHMM>-universal-apple-darwin.dmg` (package names carry the UTC build time, not the Cargo version; docs/building.md) (`scripts/macos-dev-app.sh` wraps the dev build into `target/OpenRB-338.app`). docs/building.md has the tools to install, the limits and the environment (`SOURCE_DATE_EPOCH`, `ORB_BUILD_BRANCH`) and the table of every `ORB_*` variable (the old `RB_*` names are gone, with no alias).
+- Run: `cargo run --release -p orb-cli -- <args>`
+- Golden test: `cargo test --release -p orb-engine --test corpus_golden` renders every corpus entry (diag, app at its fitted N, shipped) and prints each failing song's first difference. A debug `cargo test` skips the shipped songs (24 s in debug).
+- Mods: orb loads only recrypted mods (`orb mod recrypt --rb20ful RB20FUL.DAT IN.rbm -o OUT.rbm`, the one command that reads `RB20FUL.DAT`; docs/rbm.md 12.4). `render`, `compare`, `play` and the mod tests take a folder of recrypted mods (`--mod-dir` / `ORB_MOD_DIR`) and no `--rb20ful`.
+- The built-in kit: orb embeds the standard mod `assets/Standard.rbm` ("Standard ReBirth",
   the 46 drum samples of ReBirth.dll and the panel of the CD's Rebirth.exe; assets/README.md),
   so `render`, `compare`, `play` and OpenRB-338 (the UI) need no kit option, variable or file
-  (`--standard-mod` and `RB_STANDARD_MOD` are gone). `rb mod pack-standard --rebirth-dll
+  (`--standard-mod` and the old standard-mod variable are gone). `orb mod pack-standard --rebirth-dll
   PATH/ReBirth.dll --rebirth-exe CD-Rebirth.exe -o assets/Standard.rbm` rebuilds it byte for
   byte (the one command that reads ReBirth.dll and Rebirth.exe; `--iso` reads them from the CD
   image, and the gated test takes them from it; docs/rbm.md 13).
 - External test inputs: the tests read exactly three variables, and every test that needs one
-  skips with a message when it is not set (CI sets none). `RB_CD_ISO` is the ReBirth 2.01 CD
-  image: the crate `rb-testkit` takes from it, once per test process, the DAT, `ReBirth.dll`,
+  skips with a message when it is not set (CI sets none). `ORB_CD_ISO` is the ReBirth 2.01 CD
+  image: the crate `orb-testkit` takes from it, once per test process, the DAT, `ReBirth.dll`,
   `Rebirth.exe` and the four shipped mods (each checked against its pinned SHA-256) and the four
   mods recrypted (pinned too), so no test needs the original's files, `RB20FUL.DAT` or a mod folder.
-  `RB_THIRDPARTY_MODS_DIR` is the user's folder of RECRYPTED third-party mods and
-  `RB_THIRDPARTY_SONGS_DIR` the user's folder of songs, both read in place (docs/rbm.md 11):
-  `cargo test --release -p rb-cli --test thirdparty -- --nocapture`. The mods test checks the
+  `ORB_THIRDPARTY_MODS_DIR` is the user's folder of RECRYPTED third-party mods and
+  `ORB_THIRDPARTY_SONGS_DIR` the user's folder of songs, both read in place (docs/rbm.md 11):
+  `cargo test --release -p orb-cli --test thirdparty -- --nocapture`. The mods test checks the
   folder against the committed hash manifest `tests/refs/thirdparty_mods.json` and fails on a
   `.rbm` the manifest does not list, so regenerate it when the collection changes with
   `tools/thirdparty_mods_manifest.py --orig MODS.ORIG --mods MODS --dat RB20FUL.DAT` (it first
-  recrypts the originals with the current rb and requires them to equal MODS byte for byte; the
+  recrypts the originals with the current orb and requires them to equal MODS byte for byte; the
   originals and the DAT are arguments, not variables). To re-verify the recryptor on the real
   collection, run `tools/thirdparty_mods_manifest.py --check --orig MODS.ORIG --dat RB20FUL.DAT`
   (recrypts the originals and compares with the manifest; exit 1 on a difference). Not test
-  inputs: `RB_LIVE_OUT` (rb-player's live_messages: an output folder) and `RBM_TEST_DAT` /
+  inputs: `ORB_LIVE_OUT` (orb-player's live_messages: an output folder) and `RBM_TEST_DAT` /
   `RBM_TEST_MODS` (set by a cargo test for its child process only, `tools/rbm_test.py`).
-- Song metadata: `rb info SONG.rbs [--mod-dir DIR] [--json]` prints the facts File > Info shows (format and version, title, text, web page, copyright, the mod and whether it is the built-in kit, a file of `--mod-dir` / `RB_MOD_DIR`, missing, or not checked, tempo, shuffle, mode, loop, synth sound) for an RBS 4.x or a ReBirth 1.x song; `--json` keys are in `rb info --help`. The code is `crates/rb-cli/src/info.rs`, shared with rb-ui.
-- Corpus summary: `cargo run --release -p rb-cli -- compare --manifest tests/refs/manifest.json [--mod-dir DIR] [--set diag,app,shipped] [NAME...]` (the 11 mod songs need `--mod-dir` with the four recrypted shipped mods; `rb mod recrypt --iso "$RB_CD_ISO" -o DIR` makes them from the CD image) prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `rb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.
+- Song metadata: `orb info SONG.rbs [--mod-dir DIR] [--json]` prints the facts File > Info shows (format and version, title, text, web page, copyright, the mod and whether it is the built-in kit, a file of `--mod-dir` / `ORB_MOD_DIR`, missing, or not checked, tempo, shuffle, mode, loop, synth sound) for an RBS 4.x or a ReBirth 1.x song; `--json` keys are in `orb info --help`. The code is `crates/orb-cli/src/info.rs`, shared with orb-ui.
+- Corpus summary: `cargo run --release -p orb-cli -- compare --manifest tests/refs/manifest.json [--mod-dir DIR] [--set diag,app,shipped] [NAME...]` (the 11 mod songs need `--mod-dir` with the four recrypted shipped mods; `orb mod recrypt --iso "$ORB_CD_ISO" -o DIR` makes them from the CD image) prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `orb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.

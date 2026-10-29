@@ -1,0 +1,23 @@
+[package]
+name = "orb-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+rbs = { path = "../rbs" }
+# The tables' transcendentals, pinned so the tables are the same everywhere (task-048).
+libm = "=0.2.16"
+
+[dev-dependencies]
+# The corpus tests: the manifest and the reference WAVs' sha256.
+serde_json = "1"
+sha2 = "0.10"
+# The golden test decodes the FLAC references to locate the first difference.
+claxon = "0.4.3"
+# The corpus tests' built-in samples: the kit orb embeds (rbm::standard, task-067). A
+# dev-dependency cycle (rbm depends on orb-engine), used by the integration tests only.
+rbm = { path = "../rbm" }
+# The gated tests' external inputs (task-121): the DLL from the CD image. Another cycle.
+orb-testkit = { path = "../orb-testkit" }

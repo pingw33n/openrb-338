@@ -92,7 +92,7 @@ Device vtables in the DLL (slot = index):
    (2646000000.0); `n = __ftol((end - pos) / (tempo * (192/2646e6)))` (truncation); the step is
    `(tempo * n) * (192/2646e6)` (`fild tempo; fimul n`), stored as a double; the chunk is rendered
    and written before `pos += step`. A final `n` of 0 still makes a 0-frame call. Rust:
-   `crates/rb-engine/src/frame/export.rs`, which matches the frame count of all 153 diagnostic and
+   `crates/orb-engine/src/frame/export.rs`, which matches the frame count of all 153 diagnostic and
    shipped references of `tests/refs`; for "Fast Forward" (140 BPM, 250 bars) it is 18899999,
    one less than the exact 18900000 ([Q-1](original_bugs.md)). 152 of the 153 end on a chunk that is not a multiple of 64.
 5. Afterwards sends msg 35 `{1,0}`, then msg 33 (full engine reset), then
@@ -143,7 +143,7 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
                m = mOld*0.93 + mTgt*0.07 (stored f32; the unrounded value is used); master *= m (constant over the block)
 ```
 
-[C] task-021, details from the disassembly of 0x10013444 (Rust: `crates/rb-engine/src/frame`):
+[C] task-021, details from the disassembly of 0x10013444 (Rust: `crates/orb-engine/src/frame`):
 - The argument is the 18-entry output pointer array of `sub_100139E0`. The master buses are
   entries 0 (L) and 1 (R); each is filled with 1e-6 (`0x358637BD`) only when its pointer is
   non-null (a null one is replaced by the unfilled scratch `song+0x140C`/`+0x150C`).
@@ -269,7 +269,7 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
   than 16 steps is therefore not realigned at every bar; it keeps cycling with its own length.
 - **909 flam [C].** On a step change, `flamTick = tick + (tempo*flam)/700000 + 1` (32-bit integers). When
   `tick > flamTick`, every instrument with step value 3 or 4 retriggers at gain base×1.5.
-  - [C] task-025, from the disassembly of 0x1002AAC0 (Rust: `crates/rb-engine/src/tr909.rs`; the
+  - [C] task-025, from the disassembly of 0x1002AAC0 (Rust: `crates/orb-engine/src/tr909.rs`; the
     three `909_flam_interval*` songs match byte for byte): the arithmetic is 32-bit, not int64
     (`imul eax, edx; cdq; idiv` by 0xAAE60 = 700000 at 0x1002ABBC, then `lea eax, [esi+eax+1]`),
     with the song's BPM*1000 tempo and the **unshuffled** tick. Every new step (or wrap) stores
@@ -280,7 +280,7 @@ every block:   if (blk & 15) == 0: mixer_update()    // 0x10012C14; blk starts a
     `f32(accent*1.5)` (`dbl_10154350`). The flam pass skips the bar-line logic but still needs
     the enable latch. `flam` is the live byte 29 (`+0x18AE`), set by controller 29 (see §7.2).
 
-[C] task-022, from the disassembly of `sub_1001EF20` (Rust: `crates/rb-engine/src/seq.rs`). The
+[C] task-022, from the disassembly of `sub_1001EF20` (Rust: `crates/orb-engine/src/seq.rs`). The
 sequencer object is at `song+8` (ctor `sub_1001EC50`): `+0` the position (double), `+8` the last
 tick, `+0x10` the tick pattern mode saved, `+0xC` the track count, `+0x14 + 4i` the tracks, `+0x94`
 the song. The transport state is the global struct `song+0x158` (`docs/song_load.md` §3).
@@ -348,11 +348,11 @@ recording (§5.3); its quantisation stays 1 (`sub_10021560` sets only `+0x108`'s
     (0x100210CA). [C] (task-083) The replies are the packets `['K', 22]` and `['I']`; on `'K'`
     the exe abandons the load with the alert "There is not enough memory for opening the Song."
     and never closes the engine's song, whose earlier batches keep their nodes
-    (`docs/song_load.md` section 5.2, [OB-20](original_bugs.md)). rb models the check
+    (`docs/song_load.md` section 5.2, [OB-20](original_bugs.md)). orb models the check
     (`Sequencer::add_events`) and the exe's batches (`Song::batches`, `Engine::load`).
-  - rb: one pool of 100000 nodes per song (`seq::Pool`), the song's 18 lists back to back in one
+  - orb: one pool of 100000 nodes per song (`seq::Pool`), the song's 18 lists back to back in one
     reserved buffer; the DLL's pool equals it while one song holds nodes and the 32 lists of
-    `dword_101245F0` are empty. While rb-player holds a pending song beside the current one
+    `dword_101245F0` are empty. While orb-player holds a pending song beside the current one
     (a load during play, until Play switches), two pools are live where the DLL's one pool
     would serve both songs; this matters only when the two songs together hold more than
     100000 nodes.
@@ -491,20 +491,20 @@ applied pointer `+0x228` is not adjusted; when its own node is freed it dangles
 - With record on, a locate while stopped to a later tick applies the events forward (respecting
   the hold mask) instead of chasing (§5.2, `sub_1001F984`).
 
-Checked against the DLL (`crates/rb-player/tests/live_messages.rs`, rbhost `--live` and
+Checked against the DLL (`crates/orb-player/tests/live_messages.rs`, rbhost `--live` and
 `--live-replies`): two recording sessions (over `full_mix` and `mixer_level_sweep_303`: record
 while playing over a loop wrap, record off mid-pass and in pattern mode, record on while stopped,
-a locate forward with record on, the song end with record on) render to the same WAV as rb-player,
-and the nine tracks queried with msg 22 at two points of each session equal rb's byte for byte.
-rb: `crates/rb-engine/src/seq.rs` (`Sequencer::record_hook`, `Track::record`, `Track::merge`,
-`Sequencer::set_record`); the pool is per song in rb and the lists reserve a whole pool each, so
-the real-time callback never grows them (the module doc). rb's merge (task-084) gives the
+a locate forward with record on, the song end with record on) render to the same WAV as orb-player,
+and the nine tracks queried with msg 22 at two points of each session equal orb's byte for byte.
+orb: `crates/orb-engine/src/seq.rs` (`Sequencer::record_hook`, `Track::record`, `Track::merge`,
+`Sequencer::set_record`); the pool is per song in orb and the lists reserve a whole pool each, so
+the real-time callback never grows them (the module doc). orb's merge (task-084) gives the
 DLL's insert-by-insert result node for node but moves the pool's nodes after a track's list a
 few times per track instead of once per inserted node: the walk compacts in one pass, the
 returns and recorded nodes are held in a reserved buffer of 4096 nodes (`seq::MERGE_CHUNK`)
 under `sub_10014750`'s rules, then merged into the list from the back. Measured in release on
 an M1 Pro for ~1000 recorded nodes: 1.78 ms → 0.13 ms on a ~10000-node song, 17.3 ms → 0.34 ms
-on a nearly full pool (a 64-frame block is 1.45 ms); `crates/rb-engine/src/seq/merge_tests.rs`
+on a nearly full pool (a 64-frame block is 1.45 ms); `crates/orb-engine/src/seq/merge_tests.rs`
 checks it against the insert-by-insert merge and times both.
 
 ---
@@ -610,7 +610,7 @@ for r in 0..8:
 `q = (((((i*128)*(1/1024))*i)*128)*(1/1024))*0.000125 - 0.3`, clamped by `> 1 → 1` then `< 0 → 0`;
 `D = q*m8C + (1-q)*m94` with `m94 = r*(1/6) + 0.5`; `1/D` is computed once and multiplied
 (`(W*-π)*(1/D)`, `(W*-2π)*(1/D)`); `c0 = exp(...)*(cos(W*2π)*2)`; `D' + 1` adds f32 1.0. The
-generated table is bit-identical to the dump (crates/rb-engine/src/tables).
+generated table is bit-identical to the dump (crates/orb-engine/src/tables).
 
 ### 6.3 ReBirth 2.0 engine (0x100248C4) [C]
 
@@ -657,7 +657,7 @@ f32; every state runs in f64 until the block end.
 
 ### 6.4 Device state, sequencing and slots [C] (task-023)
 
-Implemented in `crates/rb-engine/src/tb303.rs`; every TB-303 song of the diagnostic corpus with the
+Implemented in `crates/orb-engine/src/tb303.rs`; every TB-303 song of the diagnostic corpus with the
 delay disabled renders byte-identical to rbhost in both sound models (§8.4 for why the delay matters).
 
 **Fields** (`CTB303Device`, 0xD04 bytes): `+4` patStart (CDevice, 0 from `sub_10010304`), `+0x30`
@@ -752,7 +752,7 @@ after each pair.
 
 - The voice gains and states (g, y) are stored as f32 only at block end.
 - Sample buffers carry 512 zero samples of padding. Voices always render the full 64 samples.
-- [C] task-024, the details from the disassembly (Rust: `crates/rb-engine/src/drums.rs`, unit
+- [C] task-024, the details from the disassembly (Rust: `crates/orb-engine/src/drums.rs`, unit
   tests against hand-computed blocks; the 808 corpus songs match byte for byte):
   - Fields of every class: `+4` the sample object (a trigger with a null one keeps the last), `+8`
     active, `+0xC` the read pointer, `+0x10` frames left, `+0x14` hold, `+0x18` g, `+0x1C` m.
@@ -786,7 +786,7 @@ after each pair.
 - **808 (step 0x10027690).**
   - `accent = f32(acc*AC*0.03125f + 1)`.
   - Instruments trigger in ascending order. As a result, OH and CH on the same step leaves OH cut.
-  - [C] task-024 (Rust: `crates/rb-engine/src/tr808.rs`): the step function is the 303's position
+  - [C] task-024 (Rust: `crates/orb-engine/src/tr808.rs`): the step function is the 303's position
     logic (§6.4) without the gate-off: `v = (u32)(t' - base) % (48*len)`, the wrap flag
     `+0x18D2` when `lastPos - v > 24`, and on a new step (`v/48` differs from the live byte 29,
     `+0x18AD`) or a wrap: at the bar line of the unshuffled tick the pending pattern
@@ -817,7 +817,7 @@ after each pair.
   - Instruments trigger in **descending** order.
   - [C] RBS 909 values 0..3 reach the step function unchanged (no shift to 1..4): 1 = ×0.8, 2 = ×2.0,
     3 = ×0.8 with flam; 4 never occurs. The AC column holds 0 or 2 (`docs/song_load.md` §4.8).
-  - [C] task-025 (Rust: `crates/rb-engine/src/tr909.rs`; the 33 909 corpus songs match byte for
+  - [C] task-025 (Rust: `crates/orb-engine/src/tr909.rs`; the 33 909 corpus songs match byte for
     byte): the step function is the 808's position logic (§6.4) with the 909's offsets: pattern
     `+0x18D3`, latch `+0x18D4` (1 from the ctor), wrap `+0x18D5`, last position `+0x18D8`, last
     step the live byte 30 (`+0x18AF`), plus the flam (§5). Accent
@@ -869,7 +869,7 @@ and voice offsets are in the agent notes; the formulas are summarised here.
 | OH | SIMPLE, `L = lvl>>1`, `m = 0.998f`, `hold = 4*decay` blocks |
 | CH | SIMPLE, `L = (2*lvl)/3`, then sets hold = 0 on all five SIMPLE voices, so OH starts decaying (the choke) |
 
-[C] task-024, checked in the disassembly and by the corpus (`crates/rb-engine/src/tr808.rs`;
+[C] task-024, checked in the disassembly and by the corpus (`crates/orb-engine/src/tr808.rs`;
 `k` is `f32(1/127)` = 0x3C010204, every product in f64 in this order, one f32 store of the gain,
 then the voice's `f32(gain * 2^-15)`):
 - BD and CY (`sub_1002A0B4`): `x = (((L*k)*L)*0.005f)*acc`, BD `gain = (1.0 - c)*x`, CY
@@ -901,7 +901,7 @@ then the voice's `f32(gain * 2^-15)`):
 
 `DT[j]`: start at 1.0 and subtract 2.5e-5 per index going down, stored f32 (computed at init).
 
-[C] task-025, checked in the disassembly and by the corpus (`crates/rb-engine/src/tr909.rs`;
+[C] task-025, checked in the disassembly and by the corpus (`crates/orb-engine/src/tr909.rs`;
 `k` = 0x3C010204, `gain` is the step's f32 trigger gain `+0x191C` (accent times 0.8, 2.0 or 1.5),
 every product in f64 in this order, one f32 store, then the voice's `f32(gain * 2^-15)`; every
 `DT[x]` index is `(x << 4) >> 7`, i.e. `x >> 3`; hold 0 unless noted):
@@ -947,7 +947,7 @@ every product in f64 in this order, one f32 store, then the voice's `f32(gain * 
   - 808: IDs 1000..1023 (BD, SD1-5, N1-4, CB, CH, CL, CP, CY, HC, HT, LC, LT, MA, MC, MT, OH, RS).
   - Startup sound: ID 1024.
   - 909: IDs 1025..1045 (bd1-4, sd1-5, sdn1-3, lt, mt, ht, rs, hc, chh, ohh, ccy, rcy).
-  - rb does not ship them: `rb_engine::samples` reads them at run time from the user's
+  - orb does not ship them: `orb_engine::samples` reads them at run time from the user's
     `ReBirth.dll` (task-016, task-020).
   - [C] task-020, how the DLL loads them. `sub_1001A030` (0x1001A030) builds the sample table of 47
     `CWaveSample` objects: slots 1..24 = IDs 1000..1023, slots 25..45 = IDs 1025..1045, slot 46
@@ -959,17 +959,17 @@ every product in f64 in this order, one f32 store, then the voice's `f32(gain * 
     1034..1036 (the 909 `sdn1`..`sdn3`) have an SSND offset of 458 bytes, the rest 0. Frame counts, 1000..1045: 72704, 8800 x9, 51200, 4992, 1816, 87040, 174430, 11680,
     17498, 17056, 22063, 1468, 11603, 15351, 26578, 690, 84575 (1024), 22062, 22001, 22036,
     22099, 14007, 14008, 14006, 14014, 14034, 12180 x3, 28072, 20427, 20862, 5006, 30365, 8401,
-    25811, 43690, 42458. `crates/rb-engine/tests/samples.rs` holds them with the sample sums.
+    25811, 43690, 42458. `crates/orb-engine/tests/samples.rs` holds them with the sample sums.
 - **AIFF parsing.** COMM and SSND chunks, 16-bit only. Big-endian int16 values are used as they are.
   The sample rate is ignored, and only channel 0 of multichannel files is used.
   - [C] task-020, the details (`sub_10003300` 0x10003300 ties them together):
     - Chunk walk `sub_10004F94` (0x10004F94): the 12-byte header is checked by `sub_100054D4`;
       then chunks are walked by id, a pad byte after an odd size (the reader's flag at `this+4`
       is set for AIFF); the first chunk with the wanted id is used. [G] What `sub_100054D4`
-      accepts (whether an AIFC form type is rejected) is not confirmed; rb requires FORM+AIFF,
+      accepts (whether an AIFC form type is rejected) is not confirmed; orb requires FORM+AIFF,
       and all 46 resources pass.
     - The drum voices read the sample as `i16` (the CWaveSample buffer: `frames + 512` i16,
-      `rb_engine::samples::Sample::padded`).
+      `orb_engine::samples::Sample::padded`).
     - COMM `sub_10001674` (0x10001674): u16 channels, u32 frames, u16 bits, 80-bit extended rate
       (`sub_10004110`, truncated to an integer by `fistp`). `sub_100016F4` accepts a non-zero
       channel count, frame count and rate, and bits 8..=32. `sub_10003170` then flags `bits ==
@@ -1040,7 +1040,7 @@ out = f32(clamp(g*x, -th, th))
 [C] task-026, from the disassembly (`CDistInsert`, vtable 0x10033144: [4] stop 0x100106C0 and
 [5] reset 0x1000F4F0 both call slot 6, the no-op 0x10012C00; [8] 0x10010FE0; [9] 0x100111F0;
 [10] messages 0x10010D60; [11] set-param 0x10010FB0; [15] block 0x10010A50; [16] 0x10010D40).
-The engine's `crates/rb-engine/src/dist.rs` follows it and renders every distortion song of the
+The engine's `crates/orb-engine/src/dist.rs` follows it and renders every distortion song of the
 corpus exact:
 - **Object.** ctor 0x10010700: live block `+0x39` (enabled, amount, shape, meter byte) and
   pattern copy `+0x3D`, both `sub_10019B30` = 1, 70, 0, 0; call counter `+0x30` (word), the
@@ -1129,7 +1129,7 @@ w = 0.0628 (static init 0x10017840). It starts at 0.
 [C] task-027, from the disassembly (`CPCFInsert`, vtable 0x10033AD4: [4] 0x100106C0 and [5]
 0x1000F4F0 call slot 6, the no-op 0x10012C00; [8] 0x10017200; [9] 0x10017290; [10] messages
 0x10016C50, msgs 111..116, 116 the data; [11] 0x10016EF0; [13] 0x10016F40, the panel report;
-[15] block 0x100166D0; [16] 0x10016C30). `crates/rb-engine/src/pcf.rs` follows it and renders
+[15] block 0x100166D0; [16] 0x10016C30). `crates/orb-engine/src/pcf.rs` follows it and renders
 every PCF song of the corpus exact:
 - **Object.** ctor 0x10016490: live block `+0x38` and pattern copy `+0x40`, both `sub_10019C10`
   = 1, 70, 64, 40, 24, 90, 1, 0 (enabled, frequency, resonance, amount, wave, decay, mode, meter
@@ -1204,7 +1204,7 @@ every PCF song of the corpus exact:
   calls leave the Win32 mutexes owned, which a single-threaded host such as rbhost re-acquires
   (`WaitForSingleObject(h, 0)` in `sub_10009454`). The engine models the fault
   (`frame::Fault`): the block and the render call end there; `Engine::fault` records the first
-  one and the count, and the `rb` CLI warns. An export repeats what its int16 buffer held: rbhost
+  one and the count, and the `orb` CLI warns. An export repeats what its int16 buffer held: rbhost
   renders the idle calls and every chunk into one static `chunk_buf`, and the app's export loop
   `sub_4280D5` renders every chunk into the one buffer `sub_427988` allocates (`operator
   new(0x2000)` at 0x427C2F, never cleared; the callback at 0x4281C3, the file write at
@@ -1245,7 +1245,7 @@ floor = Th*f32(1/127)*80000/32768 + 0.01220703125
 [C] task-027, from the disassembly (`CCompInsert`, vtable 0x10032B24: [4] 0x100106C0 and [5]
 0x1000F4F0 call slot 6, the no-op 0x10012C00; [8] 0x1000F420; [9] 0x1000F4B0; [10] messages
 0x1000EFD0, msgs 99..104, 104 the data; [11] 0x1000F220; [14] stereo 0x1000EDE0; [15] mono
-0x1000EC70; [16] 0x1000EFB0). `crates/rb-engine/src/comp.rs` follows it and renders every
+0x1000EC70; [16] 0x1000EFB0). `crates/orb-engine/src/comp.rs` follows it and renders every
 compressor song of the corpus exact:
 - **Object.** ctor 0x1000E990: live block `+0x38` and pattern copy `+0x3D`, both `sub_10019B90` =
   1, 70, 64, 127, 0 (enabled, amount, threshold, then two meter bytes); counter `+0x30` 0, X
@@ -1319,10 +1319,10 @@ w++
   BPM. Proof that this is the whole difference: with a test-only model of the delay (the code
   below; task-023, removed in task-049 once the engine's delay of task-026 matched) the engine
   rendered all 36 TB-303-only diag songs equal to their corpus references; with the engine's
-  delay they are (`crates/rb-engine/tests/corpus_tb303.rs`). Only the disabled path
+  delay they are (`crates/orb-engine/tests/corpus_tb303.rs`). Only the disabled path
   (0x1000FAD1) leaves L/R untouched. Every song of `tests/songs/diag` has the delay enabled (the
   template's), so the disabled path's only reference check is the rbhost renders of the 36
-  songs with the delay disabled (`crates/rb-engine/tests/fixtures/tb303_nodelay.json`,
+  songs with the delay disabled (`crates/orb-engine/tests/fixtures/tb303_nodelay.json`,
   `tools/nodelay.py`).
 - [C] task-023, the enabled block 0x1000F940..0x1000FACE and the update 0x1000F754 (every 16
   blocks, when the block counter `+0x30 & 15 == 0` before it is incremented, so in the first
@@ -1337,8 +1337,8 @@ w++
 - [C] task-026, the rest of `CDelayEffect` (vtable 0x10032CB4: [5] reset 0x1000F4F0 calls [6]
   0x100100E0; [7] no-op 0x1000F4E0; [8] 0x10010020; [9] 0x100100B0; [10] messages 0x1000FB40;
   [11] set-param 0x1000FDC0; [14] block 0x1000F940), implemented in
-  `crates/rb-engine/src/delay.rs`, which renders every corpus song exact (the 123 diag songs with
-  no PCF or compressor routed, split among `crates/rb-engine/tests/corpus_tb303.rs`,
+  `crates/orb-engine/src/delay.rs`, which renders every corpus song exact (the 123 diag songs with
+  no PCF or compressor routed, split among `crates/orb-engine/tests/corpus_tb303.rs`,
   `corpus_tr808.rs`, `corpus_tr909.rs` and `corpus_effects.rs`, task-049):
   - ctor 0x1000F5A0: live block `+0x34` and pattern copy `+0x3A` both `sub_10019AB0` = 1, 3, 1,
     80, 64, 0 (byte 5 is the meter byte); `+0x54..+0x70` 0 (targets, gains, feedback, D, w,
@@ -1358,7 +1358,7 @@ w++
   - Constants: `flt_101517C0` 1e-6, `dbl_101517B8` 1/127 (0x3F80204081020408), `flt_101517C8`
     0.92, `flt_101517CC` 127, `dbl_101517D0` 0.9, `dbl_101517D8` 0.1. The pan row
     `flt_10054150` is `PAN[127]` (0x10034550 + 127·128·8).
-  - In the engine the line is `ProcessState`'s (`crates/rb-engine/src/process.rs`), shared by
+  - In the engine the line is `ProcessState`'s (`crates/orb-engine/src/process.rs`), shared by
     the song's devices and presettable at export start (`set_delay_line`), like the drum counters.
 
 ---
@@ -1452,10 +1452,10 @@ reached through `dword_1011D0B0`.
    Dumped values agree with the formulas of §4, §6 and §7.3 at the points checked (T[127] = 1,
    T808[64] = T909[64] = 256, T808[0] = 203, T909[0] = 188, DT[15] = 1.0, pitch[3072]·22050 = 65.406).
 
-   [C] task-019: every table above is generated in Rust (`crates/rb-engine/src/tables`) with
+   [C] task-019: every table above is generated in Rust (`crates/orb-engine/src/tables`) with
    plain f64 arithmetic in the builders' operand order and `pow`/`exp`/`cos`/`sin` of the
    pure-Rust `libm` crate (pinned `=0.2.16`, decided in task-048), and is bit-identical to the
-   dump (fixtures in `crates/rb-engine/tests/fixtures/tables`); none is embedded and no x87 or CRT
+   dump (fixtures in `crates/orb-engine/tests/fixtures/tables`); none is embedded and no x87 or CRT
    emulation is needed. macOS's system libm (Rust std) gave the same tables. Across the f32 stores
    the nearest f64 value is at least 1358 f64 ulps from an f32 rounding midpoint (FILT 1625, PCF
    1358, the others far more; the unit test `store_margins` measures and asserts it). The only

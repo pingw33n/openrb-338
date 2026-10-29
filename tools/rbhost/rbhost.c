@@ -45,7 +45,7 @@
  *                           (sub_1001A030, list dword_10118280) as DIR/slotNN.bin (i16 LE), with
  *                           DIR/manifest.json
  *   --live FILE             instead of the export, a live session (task-055): FILE ("RBLV", made
- *                           by rb-player's live_messages test) holds a call count K and song
+ *                           by orb-player's live_messages test) holds a call count K and song
  *                           messages, each with the 1024-frame call it precedes; rbhost writes the
  *                           messages of call i into the port, dispatches them (pump()), renders
  *                           call i, and writes the K calls to OUT.wav, as the app's realtime path

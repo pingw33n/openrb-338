@@ -1,12 +1,12 @@
 # Defects of the original (ReBirth 2.01)
 
-rb reproduces the original's behavior, bugs included. This file lists every known defect of
+orb reproduces the original's behavior, bugs included. This file lists every known defect of
 `Rebirth.exe` (addresses `0x4xxxxx`) and `ReBirth.dll` (`0x10xxxxxx`) in one place. Each entry has
 its home document, where the mechanism is written in full; **a newly found defect of the original
 goes into this file as well as into its home document**, and the home document links here.
 
 Fields: **What**, **Where** (addresses), **Trigger** (the song data or action that reaches it),
-**Effect**, **Corpus** (the songs in `tests/songs` that reach it), **rb** (the model: file and
+**Effect**, **Corpus** (the songs in `tests/songs` that reach it), **orb** (the model: file and
 function, and any deliberate deviation), and a mark: [C] confirmed in the disassembly (every
 address here was re-read with `llvm-objdump` on the installed exe and dll), [G] guessed or inferred.
 
@@ -25,7 +25,7 @@ status is a judgment call.
 - **Effect.** The pattern-mode mid tom decay equals the low tom decay, whatever the file says.
 - **Corpus.** Every 909 song loads through it; it shows only where the two bytes differ [G: not
   checked per song].
-- **rb.** `crates/rb-engine/src/load.rs` (comment "0x433558"), the same copy, unit-tested.
+- **orb.** `crates/orb-engine/src/load.rs` (comment "0x433558"), the same copy, unit-tested.
 - **Home.** `docs/song_load.md` section 4.8 ("Quirk").
 
 ### OB-2: the old (4.0/4.1) 808 track tunes the tom value before the range check [C]
@@ -38,7 +38,7 @@ status is a judgment call.
   128, dropped).
 - **Effect.** A value outside the documented range is accepted; the accepted range is shifted.
 - **Corpus.** None known (the corpus songs are written as RBS 4.2) [G]. Unit test only.
-- **rb.** `load.rs`, `old_tom_tune` applied before the range check.
+- **orb.** `load.rs`, `old_tom_tune` applied before the range check.
 - **Home.** `docs/song_load.md` section 5 ("The 808 track before 4.2").
 
 ### OB-3: the exe and the DLL disagree on the last tick of a track event [C for both limits, G for the effect]
@@ -51,7 +51,7 @@ status is a judgment call.
 - **Trigger.** A TRAK event in the last bar of bar 1000 (ticks 767232..767976).
 - **Effect.** The exe counts the event as accepted and sends it; it is silently dropped in the DLL.
 - **Corpus.** None (the largest corpus tick is 417792).
-- **rb.** `seq.rs` (`SONG_END`) and the track insert drop events above 767231 like the DLL [G for
+- **orb.** `seq.rs` (`SONG_END`) and the track insert drop events above 767231 like the DLL [G for
   the sent-and-dropped path: inferred from the two limits, not run].
 - **Home.** `docs/song_load.md` sections 5 and 6,
   `docs/initial_investigation.md` section 5.
@@ -65,7 +65,7 @@ status is a judgment call.
   tick after the last bar).
 - **Effect.** The event is lost in a looping song and in the export.
 - **Corpus.** None known.
-- **rb.** `crates/rb-engine/src/seq.rs`, the same wrap and chase.
+- **orb.** `crates/orb-engine/src/seq.rs`, the same wrap and chase.
 - **Home.** `docs/initial_investigation.md` section 5.
 
 ### OB-15: a 1.x control change with no mapping indexes the track buffers with -1 [C: the index; G: the effect]
@@ -80,7 +80,7 @@ status is a judgment call.
 - **Effect.** `sub_4300E0` runs on whatever dword lies 0x3FC bytes past the array (in the
   caller's frame): a write through a stack value or a crash [G: not run].
 - **Corpus.** None: no song of the user's 129 1.x songs has such a controller.
-- **rb.** `crates/rb-engine/src/load/rb1x.rs` (`load_1x`) refuses the song with
+- **orb.** `crates/orb-engine/src/load/rb1x.rs` (`load_1x`) refuses the song with
   `LoadError::Rb1x`; `tools/rb1x.py` raises.
 - **Home.** `docs/song_load.md` section 12.2.
 
@@ -98,7 +98,7 @@ status is a judgment call.
 - **Effect.** The decode reads heap bytes past the buffer into the block (garbage settings or a
   crash) [G]; the double skip moves the reader into the middle of the following events [G].
 - **Corpus.** None: each of the 129 songs has one sysex of 18729 data bytes.
-- **rb.** `rbs::rb1x::Block::decode` reads missing bytes as zero (a deviation where the original
+- **orb.** `rbs::rb1x::Block::decode` reads missing bytes as zero (a deviation where the original
   is undefined); a sysex that fails the check, or a second song sysex, is an error in `load_1x`.
 - **Home.** `docs/song_load.md` section 12.3.
 
@@ -120,11 +120,11 @@ status is a judgment call.
   load is inferred from the shared pool, not run].
 - **Corpus.** None: the largest RBS file of `tests/songs` has 13003 track events
   (`shipped/Mutilated Species II.rbs`).
-- **rb.** `Engine::load` stops at the refused batch with `Err(LoadRefused)` and the engine keeps
-  the earlier batches, as the DLL does; rb has one pool per song (task-082), so the leak cannot
-  reach another song, and rb's free count at a load is that of an engine holding no other song:
-  rb accepts some songs the exe refuses (those the app refuses only because the Untitled song or
-  other open songs, or an earlier refused load, hold nodes). `rb render` fails with the alert's
+- **orb.** `Engine::load` stops at the refused batch with `Err(LoadRefused)` and the engine keeps
+  the earlier batches, as the DLL does; orb has one pool per song (task-082), so the leak cannot
+  reach another song, and orb's free count at a load is that of an engine holding no other song:
+  orb accepts some songs the exe refuses (those the app refuses only because the Untitled song or
+  other open songs, or an earlier refused load, hold nodes). `orb render` fails with the alert's
   text; the player and the UI do not yet refuse to open such a song (task-088).
 - **Home.** `docs/song_load.md` section 5.2.
 
@@ -146,7 +146,7 @@ status is a judgment call.
   depends on the DLL's load address (`ImageBase`); the corpus assumes the preferred base.
 - **Corpus.** `pcf_lp_wave64`, `pcf_bp_wave64` (wave 64, no trigger); `pcf_lp_wave127`,
   `pcf_bp_wave127` (OB-6).
-- **rb.** `crates/rb-engine/src/pcf.rs` reads `PCF_DATA`, the raw bytes 0x10033310..0x10034400
+- **orb.** `crates/orb-engine/src/pcf.rs` reads `PCF_DATA`, the raw bytes 0x10033310..0x10034400
   (generated by `tools/gen_static_tables.py`; decided by the user 2026-10-27, task-027: the file's
   bytes at the preferred base). Deviation: a wave above 127 is clamped to 127 (`pcf.rs:91`), since
   the original would read past 0x10034400 into BSS.
@@ -167,8 +167,8 @@ status is a judgment call.
   for the whole song: everything is silenced, not only the PCF's channel.
 - **Corpus.** `pcf_lp_wave127`, `pcf_bp_wave127` (all zeros, sha256 `0a90d04342bf`, identical to
   `silence`).
-- **rb.** `frame::Fault::PcfZeroLength`: the block and the render call end there; `Engine::fault`
-  records the first fault and the count; the `rb` CLI warns when the song may route the PCF.
+- **orb.** `frame::Fault::PcfZeroLength`: the block and the render call end there; `Engine::fault`
+  records the first fault and the count; the `orb` CLI warns when the song may route the PCF.
 - **Home.** `docs/initial_investigation.md` section 8.2, `docs/export_state.md` section 13.
 
 ### OB-7: a stale stack quotient for a PCF resolution other than 8, 16 or 32 [C]
@@ -214,14 +214,14 @@ status is a judgment call.
   on step 4 without a trigger.
 - **Corpus.** `pcf_lp_wave64`, `pcf_bp_wave64` reach it but never trigger (all steps 0); the live
   tests `pcf_wave_after_returning_to_pattern_mode` and `pcf_junk_wave_on_the_303_channels`
-  (wave 108, every step a velocity; `crates/rb-player/tests/live_messages.rs`).
-- **rb.** `Frame::stack_word`, the word at the slot's address, set by every writer in the
+  (wave 108, every step a velocity; `crates/orb-player/tests/live_messages.rs`).
+- **orb.** `Frame::stack_word`, the word at the slot's address, set by every writer in the
   original's order (`Engine::render`: `LOCK_WORD`, `Frame::out_end`; `Frame::block`: the mixer
   update, `Sequencer::tick`, `ChannelDevice::stack_word` of the 808 and 909,
   `InsertEffect::stack_word` of the PCF and the compressor, `SendEffect::stack_word` of the
   delay) and passed to the inserts in `BlockContext::stack_word`. After a partial block with the
   delay on (a heap address) it is unknown and `pcf.rs` keeps its last quotient, a stand-in;
-  with a lock word other than the test machine's 0 (another Windows) rb follows the test
+  with a lock word other than the test machine's 0 (another Windows) orb follows the test
   machine.
 - **Home.** `docs/initial_investigation.md` section 8.2.
 
@@ -238,7 +238,7 @@ status is a judgment call.
 - **Effect.** A fault after the first chunk repeats the last good chunk; a fault from the start
   writes the initial buffer (zeros, observed).
 - **Corpus.** `pcf_lp_wave127`, `pcf_bp_wave127` (a fault from the start: zeros).
-- **rb.** The export shares one zeroed buffer (`frame/export.rs`), as rbhost does. [G] for a heap
+- **orb.** The export shares one zeroed buffer (`frame/export.rs`), as rbhost does. [G] for a heap
   buffer that is not zero.
 - **Home.** `docs/initial_investigation.md` section 8.2, `docs/export_state.md` section 13.
 
@@ -255,7 +255,7 @@ status is a judgment call.
   panel's sub 92 sends 0..127 only.
 - **Effect.** The DLL reads adjacent memory (the next tables).
 - **Corpus.** None.
-- **rb.** `dist.rs:117` clamps to 127 (`x.min(127)`; whether to keep it for song files is
+- **orb.** `dist.rs:117` clamps to 127 (`x.min(127)`; whether to keep it for song files is
   task-071), a deliberate deviation: the original's
   adjacent memory is not modelled.
 - **Home.** `docs/initial_investigation.md` section 8.1.
@@ -271,7 +271,7 @@ status is a judgment call.
   the parse and the packer, task-055; no file tried]. The panel's sub 84 sends 0..127 only.
 - **Effect.** Reads past the row, into the next table.
 - **Corpus.** None.
-- **rb.** `delay.rs:75` clamps to 127 (slot 11, the data block and so the panel's sub 84);
+- **orb.** `delay.rs:75` clamps to 127 (slot 11, the data block and so the panel's sub 84);
   whether to keep the clamp for song files is task-071.
 - **Home.** `docs/initial_investigation.md` section 8.4.
 
@@ -287,7 +287,7 @@ status is a judgment call.
 - **Trigger.** A decay or resonance byte above 127 (an RBS file) [G].
 - **Effect.** Reads past the tables.
 - **Corpus.** None.
-- **rb.** `pcf.rs:333` (`.min(15)`) and `pcf.rs:416` (`.min(7)`), task-027's deliberate clamps.
+- **orb.** `pcf.rs:333` (`.min(15)`) and `pcf.rs:416` (`.min(7)`), task-027's deliberate clamps.
 - **Home.** `docs/initial_investigation.md` section 8.2.
 
 ### OB-12: the delay's 25-update tempo average is dead code [C]
@@ -303,7 +303,7 @@ status is a judgment call.
 - **Effect.** None on the output beyond the model: the delay length follows the tempo at every
   update instead of a 25-update average.
 - **Corpus.** Every song with an enabled delay.
-- **rb.** `delay.rs` follows the tempo directly.
+- **orb.** `delay.rs` follows the tempo directly.
 - **Home.** `docs/initial_investigation.md` section 8.4.
 
 ### OB-17: the panel's pattern and mixer-channel messages store with no bound on the pattern, step, instrument or channel [C: no check; G: the effect]
@@ -324,8 +324,8 @@ status is a judgment call.
 - **Effect.** A store into another pattern, the live parameters or other device state [G: not
   run].
 - **Corpus.** None.
-- **rb.** `crates/rb-engine/src/frame/edit.rs` (module doc, "Bounds"): within the pattern
-  array rb stores at the same flat address (another step or pattern); a store past the array is
+- **orb.** `crates/orb-engine/src/frame/edit.rs` (module doc, "Bounds"): within the pattern
+  array orb stores at the same flat address (another step or pattern); a store past the array is
   dropped, and `Engine::mixer_channel` drops a channel above 3.
 - **Home.** `docs/song_load.md` section 4.10 ("Bounds").
 
@@ -344,10 +344,10 @@ status is a judgment call.
 - **Effect.** The change is not in the track. It was heard live (the store), and the record-off
   chase in song mode sets the controller back to the track's value at once.
 - **Corpus.** None (no reference capture records). Checked by rbhost: the session
-  `sweep_session` of `crates/rb-player/tests/live_messages.rs` moves a level and turns record off
+  `sweep_session` of `crates/orb-player/tests/live_messages.rs` moves a level and turns record off
   in the same call (rounded tick 1272 > T 1257); the DLL's WAV equals the one of the same session
   without the move.
-- **rb.** The same (`Track::merge` in `crates/rb-engine/src/seq.rs`).
+- **orb.** The same (`Track::merge` in `crates/orb-engine/src/seq.rs`).
 - **Home.** `docs/initial_investigation.md` section 5.3.
 
 ### OB-19: the merge frees the track's applied node and leaves the pointer to it [C: the code; G: the effect]
@@ -367,7 +367,7 @@ status is a judgment call.
   stopped with record on in pattern mode, which the panel cannot send because Record does nothing
   in pattern mode) would walk the free list [G].
 - **Corpus.** None.
-- **rb.** `Track::merge` moves its index to the node before the freed one; no path rb models
+- **orb.** `Track::merge` moves its index to the node before the freed one; no path orb models
   reads it before the next chase.
 - **Home.** `docs/initial_investigation.md` section 5.3.
 
@@ -390,7 +390,7 @@ See OB-8 for the unclean buffer.
   on a Swedish layout].
 - **Effect.** UI only; no audio path.
 - **Corpus.** None (no song data involved).
-- **rb.** Not decided: task-054 (`Decide:` the UI's keyboard mapping); `docs/ui_spec.md`
+- **orb.** Not decided: task-054 (`Decide:` the UI's keyboard mapping); `docs/ui_spec.md`
   section 10 has both facts.
 - **Home.** `docs/ui_spec.md` sections 10 and 13.
 
@@ -409,7 +409,7 @@ See OB-8 for the unclean buffer.
 - **Effect.** Entry 200 starts at the count word itself, so the 201st name overwrites the count
   and later entries land at an index taken from the name's bytes, past the object [G: not run].
 - **Corpus.** None: every known mod has at most 106 EMBF chunks (docs/rbm.md 11.1).
-- **rb.** `rb mod recrypt` refuses a result with more than 200 EMBF chunks (`rbm::MAX_EMBF`); the
+- **orb.** `orb mod recrypt` refuses a result with more than 200 EMBF chunks (`rbm::MAX_EMBF`); the
   reader parses any count, as it should for files the original never opens.
 - **Home.** `docs/rbm.md` section 12.
 
@@ -425,8 +425,8 @@ See OB-8 for the unclean buffer.
   Re-running the loop in IEEE double gives 88199 frames for one bar at 120 BPM (exact 88200) and
   18899999 for Fast Forward (140 BPM, 250 bars; exact 18900000).
 - **Verdict.** Not a logic bug: it is the arithmetic of the original, which the sample-exact goal
-  requires rb to repeat. It is listed here because it is visible in the file length.
-- **rb.** `crates/rb-engine/src/frame/export.rs`, which matches the frame count of all references.
+  requires orb to repeat. It is listed here because it is visible in the file length.
+- **orb.** `crates/orb-engine/src/frame/export.rs`, which matches the frame count of all references.
 - **Home.** `docs/initial_investigation.md` section 3 (the export loop).
 
 ### Q-2: state carried across msg 33 and across songs [C for the facts, see `docs/export_state.md`]
@@ -438,7 +438,7 @@ See OB-8 for the unclean buffer.
   filter state (rewritten at every trigger).
 - **Verdict.** Not claimed as defects: they are ordinary static state that a design without
   host-driven resets would also have. They matter because they make an export depend on what ran
-  before it in the process (the counters), which rb models by starting fresh (counters 0).
+  before it in the process (the counters), which orb models by starting fresh (counters 0).
 - **Home.** `docs/export_state.md` (the state tables near the 303 and drum rows).
 
 ### Q-3: the AIFF reader trusts COMM over the chunk sizes [C for the mono read]
@@ -453,9 +453,9 @@ See OB-8 for the unclean buffer.
   that follows (21064 frames where SSND holds 15798; 18052 where it holds 13539).
 - **Verdict.** Leniency, not a defect: the file holds the audio and the DLL plays all of it
   (rbhost `--dump-samples`: 42128 and 36104 bytes, equal to the file's audio; task-058).
-- **rb.** `crates/rb-engine/src/samples/aiff.rs` reads both through to the end of the file.
+- **orb.** `crates/orb-engine/src/samples/aiff.rs` reads both through to the end of the file.
 - **Open.** A file that really ends before `2 * frames` bytes: the DLL ignores the read's result
-  (0x10003071) and the stream's behavior at its end was not traced [G]; rb's policy is an error,
+  (0x10003071) and the stream's behavior at its end was not traced [G]; orb's policy is an error,
   which `Rbm::load_samples` propagates, refusing the whole mod rather than falling back for that
   slot. The stereo path (0x10003087, `sub_10009DD0`) was not examined. No mod reaches either.
 - **Home.** `docs/rbm.md` sections 9 and 11.
@@ -484,5 +484,5 @@ See OB-8 for the unclean buffer.
 - **Verdict.** A side effect of the window rebuild, not claimed as a defect; there is nothing to
   reproduce in an export.
 - **Corpus.** None (the corpus uses one song, and its exports change no mod).
-- **rb.** Not modelled: rb opens one song.
+- **orb.** Not modelled: orb opens one song.
 - **Home.** `docs/rbm.md` section 14.5.

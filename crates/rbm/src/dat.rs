@@ -1,4 +1,4 @@
-//! Checks of the key file and of a mod's files before `rb mod recrypt` writes anything (task-064,
+//! Checks of the key file and of a mod's files before `orb mod recrypt` writes anything (task-064,
 //! docs/rbm.md 12.5).
 //!
 //! A different `RB20FUL.DAT` with the right header gives a silently wrong recrypt: the samples
@@ -9,7 +9,7 @@
 
 use std::io::{Read, Seek, SeekFrom};
 
-use rb_engine::samples::Sample;
+use orb_engine::samples::Sample;
 use sha2::{Digest, Sha256};
 
 use crate::{

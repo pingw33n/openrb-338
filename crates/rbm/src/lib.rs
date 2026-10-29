@@ -10,11 +10,11 @@
 //!
 //! The one exception (task-059, the user's decisions of 2026-10-27): [`embedded`] holds one
 //! 2047-byte window of the file, and [`recrypt`] rewrites a mod so that those bytes are all it
-//! needs; such a mod loads with [`KeyTable::embedded`] and no `RB20FUL.DAT`, in rb and in the
+//! needs; such a mod loads with [`KeyTable::embedded`] and no `RB20FUL.DAT`, in orb and in the
 //! original.
 //!
 //! ```no_run
-//! # use rbm::*; use rb_engine::samples::SampleSet;
+//! # use rbm::*; use orb_engine::samples::SampleSet;
 //! # fn f(mod_bytes: Vec<u8>, builtin: &SampleSet) -> Result<(), RbmError> {
 //! let rbm = Rbm::parse(mod_bytes)?;
 //! let mut dat = std::fs::File::open("RB20FUL.DAT").map_err(RbmError::Io)?;
@@ -29,7 +29,7 @@ use std::fmt;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Arc;
 
-use rb_engine::samples::{self, Sample, SampleSet};
+use orb_engine::samples::{self, Sample, SampleSet};
 
 pub mod dat;
 pub mod embedded;
@@ -159,7 +159,7 @@ impl fmt::Display for RbmError {
             RbmError::NoSuchFile(n) => write!(f, "the mod has no file {n}"),
             RbmError::KeyNotCovered(n) => write!(
                 f,
-                "the mod's file {n} needs key material rb does not embed (the mod is not \
+                "the mod's file {n} needs key material orb does not embed (the mod is not \
                  recrypted: it needs RB20FUL.DAT)"
             ),
             RbmError::Recrypt(m) => write!(f, "cannot recrypt the mod: {m}"),
@@ -518,7 +518,7 @@ impl LoadedSamples {
     }
 }
 
-/// The 4096-byte key table of one mod, or the part of it rb knows: `known[j]` bytes from the
+/// The 4096-byte key table of one mod, or the part of it orb knows: `known[j]` bytes from the
 /// start of page `j` (2048 for a table read from `RB20FUL.DAT`).
 #[derive(Clone, PartialEq, Eq)]
 pub struct KeyTable {
@@ -533,7 +533,7 @@ impl fmt::Debug for KeyTable {
 }
 
 impl KeyTable {
-    /// The table of `rbm` from the bytes rb embeds ([`embedded`]): a page whose offset is
+    /// The table of `rbm` from the bytes orb embeds ([`embedded`]): a page whose offset is
     /// [`embedded::WINDOW`] is known for its first [`embedded::WINDOW_LEN`] bytes. `None` when
     /// neither page is there. Whether it is enough is [`Rbm::slots_covered`] /
     /// [`Rbm::all_covered`]; it is for every mod [`recrypt`] wrote.

@@ -1,4 +1,4 @@
-//! `recrypt`: rewrites a mod so that the key bytes rb embeds are all it needs (task-059,
+//! `recrypt`: rewrites a mod so that the key bytes orb embeds are all it needs (task-059,
 //! docs/rbm.md section 12).
 //!
 //! The key pages depend only on the sums over the first 1024 bytes of the EMBF payloads, which
@@ -83,7 +83,7 @@ fn push_chunk(out: &mut Vec<u8>, tag: &[u8; 4], payload: &[u8]) -> Result<(), Rb
     Ok(())
 }
 
-/// Rewrites `rbm` so that it loads with [`KeyTable::embedded`] alone, in rb and in the original.
+/// Rewrites `rbm` so that it loads with [`KeyTable::embedded`] alone, in orb and in the original.
 /// `table` is the mod's own table (from `RB20FUL.DAT`, or the embedded one for a mod that is
 /// already recrypted). Every embedded file keeps its name, bytes and lookup order; the non-EMBF
 /// chunks keep their bytes (those before the first EMBF stay first, the others go last); a pad

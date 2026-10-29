@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-rb-engine = { path = "../rb-engine" }
+orb-engine = { path = "../orb-engine" }
 # mod.toml of an unpacked mod (rbm::pack).
 toml = "=0.9.12"
 # The SHA-256 of RB20FUL.DAT (rbm::dat, task-064) and the gated check of the embedded bytes.
@@ -15,4 +15,4 @@ sha2 = "0.10"
 [dev-dependencies]
 # The decoded files of tools/rbm.py in tests/recrypt_python.rs.
 serde_json = "1"
-rb-testkit = { path = "../rb-testkit" }
+orb-testkit = { path = "../orb-testkit" }

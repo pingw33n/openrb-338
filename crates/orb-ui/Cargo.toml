@@ -1,0 +1,43 @@
+[package]
+name = "orb-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The desktop UI: the panel drawn from the SVG art set (assets/ui) with egui"
+
+[lib]
+path = "src/lib.rs"
+
+# The file name is the process name the macOS Dock and Activity Monitor show (task-104).
+[[bin]]
+name = "OpenRB-338"
+path = "src/main.rs"
+
+[dependencies]
+orb-engine = { path = "../orb-engine" }
+# The player the panel drives (task-045) and its audio output.
+orb-player = { path = "../orb-player" }
+# Song files and the standard mod (the built-in drum samples).
+rbs = { path = "../rbs" }
+rbm = { path = "../rbm" }
+# The export and the mod lookup of `orb render` (task-047).
+orb-cli = { path = "../orb-cli" }
+# The settings file (task-107).
+serde = { version = "1", features = ["derive"] }
+toml = "=0.9.12"
+eframe = "0.37.0"
+egui_extras = { version = "0.37.0", features = ["svg"] }
+# Renders the window icon; the version egui_extras' SVG loader uses.
+resvg = { version = "0.45.1", default-features = false }
+# Saves the --screenshot PNG; decodes the mods' splash.jpg.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[dev-dependencies]
+orb-ui-art = { path = "../orb-ui-art" }
+# The gated tests' external inputs (task-121).
+orb-testkit = { path = "../orb-testkit" }
+tempfile = "3.27.0"
+
+[build-dependencies]
+embed-resource = "3"

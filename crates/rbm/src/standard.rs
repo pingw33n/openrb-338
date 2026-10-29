@@ -12,22 +12,22 @@
 //!   demo song" button when a mod carries one (`sub_417000`).
 //!
 //! The mod is laid out in the clear and then passed through [`crate::recrypt`], so it is
-//! scrambled against the embedded key window like every mod rb loads: rb reads it without
+//! scrambled against the embedded key window like every mod orb loads: orb reads it without
 //! `RB20FUL.DAT`, and the original reads it with its own.
 //!
-//! rb's built-in kit is one such mod, committed as `assets/Standard.rbm` (task-067, built with
+//! orb's built-in kit is one such mod, committed as `assets/Standard.rbm` (task-067, built with
 //! the CD's Rebirth.exe for the splash; `assets/README.md`) and embedded here as [`EMBEDDED`]:
 //! [`builtin_samples`] and [`builtin_file`] read it, so no command needs the original's files.
 
 use std::sync::{Arc, OnceLock};
 
-use rb_engine::samples::{self, Sample, SampleSet, pe};
+use orb_engine::samples::{self, Sample, SampleSet, pe};
 
 use crate::{KeyTable, Rbm, RbmError, pack, slot_name};
 
 /// The standard mod's INFO name: "Standard ReBirth", the name songs give the built-in kit (their
 /// GLOB mod name; the original's `sub_4166E5` compares with the string at 0x4BB2D0). The
-/// embedded mod is rb's built-in kit, so a song made with the built-in kit and the mod name
+/// embedded mod is orb's built-in kit, so a song made with the built-in kit and the mod name
 /// the same kit (task-067; task-036's form, tried in the original, was "ReBirth Standard Kit").
 pub const NAME: &str = "Standard ReBirth";
 
@@ -42,7 +42,8 @@ pub const SPLASH_ID: u16 = 903;
 /// The number of numbered panel bitmaps in Rebirth.exe 2.01 (and in every shipped mod).
 pub const PANEL_COUNT: usize = 58;
 
-// Changing the text changes the bytes of assets/Standard.rbm (docs/rbm.md 13.2).
+// Changing the text changes the bytes of assets/Standard.rbm (docs/rbm.md 13.2), which is why it
+// still says `rb mod pack-standard`, the CLI's name before task-068.
 const INFO_TEXT: &str = "Standard ReBirth\r\n\r\nThe built-in samples and panel of ReBirth RB-338 \
                          2.01, made into a mod by rb mod pack-standard from ReBirth.dll and \
                          Rebirth.exe.";
@@ -131,7 +132,7 @@ pub fn build(dll: &[u8], exe: &[u8]) -> Result<Standard, RbmError> {
     })
 }
 
-/// `assets/Standard.rbm`: the standard mod rb embeds as its built-in kit (task-067).
+/// `assets/Standard.rbm`: the standard mod orb embeds as its built-in kit (task-067).
 pub const EMBEDDED: &[u8] = include_bytes!("../../../assets/Standard.rbm");
 
 /// The embedded standard mod, parsed once, and its key table.

@@ -1,13 +1,13 @@
 ---
 name: agent-chore
-description: Haiku 5.5 agent for mechanical rb work whose text or script is already written: doc corrections with the wording given, manifest and corpus entries, a capture or check replayed with a given script, status and count updates, backlog and doc housekeeping. Not for reading the disassembly, writing engine code, or deciding what a render comparison shows.
+description: Haiku 5.5 agent for mechanical OpenRB-338 work whose text or script is already written: doc corrections with the wording given, manifest and corpus entries, a capture or check replayed with a given script, status and count updates, backlog and doc housekeeping. Not for reading the disassembly, writing engine code, or deciding what a render comparison shows.
 model: haiku
 effort: high
 autoCompactWindow: 700000
 disallowedTools: Agent, Artifact, ArtifactComments, ArtifactData, AskUserQuestion, WebSearch, WebFetch, mcp__claude_ai_Claude_Docs__batch, mcp__claude_ai_Claude_Docs__guide, mcp__claude_ai_Claude_Docs__update, mcp__claude_ai_Claude_Docs__create, mcp__claude_ai_Claude_Docs__delete, mcp__claude_ai_Claude_Docs__export, mcp__claude_ai_Claude_Docs__query, mcp__claude_ai_Claude_Docs__read
 ---
 
-You work on rb, the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. The repository root is your worktree.
+You work on OpenRB-338 (the command is `orb`), the Rust reimplementation of the ReBirth RB-338 2.01 audio engine. The repository root is your worktree.
 
 Your task is a backlog task, named in the supervisor's prompt; read it with the backlog MCP tool `task_view`. The task or the prompt gives the exact change or the exact script to run.
 

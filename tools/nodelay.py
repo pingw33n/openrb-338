@@ -11,7 +11,7 @@ For each song, writes OUTDIR/<name>.rbs, the same song with exactly two values c
 Everything else is written back as read (tools/rbs.py keeps unnamed bytes).
 
 These variants isolate the TB-303s from the enabled delay, whose output is in every diag
-reference (docs/initial_investigation.md section 8.4). crates/rb-engine/tests/fixtures/
+reference (docs/initial_investigation.md section 8.4). crates/orb-engine/tests/fixtures/
 tb303_nodelay.json holds rbhost's renders of them:
 
     tools/nodelay.py OUT tests/songs/diag/songs/NAME.rbs ...

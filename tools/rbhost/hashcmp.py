@@ -1,15 +1,15 @@
 #!/usr/bin/python3
-"""rbhost against rb render, by the sha256 of the whole WAV, without downloading the renders.
+"""rbhost against orb render, by the sha256 of the whole WAV, without downloading the renders.
 
-    tools/rbhost/hashcmp.py [--remote-dir NAME] [--idle-blocks N] [--rb PATH] [--json OUT.json]
+    tools/rbhost/hashcmp.py [--remote-dir NAME] [--idle-blocks N] [--orb PATH] [--json OUT.json]
                             SONG.rbs...
 
 For each song (RBS or ReBirth 1.x; duplicates by content are skipped): the load messages
 (rbsmsg.message_file, tools/rb1x.py for a 1.x song) go to the machine, rbhost renders the export
-there, the machine hashes the WAV (rcs hash), and `rb render --idle-blocks N` renders the same song
+there, the machine hashes the WAV (rcs hash), and `orb render --idle-blocks N` renders the same song
 here (into a temporary file, hashed and deleted). Prints one line per song and the count of equal
-ones; --json writes [{"song", "song_sha256", "rbhost_sha256", "rb_sha256", "equal"}]. Built-in mod
-only (no --mod; rb embeds the built-in kit, task-067). Holds one permit of redc-win-run like
+ones; --json writes [{"song", "song_sha256", "rbhost_sha256", "orb_sha256", "equal"}]. Built-in mod
+only (no --mod; orb embeds the built-in kit, task-067). Holds one permit of redc-win-run like
 run.py, refuses to run while a Rebirth.exe runs, and deletes its remote x.rbhm and x.wav and
 releases the permit also when it fails.
 task-060 ran it over the 129 distinct 1.x songs of the user's collection.
@@ -63,14 +63,14 @@ def compare(songs, client, permits, idle, render, exe=None, log=print):
             if code != 0:
                 raise run.Failure("%s: rbhost exited with %s\n%s" % (p, code, out))
             remote = client.hash(run.REMOTE_DIR + "/x.wav")["hash"]
-            wav = os.path.join(tmp, "rb.wav")
+            wav = os.path.join(tmp, "orb.wav")
             local = rb_export.sha256_file(wav) if render(p, wav) else None
             if os.path.exists(wav):
                 os.remove(wav)
             e = {"song": os.path.basename(p), "song_sha256": song_sha, "rbhost_sha256": remote,
-                 "rb_sha256": local, "equal": local == remote}
+                 "orb_sha256": local, "equal": local == remote}
             results.append(e)
-            log("%s %s rbhost %s rb %s" % ("EQUAL" if e["equal"] else "DIFF ", e["song"], remote, local))
+            log("%s %s rbhost %s orb %s" % ("EQUAL" if e["equal"] else "DIFF ", e["song"], remote, local))
     finally:
         for name in REMOTE_FILES:
             try:
@@ -89,7 +89,7 @@ def main(argv):
     ap.add_argument("songs", nargs="+", metavar="SONG.rbs")
     ap.add_argument("--remote-dir", metavar="NAME", help="work in C:\\re\\rb\\NAME (default rbhost)")
     ap.add_argument("--idle-blocks", type=int, default=0, help="for both renders (default 0)")
-    ap.add_argument("--rb", default=os.path.join(ROOT, "target", "release", "rb"))
+    ap.add_argument("--orb", default=os.path.join(ROOT, "target", "release", "orb"))
     ap.add_argument("--owner", help="locky owner (default: the git branch)")
     ap.add_argument("--json", metavar="OUT.json")
     args = ap.parse_args(argv)
@@ -99,7 +99,7 @@ def main(argv):
     run.build(exe)
 
     def render(p, wav):
-        r = subprocess.run([args.rb, "render", "--idle-blocks", str(args.idle_blocks),
+        r = subprocess.run([args.orb, "render", "--idle-blocks", str(args.idle_blocks),
                             "-o", wav, p], capture_output=True)
         return r.returncode == 0
 

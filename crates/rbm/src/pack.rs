@@ -337,7 +337,7 @@ impl Manifest {
     pub fn to_toml(&self) -> String {
         let i = &self.info;
         let mut s = String::from(
-            "# rb mod unpack: edit the fields and the files, then `rb mod pack DIR -o MOD.rbm`.\n\
+            "# orb mod unpack: edit the fields and the files, then `orb mod pack DIR -o MOD.rbm`.\n\
              # files: the embedded files in chunk order (the order matters: the first of a name\n\
              # is the one looked up). A plain string is both the name in the mod and the file\n\
              # name here; { name, path } gives them apart.\n",
