@@ -117,7 +117,8 @@ the `.tar.gz`, the `.zip`, the `.dmg`, and the later installer and AppImages.
 On Linux, both `rb` and OpenRB-338 link `libasound.so.2` (ALSA, package `libasound2`), so even
 `rb --help` fails without it. OpenRB-338 also loads X11 or Wayland and the GL or Vulkan driver at
 run time (dlopen): on a bare Ubuntu 22.04 it needed `libxcursor1`, `libxrandr2`, `libxi6`,
-`libxkbcommon-x11-0` and a driver (`mesa-vulkan-drivers` for software rendering). The most
+`libxkbcommon-x11-0`, `libegl1` and a driver (`mesa-vulkan-drivers` for software Vulkan, or
+Mesa's OpenGL and EGL drivers, `libgl1-mesa-dri` and `libegl-mesa0`; see "The AppImage"). The most
 recent glibc symbol the binaries use is `GLIBC_2.35` (OpenRB-338) and `GLIBC_2.34` (rb), on both
 architectures, so the minimum is glibc 2.35. Both Linux packages were smoke-tested in
 `ubuntu:22.04` containers (`rb --help`, `rb info` on a shipped song, and OpenRB-338
@@ -582,13 +583,26 @@ exactly two ELF files and no `libc.so`, `ld-linux`, `libm`, `libpthread` or `lib
 - `libasound.so.2` (`libasound2` on Debian and Ubuntu, `alsa-lib` on Fedora and Arch): without
   it even `rb --help` fails; a PipeWire or PulseAudio system has the ALSA plugins for it;
 - for the window: X11 (`libxcursor1`, `libxrandr2`, `libxi6`, `libxkbcommon-x11-0`; the X11
-  libraries are loaded at run time) or Wayland (`libwayland-client0`, `libxkbcommon0`), and a
-  Vulkan driver: `libvulkan1` and an ICD (Mesa; `mesa-vulkan-drivers` has lavapipe, software
-  rendering, on a bare system). The window is drawn by wgpu, and in the smoke test (xvfb,
-  `ubuntu:22.04`) `--screenshot` worked with `WGPU_BACKEND=vulkan` (lavapipe) and failed to
-  create a surface ("FailedToCreateSurfaceForAnyBackend") with `WGPU_BACKEND=gl` and with the
-  Vulkan ICDs hidden (`VK_ICD_FILENAMES=/nonexistent`), so a Vulkan driver is what the host
-  needs; OpenGL alone was not enough in that container (not tried on a real desktop).
+  libraries are loaded at run time) or Wayland (`libwayland-client0`, `libxkbcommon0`), and
+  a graphics driver, Vulkan or OpenGL, either one. The window is drawn by wgpu, whose backends
+  are Vulkan and OpenGL (EGL) here (Metal and DX12 are on the other systems). egui-wgpu asks
+  for all of `Backends::PRIMARY | GL` with `PowerPreference::HighPerformance`, and wgpu sorts
+  every adapter it finds by device type (discrete GPU, integrated GPU, other, virtual, CPU;
+  wgpu-core `get_order`), the first one wins, and a tie keeps the backend order, Vulkan before
+  OpenGL. So OpenGL is used when no Vulkan adapter exists, and the `WGPU_BACKEND` variable
+  (`vulkan` or `gl`) forces one. Vulkan needs
+  `libvulkan1` and an ICD (Mesa: `mesa-vulkan-drivers`, which has lavapipe, software
+  rendering). OpenGL needs **`libegl1`** (`libEGL.so.1`, which wgpu loads at run time) and a
+  Mesa or vendor EGL driver (`libegl-mesa0`, `libgl1-mesa-dri`; a desktop has them). Without
+  `libEGL.so.1` and without a Vulkan ICD the program stops with
+  "FailedToCreateSurfaceForAnyBackend"; that was the error of the first task-112 smoke run,
+  whose OpenGL run only lacked `libegl1` (task-135: the fallback needed no wgpu setting).
+  `OPENRB_GPU_INFO=1` makes OpenRB-338 print the adapter it chose (`gpu: Vulkan Cpu
+  llvmpipe ...`). The smoke test (xvfb, `ubuntu:22.04`, aarch64) takes a `--screenshot` with
+  `WGPU_BACKEND=vulkan`, with `WGPU_BACKEND=gl`, with nothing forced and a Vulkan ICD present
+  (it chose Vulkan: lavapipe and Mesa's OpenGL are both device type CPU, a tie, so the backend
+  order decides), and with the Vulkan ICDs hidden (`VK_ICD_FILENAMES=/nonexistent`), which
+  chose OpenGL; each asserts the backend. Not tried on a real desktop (task-134).
 
 FUSE 2 (`libfuse2`) lets the AppImage mount itself. Without it, run
 `./OpenRB-338-<version>-x86_64.AppImage --appimage-extract-and-run`, or `--appimage-extract` and

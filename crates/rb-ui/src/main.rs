@@ -186,6 +186,13 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             // always dark, whatever the system theme (task-127; `App::show` keeps it)
             cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
+            // OPENRB_GPU_INFO=1 prints the adapter wgpu chose (scripts/appimage-smoke.sh)
+            if std::env::var_os("OPENRB_GPU_INFO").is_some_and(|v| v == "1")
+                && let Some(rs) = &cc.wgpu_render_state
+            {
+                let i = rs.adapter.get_info();
+                eprintln!("gpu: {:?} {:?} {}", i.backend, i.device_type, i.name);
+            }
             if let Some(ppp) = ppp {
                 cc.egui_ctx.set_pixels_per_point(ppp);
             }

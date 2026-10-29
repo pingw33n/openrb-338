@@ -11,7 +11,8 @@
 #   - the most recent GLIBC_ version the two programs need;
 #   - `--rb --help` and `--rb info` on a committed song (the CLI inside), also through a
 #     symlink named rb;
-#   - OpenRB-338 --screenshot under xvfb writes a PNG.
+#   - OpenRB-338 --screenshot under xvfb writes a PNG with Vulkan, with OpenGL, automatically
+#     (it must choose Vulkan) and with the Vulkan ICDs hidden (the fallback: OpenGL).
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -38,7 +39,7 @@ docker run --rm --platform "$platform" -e "OPENRB_APPIMAGE_EMULATED=$emulated" \
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends libasound2 libxcursor1 libxrandr2 libxi6 \
-    libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers xvfb xauth binutils desktop-file-utils \
+    libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 xvfb xauth binutils desktop-file-utils \
     squashfs-tools >/dev/null
 cp /t/app.AppImage /tmp/app.AppImage
 chmod +x /tmp/app.AppImage
@@ -96,16 +97,30 @@ cmp /tmp/help.txt /tmp/help2.txt
 echo "the symlink named rb ran the CLI"
 echo "== OpenRB-338 --screenshot under xvfb"
 ls /usr/share/vulkan/icd.d
-# wgpu draws through Vulkan here: Mesa lavapipe (software) in the container. A run with
-# WGPU_BACKEND=gl, or without a Vulkan ICD, failed to create a surface in this container.
-WGPU_BACKEND=vulkan xvfb-run -a bash -c \
-    "$(declare -f run_app); run_app --demo --screenshot /tmp/shot.png" > /tmp/ui.txt 2>&1 || {
-    cat /tmp/ui.txt
-    exit 1
+# shot LABEL BACKEND VAR=VALUE...: a screenshot with that environment, checked for the PNG
+# signature and for the backend wgpu chose (OPENRB_GPU_INFO=1 makes OpenRB-338 print it).
+shot() {
+    local label=$1 want=$2; shift 2
+    rm -f /tmp/shot.png
+    env OPENRB_GPU_INFO=1 "$@" xvfb-run -a bash -c \
+        "$(declare -f run_app); run_app --demo --screenshot /tmp/shot.png" > /tmp/ui.txt 2>&1 || {
+        echo "$label: failed" >&2
+        cat /tmp/ui.txt
+        exit 1
+    }
+    test -s /tmp/shot.png
+    test "$(od -An -tx1 -N8 /tmp/shot.png | tr -d " \n")" = 89504e470d0a1a0a
+    grep "^gpu: " /tmp/ui.txt
+    grep -q "^gpu: $want " /tmp/ui.txt
+    echo "$label: PNG signature ok, $(stat -c %s /tmp/shot.png) B, backend $want"
 }
-test -s /tmp/shot.png
-test "$(od -An -tx1 -N8 /tmp/shot.png | tr -d " \n")" = 89504e470d0a1a0a
-echo "PNG signature ok"
-ls -l /tmp/shot.png
+# wgpu draws through Vulkan (Mesa lavapipe, software, in the container) or OpenGL (Mesa
+# llvmpipe through EGL: libegl1). Each is forced; then nothing is forced (wgpu sorts the
+# adapters by device type, lavapipe and llvmpipe are both software, so the backend order
+# decides); then the Vulkan ICDs are hidden: the window must open with OpenGL (task-135).
+shot "WGPU_BACKEND=vulkan" Vulkan WGPU_BACKEND=vulkan
+shot "WGPU_BACKEND=gl" Gl WGPU_BACKEND=gl
+shot "backend automatic, Vulkan present" Vulkan X=1
+shot "no Vulkan ICD, backend automatic" Gl VK_ICD_FILENAMES=/nonexistent
 echo SMOKE-OK
 '
