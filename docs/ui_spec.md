@@ -1146,10 +1146,8 @@ is one more entry.
       CR LF, CR and LF in the text are all stored as one 0x0d.
     - Next to the web page edit, an "open" link opens the page when the text is a web address
       (`info::web_url`); the link never takes the edit's place.
-    - Under the copyright a note says that ReBirth does not check it when it opens a song and
-      that its own Save writes its standard line (the original's open reads and drops it, and
-      its writer always writes Propellerhead's string; docs/song_load.md 13). orb's Save writes
-      the copyright the document holds.
+    - orb's Save writes the copyright the document holds (docs/song_load.md 13 has the
+      original's open and Save).
     - While a text edit has the keyboard focus the panel takes no computer keys
       (`App::show`, `text_edit_focused`): Space types a space instead of playing. The menu's
       shortcuts that `App::show` takes still work: Cmd/Ctrl+N (New), +O (Open), +S (Save),

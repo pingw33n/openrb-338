@@ -313,18 +313,13 @@ fn field_ui(ui: &mut egui::Ui, doc: &mut Document, field: Field) {
         });
         return;
     }
-    ui.vertical(|ui| {
-        ui.horizontal(|ui| {
-            edit(ui, doc);
-            count(ui, doc);
-            if field == Field::WebPage
-                && let Some(url) = web_url(&field_value(doc, field))
-            {
-                ui.hyperlink_to("open", url);
-            }
-        });
-        if field == Field::Copyright {
-            ui.label(RichText::new(COPYRIGHT_NOTE).small().color(INK_DIM));
+    ui.horizontal(|ui| {
+        edit(ui, doc);
+        count(ui, doc);
+        if field == Field::WebPage
+            && let Some(url) = web_url(&field_value(doc, field))
+        {
+            ui.hyperlink_to("open", url);
         }
     });
 }
@@ -333,11 +328,6 @@ fn field_ui(ui: &mut egui::Ui, doc: &mut Document, field: Field) {
 const EDIT_W: f32 = 230.0;
 /// The width of the label column, the same in the window's three grids.
 const LABEL_W: f32 = 72.0;
-
-/// The note under the copyright: the original neither checks nor keeps it (docs/song_load.md
-/// 13).
-pub const COPYRIGHT_NOTE: &str =
-    "ReBirth does not check this when it opens a song; its own Save writes its standard line.";
 
 /// A web address as a link when it is one, else as plain text.
 pub(crate) fn link(ui: &mut egui::Ui, text: &str) {

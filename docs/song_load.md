@@ -1070,5 +1070,4 @@ its tail when the original opens it (and a Save of it writes the shortened text;
 **orb** (File > Info, `crates/orb-ui/src/info.rs`, `docs/ui_spec.md` 18): the title, text, web
 page and copyright are editable with the limits 40, 400 (a line break counting two, so the
 original reads the text whole), 100 and 128 bytes. orb's Save writes the copyright the document
-holds; a note next to the field says that the original ignores it on open and writes its own on
-Save.
+holds.
