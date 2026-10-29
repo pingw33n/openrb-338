@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 13:06'
+updated_date: '2026-10-29 13:07'
 labels:
   - tools
   - tests
@@ -112,4 +112,6 @@ task-141 (fix for the prepare tee) is due a bad-tag re-run on GitHub after the m
 task-139 WSL re-check, for the user: with a build that has task-139, run orb play on a song under WSL (WSLg, libasound2-plugins installed). Expect sound to the end, at most one 'orb-player: audio output: ... I/O error' line per second with a count, and no 'the audio output stopped'. Run OpenRB-338 (tar.gz or AppImage) too: sound as before. A lost device (stop the PulseAudio server) must end orb play with 'the audio device is gone or unusable: ...' and show a box in the UI.
 
 Supervisor, 2026-10-29, AC #3 after task-141 (the user said 'do push'): main 8675f3a pushed, then the bad tag v1 on it (run 40878787260). prepare failed with exit 1, and package, dmg, installer, appimage and draft release were all skipped. Nothing was built and no release was created; the release list still holds only the v2026.1029.1138 draft. The v1 tag was deleted from origin and locally. With the earlier re-run (draft replaced, one release), AC #3 is met.
+
+User, 2026-10-29: orb play works under WSL with the task-139 build (Linux x86_64 dist build of main 3d1df11). This is the WSL re-check that task-139 left for the user.
 <!-- SECTION:NOTES:END -->

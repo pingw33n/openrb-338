@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-29 12:19'
-updated_date: '2026-10-29 12:48'
+updated_date: '2026-10-29 13:07'
 labels:
   - cli
   - engine
@@ -62,6 +62,8 @@ Evidence. cpal 0.18.2 src/host/alsa/mod.rs: output_stream_worker (966-1022) call
 User answer (2026-10-29): under WSL the Linux UI (tar.gz and AppImage) played sound; only orb play stopped. Cause: orb-ui/src/main.rs kept the Stream as _stream and never called Stream::failed(); only orb-cli/src/main.rs:620 polled it. The error callback (eprintln only) was identical in both, so the UI survived by ignoring failed() altogether, and never reported a really lost device. Fix: one shared rule (output::Health); orb play uses Stream::failure(); the UI keeps a Health handle (App::audio_health) and reports a lost device once in the message box (App::check_audio). Health is lock-free (atomics; error text packed into 16 AtomicU64) because tests/no_alloc.rs greps the player sources for Mutex. Linux build check: not run, the x86_64-unknown-linux-gnu std target is not installed here (E0463); Docker not tried.
 
 Review round 1 (send back, 10 points), fixed in the amended commit: show/check_audio doc comments; cpal line cite 1015-1018; the held-back log count is flushed by the poller (Health::flush_log from Health::failure, so orb play and the UI report the tail of a burst a second later); the 500 ms stall backstop now applies to every non-device-gone kind (Xrun, RealtimeDenied, DeviceChanged, DeviceBusy set pending but never fail on the error alone); atomics ordering (last_data, then pending Release; Acquire load of pending first); no_alloc doc says h.data() only stores atomics and the error path allocates; docs and Health comment say a silent stop with no error is not detected and that the UI checks only while it repaints; AC and docs no longer claim the WSL outcome as observed. The branch was rebuilt on main 2b5a028 from the first commit's code files (the backlog files conflicted in a rebase and were redone through the CLI). Checks: fmt, clippy -D warnings, debug cargo test -p orb-player -p orb-ui, cargo test --release --no-fail-fast (615 passed, exit 0).
+
+User, 2026-10-29: confirmed under WSL that orb play now works (Linux x86_64 dist build of main 3d1df11).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
