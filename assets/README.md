@@ -5,6 +5,11 @@
   `cargo run --release -p orb-ui-art --bin ui-art -- ico` and embedded in `OpenRB-338.exe` by
   `crates/orb-ui/build.rs` (task-111).
 - `Standard.rbm`: the standard mod, orb's built-in kit (task-067, docs/rbm.md section 13).
+- `logo.gif`: the README's logo, the About window's icon and wordmark with the startup animation
+  (task-114), played once. Composed from the `app_icon` and `logo_*` parts of `ui/` with the
+  timing of `crates/orb-ui/src/logo_anim.rs`: 756 x 228 px (2x), 30 fps, on egui's dark window
+  fill with rounded corners.
+- `screenshot.png`: the README's screenshot of OpenRB-338 on macOS (2026-10-29).
 
 ## Standard.rbm
 
