@@ -4,8 +4,8 @@
 //! `.rbm` files of its `Mods` folder in a list and looks the name up in it with `strcmp` against
 //! each mod's INFO menu name (`sub_4155D1`, 0x4155D1: the C string at the mod object's +1011,
 //! which is INFO offset 1003); a name not in the list gets a dialog, Download / Standard /
-//! Cancel. orb does the same: the INFO name, exact; as a convenience a file name (`PBE2.rbm`, or
-//! `PBE2`, any case) also matches when no INFO name does. orb loads only recrypted mods
+//! Cancel. orb does the same with one deliberate difference (task-145, task-150): the INFO name
+//! only, compared ignoring ASCII case; never a file name. orb loads only recrypted mods
 //! (`orb mod recrypt`, task-059; task-063): a mod that is not recrypted is found like any other
 //! (its INFO is in the clear and it keeps its place in the folder order) and fails when its
 //! samples are loaded, with an error that names `orb mod recrypt`. Only `orb mod recrypt` reads
@@ -192,7 +192,7 @@ pub fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
     Ok(files
         .into_iter()
         .map(|p| {
-            // a file that is no mod has no name and matches by its file name only
+            // a file that is no mod has no name and matches nothing
             let name = std::fs::read(&p)
                 .ok()
                 .and_then(|b| Rbm::parse(b).ok())
@@ -202,20 +202,20 @@ pub fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
         .collect())
 }
 
-/// Resolves the mod called `name` in `dir`: the INFO name first (exact), then a file name.
+/// Whether a mod's INFO name `info` is the name `want` a song gives: equal ignoring ASCII case
+/// only (a non-ASCII letter compares exactly). The original compares exactly (`strcmp`); the
+/// task-145 decision is this deliberate difference.
+pub fn names_match(info: &str, want: &str) -> bool {
+    info.eq_ignore_ascii_case(want)
+}
+
+/// Resolves the mod called `name` in `dir`: the first mod in the folder order whose INFO name
+/// matches ([`names_match`]). A file name never matches.
 pub fn find_in_dir(dir: &Path, name: &str) -> Result<Option<PathBuf>, Fail> {
-    let mods = scan(dir)?;
-    if let Some((p, _)) = mods.iter().find(|(_, n)| n.as_deref() == Some(name)) {
-        return Ok(Some(p.clone()));
-    }
-    let want = name.to_ascii_lowercase();
-    Ok(mods.into_iter().map(|(p, _)| p).find(|p| {
-        let f = p
-            .file_name()
-            .map(|f| f.to_string_lossy().to_ascii_lowercase())
-            .unwrap_or_default();
-        f == want || f.strip_suffix(".rbm") == Some(want.as_str())
-    }))
+    Ok(scan(dir)?
+        .into_iter()
+        .find(|(_, n)| n.as_deref().is_some_and(|n| names_match(n, name)))
+        .map(|(p, _)| p))
 }
 
 /// The kit of a song whose GLOB names `mod_name`. `label` names the song in messages.
@@ -229,7 +229,7 @@ pub fn resolve(opts: &ModOpts, label: &str, mod_name: &str) -> Result<Kit, Fail>
             .ok()
             .and_then(|b| Rbm::parse(b).ok())
             .and_then(|r| r.info().map(|i| i.name.clone()));
-        if info.as_deref() != Some(mod_name) {
+        if !info.as_deref().is_some_and(|n| names_match(n, mod_name)) {
             eprintln!(
                 "orb: warning: {label}: --mod {} (mod name {:?}) is not the mod the song names \
                  ({mod_name:?}); the original would not load it for this song",
@@ -277,7 +277,9 @@ mod tests {
         b.extend(b"INFO");
         b.extend(1280u32.to_be_bytes());
         let mut info = vec![0u8; 1280];
-        info[1003..1003 + name.len()].copy_from_slice(name.as_bytes());
+        // INFO text is Latin-1
+        let name: Vec<u8> = name.chars().map(|c| c as u8).collect();
+        info[1003..1003 + name.len()].copy_from_slice(&name);
         b.extend(info);
         let size = (b.len() - 8) as u32;
         b[4..8].copy_from_slice(&size.to_be_bytes());
@@ -329,8 +331,53 @@ mod tests {
         std::fs::write(d.path().join("axiom(b3).rbm"), empty_mod("AXIOM")).unwrap();
         let p = find_in_dir(d.path(), "AXIOM").ok().flatten().unwrap();
         assert_eq!(p.file_name().unwrap(), "axiom(b3).rbm");
-        // a file name still finds the other one
-        let p = find_in_dir(d.path(), "axiom.rbm").ok().flatten().unwrap();
-        assert_eq!(p.file_name().unwrap(), "AXIOM.rbm");
+        // also when the song's name differs in case
+        let p = find_in_dir(d.path(), "Axiom").ok().flatten().unwrap();
+        assert_eq!(p.file_name().unwrap(), "axiom(b3).rbm");
+    }
+
+    #[test]
+    fn a_name_matches_ignoring_ascii_case() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("Omega.rbm"), empty_mod("Omega")).unwrap();
+        for want in ["Omega", "omega", "OMEGA"] {
+            let p = find_in_dir(d.path(), want).ok().flatten().unwrap();
+            assert_eq!(p.file_name().unwrap(), "Omega.rbm", "{want}");
+        }
+        assert!(find_in_dir(d.path(), "Omega2").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_file_name_does_not_match() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("PBE2.rbm"), empty_mod("Bass Machine")).unwrap();
+        for want in ["PBE2", "pbe2", "PBE2.rbm", "pbe2.RBM"] {
+            assert!(find_in_dir(d.path(), want).unwrap().is_none(), "{want}");
+        }
+        assert!(find_in_dir(d.path(), "bass machine").unwrap().is_some());
+    }
+
+    #[test]
+    fn a_non_ascii_letter_compares_exactly() {
+        assert!(!names_match("çoNaNbox 2.0", "ÇoNaNbox 2.0"));
+        assert!(names_match("çoNaNbox 2.0", "çONanBOX 2.0"));
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("c.rbm"), empty_mod("çoNaNbox 2.0")).unwrap();
+        assert!(find_in_dir(d.path(), "ÇoNaNbox 2.0").unwrap().is_none());
+        assert!(find_in_dir(d.path(), "çonanbox 2.0").unwrap().is_some());
+    }
+
+    #[test]
+    fn the_mod_option_overrides_the_songs_name() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("m.rbm");
+        std::fs::write(&f, empty_mod("Omega")).unwrap();
+        let opts = ModOpts {
+            mod_file: Some(f.clone()),
+            ..ModOpts::default()
+        };
+        // resolves either way: --mod overrides; the warning is on stderr
+        assert_eq!(resolve(&opts, "s", "omega").ok(), Some(Kit::Mod(f.clone())));
+        assert_eq!(resolve(&opts, "s", "other").ok(), Some(Kit::Mod(f)));
     }
 }

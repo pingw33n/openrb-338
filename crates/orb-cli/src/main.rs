@@ -54,7 +54,7 @@ enum Cmd {
         #[arg(long, default_value_t = 9088, value_name = "N")]
         idle_blocks: u32,
         /// The song's mod is looked up in this folder of .rbm files, by the name in the song
-        /// (the mod's INFO name, as the original's Mods menu; a file name also matches).
+        /// (the mod's INFO name, as the original's Mods menu, ignoring ASCII case).
         /// Default: the ORB_MOD_DIR environment variable, then a Mods folder next to the orb
         /// binary, then the usual install locations on Windows. "Standard ReBirth", the
         /// built-in kit, needs none: orb embeds it. A mod's missing samples come from it.
@@ -148,8 +148,8 @@ enum Cmd {
         #[arg(long, value_name = "N")]
         idle_blocks: Option<u32>,
         /// As in render: the song's mod is looked up in this folder of .rbm files, by the name
-        /// in the song (the mod's INFO name, as the original's Mods menu; a file name also
-        /// matches). Default: the ORB_MOD_DIR environment variable, then a Mods folder next to
+        /// in the song (the mod's INFO name, as the original's Mods menu, ignoring ASCII
+        /// case). Default: the ORB_MOD_DIR environment variable, then a Mods folder next to
         /// the orb binary, then the usual install locations on Windows. "Standard ReBirth", the
         /// built-in kit, needs none: orb embeds it.
         /// Only recrypted mods (orb mod recrypt) load; a mod that is not is still found by name

@@ -151,19 +151,19 @@ fn the_songs_mod_is_found_by_name_in_the_mod_dir() {
     let s = setup();
     let standard = song(&s, "std.rbs", "Standard ReBirth");
     let named = song(&s, "named.rbs", "Test Mod");
-    let by_file = song(&s, "byfile.rbs", "TM"); // the file name, any case, without .rbm
+    let by_case = song(&s, "bycase.rbs", "tEST mOD"); // the INFO name in another ASCII case
     let dirs = [os("--mod-dir"), s.mods.as_os_str()];
 
     let (o, std_out) = render(&s, &standard, "std.wav", &[]);
     ok(&o);
     let (o, mod_out) = render(&s, &named, "mod.wav", &dirs);
     ok(&o);
-    let (o, file_out) = render(&s, &by_file, "file.wav", &dirs);
+    let (o, case_out) = render(&s, &by_case, "case.wav", &dirs);
     ok(&o);
     let std_wav = std::fs::read(std_out).unwrap();
     let mod_wav = std::fs::read(mod_out).unwrap();
     assert_ne!(std_wav, mod_wav, "the mod's drums are audible");
-    assert_eq!(mod_wav, std::fs::read(file_out).unwrap());
+    assert_eq!(mod_wav, std::fs::read(case_out).unwrap());
 }
 
 /// The synthetic mod has no TR-909 sample: a 909 song with it plays the standard mod's 909
@@ -196,16 +196,18 @@ fn a_mods_missing_slots_come_from_the_standard_mod() {
 }
 
 #[test]
-fn the_info_name_match_is_case_sensitive_and_mod_warns_on_a_mismatch() {
+fn the_info_name_only_matches_and_mod_warns_on_a_mismatch() {
     let s = setup();
     let standard = song(&s, "std.rbs", "Standard ReBirth");
-    // Not the INFO name "Test Mod", no file "test mod".
-    let lower = song(&s, "lower.rbs", "test mod");
+    // Not the INFO name "Test Mod": the file is tm.rbm, and no file name is a mod name (task-150).
     let dirs = [os("--mod-dir"), s.mods.as_os_str()];
-    let (o, _) = render(&s, &lower, "l.wav", &dirs);
-    let err = String::from_utf8_lossy(&o.stderr);
-    assert_eq!(o.status.code(), Some(1), "{err}");
-    assert!(err.contains("not found"), "{err}");
+    for name in ["tm", "TM", "tm.rbm", "Test Mod 2"] {
+        let by_file = song(&s, "byfile.rbs", name);
+        let (o, _) = render(&s, &by_file, "l.wav", &dirs);
+        let err = String::from_utf8_lossy(&o.stderr);
+        assert_eq!(o.status.code(), Some(1), "{name}: {err}");
+        assert!(err.contains("not found"), "{name}: {err}");
+    }
 
     // --mod with an INFO name other than the song's: renders, with a warning
     let modfile = s.mods.join("tm.rbm");
@@ -216,6 +218,11 @@ fn the_info_name_match_is_case_sensitive_and_mod_warns_on_a_mismatch() {
     // and none when they agree
     let named = song(&s, "named.rbs", "Test Mod");
     let (o, _) = render(&s, &named, "w2.wav", &[os("--mod"), modfile.as_os_str()]);
+    ok(&o);
+    assert!(!String::from_utf8_lossy(&o.stderr).contains("warning"));
+    // and none when they differ in ASCII case only
+    let cased = song(&s, "cased.rbs", "TEST MOD");
+    let (o, _) = render(&s, &cased, "w3.wav", &[os("--mod"), modfile.as_os_str()]);
     ok(&o);
     assert!(!String::from_utf8_lossy(&o.stderr).contains("warning"));
 }

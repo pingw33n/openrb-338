@@ -1060,10 +1060,11 @@ is one more entry.
   Song" is first drawn for it.
 - **The checked mod** (task-093). The Mods menu checks the item of the current song's mod:
   "Standard ReBirth" when the kit is the built-in one under that name, else the entry whose file
-  is the song's resolved kit (`App::mod_checks`), so a mod found by file name is checked and a
-  mod chosen from outside the folder is not. It follows a song open and a mod change because it
-  is computed from the document each time the menu is drawn. A song whose mod is not in the
-  folder (it plays the built-in kit, with an error box) has nothing checked. The original does check: the
+  is the song's resolved kit (`App::mod_checks`), so a mod found with another ASCII case of its
+  INFO name is checked and a mod chosen from outside the folder is not. It follows a song open
+  and a mod change because it is computed from the document each time the menu is drawn. A song
+  whose mod is not in the folder (it plays the built-in kit, with an error box) has nothing
+  checked. The original does check: the
   menu update `sub_40B977` builds the Mods items 5000 + i from the mod objects (`sub_415578(i)`,
   name at object +1011 = 0x3F3, 0x40BEB9) and sets each item's checked flag (the byte at
   `[ebp-0DDh]`, 0x40BF14) to 1 when a song window is active and its mod object

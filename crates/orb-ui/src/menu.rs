@@ -101,7 +101,7 @@ pub enum Cmd {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModEntry {
     pub path: PathBuf,
-    /// The INFO menu name, or the file name of a file that is no mod.
+    /// The INFO menu name (a file that is no mod has none and is not listed).
     pub name: String,
 }
 
@@ -199,7 +199,8 @@ impl App {
 
     /// What the Mods menu checks for the current song (task-093): whether "Standard ReBirth" is
     /// checked, and the index in `list` of the checked mod. The song's resolved kit decides: a
-    /// mod is the entry of its file, so a mod found by file name is checked, and a mod chosen
+    /// mod is the entry of its file, so a mod the song names in another ASCII case is checked,
+    /// and a mod chosen
     /// from outside the folder, or a song whose mod is missing (the built-in kit under another
     /// name), checks nothing. The original checks the item whose mod object is the active
     /// song's (`sub_40B977`, 0x40BF0C).

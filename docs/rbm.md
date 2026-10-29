@@ -299,11 +299,19 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   and returns the first mod whose C string at +1011 equals the name under plain `strcmp`. +1011 is the
   INFO menu name (INFO offset 1003, the object copies INFO at +8): the match is on the INFO
   name, exact and case-sensitive, not on the file name. A name that is not in the list gets the
-  Download / Standard / Cancel dialog (docs/song_load.md section 2). `orb` matches the INFO name
-  the same way and, as a convenience the original lacks, a file name (`PBE2` or `pbe2.rbm`, case-
-  insensitive) when no INFO name matches. `--mod FILE` whose INFO name is not the song's name
-  warns, as the original would not load it for that song. [G: the value `strcmp`'s result is
-  compared with comes from the anti-tamper pages and is 0; not traced.]
+  Download / Standard / Cancel dialog (docs/song_load.md section 2). **orb's rule** (the user's
+  decision on task-145, 2026-10-29; task-150): a song's mod is the first mod in the folder order
+  (section 11.3) whose INFO name equals the song's name **ignoring ASCII case**
+  (`eq_ignore_ascii_case`: a non-ASCII letter compares exactly, so `ÇoNaNbox 2.0` does not match
+  `çoNaNbox 2.0`), and never a file name (`PBE2` or `pbe2.rbm` find nothing). This is a
+  **deliberate difference from the original's `strcmp`**. Every orb user of the rule goes through
+  `mods::find_in_dir` (`orb render`, `compare`, `play`, `info`, orb-ui's song open and Mods menu
+  check). On the user's collection: 509 song names match an INFO name exactly, the 2 `omega`
+  songs match `Omega` only ignoring case, and 0 need the file name. `--mod FILE` stays the
+  explicit override; it warns when its INFO name is not the song's name by the same comparison
+  (no warning for a case-only difference). Which of several matching mods is shown is task-146's
+  decision. [G: the value `strcmp`'s result is compared with comes from the anti-tamper pages
+  and is 0; not traced.]
 - **Message 55 and rendering**: of the 9542 bytes, only the 46 sample records (and the key table
   and file spec that locate and descramble them) reach the sample table; the mod id only selects
   the mod for message 52 (and 58, the preview player). So the engine's input from a mod is its
@@ -519,10 +527,12 @@ engine's tracks instead, whose positions are below 32000 and sorted, so they nev
 - One mismatch was found and fixed. `Mod Demo Songs/AXIOM peace.rbs` has a 5-byte delta in a
   TRAK. orb refused it, but the original reads deltas of any length (`docs/song_load.md` 10).
   `crates/rbs` and `tools/rbs.py` now read it so, and its render equals rbhost's.
-- **orb's file-name fallback.** `--mod-dir` also matches a mod by its file name when no INFO name
-  does (section 10). So orb loads `Omega.rbm` for the two `omega` songs, where the original would
-  ask and, on Standard, play the built-in kit. The test renders such a song without the mod folder,
-  as rbhost rendered it.
+- **The `omega` songs and orb's ASCII-case rule.** orb matches the INFO name ignoring ASCII case
+  and never a file name (section 10, task-150). So `--mod-dir` makes orb load `Omega.rbm` (INFO
+  name `Omega`) for the two `omega` songs, where the original, comparing exactly, would ask and,
+  on Standard, play the built-in kit. The test renders such a song without the mod folder, as
+  rbhost rendered it, and also checks with `orb info --json --mod-dir` that orb resolves it to
+  the mod that differs in case only.
 - `CaveysRebirthStuff/Battle of the Best/Top 25/006/SaturdayMorning.zip` (a song, a ReadMe and a
   sample) was out of scope by the user's decision. The user replaced it with its song, `Saturday
   morning.RBS` (1.x), during the run, and that song is in the manifest like the others.

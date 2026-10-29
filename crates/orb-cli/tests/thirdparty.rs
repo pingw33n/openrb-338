@@ -236,21 +236,11 @@ fn mods() {
 
 /// The INFO menu name of every mod of `dir`, in the original's folder order (NTFS, upcased).
 fn info_names(dir: &Path) -> Vec<(String, Option<String>)> {
-    let mut files: Vec<String> = std::fs::read_dir(dir)
-        .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .filter(|f| f.to_ascii_lowercase().ends_with(".rbm"))
-        .collect();
-    files.sort_by_key(|f| (f.to_uppercase(), f.clone()));
-    files
+    // the same order and names as orb itself uses (`mods::scan`, folder_order)
+    orb_cli::mods::scan(dir)
+        .unwrap_or_else(|_| panic!("cannot read {}", dir.display()))
         .into_iter()
-        .map(|f| {
-            let name = std::fs::read(dir.join(&f))
-                .ok()
-                .and_then(|b| rbm::Rbm::parse(b).ok())
-                .and_then(|r| r.info().map(|i| i.name.clone()));
-            (f, name)
-        })
+        .map(|(p, name)| (p.file_name().unwrap().to_string_lossy().into_owned(), name))
         .collect()
 }
 
@@ -262,16 +252,10 @@ fn resolution(mods: &[(String, Option<String>)], name: &str) -> String {
     if let Some((f, _)) = mods.iter().find(|(_, n)| n.as_deref() == Some(name)) {
         return format!("INFO name = {f}");
     }
-    let low = name.to_lowercase();
-    if let Some((f, _)) = mods.iter().find(|(f, _)| {
-        let f = f.to_lowercase();
-        f == low || f.strip_suffix(".rbm") == Some(low.as_str())
-    }) {
-        return format!("file name only = {f}");
-    }
+    // orb (task-150): the INFO name ignoring ASCII case, never a file name
     if let Some((f, n)) = mods
         .iter()
-        .find(|(_, n)| n.as_deref().is_some_and(|n| n.to_lowercase() == low))
+        .find(|(_, n)| n.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(name)))
     {
         return format!(
             "INFO name differs in case = {f} ({:?})",
@@ -477,12 +461,35 @@ fn check_song(
     if let Some(n) = entry.and_then(|m| m["idle_blocks"].as_u64()) {
         cmd.arg("--idle-blocks").arg(n.to_string());
     }
-    // A song whose mod no INFO name of the folder has plays the built-in kit in the original
-    // (the Standard choice of its dialog), but orb's --mod-dir also matches a file name
-    // ("omega" finds Omega.rbm, INFO name "Omega"; docs/rbm.md 11.4): such a song is
+    // A song whose mod no INFO name of the folder has exactly plays the built-in kit in the
+    // original (the Standard choice of its dialog), but orb's --mod-dir ignores ASCII case
+    // ("omega" finds Omega.rbm, INFO name "Omega"; docs/rbm.md 10, task-150): such a song is
     // rendered without the folder, as the manifest's rbhost render was.
     let missing = entry
         .is_some_and(|m| m["mod"].is_null() && m["mod_name"].as_str() != Some("Standard ReBirth"));
+    if let (true, true, Some(mods)) = (missing, rbs42, &e.mods) {
+        // and with the folder orb does load the mod that differs in case only
+        let o = Command::new(env!("CARGO_BIN_EXE_orb"))
+            .args(["info", "--json", "--mod-dir"])
+            .arg(mods)
+            .arg(path)
+            .output()
+            .unwrap();
+        let j: Value = serde_json::from_slice(&o.stdout).unwrap();
+        let name = j["mod_name"].as_str().unwrap_or_default();
+        let want = info_names(mods)
+            .into_iter()
+            .find(|(_, n)| n.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(name)));
+        let file = j["mod_file"]
+            .as_str()
+            .map(|f| f.rsplit(['/', '\\']).next().unwrap());
+        if want.as_ref().map(|(f, _)| f.as_str()) != file {
+            return (
+                "FAIL-mod-lookup".into(),
+                format!("orb info resolves {name:?} to {file:?}, expected {want:?}"),
+            );
+        }
+    }
     match &e.mods {
         Some(mods) if !missing => cmd.arg("--mod-dir").arg(mods),
         // no mod folder: the mod of the child's own environment must not matter

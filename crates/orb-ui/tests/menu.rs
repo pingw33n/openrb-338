@@ -1219,13 +1219,21 @@ fn the_mods_menu_checks_the_songs_mod() {
     h.app.open_song(&missing);
     assert_eq!(h.app.mod_checks(&list), (false, None));
 
-    // a song that names the mod by its file name (`mods::find_in_dir`'s fallback) plays it
+    // a song that names the mod with another ASCII case plays it (task-150)
+    s.glob.mod_name = list[pbe2_at].name.to_ascii_lowercase();
+    let by_case = dir.path().join("by_case.rbs");
+    std::fs::write(&by_case, s.write().unwrap()).unwrap();
+    h.app.open_song(&by_case);
+    assert_eq!(h.app.doc.kit, Kit::Mod(pbe2.clone()));
+    assert_eq!(h.app.mod_checks(&list), (false, Some(pbe2_at)));
+
+    // a song that names the mod by its file name finds nothing: the INFO name only
     s.glob.mod_name = "pbe2".into();
     let by_file = dir.path().join("by_file.rbs");
     std::fs::write(&by_file, s.write().unwrap()).unwrap();
     h.app.open_song(&by_file);
-    assert_eq!(h.app.doc.kit, Kit::Mod(pbe2.clone()));
-    assert_eq!(h.app.mod_checks(&list), (false, Some(pbe2_at)));
+    assert_eq!(h.app.doc.kit, Kit::Standard);
+    assert_eq!(h.app.mod_checks(&list), (false, None));
 
     // a mod file from outside the folder with a folder mod's INFO name checks nothing
     let outside = dir.path().join("Outside.rbm");
