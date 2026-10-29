@@ -3,14 +3,14 @@ id: TASK-114
 title: 'rb-ui: startup animation of the logo (interactive with the user)'
 status: To Do
 assignee:
-  - '@pingw33n'
+  - '@agent-worker'
 created_date: '2026-10-28 11:15'
-updated_date: '2026-10-29 08:52'
+updated_date: '2026-10-29 09:38'
 labels:
   - ui
 milestone: m-3
 dependencies:
-  - TASK-116
+  - TASK-115
 references:
   - crates/orb-ui-art/src/parts.rs
   - crates/orb-ui/src/app.rs
@@ -54,4 +54,20 @@ Notes for the implementer:
 
 <!-- SECTION:NOTES:BEGIN -->
 Addition from the user (2026-10-28): the animation also plays in the Help > About window, every time the window opens (not only once per app start as on the panel). task-116 makes the About window show the panel's wordmark as its own part (or pieces), which this task animates in both places.
+
+User, 2026-10-29: the animation below was approved in the mockup session and replaces the earlier description's 'underline grows'. It is to be implemented by an agent after task-115, which makes the four-segment underline and the About layout. Approved look: mockups/anim_bar_a.gif and mockups/anim_about.gif (untracked, deleted after 114 and 115 merge). The generator mockups/gen/src/main.rs has anim_at and wordmark_anim. The task's existing notes stand: once per start on the panel, every time About opens, --screenshot, and the tests.
+
+## Animation (task-114)
+
+Timeline in seconds, 2.0 s total, ease-out cubic on the slide; `anim_bar_a.gif` and
+`anim_about.gif` are the approved look:
+- 0.0..1.0: OPEN slides left into place. It is masked to the left of the R of RB-338 (clip
+  x < 8 + width("OPEN", cap 14) + one glyph gap, in the part's coordinates) and starts fully
+  hidden (offset = that width), so it slides out from behind RB-338 at full opacity. RB-338 is
+  in place from the start.
+- 0.55, 0.75, 0.95, 1.15: the four underline segments fade in left to right, each over 0.25 s.
+- 1.35..1.85: the subtitle fades in.
+- About window only: the icon fades in over 0.0..0.6.
+The transport plays it once per start; the About window every time it opens; the final frame
+equals the static wordmark (task-114's existing notes on --screenshot and the tests stand).
 <!-- SECTION:NOTES:END -->
