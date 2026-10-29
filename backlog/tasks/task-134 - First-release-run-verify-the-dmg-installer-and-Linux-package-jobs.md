@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@pingw33n'
 created_date: '2026-10-28 21:26'
-updated_date: '2026-10-29 12:23'
+updated_date: '2026-10-29 12:24'
 labels:
   - tools
   - tests
@@ -41,12 +41,12 @@ File a bug for each failure. Assigned to the user, because it needs a release ru
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every release.yml job passes on the first release run and every artifact is produced (dmg, installers x64/arm64, tar.gz/zip, AppImages, draft release)
-- [ ] #2 Spot checks on real machines done (macOS Gatekeeper, Windows x64 and arm64 install/uninstall, Linux AppImage); failures filed as bugs
-- [ ] #3 A v<YYYY.MMDD.HHMM> tag run builds every package with the tag's time: the About box/version string of each package equals the tag (v2026.1028.1930 -> 2026.1028.1930), file names carry it, and the hash has no dev- when the tag is on main (ORB_BUILD_BRANCH=main)
-- [ ] #4 The tag run ends with a DRAFT release with all 12 packages (two .dmg: aarch64 and x86_64) and SHA256SUMS.txt (13 assets) and the changelog body; a re-run replaces the draft (still one release); a tag not matching the pattern (e.g. v1) fails in prepare and creates nothing; nothing is published automatically
-- [ ] #5 On the first release run the x86_64 appimage smoke step passes its four screenshots, the backend asserted for each (WGPU_BACKEND=vulkan gives Vulkan, WGPU_BACKEND=gl gives Gl, automatic gives Vulkan, Vulkan ICDs hidden gives Gl); on a real Linux desktop with no Vulkan driver the AppImage opens through OpenGL (task-135)
-- [ ] #6 The dmg matrix of release.yml (task-136) passes for both targets, dmg (x86_64-apple-darwin) on macos-15-intel and dmg (aarch64-apple-darwin) on macos-15; each artifact dmg-<target> holds one OpenRB-338-<version>-<target>.dmg whose app has exactly one architecture; on a real Intel Mac the x86_64 image mounts and the app opens (Gatekeeper as docs/building.md says)
+- [x] #1 Every release.yml job passes on the first release run and every artifact is produced (dmg, installers x64/arm64, tar.gz/zip, AppImages, draft release)
+- [ ] #2 A v<YYYY.MMDD.HHMM> tag run builds every package with the tag's time: the About box/version string of each package equals the tag (v2026.1028.1930 -> 2026.1028.1930), file names carry it, and the hash has no dev- when the tag is on main (ORB_BUILD_BRANCH=main)
+- [ ] #3 The tag run ends with a DRAFT release with all 12 packages (two .dmg: aarch64 and x86_64) and SHA256SUMS.txt (13 assets) and the changelog body; a re-run replaces the draft (still one release); a tag not matching the pattern (e.g. v1) fails in prepare and creates nothing; nothing is published automatically
+- [ ] #4 On the first release run the x86_64 appimage smoke step passes its four screenshots, the backend asserted for each (WGPU_BACKEND=vulkan gives Vulkan, WGPU_BACKEND=gl gives Gl, automatic gives Vulkan, Vulkan ICDs hidden gives Gl); on a real Linux desktop with no Vulkan driver the AppImage opens through OpenGL (task-135)
+- [ ] #5 Spot checks on real machines done (macOS Gatekeeper with both .dmg on the user's Mac, Windows x64 install and uninstall, the Linux UI and AppImage); failures filed as bugs. The arm64 Windows installer is built and checked by CI only, not on real hardware (user decision 2026-10-29)
+- [x] #6 The dmg matrix of release.yml (task-136) passes for both targets, dmg (x86_64-apple-darwin) on macos-15-intel and dmg (aarch64-apple-darwin) on macos-15; each artifact dmg-<target> holds one OpenRB-338-<version>-<target>.dmg whose app has exactly one architecture. The x86_64 app is checked by CI and on the user's Mac, not on a real Intel Mac (user decision 2026-10-29)
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -83,4 +83,9 @@ User, 2026-10-29:
 - Under WSL, the Linux UI played sound and worked normally.
 - The x86_64 AppImage was checked under WSL and works, sound included.
 - The user has no Intel Mac and no arm64 Windows machine, and will not test those: the x86_64 .dmg on a real Intel Mac (AC #6) and the arm64 installer (AC #2) stay unchecked by hardware.
+
+Supervisor, 2026-10-29, at the user's decision to accept CI for the hardware the user lacks:
+- AC #6 (Intel Mac) and #2 (arm64 Windows) were reworded. Old #2 and #6 were removed and re-added as #5 and #6, so the old #3, #4 and #5 are now #2, #3 and #4.
+- AC #1 is checked: run 40866935635, all 15 jobs passed.
+- AC #6 is checked: both dmg jobs passed, each image is single-architecture, and the user checked both on their Mac.
 <!-- SECTION:NOTES:END -->
