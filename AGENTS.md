@@ -2,7 +2,7 @@
 
 rb is a reimplementation in Rust of the audio engine of Propellerhead ReBirth RB-338 2.01. It renders an `.rbs` song, optionally with an `.rbm` mod, to audio. The rendered audio must match the original's "Export Loop as Audio File" output sample for sample, within a tolerance set by a `Decide:` task. A UI with a similar look and feel comes after the engine; it does not have to match the original exactly. MIDI and ReWire are out of scope for now.
 
-The original program is in `original/`, and its IDA databases are in `ida/`. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
+The original program (`Rebirth.exe`, `ReBirth.dll`) and its IDA databases are not in git: they are copyrighted, so they live only on the user's machine and in the test machine's setup, in `original/` and `ida/`, local and untracked (git-ignored; `original/README.md` says what goes there). rb needs them only for the reverse engineering; the tests take the same files from the CD image (`RB_CD_ISO`, rb-testkit) and skip when it is not set. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
 
 Planning, progress and decisions live in `backlog/` (Backlog.md). The shared agent brief covers the worktree, IDA, the Windows test machine and its permits, testing and rebasing. It is the backlog doc `agent-brief`: run `backlog doc view doc-001 --plain`, or read its file under `backlog/docs/`.
 
@@ -93,7 +93,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
   `--ordinal` is the queue order. `Draft` holds ideas.
 - **Task ownership.** While a task is assigned to an agent, only that agent edits its file. The supervisor adds the merge comment in the task's squashed commit, pushes main to `origin` (github.com/pingw33n/rb, private) after each merge, and runs `backlog doctor` after the push. Agents never push.
 - **Standing rules.**
-  - Never edit `original/`, `ida/` or a committed reference render by hand.
+  - Never edit `original/`, `ida/` (both local and untracked) or a committed reference render by hand. Never `git add -f` a file of them, and no test or tool may need them: use `RB_CD_ISO` and skip with a message when it is not set.
   - Facts about the original carry addresses and are checked against the disassembly, not only Hex-Rays.
   - Engine code computes in f64, rounds to f32 exactly where the original stores a float, uses no FMA, and keeps the original's operand order.
   - An engine change is checked against the reference corpus.

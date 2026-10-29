@@ -155,6 +155,10 @@ def main():
     ap.add_argument("--dll", default=os.path.join(ROOT, "original", "ReBirth.dll"))
     ap.add_argument("-o", "--out", default=os.path.join(ROOT, "crates", "rb-engine", "src", "tables", "data.rs"))
     args = ap.parse_args()
+    if not os.path.isfile(args.dll):
+        sys.exit("gen_static_tables.py: %s not found. original/ is local and untracked: put the "
+                 "ReBirth.dll of your installation there (original/README.md), or pass --dll."
+                 % args.dll)
     text = generate(Pe(args.dll))
     with open(args.out, "w") as f:
         f.write(text)

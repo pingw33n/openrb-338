@@ -3,8 +3,6 @@
 # first: git applies the last matching line, so the binary rules below override it.
 * text=auto eol=lf
 
-# The original program and its databases are data: store them byte for byte.
-original/** -text
 *.i64 binary
 *.rbs binary
 *.rbm binary
