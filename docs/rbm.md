@@ -865,9 +865,26 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/orb-cli/src/recrypt.rs`):
       Juamø.rbm` (on disk `JuamÃ¸`): 104 of 106 identical; `Demo.rbs` (a valid RBS, "Template
       Mod") and `Splash.jpg` (ends with FF D9) differ, being that mod's own content. TurnMod's odd half, AloNaNbox's even half and all of MaShMoD stay unrecoverable
       (they need the other key file). Not done: a `--force-partial` keeping the built-in sample for a
-      lost slot (a later decision). The original's load of the recovered mods was **not** checked
-      on the test machine (a ReBirth session was running there, PID 12704, that the run did not
-      start; rbhost refuses to run beside it).
+      lost slot (a later decision).
+    - *The original loads the recovered mods* (task-163, 2026-10-30) [C for the test machine's
+      rbhost run of 2026-10-30, ReBirth.dll as installed]. Both mods were
+      recrypted by `orb mod recrypt --rb20ful RB20FUL.DAT mellow.rbm "House of love Juam1 .rbm"
+      -o DIR` (77 and 106 files recovered), each named by a song built with `tools/rbs.py build`
+      (`{"glob":{"mod_name":"southpark Mod"}}`, `"Template Mod"`), and loaded by the original
+      `ReBirth.dll` with `tools/rbhost/run.py --mod DIR/X.rbm --rb20ful RB20FUL.DAT
+      --dump-samples --remote-dir task163 -o OUT SONG.rbs` (no Rebirth.exe was running; one
+      permit; the machine folder was deleted). The DLL accepted both (message 55, "mod 412
+      loaded") and dumped its sample table. Each dumped `slotNN.bin` (int16) equals channel 0 of
+      the AIFF in the correctly scrambled twin (`rbm.py`'s `embedded_file` and `aiff_samples`),
+      sample for sample: mellow 44 of 44 slots equal, House of love 46 of 46 equal; 0 slots
+      differ. The count is of the 46 sample slots, not of files: the 104/106 comparison above
+      includes `Demo.rbs` and `Splash.jpg`, which are outside the DLL's sample table. Mellow's
+      twin has no file for slots 21 (`TR808MC.aif`) and 27 (`TR909bd3.aif`); those two were not
+      compared (by the rule at the top of this document and in the CLI notes, a missing slot
+      keeps the built-in sample; this run did not test that). "77 files recovered" against "104 of
+      104 identical": 27 of mellow's 104 files have a payload of at most 1024 bytes, wholly in
+      the clear (the 27 short JPEGs, 12017 ... 12571), so they need no rescue; 77 + 27 = 104
+      (counted from the file with `rbm.py`).
 - **Bulk.** `orb mod recrypt IN.rbm... DIR... -o OUTDIR [--force]` takes any number of mod files
   and folders (every `.rbm` directly in a folder) and writes each mod under its own file name into
   `OUTDIR`. The single-file form `orb mod recrypt IN.rbm -o OUT.rbm` stays: one existing input
