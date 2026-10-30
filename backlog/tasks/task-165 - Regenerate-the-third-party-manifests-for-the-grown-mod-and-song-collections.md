@@ -1,10 +1,11 @@
 ---
 id: TASK-165
 title: Regenerate the third-party manifests for the grown mod and song collections
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-30 17:26'
+updated_date: '2026-10-30 17:43'
 labels:
   - tests
   - testmachine
@@ -51,9 +52,42 @@ Delete every scratch copy of mods, originals and the DAT afterwards. Never commi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 tests/refs/thirdparty_mods.json lists all 311 mods of ~/rb-mods/mods, and tools/thirdparty_mods_manifest.py --check passes on the assembled originals (or any mod without an original is documented with the supervisor's decision)
-- [ ] #2 tests/refs/thirdparty_songs.json covers every song file of ~/rb-songs/songs, from rbhost renders on the test machine
-- [ ] #3 cargo test --release -p orb-cli --test thirdparty passes with ORB_THIRDPARTY_MODS_DIR=~/rb-mods/mods and ORB_THIRDPARTY_SONGS_DIR=~/rb-songs/songs; the counts are in the notes
-- [ ] #4 README.md and docs/rbm.md 11 give the new counts
-- [ ] #5 No mod, sample, original or DAT byte is committed, and the scratch copies are deleted
+- [x] #1 tests/refs/thirdparty_mods.json lists all 311 mods of ~/rb-mods/mods, and tools/thirdparty_mods_manifest.py --check passes on the assembled originals (or any mod without an original is documented with the supervisor's decision)
+- [x] #2 tests/refs/thirdparty_songs.json covers every song file of ~/rb-songs/songs, from rbhost renders on the test machine
+- [x] #3 cargo test --release -p orb-cli --test thirdparty passes with ORB_THIRDPARTY_MODS_DIR=~/rb-mods/mods and ORB_THIRDPARTY_SONGS_DIR=~/rb-songs/songs; the counts are in the notes
+- [x] #4 README.md and docs/rbm.md 11 give the new counts
+- [x] #5 No mod, sample, original or DAT byte is committed, and the scratch copies are deleted
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Find originals by content: recrypt every .rbm of rb_stuff.zip Mods/ and rb-stuff-peff/ReBirth Mods, match recrypted sha to each collection file. 2. Regenerate thirdparty_mods.json, run --check. 3. Re-render with thirdparty_songs.py --only the new songs and those whose mod changed or resolves differently. 4. Update README and docs/rbm.md. 5. Run the thirdparty test, fmt, clippy; delete scratch.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-a96d90c20734e36bf
+
+Mods: 535 candidates (zip Mods/ 173 + peff ReBirth Mods 362, subfolders included) recrypted with the DAT from the ISO; all 311 collection files matched an original by recrypted sha256 (0 missing); 4 candidates fail to recrypt (not collection mods). thirdparty_mods_manifest.py --orig <311 originals> --mods ~/rb-mods/mods wrote 311 mods; --check: equal.
+Songs: 1271 song files, 1269 distinct. Stale/new set computed by a throwaway script: 30 new + 17 whose mod changed or resolves differently (TechnoBox/degenerate oxidized renamed or gone, DarkStar replaced, omega -> omega777.rbm) = 47, rendered by thirdparty_songs.py --only on the test machine (one session, permit released, C:\re\rb\t165 deleted). Result: 1266 rendered, 3 skipped. The tool does not notice a replaced mod itself (entries do not store the mod hash); not changed, noted in docs/rbm.md 11.5.
+Test: cargo test --release -p orb-cli --test thirdparty: 2 passed (88.8s); songs: 1271 files, 1269 distinct, 1266 equal rbhost. fmt --check and clippy -D warnings clean. Scratch (originals, DAT, zip extract) deleted. I applied the docs/rbm.md and README text edits with a short python script, not Edit/Write.
+
+Review round 1 (send back), fixed in the amended commit:
+1. README.md and docs/rbm.md were reset to main and the same edits redone with the Edit tool (the earlier python script was the rule breach). 2. The 117-column line in docs/rbm.md 11.5 was reflowed. 3. docs/rbm.md 'The run of 2026-10-30' now says Acid Werks, Phatmannen and block_out (CaveysRebirthStuff/ReBirth 2.x Songs) are gone from the folder and were dropped from the manifest (3 entries gone, confirmed by diffing the old and new songs manifest by sha256).
+Actual output of tools/thirdparty_mods_manifest.py --check (originals since deleted): '/Users/pingw33n/dev/openrb-338/.claude/worktrees/agent-a96d90c20734e36bf/tests/refs/thirdparty_mods.json: equal'.
+The 47 songs rendered again with thirdparty_songs.py --only:
+- 30 new: PeffEdition.rbs, Spoton-World war3inspace.rbs, and peff/ 3pm, 6over8, Peff-EHCspHyLeZ, Peff-canofvibeSR10, Peff-epriori, Peff-io, Peff-misplaced, RB2010, ReBirthday, acidwerk, block_ou, canofvib, destiny, devoluti, digitald, ehcsphyl, epriori, experime, lightspe, misplace, phatmann, phunxtac, pistolwh, redshift, twylight, twylight2, ultrapan303a, xt4c (.rbs).
+- 9 TechnoBox -> TechnoBox mkII: Pack42/99011701, 99011702, 99011703, 99011704; Pack49/La-La Love You; Pack54/an endless voyage; Pack55/ELEKTRISITAT; Pack59/Axiton Soul; Pack59/Soundtrack.
+- 2 degenerate oxidized -> degenerate_oxide: Battle of the Best/FreestylePack001/DJ593-Degenerate.RBS; Mod Demo Songs/Degenerate Oxidized.rbs.
+- 2 omega -> omega777: Mod Demo Songs/omega.rbs; Pack63/FoamBee-NegativeLegSucker.rbs.
+- 4 on the replaced DarkStar.rbm: Mod Demo Songs/DarkStar.rbs; Pack41/Foam Bee - 77515.rbs; Pack47/BlindReverie.rbs; Pack48/Rising Sun.rbs.
+Rerun: cargo test --release -p orb-cli --test thirdparty: 2 passed (88.5s).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Both third-party manifests regenerated. thirdparty_mods.json lists all 311 mods (all originals found by recrypted-content match; --check equal). thirdparty_songs.json covers 1269 distinct songs (1271 files): 1266 rbhost renders, 3 skipped as before; 47 re-rendered on the test machine. thirdparty test passes (2/2). README and docs/rbm.md 11 give 1,266 songs, 529 on 42 mods. No mod/DAT/original byte committed; scratch deleted.
+<!-- SECTION:FINAL_SUMMARY:END -->

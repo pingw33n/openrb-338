@@ -2128,9 +2128,9 @@
    "form": "rbs",
    "version": "4.1",
    "mod_name": "Degenerate Oxidized",
-   "mod": "degenerate oxidized.rbm",
+   "mod": "degenerate_oxide.rbm",
    "idle_blocks": 9088,
-   "render_sha256": "2a39f3318f1c3c3fed012ac59b8d4989aff586f502e64e8be4a8c9bfeeda1493"
+   "render_sha256": "b602536efd6b9e3e0b70fce813000d23e6179a602b4defd269e0f01dbc7ff922"
   },
   {
    "file": "CaveysRebirthStuff/Battle of the Best/FreestylePack001/Da Underground (Short Edit).rbs",
@@ -5365,9 +5365,9 @@
    "form": "rbs",
    "version": "4.1",
    "mod_name": "Degenerate Oxidized",
-   "mod": "degenerate oxidized.rbm",
+   "mod": "degenerate_oxide.rbm",
    "idle_blocks": 9088,
-   "render_sha256": "f899dc171679501452ac763cdf3dffee0c66141251d59e95f142bb424012fa03"
+   "render_sha256": "a70b413793d222e73c167e74f4bfb25b482b181fb80ee2deca2ed714a3da12db"
   },
   {
    "file": "CaveysRebirthStuff/Mod Demo Songs/Liquid Birth II.rbs",
@@ -5586,9 +5586,9 @@
    "form": "rbs",
    "version": "4.2",
    "mod_name": "omega",
-   "mod": null,
+   "mod": "omega777.rbm",
    "idle_blocks": 9088,
-   "render_sha256": "b9c666af72cfcd549dcffc8e97f1a08011bc1837b6cb5fc3bb35ebb63ec676f7"
+   "render_sha256": "ee78bae618a82827670cfb2f01006cca22885b9701ba81e96094cb3e1d16c40a"
   },
   {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack01/Benny Hill.rbs",
@@ -8958,19 +8958,6 @@
    "render_sha256": "210b3d63a3eb57c8104d01b60be3a847629556ae54f94e49ab61dfed2f635918"
   },
   {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/Cardiac Mutation.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/Cardiac Mutation.rbs"
-   ],
-   "sha256": "d7ebe33c26e3c5a021f8921addd81233759ca70f1798001c70f39c8ad6dd0881",
-   "form": "rbs",
-   "version": "4.2",
-   "mod_name": "AXIOM peace",
-   "mod": "AXIOMpeace.rbm",
-   "idle_blocks": 9088,
-   "render_sha256": "c921e181e1f6e24631742c6184e474955802af5bf3287e165152b6c1c3110b77"
-  },
-  {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/Inflow.rbs",
    "files": [
     "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/Inflow.rbs"
@@ -9049,19 +9036,6 @@
    "render_sha256": "73728f504d43404b8061632ee700eca619d9652d66e3d4c764b6c3d1a943c3a2"
   },
   {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/Transparent Darkness.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/Transparent Darkness.rbs"
-   ],
-   "sha256": "cf636a5e0eb2f8280ea8e14780b78036e2f24779357910f9048bbb593623cce0",
-   "form": "rbs",
-   "version": "4.2",
-   "mod_name": "AXIOM peace",
-   "mod": "AXIOMpeace.rbm",
-   "idle_blocks": 9088,
-   "render_sha256": "592392a64fcdf4378f4ca8b21ee47353ad619c425e3482f49802ab976e9a305f"
-  },
-  {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/inimitable experiment.rbs",
    "files": [
     "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/inimitable experiment.rbs"
@@ -9073,19 +9047,6 @@
    "mod": "Trancer.rbm",
    "idle_blocks": 9088,
    "render_sha256": "bfe9d91e6e994e197a9c4949b0790bf02fa1789a96850a70f36ae01348ffad75"
-  },
-  {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/peace 4 sideways.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack27/peace 4 sideways.rbs"
-   ],
-   "sha256": "7f64b47455f5e1d5b66d0439c919b71634a7183218a45106a295c66217ab2a9f",
-   "form": "rbs",
-   "version": "4.2",
-   "mod_name": "AXIOM peace",
-   "mod": "AXIOMpeace.rbm",
-   "idle_blocks": 9088,
-   "render_sha256": "648d3c95170f8be32346107de6bad9a5a64e0b7e65e9262497c074964ecb5fea"
   },
   {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack28/BADLOVE.rbs",
@@ -9216,19 +9177,6 @@
    "mod": null,
    "idle_blocks": 9088,
    "render_sha256": "deb88fdcc8d23117a94ae0dc419b45eedb407f5f0bab645be420513402fe52e5"
-  },
-  {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack29/Acid Werks.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack29/Acid Werks.rbs"
-   ],
-   "sha256": "375148383202891775254be062169bb8e0cbd3e1c811f66fdd2bf41ffe66baef",
-   "form": "rbs",
-   "version": "4.2",
-   "mod_name": "Trancer",
-   "mod": "Trancer.rbm",
-   "idle_blocks": 9088,
-   "render_sha256": "5483af6a3dc550fa6753041221daf1f62e5c817e05145abfc2fc2f4731e81832"
   },
   {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack29/Jo-L.RBS",
@@ -9387,19 +9335,6 @@
    "render_sha256": "211f9d6732719a70a361f27f3e97f5e8e3bc9706b3e2a7fd103bbba3155016d1"
   },
   {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack30/Phatmannen.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack30/Phatmannen.rbs"
-   ],
-   "sha256": "bc43b1713cfa1dad6887616435e2fb1139b88769745eb4a22594dd098d02bb2c",
-   "form": "rbs",
-   "version": "4.2",
-   "mod_name": "Standard ReBirth",
-   "mod": null,
-   "idle_blocks": 9088,
-   "render_sha256": "64bae66c88f1ccba92c215597217165103e5f0e32175bbd9f5abae7389f5360e"
-  },
-  {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack30/PoisonBeat.RBS",
    "files": [
     "CaveysRebirthStuff/ReBirth 2.x Songs/Pack30/PoisonBeat.RBS"
@@ -9450,19 +9385,6 @@
    "mod": "Illusion.rbm",
    "idle_blocks": 9088,
    "render_sha256": "afb3ae0108c4042688b1173f3cd6bcbe5094c4ee18a430e47904df3a55d97e02"
-  },
-  {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack30/block_out.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack30/block_out.rbs"
-   ],
-   "sha256": "c80be5d523c5e6a88bbe28a63bb53318831e230be3e708cafcc8bbdf87a0141e",
-   "form": "rbs",
-   "version": "4.2",
-   "mod_name": "DarkStar",
-   "mod": "DarkStar.rbm",
-   "idle_blocks": 9088,
-   "render_sha256": "41f44bebea2f22cad5b6b29b6b6a99cb614a03df2c9b18cdcfb24f1474697e08"
   },
   {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack30/juniom.rbs",
@@ -9658,19 +9580,6 @@
    "mod": null,
    "idle_blocks": 9088,
    "render_sha256": "cf6155c4d4f0d1cb6acc88867995a0c21744b2b24842de83e918a95cbb0cf2dd"
-  },
-  {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack32/Lildnboy2.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack32/Lildnboy2.rbs"
-   ],
-   "sha256": "488fe4f9ff29164798c8083d843368e7577f3bde743911eaf90658003c0bc392",
-   "form": "rbs",
-   "version": "4.2",
-   "mod_name": "AXIOM peace",
-   "mod": "AXIOMpeace.rbm",
-   "idle_blocks": 9088,
-   "render_sha256": "5ab0aacf685c6b926f008fa0fe7ce9a5201250de453d4a0799bc09158eb3d4e8"
   },
   {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack32/SantasLittleHelper.rbs",
@@ -10838,7 +10747,7 @@
    "form": "rbs",
    "version": "4.1",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "a76b85754dd55ab256140beafaae85e46c315a120a1196f85603d087f36267f1"
   },
@@ -10851,7 +10760,7 @@
    "form": "rbs",
    "version": "4.1",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "0571f8c08e2bc1249af494d738cee773ee57d9e8deafd8fe80e20363201b1298"
   },
@@ -10864,7 +10773,7 @@
    "form": "rbs",
    "version": "4.1",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "8ccedc6df5ac7f43267f7c1ec1c4135afda42a44ee75f77c2136f95961e804f1"
   },
@@ -10877,7 +10786,7 @@
    "form": "rbs",
    "version": "4.1",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "6b34e76d8ad98782385b8199c9b7cee70544d9eb261ae02f10ee52cc3473bf6d"
   },
@@ -11774,7 +11683,7 @@
    "form": "rbs",
    "version": "4.2",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "521cf088e7473b4886e007c545adc97e97b70f4496683912c20d536b6d89d505"
   },
@@ -12463,7 +12372,7 @@
    "form": "rbs",
    "version": "4.1",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "f7cf06c105b1b51123a8aca70e084a648b483371de99ed94e8a000b4ce4c3d13"
   },
@@ -12554,7 +12463,7 @@
    "form": "rbs",
    "version": "4.2",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "d20665edb36887a545116d49a5ba0c6ef5d6362173766ee815d82ce01315ad06"
   },
@@ -13035,9 +12944,9 @@
    "form": "rbs",
    "version": "4.2",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
-   "render_sha256": "9ff5802a417384d7cd82145c12d2c2999a7380ac4e3cc80de84793a4e85b287c"
+   "render_sha256": "f7b922709425ef7b4c7a092713bf4a33c6885bb582ec84d478e5c730e1139f48"
   },
   {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack59/Everreal, dream Noumenal.rbs",
@@ -13113,7 +13022,7 @@
    "form": "rbs",
    "version": "4.2",
    "mod_name": "TechnoBox mkII",
-   "mod": "TechnoBox.rbm",
+   "mod": "TechnoBox mkII.rbm",
    "idle_blocks": 9088,
    "render_sha256": "adffb643c936ad0d89d81d14cc199441dfe03b93f150a185a7320afec3bf6f0b"
   },
@@ -13581,9 +13490,9 @@
    "form": "rbs",
    "version": "4.2",
    "mod_name": "omega",
-   "mod": null,
+   "mod": "omega777.rbm",
    "idle_blocks": 9088,
-   "render_sha256": "3388a7186e0b73f5ec128c891d2b1e53608f3a711138940b0655590013b5a6f9"
+   "render_sha256": "791be0b21fee9886994abb23fa1155b51374dc76c7407b201f9bd4f3f0eabc2e"
   },
   {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack63/FunkyDipSausAfterABadMeal.rbs",
@@ -14977,6 +14886,19 @@
    "render_sha256": "988ea6a98b83eca0afee6a72958296737a2cf16eaa3879eaee3e6c24903a4deb"
   },
   {
+   "file": "PeffEdition.rbs",
+   "files": [
+    "PeffEdition.rbs"
+   ],
+   "sha256": "4be86bfcb79f7e830cdec929ec81a5afbcd1d1a660f5f4c57df3c74392586822",
+   "form": "rbs",
+   "version": "4.1",
+   "mod_name": "PeffEdition",
+   "mod": "PeffEdit2.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "eab8d8070e5ede62f8d67894b277770fd8b686a8ff17cbf17b8c1b1819cded87"
+  },
+  {
    "file": "Phase1-ElectronicViking.rbs",
    "files": [
     "Phase1-ElectronicViking.rbs"
@@ -15365,6 +15287,19 @@
    "mod": null,
    "idle_blocks": 9088,
    "render_sha256": "d7153309d85f88d5f34f4960591e3c0cdcd080bb852d5caa17ab903b55e501d0"
+  },
+  {
+   "file": "Spoton-World war3inspace.rbs",
+   "files": [
+    "Spoton-World war3inspace.rbs"
+   ],
+   "sha256": "778dd8a2a6d9e30544db49780051f20d4e5b48f553c067dcdb98420d229b5349",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Orion - System 2000b",
+   "mod": "Orion b.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "8d4da62d262627e95384d5e6d42ab6e98dc10f740dd1b7494ac0ebb403fccf31"
   },
   {
    "file": "Squeaky clean.rbs",
@@ -15989,6 +15924,424 @@
    "mod": null,
    "idle_blocks": 9088,
    "render_sha256": "3c0497ef756a8c98ef6643ae3e614d03451f432ce6e8ad1aadad982bce2aff12"
+  },
+  {
+   "file": "peff/3pm.rbs",
+   "files": [
+    "peff/3pm.rbs",
+    "peff/Peff-3pm.rbs"
+   ],
+   "sha256": "081a5ec102a1fac6de6140859bcde1f9803e955ea6b499e4500c2d562b2478be",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "6ebe5a8691075dca36c9d9f21c4433cc160165e502917e151d91f1cf6e23bb6c"
+  },
+  {
+   "file": "peff/6over8.rbs",
+   "files": [
+    "peff/6over8.rbs"
+   ],
+   "sha256": "89e2f14812482b0e77848bdcd357354a0d317814ccc0cb672370b93f23d5e265",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "19280eb0c645cc48184eef5248a97b5ddc2d16f3fa64c674ddca01671224c0b9"
+  },
+  {
+   "file": "peff/Peff-EHCspHyLeZ.rbs",
+   "files": [
+    "peff/Peff-EHCspHyLeZ.rbs"
+   ],
+   "sha256": "78464e5c3d75e6006c0ee80225fea10e49ed084a2da785f70de832b536e4ba9d",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "808c32ad18001f1c10622d9c163e982e80286e2494ea45349264769905efd1af"
+  },
+  {
+   "file": "peff/Peff-canofvibeSR10.rbs",
+   "files": [
+    "peff/Peff-canofvibeSR10.rbs"
+   ],
+   "sha256": "6069901011390eaf3625b848154baa8de61cfccc9b3853e93b6ffdf069077695",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "c7da96dddb144a4541b6754ef4301a28484ecf94564afc2e6a8a35d4aef59338"
+  },
+  {
+   "file": "peff/Peff-epriori.rbs",
+   "files": [
+    "peff/Peff-epriori.rbs"
+   ],
+   "sha256": "b370875a13af46b95dd3377811214a8de44efb4cbe97a8357c1100a98db42f76",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Red Stripe - Drum & Bass",
+   "mod": "redstripe-dnb.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "28721fb243665540a6a898e25bd320800e19eb849095e0624b06b7bd459264b1"
+  },
+  {
+   "file": "peff/Peff-io.rbs",
+   "files": [
+    "peff/Peff-io.rbs",
+    "peff/peffedit.rbs"
+   ],
+   "sha256": "a233933759a79ee1f8d8d2b94b8f8d9f82200e6ee3cab9502062cdbf4133362b",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "PeffEdition",
+   "mod": "PeffEdit2.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "0ce20965dd6cd7b169d9efc0f845cdc055171a02aaac3e9fd64a9629fbdb6e68"
+  },
+  {
+   "file": "peff/Peff-misplaced.rbs",
+   "files": [
+    "peff/Peff-misplaced.rbs"
+   ],
+   "sha256": "003bfba711145f5bdd43be7b4c290b9a98299999251233dfbb7d954263f16c56",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "7810d4b65e3dc23682e0119ec10d41227572a6f032d8f56072d6b28176a85538"
+  },
+  {
+   "file": "peff/RB2010.rbs",
+   "files": [
+    "peff/RB2010.rbs"
+   ],
+   "sha256": "a33b4a44866d24b479c084ea367a3623e7158bcb5b8e12801a774013f9936ad7",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Pitch Black Edition 2.0",
+   "mod": "PBE2.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "f2c9d066365ef8764e62c7fd4c1c697c375380a957c261d2f184d48593e5514f"
+  },
+  {
+   "file": "peff/ReBirthday.rbs",
+   "files": [
+    "peff/ReBirthday.rbs"
+   ],
+   "sha256": "c7a0a7bd043a9f9c08ca3440fa60926b12e997e3432095f53723a0c878ca58bc",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "ReBirthday",
+   "mod": "ReBirthday.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "55671fce238a501a07df2d9dd3e8f1ede1dd86b94d0f207cfb6db1fd7684597d"
+  },
+  {
+   "file": "peff/acidwerk.rbs",
+   "files": [
+    "peff/acidwerk.rbs"
+   ],
+   "sha256": "a29996d5f2fe2074ac2ea408dacf77e468d080522678d88a19e194a345f8834c",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Trancer",
+   "mod": "Trancer.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "5483af6a3dc550fa6753041221daf1f62e5c817e05145abfc2fc2f4731e81832"
+  },
+  {
+   "file": "peff/block_ou.rbs",
+   "files": [
+    "peff/block_ou.rbs"
+   ],
+   "sha256": "2a36eaeecfcdff1ac5e4c5113258b6a240309aef137fa8f126b725f1bda7a7bf",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "DarkStar",
+   "mod": "DarkStar.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "8bb4c2cad01954ce557e075b843890b6bd43657d8f3f630a54eada339687bd9e"
+  },
+  {
+   "file": "peff/canofvib.rbs",
+   "files": [
+    "peff/canofvib.rbs"
+   ],
+   "sha256": "a461eced242d9571e31f0217f40ace6da482e61e6223a43011517d5f7c93247c",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "PolyVibe",
+   "mod": "polyvibe.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "b3df078f1f2b9a9873e88d9b7fa06d042895d45f770545e100dfbb031b31a27f"
+  },
+  {
+   "file": "peff/cardiacm.rbs",
+   "files": [
+    "peff/cardiacm.rbs"
+   ],
+   "sha256": "d7ebe33c26e3c5a021f8921addd81233759ca70f1798001c70f39c8ad6dd0881",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "AXIOM peace",
+   "mod": "AXIOMpeace.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "c921e181e1f6e24631742c6184e474955802af5bf3287e165152b6c1c3110b77"
+  },
+  {
+   "file": "peff/destiny.rbs",
+   "files": [
+    "peff/destiny.rbs"
+   ],
+   "sha256": "5b54d15337676990e46b8805a9983c6dd193fdb095ca6ea72978f11dfbe5a32d",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "PhaseII",
+   "mod": "PhaseII.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "aa2955eefc75e8cc709644dd3a95d750deaa0c10d58e1ece9728c18e0979c85a"
+  },
+  {
+   "file": "peff/devoluti.rbs",
+   "files": [
+    "peff/devoluti.rbs"
+   ],
+   "sha256": "c9b6d6a0c1c84728bb606aa39f841b7b1ff46e477809ebbb3354e0ca3ea4491a",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Pitch Black Edition 2.0",
+   "mod": "PBE2.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "be57979a1cca6a79dc7cc40f03b5b4ff3eca446ab7ee4eb7352be408dae6210f"
+  },
+  {
+   "file": "peff/digitald.rbs",
+   "files": [
+    "peff/digitald.rbs"
+   ],
+   "sha256": "bd9633b0997dc123db5417dbf20dc9955f7557b69cb9c4a90724c4d573e9d279",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "TechnoBox mkII",
+   "mod": "TechnoBox mkII.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "30f7f004d11dbbaa3b5f4b115b8c747bce7627d7e0cfee27c3a4b9c9ce81e58a"
+  },
+  {
+   "file": "peff/ehcsphyl.rbs",
+   "files": [
+    "peff/ehcsphyl.rbs"
+   ],
+   "sha256": "711a97ed0c418b356524b90849b7bb2ec42ed23c59ff6856c42c8db75c6a62e3",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "PeffEdition",
+   "mod": "PeffEdit2.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "c9fe30b68c9f79238fbeb6d5099b26535e6ab8fae0a3786e6ee43bd7411e1b5c"
+  },
+  {
+   "file": "peff/epriori.rbs",
+   "files": [
+    "peff/epriori.rbs"
+   ],
+   "sha256": "cbbb6dbfbca4a6126921b093d2ebd4af8be5c4f73852e2a28846e4d2dfc60737",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Red Stripe - Drum & Bass",
+   "mod": "redstripe-dnb.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "b6fae05b938536073284128e92c8bbdd98bfe0f270e46b6ab8d5dff40de0e46d"
+  },
+  {
+   "file": "peff/experime.rbs",
+   "files": [
+    "peff/experime.rbs"
+   ],
+   "sha256": "8b27c4292f60156eff01dd65b525b22a98d21165c4b4e84f89139cd9c44606f6",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "d14d4204bfec069b1ff08370d539b197660298f36efa321a543c44de5578c4f8"
+  },
+  {
+   "file": "peff/lightspe.rbs",
+   "files": [
+    "peff/lightspe.rbs"
+   ],
+   "sha256": "23572350dd27d0b2a8158d73acaf5c09b6aaab105ac7e6510629b7c9b9f699a9",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Trancer",
+   "mod": "Trancer.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "9c99c8c7b83fbac7d9f5745b39e039faaa0de102f99bb981869c0126ac1adb91"
+  },
+  {
+   "file": "peff/lildnboy.rbs",
+   "files": [
+    "peff/lildnboy.rbs"
+   ],
+   "sha256": "488fe4f9ff29164798c8083d843368e7577f3bde743911eaf90658003c0bc392",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "AXIOM peace",
+   "mod": "AXIOMpeace.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "5ab0aacf685c6b926f008fa0fe7ce9a5201250de453d4a0799bc09158eb3d4e8"
+  },
+  {
+   "file": "peff/misplace.rbs",
+   "files": [
+    "peff/misplace.rbs"
+   ],
+   "sha256": "b4b4b0b2523169ae0ee9619db9a4603b27dd2005848d2a58c871fb3ef8823288",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "7810d4b65e3dc23682e0119ec10d41227572a6f032d8f56072d6b28176a85538"
+  },
+  {
+   "file": "peff/peace4si.rbs",
+   "files": [
+    "peff/peace4si.rbs"
+   ],
+   "sha256": "7f64b47455f5e1d5b66d0439c919b71634a7183218a45106a295c66217ab2a9f",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "AXIOM peace",
+   "mod": "AXIOMpeace.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "648d3c95170f8be32346107de6bad9a5a64e0b7e65e9262497c074964ecb5fea"
+  },
+  {
+   "file": "peff/phatmann.rbs",
+   "files": [
+    "peff/phatmann.rbs"
+   ],
+   "sha256": "b6b080dcd3186773e29601fe98bc1059b36a80f1256c255b88a977c05c7c91e8",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "64bae66c88f1ccba92c215597217165103e5f0e32175bbd9f5abae7389f5360e"
+  },
+  {
+   "file": "peff/phunxtac.rbs",
+   "files": [
+    "peff/phunxtac.rbs"
+   ],
+   "sha256": "e8e6321dba9abd4a56eda577f4502aed22d0b458159f189474f6a2a1410cee61",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "xt4c",
+   "mod": "xt4c.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "116b66dd6e3ebc001f1a9dd2b265d8b9468807c05b8f24c2f71f6f990d5609a2"
+  },
+  {
+   "file": "peff/pistolwh.rbs",
+   "files": [
+    "peff/pistolwh.rbs"
+   ],
+   "sha256": "544e843f7abfa53f9108ffc28cee7ea468f9bcd22e8c3ec09f3a285ed3b57912",
+   "form": "rbs",
+   "version": "4.1",
+   "mod_name": "senctionbirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "3825f66236edec3e2f350650ca048c9e9d472c41f80d8a78bd4335a7c514f51a"
+  },
+  {
+   "file": "peff/redshift.rbs",
+   "files": [
+    "peff/redshift.rbs"
+   ],
+   "sha256": "da72cffde544367dae15a77541b4f2e7473f6e3f39d836488128d3ef37321b61",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "RedShift",
+   "mod": "RedShift.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "3c15b179e15e6ed64125b42535cb8c8499192250533cc5c7dcdf4a6f60f7c872"
+  },
+  {
+   "file": "peff/transpar.rbs",
+   "files": [
+    "peff/transpar.rbs"
+   ],
+   "sha256": "cf636a5e0eb2f8280ea8e14780b78036e2f24779357910f9048bbb593623cce0",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "AXIOM peace",
+   "mod": "AXIOMpeace.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "592392a64fcdf4378f4ca8b21ee47353ad619c425e3482f49802ab976e9a305f"
+  },
+  {
+   "file": "peff/twylight.rbs",
+   "files": [
+    "peff/twylight.rbs"
+   ],
+   "sha256": "ba54357af73de195c788a09f9a9d986058fcd3e5804b95360c1dec5c26366bb7",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "ReVerb +",
+   "mod": "ReVerb+.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "61841460b7c89f22e0c6a7824b290d7e3bfc3c14ae31e97393cec483114c8e0c"
+  },
+  {
+   "file": "peff/twylight2.rbs",
+   "files": [
+    "peff/twylight2.rbs"
+   ],
+   "sha256": "681526713ff675d3b439e92cf66a16d956336d3f9619d01aea0379616c991c4c",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "c31017e5f394dac529caa5da4f6f9e7aae403bb038c70d30bedfa7e9a4f4617c"
+  },
+  {
+   "file": "peff/ultrapan303a.rbs",
+   "files": [
+    "peff/ultrapan303a.rbs"
+   ],
+   "sha256": "cda1f8a6f73885c98d4c76e865cedd088607ac03c2166a7f4a3a5b0a31cb6e91",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "001b4f0fd84802f36e9a7515c2f817e9f4339ca5b85f3a1df5b9706456c78d48"
+  },
+  {
+   "file": "peff/xt4c.rbs",
+   "files": [
+    "peff/xt4c.rbs"
+   ],
+   "sha256": "ee5c73f23550f703cf2a84c04eabb499b491fe111c7540675b5ed91af6915acb",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "xt4c",
+   "mod": "xt4c.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "dede6a39e7d9bc4ba1805009582597cbf824dd3df583c585dece0159910394ef"
   },
   {
    "file": "pre2.rbs",

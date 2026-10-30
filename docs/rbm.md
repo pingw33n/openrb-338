@@ -347,6 +347,17 @@ and its entry was dropped from `tests/refs/thirdparty_mods.json` (task-149). The
 section are the folder's now (171), except where a run is dated: the 2026-10-27 and 2026-10-28 runs
 of the 172-mod collection, which had that file, are history.
 
+**The folder since 2026-10-30 (task-165).** The user grew `~/rb-mods/mods` to 311 recrypted mods
+(142 added; BadRat, DarkStar, digalog and noize replaced; PeffEdit.rbm and `degenerate
+oxidized.rbm` deleted; TechnoBox.rbm renamed `TechnoBox mkII.rbm`). The manifest
+`tests/refs/thirdparty_mods.json` lists all 311. The originals were not kept, so they were
+found again by content: every `.rbm` of `rb_stuff.zip` (`Mods/`) and of `rb-stuff-peff/ReBirth
+Mods` (subfolders included, 535 files) was recrypted with the current orb, and each collection
+file took the original whose recrypted bytes equal it (all 311 found; 4 of the 535 candidates
+fail to recrypt and are not collection mods). `tools/thirdparty_mods_manifest.py --check` over
+those originals reports `equal`. The 171-mod counts in the rest of this section are those of
+the 2026-10-29 folder.
+
 **The check.** `tools/rbm.py check-dir DIR RB20FUL.DAT [--json]` (the reference: every mod's
 parse, key pages, every embedded file descrambled, the 46 slots' AIFFs, JPEG end markers,
 duplicate INFO names in the original's folder order) and the env-gated cargo test
@@ -536,9 +547,9 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
 ### 11.5 Every song against rbhost: the songs manifest (task-129, 2026-10-29)
 
 The collection moved to `~/rb-songs/songs` (songs, read recursively: the top level and the
-`CaveysRebirthStuff` archive) and `~/rb-mods/mods` (171 recrypted mods since the user removed
-DJ Turn's 8-Track.rbm on 2026-10-29; 172 before). The user asked (2026-10-29) that all songs be
-handled recursively.
+`CaveysRebirthStuff` archive) and `~/rb-mods/mods` (311 recrypted mods since 2026-10-30; 171 on
+2026-10-29, after the user removed DJ Turn's 8-Track.rbm; 172 before). The user asked
+(2026-10-29) that all songs be handled recursively.
 
 **The manifest.** `tests/refs/thirdparty_songs.json` holds, per distinct song (by SHA-256), its
 paths under the folder, its form and version, the mod name and the mod file the original
@@ -562,7 +573,7 @@ The gated `songs` test (`crates/orb-cli/tests/thirdparty.rs`) renders every list
 `orb render --idle-blocks N --mod-dir ORB_THIRDPARTY_MODS_DIR --standard-kit` and requires the
 WAV's SHA-256 to equal the manifest's; a song file of the folder the manifest does not list fails
 it, and so does a run without `ORB_THIRDPARTY_MODS_DIR` when the manifest lists a song with a
-third-party mod (510 of them), so a green run has compared all 1239. Regenerate the manifest when
+third-party mod (529 of them), so a green run has compared all 1266. Regenerate the manifest when
 the collection changes.
 
 **Positions that wrap.** The reader adds the deltas in u32 (`docs/song_load.md` section 10), so
@@ -575,6 +586,20 @@ debug-asserts that its positions never go back ("events not sorted by position")
 `tools/rbs.py`'s `validate` refuses an unsorted spec. No song of the collection wraps. Today
 orb-ui's Save writes a song's own events through this writer; task-143 (open) makes it write the
 engine's tracks instead, whose positions are below 32000 and sorted, so they never wrap.
+
+**The run of 2026-10-30 (task-165).** The user added 29 songs and moved 7 (mostly into
+`peff/`); `~/rb-songs/songs` now has 1271 song files, 1269 distinct. Three songs of the
+2026-10-29 manifest (`Acid Werks.rbs`, `Phatmannen.rbs`, `block_out.rbs`, all in
+`CaveysRebirthStuff/ReBirth 2.x Songs`) are gone from the folder and were dropped from the
+manifest. 47 songs were rendered on the machine again with `thirdparty_songs.py --only`: the 30
+new ones and the 17 whose mod changed (the pinned file `TechnoBox.rbm` / `degenerate
+oxidized.rbm` gone, `DarkStar.rbm` replaced, or a mod now found for a name that had none,
+`omega` -> `omega777.rbm`); the other entries kept their renders (a mod of the old manifest that
+did not change keeps its hash, so the tool needs no change, but it does not notice a replaced
+mod by itself: pass the songs of a changed mod to `--only`). Result: **1266 rendered by rbhost,
+all equal `orb render`**, 3 skipped (the three below); 426 ReBirth 1.x and 840 RBS (461 of 4.2,
+371 of 4.1, 8 of 4.0); 529 RBS play a mod, 42 mods in all; 311 play the built-in kit (310
+`Standard ReBirth`, 1 `senctionbirth`, which no mod has).
 
 **The run of 2026-10-29.** 1242 song files (a name containing `.rbs`), 1242 distinct:
 - 426 ReBirth 1.x (built-in kit) and 813 RBS: 436 of 4.2, 369 of 4.1, 8 of 4.0. 510 RBS play a
