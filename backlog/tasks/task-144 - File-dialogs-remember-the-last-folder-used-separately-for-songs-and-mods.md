@@ -2,8 +2,10 @@
 id: TASK-144
 title: 'File dialogs remember the last folder used, separately for songs and mods'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-worker'
 created_date: '2026-10-29 14:29'
+updated_date: '2026-10-30 08:03'
 labels:
   - ui
 milestone: m-3

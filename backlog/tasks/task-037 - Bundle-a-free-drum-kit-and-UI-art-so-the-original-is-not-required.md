@@ -1,10 +1,10 @@
 ---
 id: TASK-037
 title: Bundle a free drum kit and UI art so the original is not required
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-26 14:40'
-updated_date: '2026-10-29 08:57'
+updated_date: '2026-10-30 08:03'
 labels:
   - engine
   - ui
@@ -48,3 +48,9 @@ Supervisor 2026-10-27: task-036 no longer seeds from a CD; per the user it build
 
 Supervisor 2026-10-27: the command is named `orb mod pack-standard` (not standard-rbm), per the user.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Rejected by @pingw33n on 2026-10-30: not implemented. The project keeps the built-in standard kit (assets/Standard.rbm, ReBirth's own samples and panel, the user's decision of 2026-10-27, task-067) and its own SVG panel art (task-115), so a free replacement kit and art are not needed. The acceptance criteria are left unchecked on purpose.
+<!-- SECTION:FINAL_SUMMARY:END -->
