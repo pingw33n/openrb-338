@@ -223,6 +223,8 @@ and `OPENRB_` names are not read any more and have no deprecated alias.
 | `ORB_MOD_DIR` | `orb render`, `compare`, `play`, `info`; OpenRB-338 | the folder of recrypted `.rbm` mods (`--mod-dir` wins) | `RB_MOD_DIR` |
 | `ORB_RB20FUL` | `orb mod recrypt` | the path of `RB20FUL.DAT` (`--rb20ful` wins); also the default of `tools/rbcorpus.py` | `RB_RB20FUL` |
 | `ORB_UI_CONFIG` | OpenRB-338 | the settings file to use instead of `OpenRB-338/ui.toml` in the configuration folder | `RB_UI_CONFIG` |
+| `ORB_UI_LOG_DIR` | OpenRB-338 (`crates/orb-ui/src/crash.rs`, task-157) | the folder of the crash logs instead of the platform's (below); tests set it | none |
+| `ORB_UI_NO_CRASH_DIALOG` | OpenRB-338 | any non-empty value except `0` turns off the native box after a panic (the log and stderr stay); tests set `1` | none |
 | `ORB_LOGO_T` | OpenRB-338 | seconds: freezes the logo's startup animation at that time (pictures; task-114, `crates/orb-ui/src/logo_anim.rs`) | none |
 | `ORB_GPU_INFO` | OpenRB-338 | `1` prints the graphics adapter wgpu chose (`scripts/appimage-smoke.sh`) | `OPENRB_GPU_INFO` |
 | `ORB_BUILD_BRANCH` | `crates/orb-ui/build.rs`, `scripts/release-env.sh`, `scripts/build.sh` (passed into Docker), `release.yml` | `main` or `other`: makes the About box's hash the main form | `RB_BUILD_BRANCH` |
@@ -256,6 +258,7 @@ work as ever.
 | | `--about` | starts with the About window open (task-115) |
 | | `--info` | starts with File > Info's Song Information window open (task-117) |
 | | `--screenshot OUT.png` | saves the window to a PNG after a few frames and quits |
+| | `--debug-panic` / `--debug-panic-window` / `--debug-panic-thread` | panic on purpose: at the start (no display needed), once the window is up, on another thread half a second later (the crash hook, task-157) |
 | | `ORB_LOGO_T=SECONDS` (variable) | freezes the logo's startup animation (task-114) at that time, on the panel and in About, for pictures of a moment |
 
 `OpenRB-338 --help` (also `-h`) prints `usage: OpenRB-338 [SONG]` and exits 0; a bad option or
@@ -265,6 +268,22 @@ message box, as File > Open reports it. An argument `-psn_...` (Finder on old ma
 The parser is `parse_args` in `crates/orb-ui/src/main.rs` (unit tests there and in
 `crates/orb-ui/tests/cli_args.rs`); `orb`'s is the clap definition in `crates/orb-cli/src/main.rs`
 (`hide = true` on `Compare`; `crates/orb-cli/tests/compare.rs`).
+
+## The crash log, for bug reports (task-157)
+
+A panic in OpenRB-338 (any thread) shows a native box and writes `crash-YYYYMMDD-HHMMSS.log`
+(version, OS, thread, message, location, backtrace; the newest 20 are kept) to
+`~/Library/Logs/OpenRB-338/` (macOS), `%LOCALAPPDATA%\OpenRB-338\logs\` (Windows) or
+`$XDG_STATE_HOME/OpenRB-338/` (`~/.local/state/OpenRB-338/`, Linux). Ask for that file with a
+bug report. The box comes from the crate `rfd` 0.17 (MIT, GPL-3.0 compatible) with no default
+features: it links no system library on any target (macOS AppKit and Windows come with the
+system; on Linux `zenity` runs the box at run time, so with no zenity only the log and stderr
+happen), so the Docker image needs nothing new. Checked on 2026-10-30 (task-157): `scripts/build.sh`
+built `OpenRB-338` and `orb` in the Docker image for `x86_64-unknown-linux-gnu` and
+`aarch64-unknown-linux-gnu` (the image unchanged, `--locked`); `cargo xwin check -p orb-ui` passed
+for both Windows targets (x86_64 with the `CL` variable above, which the scripts set); `cargo
+check -p orb-ui` passed for `x86_64-apple-darwin`, and the host build is `aarch64-apple-darwin`.
+Not run: the packages (`scripts/package.sh`) and the CI matrix. Details: docs/ui_spec.md 18.0.1.
 
 ## GitHub Actions (`.github/workflows/`)
 

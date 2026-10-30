@@ -10,6 +10,7 @@ pub mod app;
 pub mod art;
 pub mod behavior;
 pub mod browser;
+pub mod crash;
 pub mod document;
 pub mod error_box;
 pub mod info;

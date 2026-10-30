@@ -42,6 +42,13 @@ pub fn is_main(
 /// zero-padded (task-133). It is what `scripts/version.sh` prints, the release tag is `v` and
 /// it, and the macOS bundle has it. Later builds compare higher, as text and per component.
 pub fn version_number(secs: i64) -> String {
+    let [y, m, d, h, mi, _] = utc(secs);
+    format!("{y:04}.{m:02}{d:02}.{h:02}{mi:02}")
+}
+
+/// The Unix time `secs` as UTC `[year, month, day, hour, minute, second]` (the crash log's
+/// time, task-157).
+pub fn utc(secs: i64) -> [i64; 6] {
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
     // civil from days (H. Hinnant), days since 1970-01-01
@@ -54,11 +61,7 @@ pub fn version_number(secs: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!(
-        "{y:04}.{m:02}{d:02}.{:02}{:02}",
-        rem / 3600,
-        rem % 3600 / 60
-    )
+    [y, m, d, rem / 3600, rem % 3600 / 60, rem % 60]
 }
 
 /// The version string: the version number and the git state, `(unknown)` with no git.

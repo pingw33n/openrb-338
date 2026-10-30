@@ -1300,6 +1300,35 @@ OpenRB-338-specific (a UI decision of the user, not a fact about the original).
   mod that is not recrypted), and the Mods > Info window's text about the mod it shows (a part
   of that window).
 
+#### 18.0.1 A panic: the crash log and the native box (task-157)
+
+OpenRB-338-specific. The egui error box above is for errors the app reports; a panic is a bug,
+and the egui frame that panicked may be unusable, so it has its own path (`orb-ui/src/crash.rs`,
+`crash::install` first thing in `main`). Without it the window just vanished (task-156): an app
+started from Finder, the Start menu or a launcher has no visible stderr, and macOS writes no
+crash report for a Rust panic.
+
+- The hook runs on the panicking thread, whichever it is (the UI, the audio callback, the
+  export thread, the link). The default hook's stderr text comes first, then the log, then the
+  box, then the exit with code 101. A thread that panics while the box is up waits for the
+  first one to end the process, and after 30 s exits with 101 itself (it may be the main
+  thread, which the box can need on macOS). Every panic ends the app (also one on the export thread, which
+  used to leave the panel running); nothing is recovered, and nothing hangs silently.
+- The log `crash-YYYYMMDD-HHMMSS.log` (a second one in the same second has `-2`) holds the UTC
+  time, the version string of the About box, the OS and architecture, the thread name, the
+  message, the location and a backtrace (`Backtrace::force_capture`, so no `RUST_BACKTRACE`
+  is needed). The newest 20 stay. The folder: macOS `~/Library/Logs/OpenRB-338/`, Windows
+  `%LOCALAPPDATA%\OpenRB-338\logs\`, others `$XDG_STATE_HOME/OpenRB-338/` or
+  `~/.local/state/OpenRB-338/`; `ORB_UI_LOG_DIR` replaces it.
+- The box (native, blocking, one OK button; `rfd` 0.17, MIT; on Linux `zenity` runs it, and
+  with no zenity nothing shows, the log and stderr still happen) says "OpenRB-338 stopped
+  because of an internal error. A crash log was saved to PATH." (or that it could not be
+  saved), the panic message and location, and "Unsaved changes were lost." (there is no
+  autosave). `ORB_UI_NO_CRASH_DIALOG` (any non-empty value except `0`) turns the box off.
+- Tests: the unit tests of `crash.rs` (the text, the file name, the platform folders, the 20-file
+  rotation) and `crates/orb-ui/tests/crash.rs` (the binary with `--debug-panic`: exit 101 and
+  the log in a temp folder). Hand check on macOS with `--debug-panic-window` (task-157 notes).
+
 ### 18.1 When the original plays the mod's startup sound (task-087) [C unless marked]
 
 `sub_426C67(open mod, mod object)` sends top-level msg 58 (through `sub_40ABB5`, 0x426C9F) when

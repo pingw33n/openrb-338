@@ -33,6 +33,11 @@ resvg = { version = "0.45.1", default-features = false }
 # Saves the --screenshot PNG; decodes the mods' splash.jpg.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
+# The native message box of the crash hook (task-157). No default features: on Linux the
+# box is run by `zenity` at run time (no GTK or other system library to link), and the Wayland
+# window-identifier code is not needed for a box without a parent window.
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+
 [dev-dependencies]
 orb-ui-art = { path = "../orb-ui-art" }
 # The gated tests' external inputs (task-121).

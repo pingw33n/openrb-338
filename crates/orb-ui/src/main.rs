@@ -67,6 +67,18 @@ struct Args {
     shot: Option<PathBuf>,
     song: Option<PathBuf>,
     browse: Option<Mode>,
+    debug_panic: Option<DebugPanic>,
+}
+
+/// Where `--debug-panic` panics on purpose (task-157): tests of the crash hook.
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum DebugPanic {
+    /// On the main thread at the start, before any window (runs with no display).
+    Start,
+    /// On the main thread, once the window is up.
+    Window,
+    /// On another thread, half a second after the window is up.
+    Thread,
 }
 
 /// What the command line asks instead of running the app.
@@ -90,6 +102,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
         shot: None,
         song: None,
         browse: None,
+        debug_panic: None,
     };
     let mut args = args.into_iter();
     while let Some(a) = args.next() {
@@ -98,6 +111,9 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
             "--demo" => r.demo = true,
             "--about" => r.about = true,
             "--info" => r.info = true,
+            "--debug-panic" => r.debug_panic = Some(DebugPanic::Start),
+            "--debug-panic-window" => r.debug_panic = Some(DebugPanic::Window),
+            "--debug-panic-thread" => r.debug_panic = Some(DebugPanic::Thread),
             "--size" => {
                 let v = args.next().ok_or(Exit::Bad)?;
                 let (w, h) = v.split_once('x').ok_or(Exit::Bad)?;
@@ -182,6 +198,8 @@ fn attach_parent_console() {
 fn main() -> eframe::Result {
     #[cfg(all(windows, not(debug_assertions)))]
     attach_parent_console();
+    // before anything that can panic: a panic writes a crash log and shows a box (task-157)
+    orb_ui::crash::install(orb_ui::about::VERSION);
     let Args {
         demo,
         about,
@@ -192,7 +210,11 @@ fn main() -> eframe::Result {
         shot,
         song,
         browse,
+        debug_panic,
     } = parse_args(std::env::args().skip(1)).unwrap_or_else(|e| usage(e));
+    if debug_panic == Some(DebugPanic::Start) {
+        panic!("--debug-panic: a deliberate panic");
+    }
 
     let panel = if demo { Panel::demo() } else { Panel::new() };
     let mut link = None;
@@ -262,6 +284,19 @@ fn main() -> eframe::Result {
             }
             if let Some(ppp) = ppp {
                 cc.egui_ctx.set_pixels_per_point(ppp);
+            }
+            match debug_panic {
+                Some(DebugPanic::Window) => panic!("--debug-panic-window: a deliberate panic"),
+                Some(DebugPanic::Thread) => {
+                    std::thread::Builder::new()
+                        .name("debug-panic".into())
+                        .spawn(|| {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            panic!("--debug-panic-thread: a deliberate panic");
+                        })
+                        .expect("spawn the debug thread");
+                }
+                Some(DebugPanic::Start) | None => {}
             }
             let shot = shot.map(Shot::new);
             let mut app = match link {
