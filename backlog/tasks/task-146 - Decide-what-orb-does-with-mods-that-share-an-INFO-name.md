@@ -1,11 +1,11 @@
 ---
 id: TASK-146
 title: 'Decide: what orb does with mods that share an INFO name'
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-29 14:49'
-updated_date: '2026-10-29 15:06'
+updated_date: '2026-10-30 07:43'
 labels:
   - decision
   - rbm
@@ -48,7 +48,7 @@ Acceptance: the user's choice is recorded here with the date. If it is not A, a 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The user's choice is recorded with the date, and a follow-up task exists when needed
+- [x] #1 The user's choice is recorded with the date, and a follow-up task exists when needed
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -56,3 +56,15 @@ Acceptance: the user's choice is recorded here with the date. If it is not A, a 
 <!-- SECTION:NOTES:BEGIN -->
 Supervisor, 2026-10-29: the user removed DJ Turn's 8-Track.rbm (the identical copy of 8tRack.rbm) from ~/rb-mods/mods, so 4 duplicate pairs remain: AXIOM, dejenerate, Alpha 2.0 and AlpJunUV. The manifest entry is dropped in task-149.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decided by @pingw33n on 2026-10-30, a variant of options B and E:
+- UI: mods that share an INFO name (ASCII case-insensitive, per task-145) are grouped in the Mods menu under one item with a submenu. The submenu lists the files by file name, plus the mod's version when it is non-blank.
+- The active mod checks the top-level item, and the submenu marks the active variant.
+- Clicking a variant that is not active plays it for the song. Clicking the active variant makes it the globally preferred file for that name, which is remembered in the settings file.
+- Default, with no preference: the file whose name sorts first by byte values (strcmp on the file name's bytes). This replaces the NTFS-order model for choosing a duplicate, a deliberate difference from the original, where the volume's listing order decides (docs/rbm.md 11.3).
+- CLI: the same default (first by file name bytes); --mod FILE still picks any file. The CLI does not read the UI's preferences.
+Implemented in task-151.
+<!-- SECTION:FINAL_SUMMARY:END -->
