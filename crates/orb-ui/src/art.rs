@@ -17,6 +17,22 @@ pub fn part(name: &str) -> Option<Part> {
     Some(Part { name, uri, svg })
 }
 
+/// The part names asked for that no art has, in this process.
+static MISSING: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Records that the part `name` is missing; true the first time it is.
+pub fn report_missing(name: &str) -> bool {
+    let mut m = MISSING.lock().unwrap_or_else(|e| e.into_inner());
+    m.insert(name.to_owned())
+}
+
+/// The part names drawn as nothing because no art has them, in this process (task-156).
+pub fn missing() -> Vec<String> {
+    let m = MISSING.lock().unwrap_or_else(|e| e.into_inner());
+    m.iter().cloned().collect()
+}
+
 /// Every part.
 pub fn all() -> impl Iterator<Item = Part> {
     PARTS

@@ -522,6 +522,12 @@ impl Panel {
         self.switches.get(id).copied().unwrap_or(0)
     }
 
+    /// The position (0 or 1) a switch draws and a click flips from: its value by
+    /// [`behavior::switch_position`]. [`Panel::switch`] keeps the value the song holds.
+    pub fn switch_position(&self, id: &str) -> u8 {
+        behavior::switch_position(id, self.switch(id))
+    }
+
     pub fn set_switch(&mut self, id: &str, v: u8) {
         if id == "transport.mode" {
             self.transport.song_mode = v != 0;
@@ -1034,7 +1040,7 @@ impl Panel {
             "toggle" if c.id == "tr909.flam_button" => on_off(self.flam_button),
             "toggle" => on_off(self.toggle_on(&c.id)),
             "radio" => on_off(self.toggle_on(&c.id)),
-            "switch" | "hswitch" | "vswitch" => format!("{fam}{}", self.switch(&c.id)),
+            "switch" | "hswitch" | "vswitch" => format!("{fam}{}", self.switch_position(&c.id)),
             "trigger" if c.id == "transport.play" => {
                 if self.transport.playing {
                     format!("{fam}lit")
@@ -1115,7 +1121,11 @@ impl Panel {
             } else {
                 "b"
             };
-            format!("step909_{grp}_{v}")
+            // A song's step byte may be above 3. The original draws every value above 2 as the
+            // flam frame (0x444F0C..0x444F18, docs/ui_spec.md section 7), and that is what the
+            // engine plays: the flam pass retriggers every value above 2 (tr909.rs, 0x1002B320),
+            // so 4 is an accent with a flam and 5..=255 the flam hit alone.
+            format!("step909_{grp}_{}", v.min(3))
         }
     }
 }
@@ -1395,6 +1405,82 @@ mod tests {
                 assert!(crate::art::part(&n).is_some(), "{}: no part {n}", c.id);
             }
             p.rows[0].bank = 2;
+        }
+    }
+
+    #[test]
+    fn every_switch_value_draws_an_existing_part_by_the_engine_rule() {
+        // A song may hold any byte in a switch's controller (task-156: a 303 waveform of 127).
+        let mut p = Panel::new();
+        let switches: Vec<_> = crate::layout::controls()
+            .into_iter()
+            .filter(|c| matches!(c.kind.as_str(), "switch" | "hswitch" | "vswitch"))
+            .collect();
+        assert_eq!(switches.len(), 10);
+        for c in &switches {
+            if c.id == "transport.mode" {
+                // the mode switch shows a flag, not a controller value
+                for on in [false, true] {
+                    p.transport.song_mode = on;
+                    let n = p.part_name(c, false, 0.0);
+                    assert_eq!(n, format!("{}{}", c.family(), u8::from(on)));
+                    assert!(crate::art::part(&n).is_some(), "no part {n}");
+                }
+                continue;
+            }
+            for v in 0..=255u8 {
+                p.adopt(&c.id, v as i32);
+                let n = p.part_name(c, false, 0.0);
+                assert!(
+                    crate::art::part(&n).is_some(),
+                    "{} = {v}: no part {n}",
+                    c.id
+                );
+                let want = if c.id == "pcf.mode" {
+                    u8::from(v == 1)
+                } else {
+                    u8::from(v != 0)
+                };
+                assert_eq!(n, format!("{}{want}", c.family()), "{} = {v}", c.id);
+                // the stored value stays what the song holds (a save writes it back)
+                assert_eq!(p.switch(&c.id), v, "{}", c.id);
+                assert_eq!(p.value(&c.id), Some(v), "{}", c.id);
+            }
+        }
+    }
+
+    #[test]
+    fn every_909_step_value_draws_the_frame_of_what_plays() {
+        let mut p = Panel::new();
+        let steps: Vec<_> = crate::layout::controls()
+            .into_iter()
+            .filter(|c| c.kind == "steps" && c.section == "tr909")
+            .collect();
+        assert_eq!(steps.len(), 16);
+        for v in 0..=255u8 {
+            for playing in [None, Some(3)] {
+                p.steps909[p.inst909] = [v; 16];
+                p.playing_step909 = playing;
+                for c in &steps {
+                    let n = p.part_name(c, false, 0.0);
+                    assert!(
+                        crate::art::part(&n).is_some(),
+                        "{} = {v}: no part {n}",
+                        c.id
+                    );
+                    // 0 dark, 1 low, 2 accent, and the flam frame for every value above 2
+                    // (the engine's flam pass; the original's draw, 0x444F0C); the playing
+                    // step is inverted
+                    let k: usize = c.name()["step".len()..].parse::<usize>().unwrap() - 1;
+                    let frame = match (playing == Some(k), v) {
+                        (true, 0) => 2,
+                        (true, _) => 0,
+                        (false, _) => v.min(3),
+                    };
+                    let grp = if (k / 4).is_multiple_of(2) { "a" } else { "b" };
+                    assert_eq!(n, format!("step909_{grp}_{frame}"), "{} = {v}", c.id);
+                }
+            }
         }
     }
 }

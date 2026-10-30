@@ -414,6 +414,29 @@ See OB-8 for the unclean buffer.
   section 10 has both facts.
 - **Home.** `docs/ui_spec.md` sections 10 and 13.
 
+### OB-23: a switch draws its value as an unclamped frame index [C: the code; G: the effect]
+
+- **What.** A two-position switch (`CBitmapSwitch`) shows the frame its controller value names,
+  with no clamp to its two frames, so a song value above 1 blits from outside the switch's strip.
+- **Where.** The device polls store the byte unchanged (`movzx`) with `sub_424548` (0x424548:
+  `mov [eax+22h], cx`): the 303's waveform at 0x43F3B6 (`+0x504`), the delay's mode at 0x4081DA,
+  the PCF's mode at 0x41BC25, the 808's selectors at 0x4426F5..0x4427ED; the DLL's echo
+  `sub_43EB64` stores the 303's bytes raw (0x43EC2F). The update 0x4244E8 copies `+0x22` to
+  `+0x26`, the draw 0x4243C2 passes `+0x26` to `sub_46F84D`, and `CBitmapSequence`'s frame
+  rectangle 0x46DC43 computes `x = frame * (fw + 1)`, `fw = (w + 1) / n - 1`, with no bound.
+  Read in IDA's disassembly (a headless copy of the exe database), not with llvm-objdump. (The
+  909's step LEDs do bound theirs: 0x444F0C..0x444F18 draws any value above 2 as the flam frame;
+  docs/ui_spec.md section 7.)
+- **Trigger.** A song whose device chunk holds a switch value above 1: RB-AM.rbm's demo song
+  "ReSurrection 338" holds a 303 #2 waveform of 127 (task-156).
+- **Effect.** [G] The switch's rectangle gets pixels from outside its bitmap (on Windows a blit
+  from outside a memory bitmap's bounds typically leaves the destination as it was or draws
+  black); not observed on the test machine. The sound is not affected: the DLL plays the value.
+- **Corpus.** None.
+- **orb.** Not reproduced: orb-ui draws the position the engine plays
+  (`crates/orb-ui/src/behavior.rs` `switch_position`) and keeps the song's value for a save.
+- **Home.** `docs/ui_spec.md` section 2 ("Two-position switch").
+
 ## 5. Mods (Rebirth.exe)
 
 ### OB-14: the open mod's table of 200 EMBF entries has no bound check [C: no check; G: the effect]

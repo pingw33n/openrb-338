@@ -704,6 +704,11 @@ All other chunk bytes and TRAK values reach the engine unchanged. In particular 
 (0 = saw, 1 = square per `docs/initial_investigation.md` §6.1; RBS42.txt says "triangle" for 0), the
 shuffle amount, the tempo, and the loop points (already in ticks).
 
+A switch byte out of 0..1 is not clamped either: the DLL plays the 303's waveform, the delay's
+mode and the 808's selectors as `!= 0` and the PCF's mode as `== 1`, and the panel draws the byte
+as its frame index (docs/ui_spec.md section 2, "A value out of 0..1"; OB-23 in
+docs/original_bugs.md). RB-AM.rbm's demo song holds a 303 #2 waveform of 127 (task-156).
+
 ## 9. The copy protection in the packers
 
 Many packers write one field at a computed index instead of a constant:

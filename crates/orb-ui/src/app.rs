@@ -368,12 +368,23 @@ fn capped_hint(pixels: Vec2, max: usize) -> Option<egui::load::SizeHint> {
     })
 }
 
+fn missing_part(name: &str) {
+    if art::report_missing(name) {
+        eprintln!("OpenRB-338: no art part {name}; drawn as nothing");
+    }
+}
+
 fn paint_part_rotated(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>) {
     paint_part_with(ui, name, rect, rot, Color32::WHITE);
 }
 
 fn paint_part_with(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>, tint: Color32) {
-    let part = art::part(name).unwrap_or_else(|| panic!("missing art part {name}"));
+    // A part name no art has (a state the panel does not foresee) draws nothing: it must not
+    // close the app (task-156). It is reported once per name.
+    let Some(part) = art::part(name) else {
+        missing_part(name);
+        return;
+    };
     let mut image = Image::from_bytes(part.uri, part.svg)
         .fit_to_exact_size(rect.size())
         .tint(tint);
@@ -672,9 +683,9 @@ impl App {
                             self.panel.press(&c.id, now);
                         }
                     }
-                    // A click anywhere on a two-position switch flips it.
+                    // A click anywhere on a two-position switch flips the position it shows.
                     "hswitch" | "vswitch" if self.first_press(ui, c, &r) => {
-                        let v = 1 - self.panel.switch(&c.id);
+                        let v = 1 - self.panel.switch_position(&c.id);
                         self.panel.set_switch(&c.id, v);
                     }
                     _ => {}
@@ -953,8 +964,8 @@ impl App {
         }
         // The selection frames.
         let i = self.panel.inst808;
-        let upper =
-            (3..=7).contains(&i) && self.panel.switch(&format!("tr808.slot{i}_switch")) == 0;
+        let upper = (3..=7).contains(&i)
+            && self.panel.switch_position(&format!("tr808.slot{i}_switch")) == 0;
         let (fx, fy) = if upper {
             (o8.0 + 78.0 + 22.0 * (i - 3) as f32, o8.1 + 42.0)
         } else {

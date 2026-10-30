@@ -160,6 +160,28 @@ like the repeat buttons'.
 where the click lands, not toggled: for a horizontal switch (ctor argument 13) the left half
 gives 0 and the right half 1; for a vertical one (argument 12) the top half gives 0 and the
 bottom half 1. Dragging across the middle changes it (mouse-move 0x4245B2).
+- **A value out of 0..1** (task-156) [C for the code, G for what shows]. The switch draws the
+  controller byte itself as the frame of its strip, with no clamp, rule, or `!= 0`: every poll
+  passes the device byte to `sub_424548` (0x424548, `mov [eax+22h], cx`) after a `movzx` (the
+  303's waveform `+0x504` at 0x43F3B6 in `sub_43ED76`, the delay's mode `+0x1B6` at 0x4081DA in
+  `sub_407F7A`, the PCF's mode `+0x23A` at 0x41BC25 in `sub_41B914`, the 808's five selectors
+  `+0x65B`, `+0x65E`, `+0x661`, `+0x663`, `+0x665` at 0x4426F5..0x4427ED in `sub_441E79`); the
+  update 0x4244E8 copies `+0x22` to `+0x26` and redraws; the draw 0x4243C2 hands `+0x26` to
+  `sub_46F84D`, whose `CBitmapSequence` frame rectangle (vtable 0x4BD664 slot 1, 0x46DC43) is
+  `x = frame * (fw + 1)` with `fw = (w + 1) / n - 1`, unbounded; the blit is `sub_488B1E`
+  (SRCCOPY). The byte comes unchanged from the song and from the DLL's echo (`sub_43EB64`,
+  msg 40: `+0x504 = v` at 0x43EC2F). So a value above 1 shows pixels from outside the strip
+  (OB-23 in docs/original_bugs.md). Two inputs do normalize: the Pattern/Song switch draws 1 or 0
+  from the mode flag (0x42A6B3..0x42A6D9), and a MIDI controller for the 303's waveform (CC 23
+  and 30, `sub_4405B5`) stores `v >= 64` (0x4405F9). No switch of the panel has more than two
+  positions; the pattern grid (`CABCPositionView`, `sub_41AB67`) computes its frame itself.
+- **orb** cannot draw the original's out-of-strip pixels, so it draws the position the DLL plays
+  (`behavior::switch_position`): the PCF's mode is low-pass only at 1 (`cmp dl, 1` at
+  0x10016921), and the 303's waveform, the delay's mode and the 808's selectors take any value
+  but 0 as their second position. The stored value stays the song's, so a save writes it back
+  [G: what the original saves after loading such a song was not observed; its panel keeps the
+  byte as it came]. A click flips the position shown. A part name the art lacks draws nothing
+  and is reported once on stderr; it never closes the app.
 
 **Position grid** (`CABCPositionView`, mouse-down 0x42445E) [C]: a picture with n+1 frames
 (frame 0 = nothing lit, frame k = button k lit) whose click position selects a button; the
@@ -536,8 +558,15 @@ selecting while held (`sub_44740D`).
   Observed: one click 0 -> 1, two clicks -> 2, Ctrl+Alt -> 3, Ctrl -> 1, Alt on a 2 -> 0.
 - Display: each cell's LED is 14 x 8 at `x = 30 + 21 i`, y 86 of the 909 section, frame
   `value - 1` of resource 12566 for values 1 and 2 and frame 3 for 3: value 1 orange, value 2
-  red, flam green (observed). While playing, the playing step (`+1755`) is inverted: an unlit
-  step shows value 2, a lit one shows dark.
+  red, flam green (observed). A step byte above 3 (a song may hold any) is drawn as the flam
+  frame: the draw `sub_444E30` sets every value above 2 to 4 in its local copy (`cmp eax, 2`,
+  `mov byte ptr [edx+ecx], 4` at 0x444F0C..0x444F18) and draws frame `4 - 1` (0x444F28); the
+  copy comes from `sub_444D74` (`sub_44535E`), so the pattern keeps the byte [C, task-156]. That
+  matches what the DLL plays: the flam pass retriggers every value above 2 at x1.5
+  (0x1002B320), the step itself plays 1 and 3 at x0.8 and 2 and 4 at x2.0, and 5..255 not at
+  all, so 4 is accent + flam and 5..255 the flam hit only (`crates/orb-engine/src/tr909.rs`).
+  orb-ui draws the same: frame `min(v, 3)`. While playing, the playing step (`+1755`) is
+  inverted: an unlit step shows value 2, a lit one shows dark.
 - The Flam button is a toggle held in the view only (`+1724`), not sent to the engine. The Flam
   knob (ctrl 29) is the flam spacing for all flam steps.
 

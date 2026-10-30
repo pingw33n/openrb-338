@@ -93,6 +93,24 @@ pub fn pattern_grid_button(dx: f32, dy: f32) -> u8 {
     (4 * row + col + 1) as u8
 }
 
+/// The position (0 or 1) a two-position switch draws for its controller value `v`, which a
+/// song may hold out of 0..=1 (RB-AM.rbm's demo song has a 303 waveform of 127, task-156).
+///
+/// The original takes the value itself as the frame of the switch's two-frame strip, with no
+/// clamp (the polls store the byte with `movzx` and `sub_424548` at 0x424548, the draw
+/// 0x4243C2 passes it to `CBitmapSequence`'s frame rectangle 0x46DC43, `x = frame * (w + 1)`),
+/// so a value above 1 blits from outside the strip. orb draws instead the position the engine
+/// plays: the PCF's mode is low-pass (1) only at 1 (`cmp dl, 1` at 0x10016921), and every
+/// other switch reads any value but 0 as its second position (the 303 waveform, the 808
+/// selectors, the delay's sixteenths; docs/ui_spec.md section 2).
+pub fn switch_position(id: &str, v: u8) -> u8 {
+    if id == "pcf.mode" {
+        u8::from(v == 1)
+    } else {
+        u8::from(v != 0)
+    }
+}
+
 /// The modifier keys that matter for the TR-909's step buttons.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct Mods {
