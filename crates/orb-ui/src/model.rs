@@ -1075,6 +1075,16 @@ impl Panel {
         }
     }
 
+    /// The next time after `now` the panel's look changes by itself, not by input or the engine
+    /// (task-153): the end of a 303's lit-note flash in pitch mode. None: nothing is timed.
+    pub fn next_change(&self, now: f64) -> Option<f64> {
+        self.synth
+            .iter()
+            .filter(|s| s.pitch_mode && now < s.flash_until)
+            .map(|s| s.flash_until)
+            .min_by(f64::total_cmp)
+    }
+
     fn led_on(&self, c: &crate::layout::Ctl, now: f64) -> bool {
         let Some(k) = index_of(&c.section, "tb303_") else {
             return false;

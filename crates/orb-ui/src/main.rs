@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! --demo  --size WxH  --ppp S  --browse open|save|export|mod  --about  --info
-//! --screenshot OUT.png
+//! --screenshot OUT.png  --play
 //! ```
 //!
 //! `-h` is `--help`; an argument `-psn_...` (Finder on old macOS) is ignored; a bad option prints
@@ -28,7 +28,8 @@
 //! overrides the pixel density. `--screenshot` saves the window to a PNG after a few frames and
 //! quits. Ctrl/Cmd+O opens the in-app file browser (task-046) to open a song, Ctrl/Cmd+S saves;
 //! `--about` starts with the About window open (for screenshots, task-115), `--info` with File >
-//! Info's Song Information window (task-117).
+//! Info's Song Information window (task-117). `--play` presses Play once the song is open (CPU
+//! measurements, task-153).
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
 //! settings file (`OpenRB-338/ui.toml` in the configuration folder, or `$ORB_UI_CONFIG`).
 
@@ -61,6 +62,8 @@ struct Args {
     demo: bool,
     about: bool,
     info: bool,
+    /// `--play`: press Play once the song is open (CPU measurements, task-153).
+    play: bool,
     size: [f32; 2],
     sized: bool,
     ppp: Option<f32>,
@@ -96,6 +99,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
         demo: false,
         about: false,
         info: false,
+        play: false,
         size: [PANEL_W, PANEL_H],
         sized: false,
         ppp: None,
@@ -111,6 +115,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
             "--demo" => r.demo = true,
             "--about" => r.about = true,
             "--info" => r.info = true,
+            "--play" => r.play = true,
             "--debug-panic" => r.debug_panic = Some(DebugPanic::Start),
             "--debug-panic-window" => r.debug_panic = Some(DebugPanic::Window),
             "--debug-panic-thread" => r.debug_panic = Some(DebugPanic::Thread),
@@ -204,6 +209,7 @@ fn main() -> eframe::Result {
         demo,
         about,
         info,
+        play,
         size,
         sized,
         ppp,
@@ -326,6 +332,9 @@ fn main() -> eframe::Result {
             if info {
                 app.show_info();
             }
+            if play {
+                app.panel.press("transport.play", 0.0);
+            }
             Ok(Box::new(app))
         }),
     )
@@ -343,7 +352,7 @@ mod tests {
     fn no_arguments_is_the_new_song() {
         let a = parse(&[]).unwrap();
         assert_eq!(a.song, None);
-        assert!(!a.demo && !a.about && !a.info && !a.sized);
+        assert!(!a.demo && !a.about && !a.info && !a.sized && !a.play);
         assert_eq!(a.size, [PANEL_W, PANEL_H]);
     }
 
@@ -381,9 +390,10 @@ mod tests {
             "--info",
             "--screenshot",
             "out.png",
+            "--play",
         ])
         .unwrap();
-        assert!(a.demo && a.about && a.info && a.sized);
+        assert!(a.demo && a.about && a.info && a.sized && a.play);
         assert_eq!(a.size, [300.0, 200.0]);
         assert_eq!(a.ppp, Some(2.0));
         assert_eq!(a.browse, Some(Mode::Export));
@@ -409,6 +419,7 @@ mod tests {
             "--screenshot",
             "--about",
             "--info",
+            "--play",
         ] {
             assert!(!USAGE.contains(hidden), "{hidden}");
         }

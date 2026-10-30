@@ -28,7 +28,8 @@ serde = { version = "1", features = ["derive"] }
 toml = "=0.9.12"
 eframe = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["svg"] }
-# Renders the window icon; the version egui_extras' SVG loader uses.
+# Renders the window icon and gives the panel's part rasterizing its options; the version
+# egui_extras' SVG loader uses.
 resvg = { version = "0.45.1", default-features = false }
 # Saves the --screenshot PNG; decodes the mods' splash.jpg.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

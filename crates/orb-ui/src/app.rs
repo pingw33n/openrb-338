@@ -14,7 +14,7 @@ use orb_engine::samples::SampleSet;
 
 use eframe::egui::{
     self, Color32, Image, Key, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2,
-    emath::GuiRounding,
+    emath::GuiRounding, epaint,
 };
 
 use crate::art::{self, KnobDesign};
@@ -90,6 +90,10 @@ struct Hold {
 pub fn centered_in(r: Rect, size: Vec2) -> Pos2 {
     Pos2::new(r.center().x - size.x / 2.0, r.center().y - size.y / 2.0)
 }
+
+/// The time between two frames while the engine's side of the panel moves (task-153): 30 per
+/// second, enough for the meters and the running lights (a sixteenth at 200 BPM is 75 ms).
+pub const METER_FRAME: Duration = Duration::from_millis(33);
 
 /// Where to save a screenshot and quit (`--screenshot`).
 pub struct Shot {
@@ -196,6 +200,8 @@ pub struct App {
     holds: Vec<Hold>,
     ctls: Vec<Ctl>,
     shot: Option<Shot>,
+    /// `ORB_UI_FRAME_STATS=1`: the frame rate and cost, printed (`FrameStats`).
+    pub frame_stats: Option<FrameStats>,
 }
 
 impl App {
@@ -247,6 +253,7 @@ impl App {
             holds: Vec::new(),
             ctls: layout::controls(),
             shot,
+            frame_stats: FrameStats::from_env(),
         }
     }
 
@@ -334,11 +341,77 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         egui_extras::install_image_loaders(ui.ctx());
         self.close_check(&ui.ctx().clone());
         self.show(ui);
         self.screenshot(ui.ctx());
+        if let Some(s) = &mut self.frame_stats
+            && let Some(line) = s.frame(ui.input(|i| i.time), frame.info().cpu_usage)
+        {
+            eprintln!("{line}");
+        }
+    }
+}
+
+/// `ORB_UI_FRAME_STATS=1` (task-153): every 2 s, the frames drawn per second and the mean CPU
+/// time of a frame (eframe's `cpu_usage`: `App::ui`, tessellation and rendering, without the
+/// vsync wait), on the standard error.
+#[derive(Default)]
+pub struct FrameStats {
+    since: Option<f64>,
+    frames: u32,
+    cpu: f64,
+}
+
+impl FrameStats {
+    /// On when `ORB_UI_FRAME_STATS` is `1`.
+    pub fn from_env() -> Option<Self> {
+        std::env::var_os("ORB_UI_FRAME_STATS")
+            .is_some_and(|v| v == "1")
+            .then(Self::default)
+    }
+
+    /// One frame at egui time `now`; `cpu` is eframe's measure of the previous frame.
+    /// Returns the line to print when 2 s of frames are counted.
+    pub fn frame(&mut self, now: f64, cpu: Option<f32>) -> Option<String> {
+        let since = *self.since.get_or_insert(now);
+        self.frames += 1;
+        self.cpu += cpu.unwrap_or(0.0) as f64;
+        let dt = now - since;
+        if dt < 2.0 {
+            return None;
+        }
+        let line = format!(
+            "frame stats: {:.1} frames/s, {:.2} ms CPU per frame",
+            self.frames as f64 / dt,
+            self.cpu * 1000.0 / self.frames as f64
+        );
+        *self = Self {
+            since: Some(now),
+            ..Self::default()
+        };
+        Some(line)
+    }
+}
+
+#[cfg(test)]
+mod frame_stats_tests {
+    use super::FrameStats;
+
+    #[test]
+    fn a_line_every_two_seconds_of_frames() {
+        let mut s = FrameStats::default();
+        // 30 frames a second, 2 ms each
+        let mut lines = vec![];
+        for i in 0..=120 {
+            lines.extend(s.frame(i as f64 / 30.0, Some(0.002)));
+        }
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "frame stats: 30.5 frames/s, 2.00 ms CPU per frame"
+        );
     }
 }
 
@@ -374,6 +447,55 @@ fn missing_part(name: &str) {
     }
 }
 
+/// The textures of the art's parts by (part URI, pixel width, pixel height), kept in the
+/// context's memory (`paint_part_with`, task-153). The map owns each texture (its handle:
+/// egui frees a texture when its last handle drops) and drops the ones not drawn for
+/// [`PART_TEXTURE_FRAMES`] frames, the sizes of a window size left behind.
+#[derive(Clone, Default)]
+pub struct PartTextures {
+    map: std::collections::HashMap<(usize, u32, u32), PartTexture>,
+    /// The pass of the last sweep.
+    swept: u64,
+}
+
+#[derive(Clone)]
+struct PartTexture {
+    handle: egui::TextureHandle,
+    source_size: Vec2,
+    /// The egui pass it was last drawn in.
+    used: u64,
+}
+
+/// A part texture not drawn for this many frames is dropped.
+pub const PART_TEXTURE_FRAMES: u64 = 120;
+
+impl PartTextures {
+    fn id() -> egui::Id {
+        egui::Id::unique("orb-ui part textures")
+    }
+
+    /// How many part textures the context's map holds (tests).
+    pub fn count(ctx: &egui::Context) -> usize {
+        ctx.data_mut(|d| {
+            d.get_temp_mut_or_default::<PartTextures>(Self::id())
+                .map
+                .len()
+        })
+    }
+
+    /// The texture of `key` drawn in pass `pass`, if the map has it. Once per
+    /// [`PART_TEXTURE_FRAMES`] passes the textures unused that long are dropped.
+    fn get(&mut self, key: &(usize, u32, u32), pass: u64) -> Option<egui::load::SizedTexture> {
+        if pass >= self.swept + PART_TEXTURE_FRAMES {
+            self.swept = pass;
+            self.map.retain(|_, t| t.used + PART_TEXTURE_FRAMES > pass);
+        }
+        let t = self.map.get_mut(key)?;
+        t.used = pass;
+        Some(egui::load::SizedTexture::new(t.handle.id(), t.source_size))
+    }
+}
+
 fn paint_part_rotated(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>) {
     paint_part_with(ui, name, rect, rot, Color32::WHITE);
 }
@@ -385,32 +507,58 @@ fn paint_part_with(ui: &Ui, name: &str, rect: Rect, rot: Option<(f32, Vec2)>, ti
         missing_part(name);
         return;
     };
-    let mut image = Image::from_bytes(part.uri, part.svg)
+    // The SVG is rasterized at the rect's size in pixels (what `Image::paint_at` asks of the
+    // loader), once per size, as egui_extras' SVG loader does it (`load_svg_bytes_with_size`
+    // with the default options, then `load_texture` with the URI as the name); the texture is
+    // then found here, not through the loaders (task-153: their lookup and `include_bytes`
+    // were most of a part's cost per frame).
+    let ctx = ui.ctx();
+    let ppp = ui.pixels_per_point();
+    let pixels = (rect.round_to_pixels(ppp).size() * ppp).round();
+    let key = (part.uri.as_ptr() as usize, pixels.x as u32, pixels.y as u32);
+    let pass = ctx.cumulative_pass_nr();
+    let cached = ctx.data_mut(|d| {
+        d.get_temp_mut_or_default::<PartTextures>(PartTextures::id())
+            .get(&key, pass)
+    });
+    let texture = match cached {
+        Some(t) => t,
+        None => {
+            // A rect too big (a frame drawn before the window settles, a huge window, a high
+            // density) would make a texture wider than the GPU allows, which wgpu refuses with
+            // a panic. Rasterize it smaller then and let egui scale the texture up: a part
+            // this big is mostly plain fill.
+            let max = ctx.input(|i| i.max_texture_side);
+            let hint = capped_hint(pixels, max).unwrap_or(egui::load::SizeHint::Size {
+                width: pixels.x as _,
+                height: pixels.y as _,
+                maintain_aspect_ratio: false,
+            });
+            let options = resvg::usvg::Options::default();
+            let Ok(image) = egui_extras::image::load_svg_bytes_with_size(part.svg, hint, &options)
+            else {
+                missing_part(name);
+                return;
+            };
+            let source_size = image.source_size;
+            let handle = ctx.load_texture(part.uri, image, egui::TextureOptions::LINEAR);
+            let texture = egui::load::SizedTexture::new(handle.id(), source_size);
+            ctx.data_mut(|d| {
+                let t = PartTexture {
+                    handle,
+                    source_size,
+                    used: pass,
+                };
+                d.get_temp_mut_or_default::<PartTextures>(PartTextures::id())
+                    .map
+                    .insert(key, t)
+            });
+            texture
+        }
+    };
+    let mut image = Image::from_texture(texture)
         .fit_to_exact_size(rect.size())
         .tint(tint);
-    // `paint_at` rasterizes the SVG at the rect's size in pixels. A rect that big (a frame
-    // drawn before the window settles, a huge window, a high density) would make a texture
-    // wider than the GPU allows, which wgpu refuses with a panic. Rasterize it smaller then
-    // and let egui scale the texture up: a part this big is mostly plain fill.
-    let max = ui.ctx().input(|i| i.max_texture_side);
-    let pixels =
-        (rect.round_to_pixels(ui.pixels_per_point()).size() * ui.pixels_per_point()).round();
-    if let Some(hint) = capped_hint(pixels, max) {
-        let source = egui::ImageSource::Bytes {
-            uri: part.uri.into(),
-            bytes: part.svg.into(),
-        };
-        match source.load(ui.ctx(), egui::TextureOptions::LINEAR, hint) {
-            Ok(egui::load::TexturePoll::Ready { texture }) => {
-                image = Image::from_texture(texture)
-                    .fit_to_exact_size(rect.size())
-                    .tint(tint);
-            }
-            // not loaded (yet): paint nothing this frame, the uncapped load would crash;
-            // egui repaints when the load finishes
-            _ => return,
-        }
-    }
     if let Some((angle, origin)) = rot {
         image = image.rotate(angle, origin);
     }
@@ -518,7 +666,18 @@ impl App {
             link.sync(&mut self.panel);
             // a merge of the recording changed the song's tracks: an edit
             self.doc.modified |= link.recorded_revision() != before;
-            ui.ctx().request_repaint_after(Duration::from_millis(16));
+            // The repaint rule (task-153, docs/ui_spec.md section 16): at the meter rate while
+            // the engine's side of the panel moves, else not at all (input repaints). Without
+            // a working audio stream the snapshot never moves.
+            let sound = self.audio_health.is_some() && !self.audio_reported;
+            if sound && link.moving(&self.panel) {
+                ui.ctx().request_repaint_after(METER_FRAME);
+            }
+        }
+        // the 303's lit note in pitch mode goes out by itself
+        if let Some(t) = self.panel.next_change(now) {
+            ui.ctx()
+                .request_repaint_after(Duration::from_secs_f64(t - now));
         }
         self.status_bar(ui);
         let ctx = ui.ctx().clone();
@@ -1022,19 +1181,71 @@ fn paint_arc(ui: &Ui, view: &View, c: &Ctl, k: &KnobDesign, a0: f32, a: f32) {
     }
     let center = view.origin + Vec2::new(c.x + k.cx, c.y + k.cy) * view.scale;
     let r = k.ring_r * view.scale;
-    let n = (((a - a0).abs() / 3.0).ceil() as usize).max(2);
-    let points: Vec<Pos2> = (0..=n)
-        .map(|i| {
-            let t = (a0 + (a - a0) * i as f32 / n as f32).to_radians();
-            center + Vec2::new(t.sin(), -t.cos()) * r
-        })
-        .collect();
     let color = Color32::from_rgb(k.arc[0], k.arc[1], k.arc[2]);
-    ui.painter().add(Shape::line(
-        points,
-        Stroke::new(k.ring_w * view.scale, color),
-    ));
+    // The arcs are three quarters of the panel's vertices: each is tessellated once per look
+    // (place, angles, width, color, density, clip) and then drawn as that mesh, which egui
+    // passes through unchanged (task-153).
+    let ctx = ui.ctx();
+    let ppp = ctx.pixels_per_point();
+    let clip = ui.clip_rect();
+    let key = [
+        center.x,
+        center.y,
+        r,
+        a0,
+        a,
+        k.ring_w * view.scale,
+        ppp,
+        clip.min.x,
+        clip.min.y,
+        clip.max.x,
+        clip.max.y,
+    ]
+    .map(f32::to_bits);
+    let key = (key, color);
+    let id = egui::Id::unique("orb-ui knob arcs");
+    let cached = ctx.data_mut(|d| {
+        d.get_temp_mut_or_default::<ArcMeshes>(id)
+            .0
+            .get(&key)
+            .cloned()
+    });
+    let mesh = match cached {
+        Some(m) => m,
+        None => {
+            let n = (((a - a0).abs() / 3.0).ceil() as usize).max(2);
+            let points: Vec<Pos2> = (0..=n)
+                .map(|i| {
+                    let t = (a0 + (a - a0) * i as f32 / n as f32).to_radians();
+                    center + Vec2::new(t.sin(), -t.cos()) * r
+                })
+                .collect();
+            let line = Shape::line(points, Stroke::new(k.ring_w * view.scale, color));
+            let prims = ctx.tessellate(vec![epaint::ClippedShape::new(clip, line)], ppp);
+            let [p] = &prims[..] else {
+                return;
+            };
+            let epaint::Primitive::Mesh(m) = &p.primitive else {
+                return;
+            };
+            let m = Arc::new(m.clone());
+            ctx.data_mut(|d| {
+                let cache = &mut d.get_temp_mut_or_default::<ArcMeshes>(id).0;
+                // automation sweeping a knob makes new looks: keep the cache bounded
+                if cache.len() >= 4096 {
+                    cache.clear();
+                }
+                cache.insert(key, m.clone());
+            });
+            m
+        }
+    };
+    ui.painter().add(Shape::Mesh(mesh));
 }
+
+/// The knob arcs, tessellated (`paint_arc`), by look.
+#[derive(Clone, Default)]
+struct ArcMeshes(std::collections::HashMap<([u32; 11], Color32), Arc<epaint::Mesh>>);
 
 fn save_png(path: &PathBuf, image: &egui::ColorImage) -> Result<(), image::ImageError> {
     let [w, h] = image.size;

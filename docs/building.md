@@ -227,6 +227,7 @@ and `OPENRB_` names are not read any more and have no deprecated alias.
 | `ORB_UI_NO_CRASH_DIALOG` | OpenRB-338 | any non-empty value except `0` turns off the native box after a panic (the log and stderr stay); tests set `1` | none |
 | `ORB_LOGO_T` | OpenRB-338 | seconds: freezes the logo's startup animation at that time (pictures; task-114, `crates/orb-ui/src/logo_anim.rs`) | none |
 | `ORB_GPU_INFO` | OpenRB-338 | `1` prints the graphics adapter wgpu chose (`scripts/appimage-smoke.sh`) | `OPENRB_GPU_INFO` |
+| `ORB_UI_FRAME_STATS` | OpenRB-338 (`FrameStats`, `crates/orb-ui/src/app.rs`, task-153) | `1` prints, every 2 s of frames, the frames drawn per second and eframe's mean CPU time of a frame | none |
 | `ORB_BUILD_BRANCH` | `crates/orb-ui/build.rs`, `scripts/release-env.sh`, `scripts/build.sh` (passed into Docker), `release.yml` | `main` or `other`: makes the About box's hash the main form | `RB_BUILD_BRANCH` |
 | `ORB_UI_VERSION` | set by `crates/orb-ui/build.rs` for rustc (`env!`), never by hand | the version string of the About box | `RB_UI_VERSION` |
 | `ORB_APPIMAGE_EMULATED` | `scripts/package-appimage.sh`, `appimage-pack.sh`, `appimage-smoke.sh` | `1` on an x86_64 AppImage built or checked on a Mac (local only) | `OPENRB_APPIMAGE_EMULATED` |
@@ -259,7 +260,9 @@ work as ever.
 | | `--info` | starts with File > Info's Song Information window open (task-117) |
 | | `--screenshot OUT.png` | saves the window to a PNG after a few frames and quits |
 | | `--debug-panic` / `--debug-panic-window` / `--debug-panic-thread` | panic on purpose: at the start (no display needed), once the window is up, on another thread half a second later (the crash hook, task-157) |
+| | `--play` | presses Play once the song is open (CPU measurements of the playing panel, task-153) |
 | | `ORB_LOGO_T=SECONDS` (variable) | freezes the logo's startup animation (task-114) at that time, on the panel and in About, for pictures of a moment |
+| | `ORB_UI_FRAME_STATS=1` (variable) | prints the frame rate and the CPU time per frame every 2 s (task-153) |
 
 `OpenRB-338 --help` (also `-h`) prints `usage: OpenRB-338 [SONG]` and exits 0; a bad option or
 value prints the same and exits 2. `SONG` (one, a path with spaces is one argument) is an RBS 4.x

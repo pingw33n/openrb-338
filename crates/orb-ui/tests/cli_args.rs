@@ -35,6 +35,7 @@ fn help_shows_only_the_song_and_exits_0() {
             "--screenshot",
             "--about",
             "--info",
+            "--play",
         ] {
             assert!(!out.contains(hidden), "{hidden} in {out}");
         }

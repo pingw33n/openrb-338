@@ -925,6 +925,36 @@ read, and what it leaves out.
   signal shows. The compressor's gain reduction (live byte 3, `min(G*18, 127)`) lights the centre
   LED ("0") and up to four LEDs to its left, the first two amber and the others red. Neither scale
   was read in the original (`sub_424220`, `sub_424A7E`; section 15).
+- **Repainting (task-153).** egui draws a frame only when one is asked for; the window asks
+  for one by these rules, and by no others:
+  - **The engine's side.** After each frame's `Link::sync`, `Link::moving` decides: while the
+    song plays, while a meter is lit (any of the ten meters above 0), while the compressor's
+    gain-reduction LEDs differ from the frame before (they hold their last value in
+    silence), or while the snapshot does not yet show the last commands sent (the frame count
+    is not past the mark), the window repaints after `METER_FRAME`, 33 ms (about 28 frames a
+    second, measured). A sixteenth note is 75 ms at 200 BPM, so the running lights and the
+    song position still change on time. A loaded song that waits for Play is not followed,
+    so it does not count. Without a working audio stream (none at the start, or one reported
+    lost) the snapshot never moves and nothing is asked.
+  - **Timed looks of the panel.** The 303's lit note in pitch mode goes out after 0.4 s
+    (`NOTE_FLASH`): `Panel::next_change` gives the time, and the window repaints then.
+  - **Their own requests.** Held repeat and wind buttons (mouse or key) repaint every 16 ms,
+    the logo's startup animation every frame, an export every 50 ms; input, the menus and the
+    windows are egui's own.
+  - **Stopped with nothing moving, the window draws no frame.** The whole process then used
+    0.2 s of CPU in 20 s (`ps`, on the Mac), with no frame drawn. A device lost while nothing
+    repaints is reported at the next frame (`App::check_audio`).
+  The original's panel refresh rate was not found: the Rebirth.exe database's import list
+  shows only KERNEL32 functions, no `SetTimer`; 30 fps is OpenRB-338's choice (task-153).
+  Two per-frame savings keep the picture:
+  - The SVG part textures are rasterized as egui_extras' SVG loader does it, once per (part,
+    pixel size), and kept in the context's memory with their handles (`PartTextures`,
+    `paint_part_with`), instead of going through egui's loaders each frame. The map owns the
+    textures, so egui frees none that a frame still draws. egui's own loader drops the unused
+    sizes of an image every frame; the map drops a texture after `PART_TEXTURE_FRAMES` (120)
+    frames without a draw, the sizes a resize left behind (`tests/part_textures.rs`).
+  - Each knob arc (three quarters of the panel's vertices) is tessellated once per look and
+    drawn as that mesh (`ArcMeshes`, `paint_arc`).
 - **Not done.** The logo click (msg 58), and the mod's panel art (not drawn by decision, section 18). The song's own mod
   is applied (section 18). The computer keyboard is done (task-070, section 10) except PgUp/PgDn (no scrolling rack)
   and the drums' Shift+Tab.

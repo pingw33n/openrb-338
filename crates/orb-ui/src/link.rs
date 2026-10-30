@@ -305,6 +305,8 @@ pub struct Link {
     /// The open song's saved blocks while the engine plays it in song mode
     /// ([`Link::song_mode_blocks`]).
     saved: Option<SavedBlocks>,
+    /// The gain-reduction LEDs [`Link::moving`] saw last.
+    shown_gr: Option<[u8; 9]>,
 }
 
 /// The device parameters the original's save writes for a song in song mode, as the engine
@@ -359,6 +361,7 @@ impl Link {
             tracks_from: 0,
             loaded: Default::default(),
             saved: None,
+            shown_gr: None,
         };
         (link, audio)
     }
@@ -386,6 +389,26 @@ impl Link {
     /// has not run yet has not moved the blocks either.
     pub fn song_mode_blocks(&self) -> Option<&SavedBlocks> {
         self.saved.as_ref()
+    }
+
+    /// Whether what the panel shows of the engine can still change by itself, after
+    /// [`Link::sync`] (task-153, the repaint rule of `docs/ui_spec.md` section 16): the song
+    /// plays, a meter is lit, the gain-reduction LEDs changed, or the snapshot does
+    /// not show the last commands sent yet. While this holds the window repaints at the meter
+    /// rate; otherwise only input (or an animation of its own) repaints it. A loaded song that
+    /// waits for Play is not followed (module doc), so it moves nothing.
+    pub fn moving(&mut self, panel: &Panel) -> bool {
+        let mark = self.mark;
+        let s = self.player.snapshot();
+        let (playing, frames) = (s.playing, s.frames);
+        // the compressor's reduction holds its last value in silence: it moves only when it
+        // changes
+        let gr_moved = self.shown_gr.replace(panel.gr_leds) != Some(panel.gr_leds);
+        playing
+            || frames <= mark
+            || !self.backlog.is_empty()
+            || panel.meters.values().any(|&m| m > 0)
+            || gr_moved
     }
 
     /// Which copy [`Link::recorded_tracks`] is (the player's generation and track revision): it
