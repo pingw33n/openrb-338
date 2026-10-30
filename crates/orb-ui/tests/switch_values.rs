@@ -150,24 +150,49 @@ fn out_of_range_switch_values_open_play_and_draw() {
 
 /// Opened and saved without an edit, the song is the file read: the out-of-range switch values
 /// (303 waveforms 127 and 2, 808 selectors 255, 64, 200, 9, PCF mode 2, delay mode 127) and
-/// the 909 step bytes 4, 7, 255 are written back as the song holds them. In pattern mode the
-/// save comes after the panel has drawn and followed the engine; in song mode it comes before
-/// the first frame, because a followed song-mode panel writes the engine's live values over
-/// the device chunks for any controller, in range or not (task-159).
+/// the 909 step bytes 4, 7, 255 are written back as the song holds them. The save comes before
+/// the first frame, after the panel has drawn and followed the engine, and while the song
+/// plays. In song mode the panel shows the tracks' values, which the load's range check makes
+/// in-range defaults for these switches (waveform 2 becomes 0, the 808 selector 255 becomes
+/// 0, the PCF mode 2 becomes 1, the delay mode 127 becomes 1), and the save still writes the
+/// devices' pattern-mode copies, the file's bytes, as the original's does (task-159).
 #[test]
 fn out_of_range_switch_values_save_back_unchanged() {
     for song_mode in [0, 1] {
         let bytes = song_bytes(song_mode);
         let dir = tempfile::tempdir().unwrap();
         let (ctx, mut app, mut audio) = open(dir.path(), &bytes);
-        if song_mode == 0 {
-            let mut buf = vec![0i16; 2 * CALL_FRAMES];
-            for i in 0..4 {
-                audio.render_i16(&mut buf);
-                frame(&ctx, &mut app, 0.016 * (i + 1) as f64, vec![]);
+        let saved = app.song_bytes().unwrap();
+        assert!(
+            saved == bytes,
+            "song mode {song_mode}: the save before a frame differs"
+        );
+        let mut buf = vec![0i16; 2 * CALL_FRAMES];
+        let mut t = 0.0;
+        for i in 0..40 {
+            if i == 4 {
+                let saved = app.song_bytes().unwrap();
+                assert!(
+                    saved == bytes,
+                    "song mode {song_mode}: the save after frames differs"
+                );
+                app.panel.press("transport.play", t);
             }
+            audio.render_i16(&mut buf);
+            t += 0.016;
+            frame(&ctx, &mut app, t, vec![]);
+        }
+        assert!(app.panel.transport.playing);
+        if song_mode == 1 {
+            // the panel follows the tracks (the switch events the load accepted, the defaults
+            // for the ones it dropped)
+            assert_eq!(app.panel.switch("tb303_2.wave"), 0);
+            assert_eq!(app.panel.switch("pcf.mode"), 1);
         }
         let saved = app.song_bytes().unwrap();
-        assert!(saved == bytes, "song mode {song_mode}: the save differs");
+        assert!(
+            saved == bytes,
+            "song mode {song_mode}: the save while playing differs"
+        );
     }
 }

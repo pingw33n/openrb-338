@@ -414,6 +414,10 @@ impl SongDevice for Tr909 {
         &self.live
     }
 
+    fn pattern_params(&self) -> &[u8] {
+        &self.params
+    }
+
     /// Slot 1, 0x1002AAC0.
     fn step(&mut self, tick: i32, shuffled: i32, tempo: i32) {
         let pat = self.cur_pattern;

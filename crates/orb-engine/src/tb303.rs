@@ -539,6 +539,10 @@ impl SongDevice for Tb303 {
         &self.live
     }
 
+    fn pattern_params(&self) -> &[u8] {
+        &self.params
+    }
+
     /// Slot 1, 0x100253A0.
     fn step(&mut self, tick: i32, shuffled: i32, _tempo: i32) {
         let pat = self.cur_pattern;

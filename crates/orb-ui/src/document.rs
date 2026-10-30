@@ -10,7 +10,10 @@
 //! the mixer, the transport's tempo, mode, loop and shuffle, the sound model and the mod name).
 //! What the panel cannot change (the user text, unknown chunks, the unused bytes, and the track
 //! events unless recording changed them) stays as read, so a song saved without an edit is the
-//! file read, byte for byte, for a canonical 4.2 file. A song whose tracks recording changed
+//! file read, byte for byte, for a canonical 4.2 file. In song mode the device values come from
+//! the engine's pattern-mode copies ([`Link::song_mode_blocks`]), which the original's queries
+//! reply with then (docs/song_load.md section 4.11), not from the panel, which shows the live
+//! values the tracks set. A song whose tracks recording changed
 //! (task-057) is saved with the engine's tracks ([`Link::recorded_tracks`]), as the original
 //! saves the tracks it reads back from the DLL.
 
@@ -172,7 +175,16 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
     g.mod_name = mod_name.into();
     g.vintage = panel.vintage as u8;
 
+    // In song mode the original's save writes the devices' pattern-mode copies, not the live
+    // values the tracks and the panel set (docs/song_load.md 4.11): those are the engine's
+    // saved blocks. In pattern mode, and before the panel has followed a song just loaded, the
+    // panel's values are the ones (the live values, and the song's blocks after a load). The
+    // mixer's master and channel enables are saved live in both modes (query 138), so they are
+    // the panel's, which has the edits the engine has not run yet.
+    let saved = link.song_mode_blocks();
+
     let lm = loaded.as_ref().map(|e| &e.mixer);
+    let sm = saved.map(|b| b.mixer);
     put(
         &mut s.mixer.master,
         panel.value("master.fader"),
@@ -180,23 +192,27 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
     );
     put(
         &mut s.mixer.comp_id,
-        Some(panel.comp_id),
+        Some(sm.map_or(panel.comp_id, |m| m.comp_id)),
         lm.map(|m| m.comp_id),
     );
     put(
         &mut s.mixer.pcf_id,
-        Some(panel.pcf_id),
+        Some(sm.map_or(panel.pcf_id, |m| m.pcf_id)),
         lm.map(|m| m.pcf_id),
     );
     for (c, ch) in s.mixer.channels.iter_mut().enumerate() {
         let n = c + 1;
         let get = |name: &str| panel.value(&format!("mixer{n}.{name}"));
         let was = lm.map(|m| m.channels[c]);
+        let new: [Option<u8>; 4] = match sm.map(|m| m.channels[c]) {
+            Some(e) => [e.level, e.pan, e.send, e.dist].map(Some),
+            None => ["level", "pan", "delay", "dist"].map(get),
+        };
         put(&mut ch.enabled, get("mute"), was.map(|w| w.enabled));
-        put(&mut ch.level, get("level"), was.map(|w| w.level));
-        put(&mut ch.pan, get("pan"), was.map(|w| w.pan));
-        put(&mut ch.delay_send, get("delay"), was.map(|w| w.delay_send));
-        put(&mut ch.dist, get("dist"), was.map(|w| w.dist));
+        put(&mut ch.level, new[0], was.map(|w| w.level));
+        put(&mut ch.pan, new[1], was.map(|w| w.pan));
+        put(&mut ch.delay_send, new[2], was.map(|w| w.delay_send));
+        put(&mut ch.dist, new[3], was.map(|w| w.dist));
     }
 
     // The controllers: controller c of a device is parameter c of its block.
@@ -216,7 +232,12 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
         .copied()
     };
     for (id, (d, c)) in link::controls() {
-        let (c, Some(v)) = (c as usize, panel.value(&id)) else {
+        // a device without a block (a drum machine without drum samples is a placeholder) has
+        // the panel's value, which is the load's: nothing follows it
+        let v = saved
+            .and_then(|b| b.param(d, c))
+            .or_else(|| panel.value(&id));
+        let (c, Some(v)) = (c as usize, v) else {
             continue;
         };
         let slot = match d {
@@ -236,14 +257,16 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
     }
     // The selected pattern of each pattern device (controller 1).
     for (r, d) in ROW_DEVICES.into_iter().enumerate() {
-        let p = panel.rows[r].pattern;
+        let p = saved
+            .and_then(|b| b.param(d, 1))
+            .or(Some(panel.rows[r].pattern));
         let slot = match d {
             Device::Tb303_1 => &mut s.tb303[0].params[1],
             Device::Tb303_2 => &mut s.tb303[1].params[1],
             Device::Tr808 => &mut s.tr808.params[1],
             _ => &mut s.tr909.params[1],
         };
-        put(slot, Some(p), was(d, 1));
+        put(slot, p, was(d, 1));
     }
 
     // The patterns: 98 bytes (a 303) or 194 (a drum machine) each, as the engine holds them.

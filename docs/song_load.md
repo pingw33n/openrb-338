@@ -436,8 +436,9 @@ in `docs/ui_spec.md`; the ones marked [G: not read] are probably MIDI remote con
 Queries the panel sends (`sub_40B23A`): the 303's 31 (`sub_43EAC5`) and 33 (`sub_43EA26`), the
 808's and 909's counterparts (`sub_442978`, `sub_4428D9`, `sub_446AD7`, `sub_446A38`), from
 `sub_42D92C` / `sub_42D9CF`; the effect and mixer views' reads (`sub_403DC1`, `sub_407944`,
-`sub_408736`, `sub_41B6AA`, `sub_412F04` with the mixer's 137); and the save path
-(`sub_43920E`: 303 31, `sub_438EAA`: delay 83, and their siblings `sub_438BCE`…`sub_43A1F4`).
+`sub_408736`, `sub_41B6AA`, `sub_412F04` with the mixer's 137); and the save path (§4.11:
+`sub_438BCE` mixer 138, `sub_438EAA` delay 83, `sub_438F8C` PCF 113, `sub_439092` distortion
+91, `sub_439150` compressor 101, `sub_43920E` 303 31, `sub_439996` 808 48, `sub_43A1F4` 909 65).
 
 **The DLL side.** The handlers and their tables (`jmp [table + 4*sub]`, the raw sub byte):
 303 `sub_100256E0` (table 0x10153BD8, subs 31..46), 808 `sub_100282B0` (0x10153F74, 48..63),
@@ -490,10 +491,14 @@ Notes:
 - **The queries** reply only, except the whole-block query of each device (303 31 at
   0x10025751, 808 48 at 0x10028321, 909 65 at 0x1002B951, delay 83 at 0x1000FC66, dist 91 at
   0x10010E7C, PCF 113 at 0x10016D80, compressor 101 at 0x1000F0FD), which in pattern mode first
-  copies the live parameter block into the pattern-mode copy. That copy is not observable: in
-  pattern mode nothing reads the copy's parameters (slot 9 overwrites it from the live block on
-  entering song mode, msg 41 overwrites it), so the queries need no model. The mixer's 137
-  replies the live set without copying.
+  copies the live parameter block into the pattern-mode copy, then replies with the copy; in
+  song mode it replies with the copy as it is. The mixer has two: 137 (0x10015589, the mixer
+  view's) replies the live set without copying, 138 (0x100155DA, the save's) replies the
+  pattern copy after copying the live set into it (pattern mode) or only the live master and
+  channel enables (song mode). The copy in pattern mode is not observable except through these
+  replies (slot 9 overwrites it from the live block on entering song mode, msg 41 overwrites
+  it); in song mode it is what the save writes and what slot 9 makes live again on leaving song
+  mode (§4.11). [C] task-159.
 
 orb: `Engine::device_param` (the `{ctrl, v}` subs; `SongDevice::param_message`),
 `Engine::mixer_global` (145), `Engine::mixer_channel` (147), `Engine::pattern_field`,
@@ -522,6 +527,63 @@ while playing, rendered by rbhost (`--live`, `tools/rbhost/README.md`) and by or
 byte-identical (`crates/orb-player/tests/live_messages.rs`). The one difference that session
 work found is not a message: orb's PCF step after a return to pattern mode while playing
 (task-069).
+
+### 4.11 What the save writes for the device chunks [C] (task-159)
+
+The exe's save asks every device for its whole block with `sub_40B23A(song, dev, sub)` and
+writes the reply (`sub_40ABE5` reads it from `unk_4DB948`) into the chunk. The sub bytes, from
+the pushes before each call:
+
+| Device | Save function | Query | Push | DLL reply |
+|---|---|---|---|---|
+| Mixer | `sub_438BCE` | 138 | `push 8Ah` at 0x438C1A | 0x100155DA (table `jpt_10015587` 0x10151ECC, raw byte: entry at 0x101520F4) |
+| Delay | `sub_438EAA` | 83 | `6A 53` at 0x438EC0 | 0x1000FC66 |
+| PCF | `sub_438F8C` | 113 | `6A 71` at 0x438FA2 | 0x10016D80 |
+| Distortion | `sub_439092` | 91 | `6A 5B` at 0x4390A8 | 0x10010E7C |
+| Compressor | `sub_439150` | 101 | `6A 65` at 0x439166 | 0x1000F0FD |
+| TB-303 | `sub_43920E` | 31 | `6A 1F` at 0x43929D | 0x10025751 |
+| TR-808 | `sub_439996` | 48 | `6A 30` at 0x439A28 | 0x10028321 |
+| TR-909 | `sub_43A1F4` | 65 | `6A 41` at 0x43A286 | 0x1002B951 |
+
+Each reply calls `sub_1001FCB0` (the song-mode byte). When it is zero (pattern mode) the live
+block is copied into the pattern-mode copy first: the 303's 12 bytes `+0xC7C..+0xC87` into
+`+0x30` (0x10025764..0x1002577C), the 808's `+0x1890..+0x18AF` into `+0x30` (0x10028334..),
+the 909's from `+0x1891` (0x1002B964..), the delay's `+0x34` into `+0x3A` (0x1000FC80), the
+distortion's `+0x39` into `+0x3D` (0x10010E96), the PCF's `+0x38` into `+0x40` (0x10016D9A),
+the compressor's `+0x38` into `+0x3D` (0x1000F117), the mixer's whole live set `+0x30..+0x57`
+into `+0x58..+0x7F` (0x100155F4..0x1001562D). In song mode the copy is replied as it is, except
+the mixer's, into which the live master (`+0x30` to `+0x58`, 0x10015635..0x10015644) and the
+four channel enables (`+0x40 + 6c` to `+0x68 + 6c`, 0x10015647..0x10015662) are copied first.
+The reply is the copy packed (303 `sub_10018E30` at 0x1002578D; mixer `sub_10019D70` at
+0x10015671).
+
+So in song mode the save writes the **pattern-mode parameters**, not the live bytes the tracks
+set. The copy is the msg-41 block of the load (msg 36 sets the mode before msg 41, §2 and §6), or, when
+the song went from pattern mode to song mode, the live block at that switch (slot 9,
+`sub_10013FB0` calling vtable `+0x24` at 0x10013FF9 when the mode byte `+0x158` changes: the
+303's 0x10026B60, the mixer's 0x10016280, the delay's 0x100100B0 copy the live block into the
+copy on entering song mode and back on leaving it). Consequences:
+
+- An unedited song-mode song saves its own device chunks (as the exe's parse and pack made
+  them, §4), whatever its tracks hold. 16 of the 161 song-mode songs of the corpus and 614 of the
+  708 of the user's third-party collection have a mixer chunk that differs from the mixer track's
+  tick-0 events (MIXR's controllers 1, 2 and `6..9 + 6c` against the mixer TRAK's position-0
+  events, read with `tools/rbs.py`; the script is in task-159's notes); with the live set (137)
+  the save would have rewritten all of them.
+- A song-mode panel edit without record changes only the live byte (§4.10), which the save does
+  not write; a recorded one goes into the tracks. The mixer's master and channel enables, which
+  no controller reaches, are saved live in both modes.
+- Not a defect: the save keeps what pattern mode plays, which slot 9 restores on leaving song
+  mode.
+
+orb: `SongDevice::pattern_params` and `SongDevice::saved_block`, `MixerDevice::saved`
+(`crates/orb-engine/src/frame/mod.rs`), published as `orb_player::Snapshot::saved` and
+`saved_mixer`; `orb_ui::link::Link::song_mode_blocks` keeps them while the engine is in song
+mode, and `orb_ui::document::compose` writes the controllers, the pattern selections and the
+mixer's controllers from them then (the panel's values in pattern mode, and before the panel has
+followed a song just loaded; the mixer's master and enables are the panel's in both modes). Tests: `crates/orb-ui/tests/song_mode_save.rs`,
+`crates/orb-ui/tests/switch_values.rs`, `crates/orb-ui/tests/menu.rs`
+(`saving_an_unedited_corpus_song_gives_back_the_file`, after frames and play).
 
 ## 5. Msg 37: track events [C]
 
@@ -708,6 +770,15 @@ A switch byte out of 0..1 is not clamped either: the DLL plays the 303's wavefor
 mode and the 808's selectors as `!= 0` and the PCF's mode as `== 1`, and the panel draws the byte
 as its frame index (docs/ui_spec.md section 2, "A value out of 0..1"; OB-23 in
 docs/original_bugs.md). RB-AM.rbm's demo song holds a 303 #2 waveform of 127 (task-156).
+
+[C] task-159: the DLL's data-block handlers copy the parameter bytes into the pattern-mode copy
+with plain byte moves (`mov al,[edx+i]` / `mov [ecx+i],al`, no compare): the 303's 12 bytes
+by `sub_10018CC4` (called at 0x10018F05 from `sub_10018EF0`, msg 39), the 808's by
+`sub_100190F4` (0x100194A3 from `sub_10019490`, msg 56), the 909's 33 by `sub_100196F4`
+(only bytes 20..22 permuted, 0x1001976E..0x1001977D; msg 73), the delay's 6 by `sub_10019B00`,
+the distortion's 4 by `sub_10019B70`, the compressor's 5 by `sub_10019BE0`, the PCF's 8 by
+`sub_10019C80` (msgs 86, 94, 104, 116, §4). The save then writes that copy back (§4.11), so an
+out-of-range byte of the file is saved as read.
 
 ## 9. The copy protection in the packers
 

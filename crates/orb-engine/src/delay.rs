@@ -157,6 +157,10 @@ impl SongDevice for Delay {
         &self.live
     }
 
+    fn pattern_params(&self) -> &[u8] {
+        &self.pattern
+    }
+
     /// Slot 5, 0x1000F4F0: slot 6.
     fn reset(&mut self) {
         self.silence();

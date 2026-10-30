@@ -355,6 +355,12 @@ pub struct Snapshot {
     /// Every device's live block, by device id (index 0, the mixer, is empty: see `mixer`).
     /// The playing step of the 303s, the 808 and the 909 is their byte 9, 29 and 30.
     pub live: [LiveBlock; 9],
+    /// What the original's save would write for each device's parameters now
+    /// ([`orb_engine::frame::SongDevice::saved_block`], by device id; index 0 is empty: see
+    /// `saved_mixer`): the live block in pattern mode, the pattern-mode copy in song mode.
+    pub saved: [LiveBlock; 9],
+    /// The mixer's ([`orb_engine::frame::MixerDevice::saved`]).
+    pub saved_mixer: MixerParams,
     /// The engine calls that faulted (the PCF's division by zero); a faulting call outputs
     /// silence here (the original leaves the MME buffer as it was).
     pub faulted_calls: u64,
@@ -816,6 +822,16 @@ impl Audio {
         s.live[Device::Distortion as usize].set(d.dist.live());
         s.live[Device::Pcf as usize].set(d.pcf.live());
         s.live[Device::Compressor as usize].set(d.comp.live());
+        let sm = s.song_mode;
+        s.saved[0] = LiveBlock::default();
+        for (c, dev) in d.channels.iter().enumerate() {
+            s.saved[1 + c].set(dev.saved_block(sm));
+        }
+        s.saved[Device::Delay as usize].set(d.delay.saved_block(sm));
+        s.saved[Device::Distortion as usize].set(d.dist.saved_block(sm));
+        s.saved[Device::Pcf as usize].set(d.pcf.saved_block(sm));
+        s.saved[Device::Compressor as usize].set(d.comp.saved_block(sm));
+        s.saved_mixer = d.mixer.saved(sm);
         s.faulted_calls = e.fault().map_or(0, |f| f.calls);
         s.output_errors = self.output_errors;
         self.snapshot.publish();

@@ -275,7 +275,9 @@ fn every_controller_has_a_panel_value() {
     }
 }
 
-/// A song that is opened and saved without an edit is the file read.
+/// A song that is opened and saved without an edit is the file read, also after the panel has
+/// followed the engine and the song has played (task-159: in song mode the panel shows the
+/// tracks' values, and the save writes the devices' pattern-mode copies).
 #[test]
 fn saving_an_unedited_corpus_song_gives_back_the_file() {
     let mut files = songs("tests/songs/diag/songs");
@@ -283,11 +285,23 @@ fn saving_an_unedited_corpus_song_gives_back_the_file() {
     assert!(files.len() > 40, "{} songs", files.len());
     let mut different = Vec::new();
     let mut older = 0;
+    let mut buf = vec![0i16; 2 * CALL_FRAMES];
     for path in &files {
         let opened = session::open_song(path).unwrap();
-        let (mut link, _audio) = Link::new(tables(), None);
+        // with the drum samples, so that the drum machines are devices, not placeholders
+        let (mut link, mut audio) = Link::new(tables(), Some(samples()));
         let mut panel = Panel::new();
-        link.load(&opened.engine, None, &mut panel).unwrap();
+        link.load(&opened.engine, Some(samples()), &mut panel)
+            .unwrap();
+        // followed for 3 calls, then 3 calls playing
+        for i in 0..6 {
+            if i == 3 {
+                panel.press("transport.play", 0.0);
+            }
+            audio.render_i16(&mut buf);
+            link.sync(&mut panel);
+        }
+        assert!(panel.transport.playing, "{}", path.display());
         let song = compose(&opened.source, &panel, &link, &opened.engine.mod_name);
         let bytes = song.write().unwrap();
         let a = read_rbs(path);
@@ -387,10 +401,14 @@ fn save_and_save_as_reopen_identically() {
         "the copy differs from the source"
     );
 
-    // an edit is saved by Save, over the same file, and re-opens as it was
+    // an edit is saved by Save, over the same file, and re-opens as it was (in pattern mode: a
+    // song-mode edit of a controller changes only the live value, which the save does not write,
+    // and the switch to pattern mode puts the pattern-mode values back live; task-159)
+    h.app.panel.set_switch("transport.mode", 0);
+    h.frame(vec![]);
+    h.calls(2);
     h.app.panel.set_knob("tb303_1.cutoff", 900);
     h.app.panel.set_fader("master.fader", 400);
-    h.app.panel.set_switch("transport.mode", 0);
     h.frame(vec![]);
     assert!(h.app.doc.modified);
     h.app.command(Cmd::Save);
@@ -448,6 +466,10 @@ fn an_edit_of_each_kind_is_saved() {
     let out = dir.path().join("edited.rbs");
     let mut h = Harness::new();
     h.open(&src);
+    // the edits in pattern mode: in song mode the save writes the pattern-mode values (task-159)
+    h.app.panel.set_switch("transport.mode", 0);
+    h.frame(vec![]);
+    h.calls(2);
     let p = &mut h.app.panel;
     p.set_knob("tr808.bd_level", 1000);
     p.set_knob("tr909.flam", 500);
@@ -597,7 +619,11 @@ fn the_unsaved_prompt_guards_opening_another_song() {
     let b = root().join("tests/songs/diag/songs/303_accent0.rbs");
     let dir = tempfile::tempdir().unwrap();
     let work = dir.path().join("work.rbs");
-    std::fs::copy(&a, &work).unwrap();
+    // in pattern mode, where the save writes the knob edits (in song mode it writes the
+    // pattern-mode values, task-159)
+    let mut s = read_rbs(&a);
+    s.glob.song_mode = 0;
+    std::fs::write(&work, s.write().unwrap()).unwrap();
     let mut h = Harness::new();
     h.open(&work);
 

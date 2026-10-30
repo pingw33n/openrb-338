@@ -34,13 +34,13 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use orb_engine::frame::{Engine, LoadRefused};
+use orb_engine::frame::{Engine, LoadRefused, MixerParams};
 use orb_engine::samples::{STARTUP_ID, SampleSet};
 use orb_engine::seq::Event as TrackEvent;
 use orb_engine::song::{Device, Song};
 use orb_engine::tables::Tables;
 use orb_engine::tr909;
-use orb_player::{Audio, CALL_FRAMES, Command, Player, Preview};
+use orb_player::{Audio, CALL_FRAMES, Command, LiveBlock, Player, Preview};
 
 use crate::model::{Event, Panel, Step303};
 
@@ -302,6 +302,33 @@ pub struct Link {
     /// The tracks of the song [`Link::load`] built last, as the engine holds them after the
     /// load (task-125).
     loaded: [Vec<TrackEvent>; 9],
+    /// The open song's saved blocks while the engine plays it in song mode
+    /// ([`Link::song_mode_blocks`]).
+    saved: Option<SavedBlocks>,
+}
+
+/// The device parameters the original's save writes for a song in song mode, as the engine
+/// last published them (task-159): each device's pattern-mode copy, and the mixer's with its
+/// live master and channel enables ([`orb_player::Snapshot::saved`],
+/// [`orb_player::Snapshot::saved_mixer`]; `docs/song_load.md` section 4.10). The live values
+/// the panel shows then are the tracks' and the panel's, which the save does not write.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SavedBlocks {
+    /// By device id, indexed as the device's live block (index 0, the mixer, is empty).
+    pub blocks: [LiveBlock; 9],
+    pub mixer: MixerParams,
+}
+
+impl SavedBlocks {
+    /// Controller `c` of device `d` (not the mixer), by controller number.
+    pub fn param(&self, d: Device, c: u8) -> Option<u8> {
+        let i = if d == Device::Tr909 {
+            tr909::internal_index(c as usize)
+        } else {
+            c as usize
+        };
+        self.blocks[d as usize].as_slice().get(i).copied()
+    }
 }
 
 impl Link {
@@ -331,6 +358,7 @@ impl Link {
             recorded_at: None,
             tracks_from: 0,
             loaded: Default::default(),
+            saved: None,
         };
         (link, audio)
     }
@@ -348,6 +376,16 @@ impl Link {
     /// `docs/song_load.md` section 12.6). A ReBirth 1.x song's document takes them.
     pub fn loaded_tracks(&self) -> &[Vec<TrackEvent>; 9] {
         &self.loaded
+    }
+
+    /// The device parameters Save writes when the engine plays the open song in song mode:
+    /// `Some` from the first snapshot the panel follows that is in song mode, `None` in pattern
+    /// mode (Save writes the panel's values, the live ones, as the original's queries do then)
+    /// and after a load until the panel has followed the new song (the panel then holds the
+    /// song's own blocks). The mode is the engine's, not the panel's: a mode switch the engine
+    /// has not run yet has not moved the blocks either.
+    pub fn song_mode_blocks(&self) -> Option<&SavedBlocks> {
+        self.saved.as_ref()
     }
 
     /// Which copy [`Link::recorded_tracks`] is (the player's generation and track revision): it
@@ -471,6 +509,7 @@ impl Link {
         self.backlog.push_back(Command::Load(engine));
         self.recorded = None;
         self.recorded_at = None;
+        self.saved = None;
         self.tracks_from = self.player.snapshot().generation + 1;
     }
 
@@ -878,6 +917,10 @@ impl Link {
         t.recording = s.recording && t.song_mode;
         panel.adopt("transport.shuffle", s.shuffle as i32);
         panel.vintage = s.vintage;
+        self.saved = s.song_mode.then_some(SavedBlocks {
+            blocks: s.saved,
+            mixer: s.saved_mixer,
+        });
         for (id, &(d, c)) in &self.controls {
             let i = if d == Device::Tr909 {
                 tr909::internal_index(c as usize)

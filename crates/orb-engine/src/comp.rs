@@ -239,6 +239,10 @@ impl SongDevice for Compressor {
         &self.live
     }
 
+    fn pattern_params(&self) -> &[u8] {
+        &self.pattern
+    }
+
     /// Slot 9, 0x1000F4B0: entering song mode saves the live block into the pattern copy,
     /// leaving it restores the live block from the copy (all five bytes).
     fn set_song_mode(&mut self, on: bool) {

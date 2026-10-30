@@ -230,6 +230,25 @@ pub trait SongDevice: Send {
     fn live(&self) -> &[u8] {
         &[]
     }
+    /// Not a slot: the pattern-mode copy of the parameter block (the 303's, 808's and 909's
+    /// `+0x30`, the delay's `+0x3A`, the distortion's and the compressor's `+0x3D`, the PCF's
+    /// `+0x40`), indexed as [`SongDevice::live`]. Empty for a placeholder.
+    fn pattern_params(&self) -> &[u8] {
+        &[]
+    }
+    /// Not a slot: the parameter block the device's whole-block query replies with, which the
+    /// exe's save writes into the song file (303 31 at 0x10025751, 808 48 at 0x10028321, 909 65
+    /// at 0x1002B951, delay 83 at 0x1000FC66, distortion 91 at 0x10010E7C, PCF 113 at
+    /// 0x10016D80, compressor 101 at 0x1000F0FD; `docs/song_load.md` section 4.10): in pattern
+    /// mode the query first copies the live block into the pattern copy, so it is the live
+    /// block; in song mode it is the pattern copy as it is.
+    fn saved_block(&self, song_mode: bool) -> &[u8] {
+        if song_mode {
+            self.pattern_params()
+        } else {
+            self.live()
+        }
+    }
 }
 
 /// A mixer channel's sound source: TB-303 #1, #2, TR-808 or TR-909.
@@ -525,6 +544,25 @@ impl MixerParams {
 pub struct MixerDevice {
     pub live: MixerParams,
     pub pattern: MixerParams,
+}
+
+impl MixerDevice {
+    /// The set the mixer's whole-block query 138 (0x100155DA) replies with, which the exe's
+    /// save (`sub_438BCE`, 0x438C1A) writes into the song file: pattern mode first copies the
+    /// whole live set into the pattern copy (0x100155F4), song mode only the live master and
+    /// channel enables (0x10015635..0x10015662), which no controller reaches; the reply is the
+    /// pattern copy (0x10015671). The mixer view's query 137 (0x10015589) replies the live set.
+    pub fn saved(&self, song_mode: bool) -> MixerParams {
+        if !song_mode {
+            return self.live;
+        }
+        let mut p = self.pattern;
+        p.master = self.live.master;
+        for c in 0..4 {
+            p.channels[c].enabled = self.live.channels[c].enabled;
+        }
+        p
+    }
 }
 
 impl SongDevice for MixerDevice {

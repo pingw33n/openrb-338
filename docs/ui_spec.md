@@ -178,9 +178,10 @@ bottom half 1. Dragging across the middle changes it (mouse-move 0x4245B2).
 - **orb** cannot draw the original's out-of-strip pixels, so it draws the position the DLL plays
   (`behavior::switch_position`): the PCF's mode is low-pass only at 1 (`cmp dl, 1` at
   0x10016921), and the 303's waveform, the delay's mode and the 808's selectors take any value
-  but 0 as their second position. The stored value stays the song's, so a save writes it back
-  [G: what the original saves after loading such a song was not observed; its panel keeps the
-  byte as it came]. A click flips the position shown. A part name the art lacks draws nothing
+  but 0 as their second position. The stored value stays the song's, so a save writes it back,
+  as the original's does: its data block handlers store the byte unchecked into the pattern-mode
+  copy (and live, in pattern mode), and the save writes the copy (`docs/song_load.md` section 8
+  for the store addresses, 4.11 for the save) [C: the code; not observed in the app]. A click flips the position shown. A part name the art lacks draws nothing
   and is reported once on stderr; it never closes the app.
 
 **Position grid** (`CABCPositionView`, mouse-down 0x42445E) [C]: a picture with n+1 frames
@@ -908,6 +909,12 @@ read, and what it leaves out.
   unedited save gives back the file; the original would write the DLL's tracks there too (with
   the stop prune's removals and the ctor's tick-0 events, which shipped songs already have):
   task-080 decides whether OpenRB-338 should always do so.
+- **Saving in song mode** (task-159). In song mode the panel shows the live values the tracks
+  set, but Save writes the devices' pattern-mode copies, as the original's save does
+  (`docs/song_load.md` section 4.11): the device chunks read, or the values pattern mode had when
+  the song went into song mode. A song-mode edit without record is heard and shown, not saved;
+  the mixer's master and mutes are saved as shown. `Link::song_mode_blocks`, from the
+  snapshot's `saved` blocks.
 - **The panel follows the engine** after each engine call: position, play, mode, loop, tempo, every
   controller's live value (the knobs follow the song's automation), the mixer, the pattern each
   section selects (the bank follows it [G]), the drum running lights, the meters. The values of a

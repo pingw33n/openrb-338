@@ -1269,3 +1269,34 @@ fn songs_built_on_one_process_state_share_it() {
     b.process.refill_delay_line();
     assert!(a.process.delay_line().gate);
 }
+
+#[test]
+fn the_saved_blocks_are_the_live_ones_in_pattern_mode_and_the_copies_in_song_mode() {
+    let mut d = Devices::implemented(None);
+    // pattern mode: the queries reply with the live block
+    d.channels[0].set_param(3, 40);
+    d.delay.set_param(3, 11);
+    d.mixer.set_param(6, 33);
+    assert_eq!(d.channels[0].saved_block(false), d.channels[0].live());
+    assert_eq!(d.delay.saved_block(false), d.delay.live());
+    assert_eq!(d.mixer.saved(false), d.mixer.live);
+    // song mode (slot 9 copies the live blocks), then the tracks and the panel move the live
+    // values: the queries reply with the copies
+    d.channels[0].set_song_mode(true);
+    d.delay.set_song_mode(true);
+    d.mixer.set_song_mode(true);
+    d.channels[0].set_param(3, 50);
+    d.delay.set_param(3, 99);
+    d.mixer.set_param(6, 90);
+    d.mixer.live.master = 7;
+    d.mixer.live.channels[1].enabled = 0;
+    assert_eq!(d.channels[0].live()[3], 50);
+    assert_eq!(d.channels[0].saved_block(true)[3], 40);
+    assert_eq!(d.delay.saved_block(true)[3], 11);
+    let m = d.mixer.saved(true);
+    assert_eq!(m.channels[0].level, 33);
+    // the master and the enables (no controller) are the live ones (0x10015635)
+    assert_eq!((m.master, m.channels[1].enabled), (7, 0));
+    // a placeholder has no block
+    assert!(d.channels[2].saved_block(true).is_empty());
+}
