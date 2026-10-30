@@ -2,11 +2,13 @@
 id: TASK-153
 title: 'UI performance: cut the CPU the panel uses while a song plays'
 status: To Do
-assignee: []
+assignee:
+  - '@agent-complex'
 created_date: '2026-10-30 08:15'
-updated_date: '2026-10-30 08:15'
+updated_date: '2026-10-30 13:15'
 labels:
   - ui
+milestone: m-5
 dependencies: []
 references:
   - crates/orb-ui/src/app.rs
