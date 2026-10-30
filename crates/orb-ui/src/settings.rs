@@ -2,18 +2,22 @@
 //! the file browser (task-046), and the startup sound preference (task-074).
 //!
 //! It is a TOML file (task-107) with the keys `songs_dir` and `mods_dir` (paths, absent when
-//! unset), `recent` (an array of paths, newest first), `startup_sound` (a bool) and the table
+//! unset), `recent` (an array of paths, newest first), `last_song_dir` and `last_mod_dir`
+//! (paths, absent until a file is chosen: the folder of the last song chosen in Open, Save As
+//! or Export, and of the last mod; task-144), `startup_sound` (a bool) and the table
 //! `preferred_mods` (an INFO name to the file name preferred among mods that share it,
 //! task-151), so it can be edited by hand. Where it lives: `$ORB_UI_CONFIG` if set; else
-//! `OpenRB-338/ui.toml` in the platform's configuration folder (`$XDG_CONFIG_HOME`, or `~/.config`
-//! on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows). Reading never
-//! fails: a missing or damaged file gives the defaults (a damaged file stays as it is until the
-//! next save), a key of the wrong type is skipped and the others kept, and unknown keys are
+//! `OpenRB-338/ui.toml` in the platform's configuration folder (`$XDG_CONFIG_HOME`, or
+//! `~/.config` on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows).
+//! Reading never fails: a missing or damaged file gives the defaults (a damaged file stays as
+//! it is until the next save), a key of the wrong type is skipped and the others kept, and
+//! unknown keys are
 //! ignored. Saving writes the whole file through a temporary file and a rename, and returns
 //! its errors for the browser to show. A path that is not valid UTF-8 cannot be stored in
 //! TOML (and a lossy string would name another folder), so a save leaves it out: a `recent`
-//! entry is dropped, `songs_dir` and `mods_dir` are omitted and fall back to the default. An
-//! empty `$ORB_UI_CONFIG` counts as unset. The old `ui.conf` is neither read nor deleted.
+//! entry is dropped, `songs_dir`, `mods_dir`, `last_song_dir` and `last_mod_dir` are omitted and
+//! fall back to the default. An empty `$ORB_UI_CONFIG` counts as unset. The old `ui.conf` is
+//! neither read nor deleted.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -35,6 +39,12 @@ pub struct Settings {
     pub mods_dir: Option<PathBuf>,
     /// The folders files were last chosen in, newest first.
     pub recent: Vec<PathBuf>,
+    /// The folder of the last song chosen in Open, Save As or Export (task-144): where those
+    /// dialogs start while it exists.
+    pub last_song_dir: Option<PathBuf>,
+    /// The folder of the last mod chosen in the mod dialog: where that dialog starts while it
+    /// exists.
+    pub last_mod_dir: Option<PathBuf>,
     /// The mod file preferred for an INFO name that several mods share (task-151): INFO name
     /// to file name. Stored as the table `preferred_mods`. Names are compared ignoring ASCII
     /// case ([`Settings::preferred_mod`]).
@@ -50,6 +60,8 @@ impl Default for Settings {
             songs_dir: None,
             mods_dir: None,
             recent: Vec::new(),
+            last_song_dir: None,
+            last_mod_dir: None,
             preferred_mods: BTreeMap::new(),
             file: None,
         }
@@ -105,6 +117,10 @@ struct Stored<'a> {
     mods_dir: Option<&'a Path>,
     startup_sound: bool,
     recent: Vec<&'a Path>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_song_dir: Option<&'a Path>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_mod_dir: Option<&'a Path>,
     // a table, so last
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     preferred_mods: BTreeMap<&'a str, &'a str>,
@@ -148,6 +164,8 @@ impl Settings {
         }
         s.songs_dir = table.get("songs_dir").and_then(path_of);
         s.mods_dir = table.get("mods_dir").and_then(path_of);
+        s.last_song_dir = table.get("last_song_dir").and_then(path_of);
+        s.last_mod_dir = table.get("last_mod_dir").and_then(path_of);
         if let Some(list) = table.get("recent").and_then(|v| v.as_array()) {
             for p in list.iter().filter_map(path_of) {
                 if s.recent.len() < MAX_RECENT && !s.recent.contains(&p) {
@@ -193,6 +211,8 @@ impl Settings {
             mods_dir: self.mods_dir.as_deref().and_then(storable),
             startup_sound: self.startup_sound,
             recent: self.recent.iter().filter_map(|p| storable(p)).collect(),
+            last_song_dir: self.last_song_dir.as_deref().and_then(storable),
+            last_mod_dir: self.last_mod_dir.as_deref().and_then(storable),
             preferred_mods: self
                 .preferred_mods
                 .iter()

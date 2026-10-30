@@ -468,6 +468,8 @@ fn settings_round_trip_and_recent_folders_are_capped() {
     assert_eq!(s.recent.len(), 0);
     s.songs_dir = Some(PathBuf::from("/songs"));
     s.mods_dir = Some(PathBuf::from("/mods"));
+    s.last_song_dir = Some(PathBuf::from("/last/songs"));
+    s.last_mod_dir = Some(PathBuf::from("/last/mods"));
     for i in 0..12 {
         s.note_recent(Path::new(&format!("/r{i}")));
     }
@@ -492,6 +494,105 @@ fn recent_folders_and_the_configured_folder_are_the_starting_points() {
     s.mods_dir = Some(d.path().join("missing"));
     let b = Browser::new(Mode::ChooseMod, &s);
     assert_eq!(b.dir(), orb_ui::settings::documents_dir());
+}
+
+fn songs_and_mods() -> tempfile::TempDir {
+    let d = tree();
+    let p = d.path();
+    fs::create_dir(p.join("mods")).unwrap();
+    // The built-in kit is a recrypted mod, so the dialog accepts it.
+    let kit = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/Standard.rbm");
+    fs::copy(kit, p.join("mods/kit.rbm")).unwrap();
+    d
+}
+
+#[test]
+fn each_dialog_kind_remembers_its_own_last_folder() {
+    let d = songs_and_mods();
+    let cfg = d.path().join("cfg/ui.toml");
+    let mut s = Settings::load_from(&cfg);
+    s.songs_dir = Some(d.path().to_path_buf());
+    let mut h = Harness::new();
+
+    // A song chosen in "sub" is where Open, Save As and Export start next, mods are not.
+    let mut b = Browser::new(Mode::OpenSong, &s).with_dir(&d.path().join("sub"));
+    b.select(0);
+    let p = h.key(&mut b, &mut s, Key::Enter);
+    assert_eq!(p, Poll::Chosen(d.path().join("sub/inner.rbs")));
+    assert_eq!(
+        s.last_song_dir.as_deref(),
+        Some(d.path().join("sub").as_path())
+    );
+    assert_eq!(s.last_mod_dir, None);
+    for mode in [Mode::OpenSong, Mode::SaveSong, Mode::Export] {
+        assert_eq!(
+            Browser::new(mode, &s).dir(),
+            d.path().join("sub"),
+            "{mode:?}"
+        );
+    }
+    assert_eq!(
+        Browser::new(Mode::ChooseMod, &s).dir(),
+        orb_ui::settings::documents_dir()
+    );
+
+    // A mod chosen in "mods" is where the mod dialog starts next; songs keep their folder.
+    let mut b = Browser::new(Mode::ChooseMod, &s).with_dir(&d.path().join("mods"));
+    b.select(0);
+    let p = h.key(&mut b, &mut s, Key::Enter);
+    assert_eq!(p, Poll::Chosen(d.path().join("mods/kit.rbm")));
+    assert_eq!(
+        Browser::new(Mode::ChooseMod, &s).dir(),
+        d.path().join("mods")
+    );
+    assert_eq!(Browser::new(Mode::OpenSong, &s).dir(), d.path().join("sub"));
+    // The folder settings keep their meaning.
+    assert_eq!(s.songs_dir.as_deref(), Some(d.path()));
+    assert_eq!(s.mods_dir, None);
+
+    // Both survive a restart.
+    let t = Settings::load_from(&cfg);
+    assert_eq!(t.last_song_dir, s.last_song_dir);
+    assert_eq!(t.last_mod_dir, s.last_mod_dir);
+    assert_eq!(t, s);
+}
+
+#[test]
+fn cancel_and_failed_choices_remember_nothing() {
+    let d = songs_and_mods();
+    let mut s = Settings::default();
+    let mut h = Harness::new();
+    let mut b = Browser::new(Mode::OpenSong, &s).with_dir(&d.path().join("sub"));
+    assert_eq!(h.key(&mut b, &mut s, Key::Escape), Poll::Cancelled);
+    let mut b = Browser::new(Mode::ChooseMod, &s).with_dir(&d.path().join("mods"));
+    assert_eq!(h.key(&mut b, &mut s, Key::Escape), Poll::Cancelled);
+    // A mod that is refused is not remembered either.
+    fs::write(d.path().join("mods/aaa.rbm"), b"hello").unwrap();
+    let mut b = Browser::new(Mode::ChooseMod, &s).with_dir(&d.path().join("mods"));
+    b.select(0);
+    assert_eq!(b.selected_name(), Some("aaa.rbm"));
+    assert_eq!(h.key(&mut b, &mut s, Key::Enter), Poll::Open);
+    assert_eq!((s.last_song_dir, s.last_mod_dir), (None, None));
+}
+
+#[test]
+fn a_deleted_remembered_folder_falls_back_silently() {
+    let d = tree();
+    let mut s = Settings {
+        songs_dir: Some(d.path().join("sub")),
+        last_song_dir: Some(d.path().join("gone")),
+        last_mod_dir: Some(d.path().join("gone")),
+        ..Settings::default()
+    };
+    let b = Browser::new(Mode::OpenSong, &s);
+    assert_eq!(b.dir(), d.path().join("sub"));
+    assert!(b.error().is_none());
+    let b = Browser::new(Mode::ChooseMod, &s);
+    assert_eq!(b.dir(), orb_ui::settings::documents_dir());
+    assert!(b.error().is_none());
+    // The remembered folder wins over the configured one while it exists.
+    s.last_song_dir = Some(d.path().join("Zeta"));
+    assert_eq!(Browser::new(Mode::Export, &s).dir(), d.path().join("Zeta"));
 }
 
 #[test]

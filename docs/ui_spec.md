@@ -922,18 +922,30 @@ starts with it open. The panel takes no key or click while a browser is open. Th
   the embedded kit is loaded, `rbm::standard::builtin_samples`): one that is not recrypted is
   listed in amber marked "needs orb mod recrypt" and cannot be chosen (the error tells the `orb mod
   recrypt` command, docs/rbm.md 12.4); a file that is not an RBM is marked "not a mod".
-- **Defaults and settings** (`crates/orb-ui/src/settings.rs`): the start folder is the songs folder
-  (songs, export) or the mods folder (mods) of the settings, else the documents folder
-  (`~/Documents`, else the home folder). "Use as songs/mods folder" in the dialog sets them to the
+- **Defaults and settings** (`crates/orb-ui/src/settings.rs`): the start folder is the folder
+  of the last file chosen in the dialog's kind (task-144: `last_song_dir` for Open, Save As and
+  Export, which share it; `last_mod_dir` for the mod dialog), while that folder exists; else the
+  songs folder (songs, export) or the mods folder (mods) of the settings, else the documents
+  folder (`~/Documents`, else the home folder). A folder is remembered only when a file is
+  actually chosen (Open, Save, Export, a mod accepted), never on Cancel or a refused choice;
+  it is remembered at the choice, before the song is opened or written, so a failed load or
+  write, or Cancel at the unsaved-changes prompt after Open's choice, still remembers it.
+  A missing remembered folder falls back silently. The remembered folder wins over any other
+  start (the songs folder; `Browser::with_dir` still overrides it explicitly, but the app does
+  not use it: Save of a song that has a file writes in place, with no dialog). The remembered
+  folders do not change the songs and mods folders, which keep their meaning (the default
+  place, the Mods menu's folder). "Use as songs/mods folder" in the dialog sets those to the
   folder shown. The last 8 folders a file was chosen in are the recent folders. All of it is a
-  TOML file (task-107) of `songs_dir`, `mods_dir`, `recent` (an array) and `startup_sound` at
-  `$ORB_UI_CONFIG`, else `OpenRB-338/ui.toml` (task-068; settings of the old `rb/` folder are not carried over) in `$XDG_CONFIG_HOME` (Linux `~/.config`, macOS
-  `~/Library/Application Support`, Windows `%APPDATA%`); it is rewritten whole, through a
-  temporary file and a rename, when a path is chosen or a folder set. A missing or damaged file
-  means the defaults (a damaged one stays until the next save), a key of the wrong type is
-  skipped, unknown keys are ignored. A path that is not valid UTF-8 is left out of the file on
-  save (a `recent` entry is dropped; `songs_dir`, `mods_dir` are omitted and so fall back to the
-  default), never stored lossy. An empty `$ORB_UI_CONFIG` counts as unset. The old `ui.conf` is
+  TOML file (task-107) of `songs_dir`, `mods_dir`, `last_song_dir`, `last_mod_dir`, `recent`
+  (an array) and `startup_sound` at `$ORB_UI_CONFIG`, else `OpenRB-338/ui.toml` (task-068;
+  settings of the old `rb/` folder are not carried over) in `$XDG_CONFIG_HOME` (Linux
+  `~/.config`, macOS `~/Library/Application Support`, Windows `%APPDATA%`); it is rewritten
+  whole, through a temporary file and a rename, when a path is chosen or a folder set. A
+  missing or damaged file means the defaults (a damaged one stays until the next save), a key
+  of the wrong type is skipped, unknown keys are ignored. A path that is not valid UTF-8 is
+  left out of the file on save (a `recent` entry is dropped; `songs_dir`, `mods_dir`,
+  `last_song_dir` and `last_mod_dir` are omitted and so fall back to the default), never
+  stored lossy. An empty `$ORB_UI_CONFIG` counts as unset. The old `ui.conf` is
   neither read nor deleted. egui's own persistence is not used.
 
 ## 18. The menu (task-047)

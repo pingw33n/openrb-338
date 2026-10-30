@@ -130,10 +130,14 @@ fn paths_that_are_not_utf8_are_left_out_of_a_save() {
     let mut s = Settings::load_from(&file);
     s.songs_dir = Some(bad.clone());
     s.mods_dir = Some(p("/mods"));
+    s.last_song_dir = Some(bad.clone());
+    s.last_mod_dir = Some(bad.clone());
     s.recent = vec![p("/a"), bad, p("/b")];
     s.save().unwrap();
     let r = Settings::load_from(&file);
     assert_eq!(r.songs_dir, None);
+    assert_eq!(r.last_song_dir, None);
+    assert_eq!(r.last_mod_dir, None);
     assert_eq!(r.mods_dir, Some(p("/mods")));
     assert_eq!(r.recent, vec![p("/a"), p("/b")]);
 }

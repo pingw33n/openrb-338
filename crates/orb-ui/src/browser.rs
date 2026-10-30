@@ -187,15 +187,18 @@ pub struct Browser {
 }
 
 impl Browser {
-    /// A browser for `mode`, starting in the mode's default folder: the songs folder (songs,
-    /// export) or the mods folder (mods) of `settings`, else the documents folder.
+    /// A browser for `mode`, starting in the folder of the last file chosen in its kind (songs
+    /// and export share one, mods have their own) while it exists, else the songs folder
+    /// (songs, export) or the mods folder (mods) of `settings`, else the documents folder.
     pub fn new(mode: Mode, settings: &Settings) -> Self {
-        let configured = match mode {
-            Mode::ChooseMod => settings.mods_dir.as_ref(),
-            _ => settings.songs_dir.as_ref(),
+        let (last, configured) = match mode {
+            Mode::ChooseMod => (&settings.last_mod_dir, &settings.mods_dir),
+            _ => (&settings.last_song_dir, &settings.songs_dir),
         };
-        let dir = configured
-            .filter(|d| d.is_dir())
+        let dir = [last, configured]
+            .into_iter()
+            .flatten()
+            .find(|d| d.is_dir())
             .cloned()
             .unwrap_or_else(settings::documents_dir);
         let mut b = Self {
@@ -221,7 +224,8 @@ impl Browser {
         b
     }
 
-    /// Starts in `dir` (when it is a folder), for example the folder of the song that is open.
+    /// An explicit start-folder override: starts in `dir` when it is a folder, whatever the
+    /// settings remember. The app does not use it; tests do.
     pub fn with_dir(mut self, dir: &Path) -> Self {
         if dir.is_dir() {
             self.go(dir.to_path_buf());
@@ -571,6 +575,11 @@ impl Browser {
         }
         if let Some(dir) = path.parent() {
             settings.note_recent(dir);
+            let last = match self.mode {
+                Mode::ChooseMod => &mut settings.last_mod_dir,
+                _ => &mut settings.last_song_dir,
+            };
+            *last = Some(dir.to_path_buf());
             if let Err(e) = settings.save() {
                 // The choice stands; the failed note does not block it, the app shows it.
                 self.failures.push(e);
