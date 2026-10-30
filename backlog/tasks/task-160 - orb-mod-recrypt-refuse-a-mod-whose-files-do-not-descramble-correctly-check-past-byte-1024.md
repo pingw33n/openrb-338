@@ -3,10 +3,11 @@ id: TASK-160
 title: >-
   orb mod recrypt: refuse a mod whose files do not descramble correctly (check
   past byte 1024)
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-30 10:45'
+updated_date: '2026-10-30 11:18'
 labels:
   - rbm
   - cli
@@ -56,7 +57,29 @@ What:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 recrypt checks descrambled JPEGs past byte 1024 (end marker) and, if a reliable statistic exists, the audio; a mod that fails is not written and the error names the file and the likely cause
-- [ ] #2 Over ~/rb-stuff-peff/ReBirth Mods exactly the five mods listed fail; ~/rb-mods/mods and the shipped mods all pass
-- [ ] #3 Synthetic tests cover a wrong-key and an unscrambled payload; docs/rbm.md 12.5 is updated; fmt, clippy, cargo test --release and the gated thirdparty test pass
+- [x] #1 recrypt checks descrambled JPEGs past byte 1024 (end marker) and, if a reliable statistic exists, the audio; a mod that fails is not written and the error names the file and the likely cause
+- [x] #2 Over ~/rb-stuff-peff/ReBirth Mods exactly the five mods listed fail; ~/rb-mods/mods and the shipped mods all pass
+- [x] #3 Synthetic tests cover a wrong-key and an unscrambled payload; docs/rbm.md 12.5 is updated; fmt, clippy, cargo test --release and the gated thirdparty test pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Measure on the 317 originals (CD key) and the 171 recrypted: JPEG end rule and a 16-bit jump-share statistic. 2. rbm::dat: check_file (per file, reusable by task-161), file_jump_share/audio_is_noise (per mod), validate_files uses them; RbmError::WrongKey; load_samples refuses a noise mod. 3. Tests (rbm crate synthetic, orb-cli recrypt fixture), docs/rbm.md 12.5. 4. Verify on both folders, fmt/clippy/tests/corpus.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-a6b6def2e171cb304
+
+Measurements (python, tools/rbm.py descrambling with the CD DAT; 317 originals, 171 recrypted): per-file jump share (|diff|>16384 between neighbouring words past byte 1024) is NOT separable per file: good noise drums reach 0.696 (Heavy Rhythm Machine TR808SD5), 0.644 (Magica TR808HC), 0.524 (Neurotek, Inner mod). Per mod it separates: share of files >0.3 is <=0.087 on 312 good originals (min-over-files <=0.0007) and 1.000 on all five bad (files 0.497..0.61, median 0.557..0.577). Rule: >=4 files and more than half >0.3. JPEG: check-dir's end-marker rule flags the five AND YellowBirth.rbm in ~/rb-mods/mods (59 JPEGs cut short by its packer, docs/rbm.md 11.1), so the plain rule would refuse a mod AC2 says must pass. Added a second clause: without FF D9 a JPEG passes if every FF past 1024 is followed by 00,01,FF or C0..FF; YellowBirth 59/59 pass, bad five have 0..8 of 32..59 such files (short) and the rest fail. Results: recrypt of 317 originals: 312 recrypted, exactly the five failed (each by its first JPEG); ~/rb-mods/mods 171 already recrypted, 0 failed (YellowBirth included); ~/rb-stuff-peff/mods_recrypted: 3 failed (mellow, TurnMod, AloNaNbox), 169 pass. Decision (item 3): load_samples refuses (WrongKey), not warns. Item 3 loads decoded audio, rule same. Scratch deleted at the end.
+
+Review round 1: (1) audio refusal now names the first 3 noisy files and the count (dat::check_audio), tests assert a file name; (2) load_samples measures the file bytes past 1024 (file_jump_share), as validate_files, test with 600-1000 frame noise samples added; (3) false-accept limit and the 66/256 set corrected in dat.rs and docs/rbm.md; (4) real test count is 655 pass, 0 failed (earlier note of 557 was wrong, my awk summed only the first fields); (5) commit body wrapped; (6) validate_files doc, duplicate 'past byte 1024' in messages, FF 00 stuffing in the cut-short test. Re-run: recrypt of 317 originals 312 written / 5 failed (same five), ~/rb-mods/mods 171 / 0 failed; fmt, clippy clean.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+recrypt and Rbm::load_samples now check past byte 1024 (rbm::dat::check_file per file, check_audio/audio_is_noise per mod, RbmError::WrongKey naming the files). Over ~/rb-stuff-peff/ReBirth Mods: 312 recrypted, exactly the five refused; ~/rb-mods/mods 171 pass (YellowBirth needed the JPEG second clause: cut-short JPEGs are valid data); mods_recrypted refuses mellow, TurnMod, AloNaNbox. Audio statistic is per mod only (noise drums reach 0.696 per file). Tests: cargo test --release 655 pass, 0 failed with gated tests, fmt, clippy, corpus 175/175. Decision recorded: loading refuses. Branch worktree-agent-a6b6def2e171cb304.
+<!-- SECTION:FINAL_SUMMARY:END -->

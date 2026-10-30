@@ -233,6 +233,208 @@ fn bad_sample_is_an_error() {
     assert!(matches!(r, Err(RbmError::Sample(..))), "{r:?}");
 }
 
+// ---------------------------------------------------------------- the wrong-key checks
+
+/// Pseudo-random bytes (an LCG), the stand-in for a file descrambled with a wrong key.
+fn noise(n: usize, seed: u64) -> Vec<u8> {
+    let mut x = seed;
+    (0..n)
+        .map(|_| {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (x >> 33) as u8
+        })
+        .collect()
+}
+
+/// An AIFF of `frames` frames of noise (a noise drum, or a wrongly descrambled sample).
+fn noise_aiff(frames: usize, seed: u64) -> Vec<u8> {
+    let mut d = aiff(0, 0);
+    d.truncate(54); // FORM, COMM, the SSND header with its offset and block size
+    d.extend(noise(2 * frames, seed));
+    let size = (d.len() - 8) as u32;
+    d[4..8].copy_from_slice(&size.to_be_bytes());
+    d[22..26].copy_from_slice(&(frames as u32).to_be_bytes());
+    d[42..46].copy_from_slice(&(8 + 2 * frames as u32).to_be_bytes());
+    d
+}
+
+/// A JPEG-like file: FF D8, data in which every FF is stuffed (followed by 00), and optionally
+/// the end marker FF D9.
+fn jpeg_like(len: usize, end: bool) -> Vec<u8> {
+    let mut d = vec![0xFF, 0xD8];
+    d.extend((2..len).map(|i| {
+        if i % 97 == 0 {
+            0xFF
+        } else {
+            (i * 13) as u8 | 1
+        }
+    }));
+    for i in 2..len - 1 {
+        if d[i] == 0xFF {
+            d[i + 1] = 0;
+        }
+    }
+    let n = d.len();
+    if d[n - 1] == 0xFF {
+        d[n - 1] = 0;
+    }
+    if end {
+        d[n - 2..].copy_from_slice(&[0xFF, 0xD9]);
+    }
+    d
+}
+
+const SLOTS: [&str; 5] = [
+    "TR808BD.aif",
+    "TR808SD1.aif",
+    "TR808SD2.aif",
+    "TR808SD3.aif",
+    "TR808SD4.aif",
+];
+
+/// Five ramp samples, a complete JPEG, a cut-short one, a padded one and a demo file.
+fn checked_files() -> Vec<(&'static str, Vec<u8>)> {
+    let mut v: Vec<_> = SLOTS
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (*n, aiff(2000 + 100 * i, i as i16)))
+        .collect();
+    v.push(("12017.jpg", jpeg_like(3000, true)));
+    v.push(("12018.jpg", jpeg_like(2000, false))); // cut short, as YellowBirth's
+    v.push(("12019.jpg", {
+        let mut j = jpeg_like(1500, true);
+        j.extend([0u8; 40]); // trailing zero padding
+        j
+    }));
+    v.push(("Demo.rbs", noise(3000, 9)));
+    v
+}
+
+fn audio_only(files: Vec<(&'static str, Vec<u8>)>) -> Vec<(&'static str, Vec<u8>)> {
+    files
+        .into_iter()
+        .filter(|f| f.0.ends_with(".aif"))
+        .collect()
+}
+
+fn wrong_table(seed: u64) -> KeyTable {
+    KeyTable::from_bytes(&noise(4096, seed)).unwrap()
+}
+
+/// The mod holding `files` stored in the clear (no scrambling), and the key table of the
+/// virtual DAT, which would descramble it into garbage.
+fn clear_mod(files: &[(&str, Vec<u8>)]) -> (Rbm, KeyTable) {
+    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"HEAD", vec![7u8; 256])];
+    for (n, f) in files {
+        chunks.push((b"EMBF", embf(n, f)));
+    }
+    chunks.push((b"INFO", info_chunk()));
+    let rbm = Rbm::parse(cat(&chunks)).unwrap();
+    let table = KeyTable::read(&rbm, &mut VirtualDat::new()).unwrap();
+    (rbm, table)
+}
+
+#[test]
+fn good_files_pass_the_checks_past_byte_1024() {
+    let files = checked_files();
+    let (data, table) = synthetic_mod(&files);
+    let rbm = Rbm::parse(data).unwrap();
+    dat::validate_files(&rbm, &table).unwrap();
+    // the ramp samples are far from noise, noise is not
+    let share = dat::file_jump_share(&files[0].1).unwrap();
+    assert!(share < 0.01, "{share}");
+    let share = dat::file_jump_share(&noise_aiff(3000, 4)).unwrap();
+    assert!((0.45..0.7).contains(&share), "{share}");
+}
+
+#[test]
+fn a_wrong_key_is_refused_by_the_jpegs_and_by_the_audio() {
+    let files = checked_files();
+    let (data, _) = synthetic_mod(&files);
+    let rbm = Rbm::parse(data).unwrap();
+    let err = dat::validate_files(&rbm, &wrong_table(1)).unwrap_err();
+    assert!(matches!(err, RbmError::WrongKey(_)), "{err}");
+    assert!(err.to_string().contains("jpg"), "{err}");
+    assert!(err.to_string().contains("another edition"), "{err}");
+
+    // Without a JPEG the audio alone says it.
+    let (data, table) = synthetic_mod(&audio_only(files));
+    let rbm = Rbm::parse(data).unwrap();
+    dat::validate_files(&rbm, &table).unwrap();
+    let err = dat::validate_files(&rbm, &wrong_table(2)).unwrap_err();
+    assert!(matches!(err, RbmError::WrongKey(_)), "{err}");
+    assert!(err.to_string().contains("noise"), "{err}");
+}
+
+#[test]
+fn an_unscrambled_payload_is_refused() {
+    // Files stored in the clear (a key half of zeros) are descrambled with a real key: garbage.
+    let files = checked_files();
+    let (rbm, table) = clear_mod(&files);
+    let err = dat::validate_files(&rbm, &table).unwrap_err();
+    assert!(matches!(err, RbmError::WrongKey(_)), "{err}");
+    let (rbm, table) = clear_mod(&audio_only(files));
+    let err = dat::validate_files(&rbm, &table).unwrap_err();
+    assert!(err.to_string().contains("noise"), "{err}");
+}
+
+#[test]
+fn one_noise_drum_is_not_a_wrong_key() {
+    let mut audio = audio_only(checked_files());
+    audio[1].1 = noise_aiff(3000, 5); // TR808SD1 is legitimately noise
+    audio[2].1 = noise_aiff(3000, 6); // two of five are not most of them
+    let (data, table) = synthetic_mod(&audio);
+    dat::validate_files(&Rbm::parse(data).unwrap(), &table).unwrap();
+    audio[3].1 = noise_aiff(3000, 7); // three are
+    let (data, table) = synthetic_mod(&audio);
+    assert!(dat::validate_files(&Rbm::parse(data).unwrap(), &table).is_err());
+}
+
+#[test]
+fn loading_refuses_a_recrypted_noise_mod() {
+    // What a recrypt of a wrongly keyed mod used to write: noise under the embedded window.
+    let noisy: Vec<_> = SLOTS
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (*n, noise_aiff(3000, 20 + i as u64)))
+        .collect();
+    let (data, table) = synthetic_mod(&noisy);
+    let r = Rbm::parse(data).unwrap().load_samples(&table, &builtin());
+    let e = r.unwrap_err();
+    assert!(e.to_string().contains("TR808BD.aif"), "{e}");
+    // short noise files (the unscrambled head is most of them) are refused as well
+    let short: Vec<_> = SLOTS
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (*n, noise_aiff(600 + 100 * i, 40 + i as u64)))
+        .collect();
+    let (data, table) = synthetic_mod(&short);
+    let rbm = Rbm::parse(data).unwrap();
+    assert!(dat::validate_files(&rbm, &table).is_err());
+    let r = rbm.load_samples(&table, &builtin());
+    assert!(matches!(r, Err(RbmError::WrongKey(_))), "{r:?}");
+    // the ramps load
+    let (data, table) = synthetic_mod(&audio_only(checked_files()));
+    let rbm = Rbm::parse(data).unwrap();
+    rbm.load_samples(&table, &builtin()).unwrap();
+}
+
+#[test]
+fn jpeg_tails() {
+    assert!(dat::jpeg_end_ok(&jpeg_like(3000, true)));
+    assert!(dat::jpeg_end_ok(&jpeg_like(2000, false)));
+    assert!(dat::jpeg_end_ok(&noise(1024, 3))); // never scrambled, not checked
+    let mut j = jpeg_like(2000, true);
+    j.extend([0u8; 100]);
+    assert!(dat::jpeg_end_ok(&j));
+    let mut j = jpeg_like(2000, false);
+    j[1500..].copy_from_slice(&noise(500, 8));
+    assert!(!dat::jpeg_end_ok(&j));
+    assert!(!dat::jpeg_end_ok(&noise(3000, 3)));
+}
+
 #[test]
 fn slot_names_cover_the_ids() {
     assert_eq!(slot_name(1000), Some("TR808BD.aif"));

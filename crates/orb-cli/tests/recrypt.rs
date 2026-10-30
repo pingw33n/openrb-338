@@ -57,6 +57,7 @@ fn aiff_comm_last(frames: usize) -> Vec<u8> {
 fn jpeg(len: usize, first: [u8; 2]) -> Vec<u8> {
     let mut d = first.to_vec();
     d.extend((2..len).map(|i| (i * 13) as u8));
+    d[len - 2..].copy_from_slice(&[0xFF, 0xD9]); // the end marker, as a real JPEG's
     d
 }
 
@@ -312,6 +313,130 @@ fn a_failing_mod_does_not_stop_the_others() {
     for (name, files) in f.files.iter().filter(|(n, _)| !n.starts_with("bad")) {
         check_recrypted(&std::fs::read(out.join(name)).unwrap(), files);
     }
+}
+
+fn five_samples_and_a_jpeg(with_jpeg: bool) -> Files {
+    let mut v: Files = [
+        "TR808BD.aif",
+        "TR808SD1.aif",
+        "TR808SD2.aif",
+        "TR808SD3.aif",
+        "TR909bd.aif",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, n)| (*n, aiff(2000 + 50 * i, i as i16)))
+    .collect();
+    if with_jpeg {
+        v.push(("12017.jpg", jpeg(3000, [0xFF, 0xD8])));
+    }
+    v
+}
+
+/// Runs the recrypt of the one mod `a.rbm` of `f` with `dat` as the key file; the failure text.
+fn failure_with(f: &Fixture, dat: &Path) -> String {
+    let sha = rbm::dat::sha256_hex(&mut File::open(dat).unwrap()).unwrap();
+    let ins = [f.mods.join("a.rbm")];
+    let out = f.dir.path().join("o.rbm");
+    let o = Options {
+        rb20ful: Some(dat),
+        expected_sha256: &sha,
+        ..opts(f, &ins, &out, false)
+    };
+    let why = failure(&run(&o).unwrap(), "a.rbm");
+    assert!(!out.exists(), "a refused mod must not be written");
+    why
+}
+
+#[test]
+fn a_mod_scrambled_with_another_key_file_is_refused_past_byte_1024() {
+    // The mod is scrambled with the stand-in key file, then read with one whose pages differ:
+    // every header is intact (the first 1024 bytes are never scrambled), the rest is noise.
+    for with_jpeg in [true, false] {
+        let f = fixture(vec![("a.rbm", five_samples_and_a_jpeg(with_jpeg))]);
+        let ins = [f.mods.join("a.rbm")];
+        let out = f.dir.path().join("right.rbm");
+        let r = run(&opts(&f, &ins, &out, false)).unwrap();
+        assert_eq!(r.failed(), 0, "{}", r.summary());
+
+        let other = f.dir.path().join("other.DAT");
+        std::fs::copy(&f.dat, &other).unwrap();
+        let mut dat = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&other)
+            .unwrap();
+        let rbm = Rbm::parse(std::fs::read(&ins[0]).unwrap()).unwrap();
+        for off in rbm.key_pages() {
+            // page_byte is a ramp (the difference of two is nearly constant): use an LCG
+            let mut x = off ^ 0x5555;
+            let page: Vec<u8> = (0..rbm::PAGE)
+                .map(|_| {
+                    x = x
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    (x >> 33) as u8
+                })
+                .collect();
+            dat.seek(SeekFrom::Start(off)).unwrap();
+            dat.write_all(&page).unwrap();
+        }
+        drop(dat);
+        let why = failure_with(&f, &other);
+        assert!(why.contains("another edition"), "{why}");
+        // the JPEG is named when there is one; the audio says it otherwise
+        let word = if with_jpeg {
+            "12017.jpg"
+        } else {
+            "TR808BD.aif"
+        };
+        assert!(why.contains(word), "{why}");
+    }
+}
+
+#[test]
+fn a_mod_stored_unscrambled_is_refused_past_byte_1024() {
+    // A key half of zeros stores the files in the clear; the original then descrambles garbage.
+    for with_jpeg in [true, false] {
+        let files = five_samples_and_a_jpeg(with_jpeg);
+        let f = fixture(vec![("a.rbm", files.clone())]);
+        std::fs::write(f.mods.join("a.rbm"), cat(&chunks_of(&files))).unwrap();
+        let why = failure_with(&f, &f.dat);
+        assert!(why.contains("another edition"), "{why}");
+    }
+}
+
+#[test]
+fn a_cut_short_jpeg_and_a_noise_drum_are_not_refused() {
+    // YellowBirth's JPEGs end without FF D9 but are JPEG data; one noise sample is a drum.
+    let mut files = five_samples_and_a_jpeg(false);
+    let mut cut = jpeg(3000, [0xFF, 0xD8]);
+    cut.truncate(2500);
+    cut.iter_mut().for_each(|b| {
+        if *b == 0xFF {
+            *b = 0xFE
+        }
+    });
+    cut[0] = 0xFF;
+    for i in (1050..2400).step_by(100) {
+        cut[i] = 0xFF; // byte stuffing, as in real entropy-coded data
+        cut[i + 1] = 0x00;
+    }
+    files.push(("12017.jpg", cut));
+    files[1].1 = {
+        let mut a = aiff(3000, 0);
+        let mut x = 12345u32;
+        for b in &mut a[54..] {
+            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+            *b = (x >> 24) as u8;
+        }
+        a
+    };
+    let f = fixture(vec![("a.rbm", files.clone())]);
+    let ins = [f.mods.join("a.rbm")];
+    let out = f.dir.path().join("o.rbm");
+    let r = run(&opts(&f, &ins, &out, false)).unwrap();
+    assert_eq!(r.failed(), 0, "{}", r.summary());
+    check_recrypted(&std::fs::read(&out).unwrap(), &files);
 }
 
 #[test]

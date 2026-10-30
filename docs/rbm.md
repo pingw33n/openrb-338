@@ -765,14 +765,59 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/orb-cli/src/recrypt.rs`):
   (`orb_engine::samples::Sample::from_aiff`, the DLL's reader rules of sections 7.4 of
   `initial_investigation.md` and 11.2 above for the stale SSND size), and a `.jpg` must
   start with `FF D8`; other files (the demo song) are not checked. A failure is an error naming the
-  mod file and the embedded name, and nothing is written for that mod. This finds damaged files; it
-  is **not** a wrong-key detector: the first 1024 bytes of every file are never scrambled and
-  the AIFF and JPEG headers lie there (only a sample whose chunks follow the audio would fail with
-  a wrong key). The SHA-256 is the key file's check. The result of the recrypt is checked the
-  same way with the embedded bytes. Measured: the 172 third-party originals recrypt in one run
-  with the real file (0 failed, byte-identical to the recrypted set of 12.4), and the 172
-  recrypted ones and the four recrypted shipped mods (already recrypted) pass the checks too (no
-  false positives).
+  mod file and the embedded name, and nothing is written for that mod. These header checks find
+  damaged files; they are **not** a wrong-key detector: the first 1024 bytes of every file are
+  never scrambled and the AIFF and JPEG headers lie there (only a sample whose chunks follow the
+  audio would fail with a wrong key). The SHA-256 is the key file's check, and the checks past
+  byte 1024 (next item) find a mod scrambled with another key file. The result of the recrypt is
+  checked the same way with the embedded bytes. Measured: the 172 third-party originals recrypt
+  in one run with the real file (0 failed, byte-identical to the recrypted set of 12.4), and the
+  172 recrypted ones and the four recrypted shipped mods (already recrypted) pass the checks too
+  (no false positives).
+- **The checks past byte 1024** (task-160, 2026-10-30; `rbm::dat::check_file`,
+  `rbm::dat::validate_files`). The scrambling adds key bytes to every byte from 1024 on, so a mod
+  scrambled with another edition's key file, or stored unscrambled (a key half of zeros, section
+  4), passes every header check and recrypts into garbage that plays as noise.
+  - *JPEG.* A `.jpg` longer than 1024 bytes must end with `FF D9` followed only by zero bytes,
+    or else hold only JPEG data past byte 1024: every `FF` there followed by `00`, `01`, `FF` or a
+    marker `C0..FF`. The second clause exists for YellowBirth (in `~/rb-mods/mods`, from a
+    collection of 2026-10-28): its 59 JPEGs were cut short by its packer (section 11.1) and lack
+    `FF D9`, but are intact JPEG data. The set is 66 of 256 values (`FF` lies inside `C0..FF`),
+    so in noise a `FF` is followed by a byte outside it 190 times in 256 (about 3 in 4). A noise
+    JPEG of `size` bytes therefore passes with a probability of about exp(-0.0029 * (size - 1024)):
+    0.80 at 1.1 KB, 0.23 at 1.5 KB, 0.06 at 2 KB, 0.003 at 3 KB, about 0 from 5 KB; any one
+    failing JPEG refuses the mod, and the audio test backs it up. Measured over the 317 originals and 171 recrypted mods: of the JPEGs without an end
+    marker, YellowBirth's 59 have no such byte (and no other good mod has one without an end
+    marker); in the five bad mods 0 to 8 of the 32 to 59 JPEGs have none (short files with few
+    bytes past 1024), so every bad mod is refused by its first JPEG with one.
+  - *Audio.* The share of jumps over 16384 between neighbouring 16-bit words past byte 1024
+    (first 100,000 words) of each sample file: 0 to 0.2 for ordinary samples, about 0.56 for
+    noise. One file proves nothing, because real noise drums exist (Heavy Rhythm Machine's
+    TR808SD5.aif reaches 0.696, Magica's TR808HC 0.644, Neurotek and Inner mod 0.524), so the
+    mod is judged: at least 4 sample files and more than half above 0.3. Over the 312 good
+    originals the share of files above 0.3 is at most 0.087 per mod (the minimum over a mod's
+    files at most 0.0007; the 171 recrypted mods have at most 0.524 in a single file); in each of the five bad mods it is 1.000
+    (every file 0.497 to 0.61, median 0.557 to 0.577). The margin is 0.087 against 1.0.
+  - *The five* (the user's folder of 317 originals). Scrambled with a key table that is not the
+    2001 CD's: `mellow.rbm` (keys 72963593 and 134110473), `House of
+    love Juam1 .rbm` (3876875 and 90141265), `TurnMod.rbm` (10752749 and 50644384),
+    `AloNaNbox 2.0.rbm` (118557743 and 114850228), `MaShMoD.rbm` (20373127 and 84469203). One or
+    both halves are zeros (mellow, House of love: both; TurnMod: the even half; AloNaNbox: the odd
+    half) or foreign bytes found nowhere in the 2001 `RB20FUL.DAT` (MaShMoD: both; TurnMod, the
+    odd half; AloNaNbox, the even half). `orb mod recrypt` over the 317 originals now writes 312
+    and refuses exactly these five, each by the first JPEG: "the JPEG 12015.jpg has no end
+    marker FF D9 and its data is not JPEG data; the mod was probably scrambled
+    with the key file of another edition of ReBirth (or not scrambled at all)". Bulk mode goes on
+    with the other mods. `~/rb-stuff-peff/mods_recrypted` holds three of them already recrypted
+    (mellow, TurnMod, AloNaNbox): recrypt refuses them too (it checks an already recrypted mod).
+  - *Loading.* `Rbm::load_samples` (so `orb render`, `compare`, `play` and the UI) applies the
+    audio test to the slot sample files past byte 1024, as recrypt does, and returns the same error (`RbmError::WrongKey`)
+    instead of playing noise. **Decision: refuse, not warn**: a mod whose audio is noise is never
+    what a user means to play, and the check only fires when most of at least 4 files are noise.
+    It does not look at JPEGs (the engine uses none).
+  - *Rescue.* `check_file` takes one decrypted file, so a rescue of files stored unscrambled
+    (task-161) can call it per file for the JPEGs; the audio is judged per mod
+    (`audio_is_noise`), not per file.
 - **Bulk.** `orb mod recrypt IN.rbm... DIR... -o OUTDIR [--force]` takes any number of mod files
   and folders (every `.rbm` directly in a folder) and writes each mod under its own file name into
   `OUTDIR`. The single-file form `orb mod recrypt IN.rbm -o OUT.rbm` stays: one existing input

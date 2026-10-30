@@ -135,6 +135,9 @@ pub enum RbmError {
     KeyTable,
     /// An embedded file is not a usable AIFF (file name, reason).
     Sample(String, String),
+    /// The files do not descramble to what they must be past byte 1024: the mod was scrambled
+    /// with a key file other than the one in use (the text says what was found).
+    WrongKey(String),
     /// No embedded file has this name.
     NoSuchFile(String),
     /// The key table lacks bytes this embedded file needs (a table of the embedded window for
@@ -156,6 +159,11 @@ impl fmt::Display for RbmError {
             RbmError::Io(e) => write!(f, "reading RB20FUL.DAT: {e}"),
             RbmError::KeyTable => write!(f, "the key table is not 4096 bytes"),
             RbmError::Sample(n, m) => write!(f, "the mod's sample {n}: {m}"),
+            RbmError::WrongKey(m) => write!(
+                f,
+                "{m}; the mod was probably scrambled with the key file of another edition of \
+                 ReBirth (or not scrambled at all), so its files are garbage"
+            ),
             RbmError::NoSuchFile(n) => write!(f, "the mod has no file {n}"),
             RbmError::KeyNotCovered(n) => write!(
                 f,
@@ -479,6 +487,7 @@ impl Rbm {
     ) -> Result<LoadedSamples, RbmError> {
         let mut out = Vec::with_capacity(samples::COUNT);
         let mut from_mod = [false; samples::COUNT];
+        let mut shares = Vec::new();
         for id in samples::FIRST_ID..=samples::LAST_ID {
             let i = (id - samples::FIRST_ID) as usize;
             let name = slot_name(id).expect("id in range");
@@ -487,12 +496,17 @@ impl Rbm {
                     let bytes = self.file(c, table)?;
                     let s = Sample::from_aiff(&bytes)
                         .map_err(|e| RbmError::Sample(name.to_string(), e.to_string()))?;
+                    // the file bytes past 1024, as validate_files measures them
+                    shares.extend(dat::file_jump_share(&bytes).map(|v| (name.to_string(), v)));
                     out.push(Arc::new(s));
                     from_mod[i] = true;
                 }
                 None => out.push(builtin.shared(id)),
             }
         }
+        // A mod recrypted from a file scrambled with another key (docs/rbm.md 12.5) loads, but
+        // its audio is noise: refuse it instead of playing it.
+        dat::check_audio(&shares)?;
         Ok(LoadedSamples {
             set: SampleSet::from_shared(out),
             from_mod,
