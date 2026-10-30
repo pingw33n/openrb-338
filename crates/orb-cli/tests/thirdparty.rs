@@ -234,9 +234,9 @@ fn mods() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
-/// The INFO menu name of every mod of `dir`, in the original's folder order (NTFS, upcased).
+/// The INFO menu name of every mod of `dir`, in orb's folder order (the file names' bytes).
 fn info_names(dir: &Path) -> Vec<(String, Option<String>)> {
-    // the same order and names as orb itself uses (`mods::scan`, folder_order)
+    // the same order and names as orb itself uses (`mods::scan`, byte_order)
     orb_cli::mods::scan(dir)
         .unwrap_or_else(|_| panic!("cannot read {}", dir.display()))
         .into_iter()
@@ -491,6 +491,11 @@ fn check_song(
         }
     }
     match &e.mods {
+        // rbhost's mod file, explicitly: orb's default among files that share an INFO name is the
+        // first by bytes (AXIOM.rbm), the original on NTFS used axiom(b3).rbm (task-151)
+        Some(mods) if entry.is_some_and(|m| m["mod"].is_string()) => cmd
+            .arg("--mod")
+            .arg(mods.join(entry.unwrap()["mod"].as_str().unwrap())),
         Some(mods) if !missing => cmd.arg("--mod-dir").arg(mods),
         // no mod folder: the mod of the child's own environment must not matter
         _ => cmd.env_remove("ORB_MOD_DIR"),

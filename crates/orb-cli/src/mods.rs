@@ -144,38 +144,19 @@ fn implicit_dirs(sub: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The order in which the original meets the files of its `Mods` folder: `FindFirstFile` /
-/// `FindNextFile` over `*.*` (`sub_4862C9`, `sub_486355`). The first mod with a given INFO name
-/// is kept and a later one is dropped (`sub_4158A9` -> `sub_4155D1` at 0x415A90), so this order
-/// decides which file owns a duplicated name. The order is the volume's, not the app's: orb models
-/// NTFS, which lists a folder by the names' UTF-16 units after its per-unit `$UpCase` table [G:
-/// general NTFS behavior; the AXIOM case, `axiom(b3).rbm` before `AXIOM.rbm`, was seen on the test
-/// machine]. The upcase here is per character and only where it gives one character (so `ß`
-/// stays `ß`, as in `$UpCase`), an approximation of that table; FAT or a network share may list
-/// in another order.
-fn folder_order(a: &Path, b: &Path) -> std::cmp::Ordering {
-    let key = |p: &Path| -> Vec<u16> {
-        let name = p
-            .file_name()
-            .map(|f| f.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let up: String = name
-            .chars()
-            .map(|c| {
-                let mut u = c.to_uppercase();
-                match (u.next(), u.next()) {
-                    (Some(x), None) => x,
-                    _ => c,
-                }
-            })
-            .collect();
-        up.encode_utf16().collect()
-    };
+/// The order of the mod files of a folder, in the CLI and in the UI's Mods menu (task-151, the
+/// user's decision on task-146, 2026-10-30): the bytes of the file names, a plain `strcmp`; no
+/// Unicode folding, no locale, no NTFS model. The file whose name sorts first owns an INFO name
+/// that several mods share (`AXIOM.rbm` before `axiom(b3).rbm`: `A` is 0x41, `a` 0x61). This is a
+/// **deliberate difference from the original**, where the volume's listing order decides
+/// (`sub_4158A9`, `FindFirstFile`; on NTFS `axiom(b3).rbm` wins; docs/rbm.md 11.3). `--mod FILE`
+/// picks any file.
+pub fn byte_order(a: &Path, b: &Path) -> std::cmp::Ordering {
+    let key = |p: &Path| p.file_name().map(|f| f.as_encoded_bytes().to_vec());
     key(a).cmp(&key(b)).then_with(|| a.cmp(b))
 }
 
-/// The `.rbm` files of `dir` in the original's folder order, each with its INFO menu name when
-/// it has one.
+/// The `.rbm` files of `dir` in [`byte_order`], each with its INFO menu name when it has one.
 pub fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
     let rd = std::fs::read_dir(dir).map_err(|e| {
         fail(
@@ -188,7 +169,7 @@ pub fn scan(dir: &Path) -> Result<Vec<(PathBuf, Option<String>)>, Fail> {
         .map(|e| e.path())
         .filter(|p| p.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("rbm")))
         .collect();
-    files.sort_by(|a, b| folder_order(a, b));
+    files.sort_by(|a, b| byte_order(a, b));
     Ok(files
         .into_iter()
         .map(|p| {
@@ -209,13 +190,28 @@ pub fn names_match(info: &str, want: &str) -> bool {
     info.eq_ignore_ascii_case(want)
 }
 
-/// Resolves the mod called `name` in `dir`: the first mod in the folder order whose INFO name
-/// matches ([`names_match`]). A file name never matches.
+/// Resolves the mod called `name` in `dir`: the first mod in [`byte_order`] whose INFO name
+/// matches ([`names_match`]). A file name never matches. The command line uses this and nothing
+/// else: it knows no preference, so a render is deterministic.
 pub fn find_in_dir(dir: &Path, name: &str) -> Result<Option<PathBuf>, Fail> {
-    Ok(scan(dir)?
+    find_preferring(dir, name, None)
+}
+
+/// [`find_in_dir`] with a preferred file name (the UI's remembered choice among mods that share
+/// an INFO name, task-151): that file when it is in `dir` and its INFO name matches, else the
+/// first match in [`byte_order`].
+pub fn find_preferring(
+    dir: &Path,
+    name: &str,
+    preferred: Option<&str>,
+) -> Result<Option<PathBuf>, Fail> {
+    let found: Vec<PathBuf> = scan(dir)?
         .into_iter()
-        .find(|(_, n)| n.as_deref().is_some_and(|n| names_match(n, name)))
-        .map(|(p, _)| p))
+        .filter(|(_, n)| n.as_deref().is_some_and(|n| names_match(n, name)))
+        .map(|(p, _)| p)
+        .collect();
+    let pref = preferred.and_then(|f| found.iter().find(|p| p.file_name().is_some_and(|n| n == f)));
+    Ok(pref.or(found.first()).cloned())
 }
 
 /// The kit of a song whose GLOB names `mod_name`. `label` names the song in messages.
@@ -287,53 +283,68 @@ mod tests {
     }
 
     #[test]
-    fn folder_order_is_ntfs_upcased() {
+    fn byte_order_compares_file_name_bytes() {
         let mut v: Vec<PathBuf> = [
-            "AXIOM.rbm",
             "axiom(b3).rbm",
             "b.rbm",
-            "Alpha2.rbm",
+            "AXIOM.rbm",
             "alpha3.rbm",
+            "Alpha2.rbm",
         ]
         .iter()
         .map(PathBuf::from)
         .collect();
-        v.sort_by(|a, b| folder_order(a, b));
+        v.sort_by(|a, b| byte_order(a, b));
         let names: Vec<_> = v.iter().map(|p| p.to_string_lossy().into_owned()).collect();
         assert_eq!(
             names,
             [
+                "AXIOM.rbm",
                 "Alpha2.rbm",
                 "alpha3.rbm",
                 "axiom(b3).rbm",
-                "AXIOM.rbm",
                 "b.rbm"
             ]
         );
-    }
-
-    #[test]
-    fn folder_order_upcases_per_character() {
-        // 'ß' has no one-character uppercase: it stays U+00DF and sorts after 'S' (a full
-        // Unicode uppercase would make it "SS" and put "ßa" first)
-        let (a, b) = (Path::new("ßa.rbm"), Path::new("SSb.rbm"));
-        assert_eq!(folder_order(a, b), std::cmp::Ordering::Greater);
+        // no Unicode folding: 'É' (C3 89) sorts before 'é' (C3 A9)
         assert_eq!(
-            folder_order(Path::new("é.rbm"), Path::new("É.rbm")),
-            Path::new("é.rbm").cmp(Path::new("É.rbm"))
+            byte_order(Path::new("é.rbm"), Path::new("É.rbm")),
+            std::cmp::Ordering::Greater
         );
     }
 
     #[test]
-    fn the_first_file_in_folder_order_owns_a_duplicated_name() {
+    fn the_first_file_by_bytes_owns_a_duplicated_name() {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("AXIOM.rbm"), empty_mod("AXIOM")).unwrap();
         std::fs::write(d.path().join("axiom(b3).rbm"), empty_mod("AXIOM")).unwrap();
         let p = find_in_dir(d.path(), "AXIOM").ok().flatten().unwrap();
-        assert_eq!(p.file_name().unwrap(), "axiom(b3).rbm");
+        assert_eq!(p.file_name().unwrap(), "AXIOM.rbm");
         // also when the song's name differs in case
         let p = find_in_dir(d.path(), "Axiom").ok().flatten().unwrap();
-        assert_eq!(p.file_name().unwrap(), "axiom(b3).rbm");
+        assert_eq!(p.file_name().unwrap(), "AXIOM.rbm");
+        // INFO names that differ only in ASCII case are the same name
+        std::fs::write(d.path().join("Aa.rbm"), empty_mod("Dup")).unwrap();
+        std::fs::write(d.path().join("Ab.rbm"), empty_mod("DUP")).unwrap();
+        let p = find_in_dir(d.path(), "dup").ok().flatten().unwrap();
+        assert_eq!(p.file_name().unwrap(), "Aa.rbm");
+    }
+
+    #[test]
+    fn a_preferred_file_wins_when_it_is_there() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("AXIOM.rbm"), empty_mod("AXIOM")).unwrap();
+        std::fs::write(d.path().join("axiom(b3).rbm"), empty_mod("AXIOM")).unwrap();
+        std::fs::write(d.path().join("other.rbm"), empty_mod("Other")).unwrap();
+        let get = |pref| {
+            let p = find_preferring(d.path(), "AXIOM", pref).unwrap().unwrap();
+            p.file_name().unwrap().to_string_lossy().into_owned()
+        };
+        assert_eq!(get(Some("axiom(b3).rbm")), "axiom(b3).rbm");
+        // a missing file, or one of another name, falls back to the default
+        assert_eq!(get(Some("gone.rbm")), "AXIOM.rbm");
+        assert_eq!(get(Some("other.rbm")), "AXIOM.rbm");
+        assert_eq!(get(None), "AXIOM.rbm");
     }
 
     #[test]
@@ -379,5 +390,24 @@ mod tests {
         // resolves either way: --mod overrides; the warning is on stderr
         assert_eq!(resolve(&opts, "s", "omega").ok(), Some(Kit::Mod(f.clone())));
         assert_eq!(resolve(&opts, "s", "other").ok(), Some(Kit::Mod(f)));
+        // also over a folder whose default for the name is another file
+        let dup = tempfile::tempdir().unwrap();
+        std::fs::write(dup.path().join("AXIOM.rbm"), empty_mod("AXIOM")).unwrap();
+        let second = dup.path().join("axiom(b3).rbm");
+        std::fs::write(&second, empty_mod("AXIOM")).unwrap();
+        let opts = ModOpts {
+            mod_file: Some(second.clone()),
+            mod_dir: Some(dup.path().to_path_buf()),
+            ..ModOpts::default()
+        };
+        assert_eq!(resolve(&opts, "s", "AXIOM").ok(), Some(Kit::Mod(second)));
+        let opts = ModOpts {
+            mod_dir: Some(dup.path().to_path_buf()),
+            ..ModOpts::default()
+        };
+        assert_eq!(
+            resolve(&opts, "s", "AXIOM").ok(),
+            Some(Kit::Mod(dup.path().join("AXIOM.rbm")))
+        );
     }
 }

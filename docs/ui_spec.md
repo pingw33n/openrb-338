@@ -1038,8 +1038,9 @@ is one more entry.
   with an error box and the song keeps the name. A choice in the Mods menu is `sub_426FB3`: the same
   kit again does nothing; else the song is marked modified, its mod name is the mod's INFO menu
   name, and `Link::set_mod` (song msg 19, `Player::set_mod`) gives the newest song's drum machines
-  the kit; the save writes the name. The entries are the INFO names of the folder in the original's
-  folder order, the first file of a duplicated name owning it. The mod's panel art is not
+  the kit; the save writes the name. The entries are the INFO names of the folder in the byte order of
+  the file names (task-151, docs/rbm.md 11.3); files that share an INFO name are one entry
+  ("Mods that share a name" below). The mod's panel art is not
   drawn: the original redraws the window with the mod's bitmaps (`sub_42D80D`), and the user
   decided (task-078, 2026-10-27) that OpenRB-338 keeps its SVG art and a mod changes the sound only.
   After the change the new mod's startup sound plays (`sub_426C67`, `Link::startup_sound`,
@@ -1072,6 +1073,31 @@ is one more entry.
   object is [G]) is that item's mod object (`cmp edx, [ebp-134h]`, 0x40BF0C) [C: the loop,
   the item id, the name offset and the compare are read in the disassembly]. The
   original compares mod objects, OpenRB-338 compares the kit's mod file with the entry's file.
+- **Mods that share a name** (task-151, the user's decision on task-146, 2026-10-30; a
+  deliberate difference from the original, which keeps one file of a name, docs/rbm.md 11.3).
+  Mod files whose INFO names are equal ignoring ASCII case are one top-level item with the first
+  file's INFO name and a submenu (`ModEntry::variants`). Each submenu entry is a file, shown as
+  its file name followed by two spaces and the mod's INFO version when it has one (for example
+  `axiom(b3).rbm  1.2`; "the app's version" is blank), in byte order. The top-level item is
+  checked when the song's mod is any of the files (`App::mod_checks`); the submenu marks the
+  active file. Clicking a file that is not active plays it for the song (`App::choose_variant`
+  -> `use_kit`); the song keeps the INFO name they share and is marked modified only if what a save writes
+  changes: the name, or the mod's FTP or web URL (`App::set_song_mod`; `dejenerate.rbm` and
+  `dejenerate(b3).rbm` have different web URLs, so choosing the other one marks the song). The
+  top-level item only opens the submenu; it is not clickable as a choice, so a shared name is
+  never chosen "by name" from the menu. Clicking the active file makes it the **preferred file** of that name, stored in
+  `ui.toml` as the table `preferred_mods` (`"<INFO name>" = "<file name>"`, the name compared
+  ignoring ASCII case; written through the atomic save), and the status line says so. The
+  preferred file shows `(preferred)` after its label. **Clearing**: clicking the active
+  preferred file again clears it (status line: "No preferred file ...");
+  that is the only way besides editing the file (a choice of the user's, not of task-151's text;
+  the simplest consistent option). A shared name resolves one way everywhere
+  (`App::resolve_mod_file`): a song open (`kit_for`), and the entry the list holds after the
+  first read, Refresh List and a change of the preference (`ModEntry::path`), go to the
+  preference if its file is in the folder, else to the default (the first file by bytes); a
+  preference whose file is gone is ignored silently and stays in the file (the submenu marks no
+  file preferred). A file name that is not valid UTF-8 cannot be preferred (the message box
+  says so), as TOML cannot hold it. The CLI never reads `ui.toml`.
 - **Demo Song** (task-094). Every shipped mod carries an embedded `Demo.rbs`, the standard mod
   and the built-in kit none (`docs/rbm.md` 13.1; the original only enables a button of the mod
   info dialog, `sub_417000` at 0x417000, `sub_41A0C5` (the instruction at

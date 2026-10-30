@@ -85,6 +85,9 @@ pub enum Cmd {
     ChooseModFile,
     /// A kit from the Mods menu (or a mod file the browser chose).
     UseKit(Kit),
+    /// A variant in the submenu of mods that share an INFO name (task-151): plays it, or when
+    /// it is the active one, toggles the preference ([`App::choose_variant`]).
+    ChooseVariant(PathBuf),
     /// "Demo Song" of the Mods menu: the current mod's `Demo.rbs`.
     DemoSong,
     /// "Refresh List" of the Mods menu: reads the Mods folder again (task-101).
@@ -97,12 +100,73 @@ pub enum Cmd {
     SetKeyMode(KeyMode),
 }
 
-/// One entry of the Mods menu: a mod of the Mods folder.
+/// One entry of the Mods menu: a mod of the Mods folder, or the several mods that share an
+/// INFO name (ignoring ASCII case; task-151) as one entry with a submenu.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModEntry {
+    /// The mod's file; of mods that share a name, the file the name resolves to: the preferred
+    /// one, else the first by file name bytes ([`ModEntry::resolve`]).
     pub path: PathBuf,
     /// The INFO menu name (a file that is no mod has none and is not listed).
     pub name: String,
+    /// Empty for a mod with a name of its own; else every file of the name in byte order.
+    pub variants: Vec<ModVariant>,
+}
+
+/// One file of the submenu of mods that share a name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModVariant {
+    pub path: PathBuf,
+    /// The mod's INFO version ("1.2"); empty when it says "the app's version".
+    pub version: String,
+}
+
+impl ModVariant {
+    /// The file name.
+    pub fn file_name(&self) -> String {
+        self.path
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    /// The submenu text: the file name, then the version when there is one.
+    pub fn label(&self) -> String {
+        if self.version.is_empty() {
+            self.file_name()
+        } else {
+            format!("{}  {}", self.file_name(), self.version)
+        }
+    }
+}
+
+impl ModEntry {
+    /// Sets `path` to the file the entry's name resolves to: the variant named by `preferred`
+    /// if there is one, else the first. Nothing for an entry with no variants.
+    pub fn resolve(&mut self, preferred: Option<&str>) {
+        let pick = self
+            .variants
+            .iter()
+            .find(|v| Some(v.file_name().as_str()) == preferred)
+            .or(self.variants.first());
+        if let Some(v) = pick {
+            self.path = v.path.clone();
+        }
+    }
+
+    /// Whether `p` is this entry's mod or one of its variants.
+    pub fn has(&self, p: &Path) -> bool {
+        self.path == p || self.variants.iter().any(|v| v.path == p)
+    }
+
+    /// Every file of the entry.
+    pub fn paths(&self) -> Vec<PathBuf> {
+        if self.variants.is_empty() {
+            vec![self.path.clone()]
+        } else {
+            self.variants.iter().map(|v| v.path.clone()).collect()
+        }
+    }
 }
 
 /// An export that runs on its own thread.
@@ -123,7 +187,9 @@ impl App {
         }
     }
 
-    /// The mods of the Mods folder in the original's folder order, one entry per INFO name.
+    /// The mods of the Mods folder in byte order of the file names, one entry per INFO name
+    /// (ASCII case ignored); the files that share a name are the variants of one entry, in the
+    /// same order (docs/rbm.md 11.3, task-151).
     pub fn list_mods(&self) -> Result<Vec<ModEntry>, String> {
         let dir = match self.mod_opts().mod_dir() {
             Ok(Some(d)) => d,
@@ -131,15 +197,91 @@ impl App {
             Err(orb_cli::Fail(_, m)) => return Err(m),
         };
         let found = mods::scan(&dir).map_err(|orb_cli::Fail(_, m)| m)?;
-        let mut seen = std::collections::HashSet::new();
-        Ok(found
+        let mut groups: Vec<(String, Vec<PathBuf>)> = Vec::new();
+        for (path, name) in found {
+            let Some(name) = name else { continue };
+            match groups.iter_mut().find(|(n, _)| mods::names_match(n, &name)) {
+                Some((_, files)) => files.push(path),
+                None => groups.push((name, vec![path])),
+            }
+        }
+        Ok(groups
             .into_iter()
-            .filter_map(|(path, name)| {
-                let name = name?;
-                // the first file in the folder order owns a duplicated name (docs/rbm.md 11.3)
-                seen.insert(name.clone()).then_some(ModEntry { path, name })
+            .map(|(name, files)| {
+                let variants = if files.len() < 2 {
+                    Vec::new()
+                } else {
+                    files
+                        .iter()
+                        .map(|p| ModVariant {
+                            path: p.clone(),
+                            version: session::mod_info(p)
+                                .ok()
+                                .and_then(|i| i.version)
+                                .map(|v| crate::mod_info::format_version(Some(v)))
+                                .unwrap_or_default(),
+                        })
+                        .collect()
+                };
+                let mut e = ModEntry {
+                    path: files[0].clone(),
+                    name,
+                    variants,
+                };
+                e.resolve(self.settings.preferred_mod(&e.name));
+                e
             })
             .collect())
+    }
+
+    /// The variant of `entry` the preference names, when it is set and its file is there.
+    pub fn preferred_variant<'a>(&self, entry: &'a ModEntry) -> Option<&'a ModVariant> {
+        let f = self.settings.preferred_mod(&entry.name)?;
+        entry.variants.iter().find(|v| v.file_name() == f)
+    }
+
+    /// Clicking the active variant of a shared name (task-151): it becomes the preferred file
+    /// of the INFO name, kept in the settings; if it already is, the preference is cleared.
+    /// The result is on the status line.
+    fn toggle_preferred(&mut self, path: &Path) {
+        let name = match session::mod_info(path) {
+            Ok(i) => i.name,
+            Err(e) => return self.fail(e),
+        };
+        let Some(file) = path.file_name().and_then(|f| f.to_str()) else {
+            return self.fail("The file name is not valid UTF-8 and cannot be stored.");
+        };
+        let was = self.settings.preferred_mod(&name) == Some(file);
+        self.settings
+            .set_preferred_mod(&name, (!was).then_some(file));
+        self.status = Some(if was {
+            format!("No preferred file for the mod {name} any more")
+        } else {
+            format!("{file} is now the preferred file for the mod {name}")
+        });
+        // the Mods menu's entries follow the preference without reading the folder again
+        let pref = self.settings.preferred_mod(&name).map(str::to_owned);
+        if let Some(Ok(list)) = &mut self.mod_list {
+            for e in list
+                .iter_mut()
+                .filter(|e| mods::names_match(&e.name, &name))
+            {
+                e.resolve(pref.as_deref());
+            }
+        }
+        if let Err(e) = self.settings.save() {
+            self.fail(e);
+        }
+    }
+
+    /// A click on a variant of the Mods menu: the active one is made (or stops being) the
+    /// preferred file; another one is played for the song, like any mod choice.
+    pub fn choose_variant(&mut self, path: PathBuf) {
+        if self.doc.kit == Kit::Mod(path.clone()) {
+            self.action(|s| s.toggle_preferred(&path));
+        } else {
+            self.use_kit(Kit::Mod(path));
+        }
     }
 
     /// Reads the Mods folder again (task-101): the Mods menu's list is read here and nowhere
@@ -163,7 +305,7 @@ impl App {
     fn refresh_mods_reported_now(&mut self) {
         let paths = |l: &Option<Result<Vec<ModEntry>, String>>| -> Vec<PathBuf> {
             match l {
-                Some(Ok(l)) => l.iter().map(|e| e.path.clone()).collect(),
+                Some(Ok(l)) => l.iter().flat_map(ModEntry::paths).collect(),
                 _ => Vec::new(),
             }
         };
@@ -207,7 +349,21 @@ impl App {
     pub fn mod_checks(&self, list: &[ModEntry]) -> (bool, Option<usize>) {
         match &self.doc.kit {
             Kit::Standard => (self.doc.mod_name == STANDARD, None),
-            Kit::Mod(p) => (false, list.iter().position(|e| &e.path == p)),
+            Kit::Mod(p) => (false, list.iter().position(|e| e.has(p))),
+        }
+    }
+
+    /// The file of the mod called `mod_name` in the Mods folder: of the files that share the
+    /// name, the preferred one if it is there, else the first by file name bytes (task-151).
+    /// The one rule of the UI: a song open, and the Mods menu's entries
+    /// ([`ModEntry::resolve`]) use it.
+    pub fn resolve_mod_file(&self, mod_name: &str) -> Result<Option<PathBuf>, orb_cli::Fail> {
+        match self.mod_opts().mod_dir()? {
+            Some(dir) => {
+                let pref = self.settings.preferred_mod(mod_name);
+                mods::find_preferring(&dir, mod_name, pref)
+            }
+            None => Ok(None),
         }
     }
 
@@ -217,12 +373,7 @@ impl App {
         if mod_name == STANDARD {
             return Kit::Standard;
         }
-        let found = match self.mod_opts().mod_dir() {
-            Ok(Some(dir)) => mods::find_in_dir(&dir, mod_name),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e),
-        };
-        match found {
+        match self.resolve_mod_file(mod_name) {
             Ok(Some(p)) => Kit::Mod(p),
             Ok(None) => {
                 self.fail(format!(
@@ -705,15 +856,27 @@ impl App {
                 .unwrap_or_default(),
             Kit::Standard => Default::default(),
         };
-        self.doc.source.glob.mod_ftp = ftp;
-        self.doc.source.glob.mod_www = web.clone();
+        self.set_song_mod(kit, name, ftp, web);
+    }
+
+    /// Records the song's mod: the kit, the INFO name and the two URLs a save writes. The song
+    /// is marked modified when what a save writes changes: the name or an URL. Another file of
+    /// the same name and URLs (a variant of the Mods menu, task-151) leaves the song as it is;
+    /// one with other URLs (dejenerate.rbm and dejenerate(b3).rbm) changes the save.
+    pub fn set_song_mod(&mut self, kit: Kit, name: String, ftp: String, web: String) {
+        let glob = &mut self.doc.source.glob;
+        let changed = self.doc.mod_name != name || glob.mod_ftp != ftp || glob.mod_www != web;
+        glob.mod_ftp = ftp;
+        glob.mod_www = web.clone();
         if let Some(f) = &mut self.doc.facts_1x {
             f.mod_ftp = self.doc.source.glob.mod_ftp.clone();
             f.mod_www = web;
         }
         self.doc.kit = kit;
+        if changed {
+            self.doc.modified = true;
+        }
         self.doc.mod_name = name;
-        self.doc.modified = true;
     }
 
     // ---- commands -----------------------------------------------------------------------
@@ -740,6 +903,7 @@ impl App {
             Cmd::About => self.show_about(),
             Cmd::ChooseModFile => self.open_browser(Mode::ChooseMod),
             Cmd::UseKit(kit) => self.use_kit(kit),
+            Cmd::ChooseVariant(p) => self.choose_variant(p),
             Cmd::DemoSong => self.demo_song(),
             Cmd::RefreshMods => self.refresh_mods_reported(),
             Cmd::ModInfo => self.show_mod_info(),
@@ -982,6 +1146,36 @@ impl App {
                                         .show(ui, |ui| {
                                             for (i, e) in list.iter().enumerate() {
                                                 let on = checked == Some(i);
+                                                if !e.variants.is_empty() {
+                                                    // mods that share a name: a submenu of files
+                                                    let mut b =
+                                                        egui::containers::menu::SubMenuButton::new(
+                                                            &e.name,
+                                                        );
+                                                    b.button = b.button.selected(on);
+                                                    let active = match &self.doc.kit {
+                                                        Kit::Mod(p) => Some(p),
+                                                        Kit::Standard => None,
+                                                    };
+                                                    let pref = self.preferred_variant(e);
+                                                    b.ui(ui, |ui| {
+                                                        for v in &e.variants {
+                                                            let mut t = v.label();
+                                                            if pref.is_some_and(|p| p == v) {
+                                                                t.push_str("  (preferred)");
+                                                            }
+                                                            let me = active == Some(&v.path);
+                                                            if ui.selectable_label(me, t).clicked()
+                                                            {
+                                                                cmd = Some(Cmd::ChooseVariant(
+                                                                    v.path.clone(),
+                                                                ));
+                                                                ui.close();
+                                                            }
+                                                        }
+                                                    });
+                                                    continue;
+                                                }
                                                 if ui.selectable_label(on, &e.name).clicked() {
                                                     cmd =
                                                         Some(Cmd::UseKit(Kit::Mod(e.path.clone())));

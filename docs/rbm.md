@@ -309,8 +309,8 @@ SSND header whatever the SSND size says, and so does the engine's reader since t
   check). On the user's collection: 509 song names match an INFO name exactly, the 2 `omega`
   songs match `Omega` only ignoring case, and 0 need the file name. `--mod FILE` stays the
   explicit override; it warns when its INFO name is not the song's name by the same comparison
-  (no warning for a case-only difference). Which of several matching mods is shown is task-146's
-  decision. [G: the value `strcmp`'s result is compared with comes from the anti-tamper pages
+  (no warning for a case-only difference). Which of several matching mods is used: the first by
+  file name bytes (section 11.3, task-151). [G: the value `strcmp`'s result is compared with comes from the anti-tamper pages
   and is 0; not traced.]
 - **Message 55 and rendering**: of the 9542 bytes, only the 46 sample records (and the key table
   and file spec that locate and descramble them) reach the sample table; the mod id only selects
@@ -431,10 +431,23 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
   per-unit `$UpCase` table, which puts `axiom(b3).rbm` before `AXIOM.rbm` (`(` is 0x28, `.` 0x2E)
   and `dejenerate(b3).rbm` before `dejenerate.rbm`; FAT or a network share may list in directory
   order, so which duplicate wins depends on the user's volume.
-- **orb models NTFS**: it sorted bytewise, which put `AXIOM.rbm` first; `mods.rs` (`folder_order`)
-  now sorts by the name upcased per character (only where the uppercase is one character, so `ß`
-  stays `ß` as in `$UpCase`), then compares UTF-16 units. This approximates `$UpCase` (it agrees
-  for ASCII, which is every name of the collection).
+- **orb's rule: file name bytes** (the user's decision on task-146, 2026-10-30; task-151). orb
+  does not model the volume. Of the mods that share an INFO name (ASCII case ignored, section
+  10), the one whose **file name sorts first by bytes** (`strcmp` over the name's bytes:
+  `Path`'s `as_encoded_bytes`, no Unicode folding, no locale) is the default, in the CLI and in
+  the UI. `mods.rs` `byte_order` is that order; `scan` returns the folder in it, so the UI's Mods
+  menu lists its entries in it too (one order everywhere). `AXIOM.rbm` wins over `axiom(b3).rbm`
+  (`A` 0x41 < `a` 0x61), `Alpha2.rbm` over `alpha3.rbm`, `AlpJunUV.rbm` over `UVJ.rbm`,
+  `dejenerate(b3).rbm` over `dejenerate.rbm` (`(` 0x28 < `.` 0x2E). **This is a deliberate
+  difference from the original**, where the volume's listing order decides (on NTFS
+  `axiom(b3).rbm` wins). The earlier NTFS model (`folder_order`, names upcased per character then
+  UTF-16 units) is gone. `--mod FILE` still picks any file, and the CLI reads no UI setting, so a
+  render is deterministic. The reference check of task-129 keeps the original's file: its
+  manifest records the mod file rbhost used (`"mod"`), and the gated songs test renders each
+  such song with `--mod <folder>/<that file>` (`axiom(b3).rbm`, not the new default
+  `AXIOM.rbm`). The UI's variants and preference: docs/ui_spec.md section 18.
+- The user's collection (171 mods) has 4 shared names: AXIOM (`AXIOM.rbm`, `axiom(b3).rbm`),
+  dejenerate, Alpha 2.0 (`Alpha2.rbm`, `alpha3.rbm`) and AlpJunUV (`AlpJunUV.rbm`, `UVJ.rbm`).
 
 ### 11.4 Songs and the reference check
 
@@ -487,8 +500,10 @@ hashed on the machine); then the skipped files with the reason. Hashes and names
 - RBS songs: `rbsmsg.py`'s messages, `--idle-blocks 9088`, the mod's message 55 as `run.py --mod
   --rb20ful` builds it (the recrypted mods load in the DLL with the CD's DAT);
 - 1.x songs: `tools/rb1x.py`'s messages, idle 0, the built-in kit.
-- The mod is the first file in NTFS order (section 11.3) whose INFO name is the GLOB's, exactly
-  (`strcmp`, section 10); `Standard ReBirth` or a name no INFO has is the built-in kit.
+- The mod is the first file in NTFS order (rbhost's volume; `tools/rbhost/thirdparty_songs.py`
+  `ntfs_key`) whose INFO name is the GLOB's, exactly (`strcmp`, section 10); orb's own default
+  differs for AXIOM (`AXIOM.rbm` by bytes, `axiom(b3).rbm` on NTFS; for dejenerate both orders
+  give `dejenerate(b3).rbm`; section 11.3), so the test passes the recorded file with `--mod`; `Standard ReBirth` or a name no INFO has is the built-in kit.
 - It works in `C:\re\rb\t129` (deleted after each batch) in batches of 100 songs, each under one
   permit with no Rebirth.exe running. The manifest is rewritten after every song, and a song it
   already records is not rendered again, so a stopped run resumes (`--fresh` starts over,
@@ -654,8 +669,8 @@ At the user's request, once mods can be recrypted `RB20FUL.DAT` goes to `orb mod
   mod's folder or its parent, next to the binary, the Windows install folders). `crates/rbm` keeps the
   general descrambler (`KeyTable::read`) for recrypt's own use.
 - A mod that is not recrypted is found like any other by `--mod-dir` / `ORB_MOD_DIR` (its INFO is in
-  the clear, it keeps its place in the original's folder order, so the duplicate-name rule of
-  task-058 is unchanged) and `--mod FILE` takes it; the error comes when its samples are loaded
+  the clear, it keeps its place in the folder order, so the duplicate-name rule of section 11.3
+  applies to it as to any mod) and `--mod FILE` takes it; the error comes when its samples are loaded
   (only when a drum machine plays): `FILE: the song plays a drum machine with this mod, which is
   not recrypted. Run orb mod recrypt --rb20ful RB20FUL.DAT FILE -o OUT.rbm once and use OUT.rbm`
   (exit 1). The decision is "found, fails at load", not "skipped": a skipped mod would turn into

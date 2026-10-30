@@ -41,6 +41,43 @@ fn the_settings_round_trip_through_toml() {
     assert_eq!(fs::read_dir(file.parent().unwrap()).unwrap().count(), 1);
 }
 
+/// task-151: the preferred file among mods that share an INFO name is the table
+/// `preferred_mods`; the name is compared ignoring ASCII case.
+#[test]
+fn the_preferred_mods_round_trip_through_toml() {
+    let d = tempfile::tempdir().unwrap();
+    let file = d.path().join("ui.toml");
+    let mut s = Settings::load_from(&file);
+    assert!(s.preferred_mod("AXIOM").is_none());
+    s.set_preferred_mod("AXIOM", Some("axiom(b3).rbm"));
+    s.set_preferred_mod("Alpha 2.0", Some("alpha3.rbm"));
+    s.recent = vec![p("/r")];
+    s.save().unwrap();
+    let t: toml::Table = fs::read_to_string(&file).unwrap().parse().unwrap();
+    assert_eq!(t["preferred_mods"]["AXIOM"].as_str(), Some("axiom(b3).rbm"));
+    assert_eq!(t["recent"].as_array().unwrap().len(), 1);
+    let r = Settings::load_from(&file);
+    assert_eq!(r, s);
+    assert_eq!(r.preferred_mod("axiom"), Some("axiom(b3).rbm"));
+    // setting under another case replaces; None clears; empty means no table
+    let mut r = r;
+    r.set_preferred_mod("axiom", Some("AXIOM.rbm"));
+    assert_eq!(r.preferred_mods.len(), 2);
+    assert_eq!(r.preferred_mod("AXIOM"), Some("AXIOM.rbm"));
+    r.set_preferred_mod("AXIOM", None);
+    r.set_preferred_mod("Alpha 2.0", None);
+    r.save().unwrap();
+    let t: toml::Table = fs::read_to_string(&file).unwrap().parse().unwrap();
+    assert!(!t.contains_key("preferred_mods"));
+    // wrong types are skipped
+    fs::write(&file, "[preferred_mods]\nA = 3\nB = \"b.rbm\"\nC = \"\"\n").unwrap();
+    let r = Settings::load_from(&file);
+    assert_eq!(r.preferred_mods.len(), 1);
+    assert_eq!(r.preferred_mod("B"), Some("b.rbm"));
+    fs::write(&file, "preferred_mods = 4\n").unwrap();
+    assert!(Settings::load_from(&file).preferred_mods.is_empty());
+}
+
 #[test]
 fn a_damaged_settings_file_gives_the_defaults_and_stays_until_saved() {
     let d = tempfile::tempdir().unwrap();

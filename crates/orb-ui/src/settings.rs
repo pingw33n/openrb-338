@@ -2,18 +2,20 @@
 //! the file browser (task-046), and the startup sound preference (task-074).
 //!
 //! It is a TOML file (task-107) with the keys `songs_dir` and `mods_dir` (paths, absent when
-//! unset), `recent` (an array of paths, newest first) and `startup_sound` (a bool), so it can
-//! be edited by hand. Where it lives: `$ORB_UI_CONFIG` if set; else `OpenRB-338/ui.toml` in the
-//! platform's configuration folder (`$XDG_CONFIG_HOME`, or `~/.config` on Linux,
-//! `~/Library/Application Support` on macOS, `%APPDATA%` on Windows). Reading never fails: a
-//! missing or damaged file gives the defaults (a damaged file stays as it is until the next
-//! save), a key of the wrong type is skipped and the others kept, and unknown keys are
+//! unset), `recent` (an array of paths, newest first), `startup_sound` (a bool) and the table
+//! `preferred_mods` (an INFO name to the file name preferred among mods that share it,
+//! task-151), so it can be edited by hand. Where it lives: `$ORB_UI_CONFIG` if set; else
+//! `OpenRB-338/ui.toml` in the platform's configuration folder (`$XDG_CONFIG_HOME`, or `~/.config`
+//! on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows). Reading never
+//! fails: a missing or damaged file gives the defaults (a damaged file stays as it is until the
+//! next save), a key of the wrong type is skipped and the others kept, and unknown keys are
 //! ignored. Saving writes the whole file through a temporary file and a rename, and returns
 //! its errors for the browser to show. A path that is not valid UTF-8 cannot be stored in
 //! TOML (and a lossy string would name another folder), so a save leaves it out: a `recent`
 //! entry is dropped, `songs_dir` and `mods_dir` are omitted and fall back to the default. An
 //! empty `$ORB_UI_CONFIG` counts as unset. The old `ui.conf` is neither read nor deleted.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -33,6 +35,10 @@ pub struct Settings {
     pub mods_dir: Option<PathBuf>,
     /// The folders files were last chosen in, newest first.
     pub recent: Vec<PathBuf>,
+    /// The mod file preferred for an INFO name that several mods share (task-151): INFO name
+    /// to file name. Stored as the table `preferred_mods`. Names are compared ignoring ASCII
+    /// case ([`Settings::preferred_mod`]).
+    pub preferred_mods: BTreeMap<String, String>,
     /// Where this was read from and is written to (`None`: never persisted, as in tests).
     pub file: Option<PathBuf>,
 }
@@ -44,6 +50,7 @@ impl Default for Settings {
             songs_dir: None,
             mods_dir: None,
             recent: Vec::new(),
+            preferred_mods: BTreeMap::new(),
             file: None,
         }
     }
@@ -98,6 +105,9 @@ struct Stored<'a> {
     mods_dir: Option<&'a Path>,
     startup_sound: bool,
     recent: Vec<&'a Path>,
+    // a table, so last
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    preferred_mods: BTreeMap<&'a str, &'a str>,
 }
 
 /// The path when TOML can hold it (valid UTF-8). A lossy string would name another folder, so
@@ -145,7 +155,32 @@ impl Settings {
                 }
             }
         }
+        if let Some(t) = table.get("preferred_mods").and_then(|v| v.as_table()) {
+            for (name, file) in t {
+                if let Some(f) = file.as_str().filter(|f| !f.is_empty()) {
+                    s.preferred_mods.insert(name.clone(), f.to_string());
+                }
+            }
+        }
         s
+    }
+
+    /// The file preferred for the INFO name `name` (ignoring ASCII case), if one is set.
+    pub fn preferred_mod(&self, name: &str) -> Option<&str> {
+        self.preferred_mods
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, f)| f.as_str())
+    }
+
+    /// Prefers `file` for `name` (`None` clears the preference), replacing an entry of the same
+    /// name in another ASCII case.
+    pub fn set_preferred_mod(&mut self, name: &str, file: Option<&str>) {
+        self.preferred_mods
+            .retain(|n, _| !n.eq_ignore_ascii_case(name));
+        if let Some(f) = file {
+            self.preferred_mods.insert(name.to_string(), f.to_string());
+        }
     }
 
     /// Writes the settings to their file (a no-op without one).
@@ -158,6 +193,11 @@ impl Settings {
             mods_dir: self.mods_dir.as_deref().and_then(storable),
             startup_sound: self.startup_sound,
             recent: self.recent.iter().filter_map(|p| storable(p)).collect(),
+            preferred_mods: self
+                .preferred_mods
+                .iter()
+                .map(|(n, f)| (n.as_str(), f.as_str()))
+                .collect(),
         })
         .map_err(|e| format!("{}: cannot encode: {e}", file.display()))?;
         if let Some(dir) = file.parent() {

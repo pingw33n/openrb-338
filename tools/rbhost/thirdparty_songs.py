@@ -92,8 +92,9 @@ def distinct_songs(folder):
 
 
 def ntfs_key(name):
-    """The folder order of the original's FindFirstFile on NTFS, as orb's mods.rs folder_order:
-    each character upcased when its uppercase is one character, then the UTF-16 units."""
+    """The folder order of the original's FindFirstFile on NTFS (what rbhost, which runs the
+    original, sees; orb itself sorts file names by bytes since task-151): each character upcased
+    when its uppercase is one character, then the UTF-16 units."""
     up = "".join(c.upper() if len(c.upper()) == 1 else c for c in name)
     return (up.encode("utf-16-be"), name)
 

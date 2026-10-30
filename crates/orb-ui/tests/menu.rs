@@ -2763,3 +2763,291 @@ fn a_second_save_of_a_1x_song_is_byte_identical() {
         saves_are_identical(&src, None, name);
     }
 }
+
+/// task-151: mods that share an INFO name (ASCII case ignored) are one Mods entry with a
+/// submenu of their files in byte order; the entry and the active variant are checked; a click
+/// on another variant plays it and leaves the song as it is; a click on the active variant sets
+/// the preference (saved in ui.toml, used by a song open), and again clears it; a preferred file
+/// that is gone falls back to the byte-order default.
+#[test]
+fn mods_that_share_a_name_are_one_entry_with_variants() {
+    let (Some(pbe2), Some(msm2)) = (mod_file("PBE2.rbm"), mod_file("MSM2.rbm")) else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("mods");
+    std::fs::create_dir(&folder).unwrap();
+    // the same mod under two file names, plus a mod of another name
+    let (first, second) = (folder.join("PBE2.rbm"), folder.join("pbe2-alt.rbm"));
+    std::fs::copy(&pbe2, &first).unwrap();
+    std::fs::copy(&pbe2, &second).unwrap();
+    std::fs::copy(&msm2, folder.join("MSM2.rbm")).unwrap();
+    let ui_toml = dir.path().join("cfg").join("ui.toml");
+
+    let mut h = Harness::with_menu();
+    h.app.settings = orb_ui::settings::Settings::load_from(&ui_toml);
+    h.app.settings.mods_dir = Some(folder.clone());
+    h.app.start(None);
+    let list = h.app.mods().unwrap().as_ref().unwrap().clone();
+    // one entry per name; the variants in byte order with the file name as the label
+    assert_eq!(list.len(), 2, "{list:?}");
+    let at = list.iter().position(|e| e.has(&first)).unwrap();
+    let e = list[at].clone();
+    assert!(e.has(&second) && e.path == first);
+    let labels: Vec<_> = e.variants.iter().map(|v| v.file_name()).collect();
+    assert_eq!(labels, ["PBE2.rbm", "pbe2-alt.rbm"]);
+    let other = list
+        .iter()
+        .find(|e| e.has(&folder.join("MSM2.rbm")))
+        .unwrap();
+    assert!(other.variants.is_empty());
+    // a version, when the mod has one, follows the file name
+    let v = orb_ui::menu::ModVariant {
+        path: first.clone(),
+        version: "1.2".into(),
+    };
+    assert_eq!(v.label(), "PBE2.rbm  1.2");
+
+    // the default of a song open: the first by bytes; no preference yet
+    let dir2 = tempfile::tempdir().unwrap();
+    let mut s = rbs::Song::empty();
+    s.glob.mod_name = e.name.clone();
+    let song = dir2.path().join("s.rbs");
+    std::fs::write(&song, s.write().unwrap()).unwrap();
+    h.app.open_song(&song);
+    assert_eq!(h.app.doc.kit, Kit::Mod(first.clone()));
+    assert_eq!(h.app.mod_checks(&list), (false, Some(at)));
+    assert!(h.app.preferred_variant(&e).is_none());
+    assert!(!ui_toml.exists());
+
+    // another variant plays; the song keeps the INFO name and, the two files having the same
+    // URLs, is not marked modified (the song's own URLs were empty, so the first switch is
+    // a change; a switch there and back is not)
+    h.app.choose_variant(second.clone());
+    h.app.doc.modified = false;
+    h.app.choose_variant(first.clone());
+    assert_eq!(h.app.doc.kit, Kit::Mod(first.clone()));
+    h.app.choose_variant(second.clone());
+    assert_eq!(h.app.doc.kit, Kit::Mod(second.clone()));
+    assert_eq!(h.app.doc.mod_name, e.name);
+    assert!(!h.app.doc.modified);
+    assert_eq!(h.app.mod_checks(&list), (false, Some(at)));
+    assert!(!ui_toml.exists(), "playing a variant sets no preference");
+
+    // the active variant becomes the preference, saved in ui.toml
+    h.app.choose_variant(second.clone());
+    assert_eq!(h.app.settings.preferred_mod(&e.name), Some("pbe2-alt.rbm"));
+    assert_eq!(h.app.preferred_variant(&e).unwrap().path, second);
+    let t: toml::Table = std::fs::read_to_string(&ui_toml).unwrap().parse().unwrap();
+    assert_eq!(
+        t["preferred_mods"][e.name.as_str()].as_str(),
+        Some("pbe2-alt.rbm")
+    );
+    assert!(h.app.status.as_deref().unwrap().contains("preferred"));
+    // a song open and a fresh app read it
+    h.app.use_kit(Kit::Standard);
+    h.app.doc.modified = false;
+    h.app.open_song(&song);
+    assert_eq!(h.app.doc.kit, Kit::Mod(second.clone()));
+    let mut h2 = Harness::new();
+    h2.app.settings = orb_ui::settings::Settings::load_from(&ui_toml);
+    h2.app.settings.mods_dir = Some(folder.clone());
+    h2.app.open_song(&song);
+    assert_eq!(h2.app.doc.kit, Kit::Mod(second.clone()));
+
+    // clicking the active preferred variant again clears it
+    h.app.choose_variant(second.clone());
+    assert!(h.app.settings.preferred_mod(&e.name).is_none());
+    assert!(h.app.status.as_deref().unwrap().contains("No preferred"));
+    h.app.use_kit(Kit::Standard);
+    h.app.doc.modified = false;
+    h.app.open_song(&song);
+    assert_eq!(h.app.doc.kit, Kit::Mod(first.clone()));
+
+    // a preference whose file is gone falls back silently to the default
+    h.app.settings.set_preferred_mod(&e.name, Some("gone.rbm"));
+    h.app.use_kit(Kit::Standard);
+    h.app.doc.modified = false;
+    h.app.open_song(&song);
+    assert_eq!(h.app.doc.kit, Kit::Mod(first.clone()));
+    assert!(h.app.error().is_none());
+    assert!(h.app.preferred_variant(&e).is_none());
+    // the same when the preferred file is removed from the folder
+    h.app
+        .settings
+        .set_preferred_mod(&e.name, Some("pbe2-alt.rbm"));
+    std::fs::remove_file(&second).unwrap();
+    h.app.refresh_mods();
+    h.app.use_kit(Kit::Standard);
+    h.app.doc.modified = false;
+    h.app.open_song(&song);
+    assert_eq!(h.app.doc.kit, Kit::Mod(first));
+    // the one file left is no longer a submenu
+    let list = h.app.mods().unwrap().as_ref().unwrap().clone();
+    assert!(list.iter().all(|e| e.variants.is_empty()));
+}
+
+/// A mod with no files, only an INFO chunk: menu name, FTP and web URLs, version 1.2.
+/// It is no recrypted mod (it cannot be played), but the Mods folder lists it.
+fn info_only_mod(name: &str, ftp: &str, web: &str) -> Vec<u8> {
+    let mut b = b"CAT \0\0\0\0PRBM".to_vec();
+    b.extend(b"INFO");
+    b.extend(1280u32.to_be_bytes());
+    let mut info = vec![0u8; 1280];
+    info[601..601 + ftp.len()].copy_from_slice(ftp.as_bytes());
+    info[802..802 + web.len()].copy_from_slice(web.as_bytes());
+    info[1003..1003 + name.len()].copy_from_slice(name.as_bytes());
+    info[1073..1077].copy_from_slice(&[0xBC, 1, 2, 0]);
+    b.extend(info);
+    let size = (b.len() - 8) as u32;
+    b[4..8].copy_from_slice(&size.to_be_bytes());
+    b
+}
+
+/// task-151, without the CD image: a folder with the shared name "Dup" (three files, one with
+/// the name in another ASCII case) and one mod of its own name. The list, the variants, the
+/// preference (set, cleared, saved, stale) and the one rule of resolution.
+#[test]
+fn shared_names_group_and_resolve_by_preference_then_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("mods");
+    std::fs::create_dir(&folder).unwrap();
+    for (f, n) in [
+        ("b.rbm", "Dup"),
+        ("A1.rbm", "Dup"),
+        ("a2.rbm", "DUP"),
+        ("solo.rbm", "Solo"),
+    ] {
+        std::fs::write(folder.join(f), info_only_mod(n, "", "")).unwrap();
+    }
+    std::fs::write(folder.join("junk.rbm"), b"not a mod").unwrap();
+    let ui_toml = dir.path().join("cfg").join("ui.toml");
+
+    let mut h = Harness::with_menu();
+    h.app.settings = orb_ui::settings::Settings::load_from(&ui_toml);
+    h.app.settings.mods_dir = Some(folder.clone());
+    h.app.start(None);
+    let list = h.app.mods().unwrap().as_ref().unwrap().clone();
+    // byte order: A1.rbm, a2.rbm, b.rbm, solo.rbm; the three Dup files are one entry
+    assert_eq!(list.len(), 2, "{list:?}");
+    let e = list[0].clone();
+    assert_eq!(e.name, "Dup");
+    let files: Vec<_> = e.variants.iter().map(|v| v.file_name()).collect();
+    assert_eq!(files, ["A1.rbm", "a2.rbm", "b.rbm"]);
+    assert_eq!(e.variants[0].label(), "A1.rbm  1.2.0");
+    assert_eq!(e.path, folder.join("A1.rbm"));
+    assert!(list[1].variants.is_empty() && list[1].name == "Solo");
+    // the checks follow the kit: any variant checks the entry
+    h.app.doc.kit = Kit::Mod(folder.join("b.rbm"));
+    assert_eq!(h.app.mod_checks(&list), (false, Some(0)));
+    h.app.doc.kit = Kit::Mod(folder.join("solo.rbm"));
+    assert_eq!(h.app.mod_checks(&list), (false, Some(1)));
+
+    let file = |h: &Harness, name: &str| {
+        h.app
+            .resolve_mod_file(name)
+            .unwrap()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+    };
+    // no preference: the first by bytes, whatever the song's case
+    assert_eq!(file(&h, "Dup").as_deref(), Some("A1.rbm"));
+    assert_eq!(file(&h, "dup").as_deref(), Some("A1.rbm"));
+    assert_eq!(file(&h, "Solo").as_deref(), Some("solo.rbm"));
+    assert_eq!(file(&h, "Nope"), None);
+
+    // a click on the active variant sets the preference; the entry and the resolution follow
+    h.app.doc.kit = Kit::Mod(folder.join("b.rbm"));
+    h.app.choose_variant(folder.join("b.rbm"));
+    assert_eq!(h.app.settings.preferred_mod("Dup"), Some("b.rbm"));
+    assert!(h.app.status.as_deref().unwrap().contains("b.rbm"));
+    assert_eq!(file(&h, "Dup").as_deref(), Some("b.rbm"));
+    assert_eq!(file(&h, "DUP").as_deref(), Some("b.rbm"));
+    let cur = h.app.mods().unwrap().as_ref().unwrap().clone();
+    assert_eq!(cur[0].path, folder.join("b.rbm"));
+    assert_eq!(
+        h.app.preferred_variant(&cur[0]).unwrap().file_name(),
+        "b.rbm"
+    );
+    let t: toml::Table = std::fs::read_to_string(&ui_toml).unwrap().parse().unwrap();
+    assert_eq!(t["preferred_mods"]["Dup"].as_str(), Some("b.rbm"));
+    // Refresh List resolves the same way
+    h.app.refresh_mods();
+    assert_eq!(
+        h.app.mods().unwrap().as_ref().unwrap()[0].path,
+        folder.join("b.rbm")
+    );
+    // a fresh app reads it
+    let mut h2 = Harness::new();
+    h2.app.settings = orb_ui::settings::Settings::load_from(&ui_toml);
+    h2.app.settings.mods_dir = Some(folder.clone());
+    assert_eq!(file(&h2, "Dup").as_deref(), Some("b.rbm"));
+
+    // the active preferred variant again clears it
+    h.app.choose_variant(folder.join("b.rbm"));
+    assert!(h.app.settings.preferred_mod("Dup").is_none());
+    assert!(h.app.status.as_deref().unwrap().contains("No preferred"));
+    assert_eq!(file(&h, "Dup").as_deref(), Some("A1.rbm"));
+    assert_eq!(
+        h.app.mods().unwrap().as_ref().unwrap()[0].path,
+        folder.join("A1.rbm")
+    );
+    let t: toml::Table = std::fs::read_to_string(&ui_toml).unwrap().parse().unwrap();
+    assert!(!t.contains_key("preferred_mods"));
+
+    // a preference whose file is gone falls back silently, and the submenu marks nothing
+    h.app.settings.set_preferred_mod("Dup", Some("gone.rbm"));
+    assert_eq!(file(&h, "Dup").as_deref(), Some("A1.rbm"));
+    h.app.refresh_mods();
+    let cur = h.app.mods().unwrap().as_ref().unwrap().clone();
+    assert_eq!(cur[0].path, folder.join("A1.rbm"));
+    assert!(h.app.preferred_variant(&cur[0]).is_none());
+    assert!(h.app.error().is_none());
+    // a preferred file that is removed from the folder: the same
+    h.app.settings.set_preferred_mod("Dup", Some("b.rbm"));
+    std::fs::remove_file(folder.join("b.rbm")).unwrap();
+    assert_eq!(file(&h, "Dup").as_deref(), Some("A1.rbm"));
+    // one file left: no submenu
+    std::fs::remove_file(folder.join("a2.rbm")).unwrap();
+    h.app.refresh_mods();
+    assert!(
+        h.app
+            .mods()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .iter()
+            .all(|e| e.variants.is_empty())
+    );
+}
+
+/// task-151: another file of the same name leaves the song as it is, unless its URLs differ
+/// (dejenerate.rbm and dejenerate(b3).rbm do): a save writes the URLs, so the song is then
+/// modified. No CD image needed.
+#[test]
+fn a_variant_with_other_urls_marks_the_song_modified() {
+    let mut h = Harness::new();
+    let (a, b) = (PathBuf::from("a2.rbm"), PathBuf::from("b.rbm"));
+    let set = |h: &mut Harness, p: &PathBuf, name: &str, web: &str| {
+        h.app
+            .set_song_mod(Kit::Mod(p.clone()), name.into(), "".into(), web.into())
+    };
+    set(&mut h, &a, "Dup", "http://a");
+    assert!(h.app.doc.modified, "the name changed");
+    h.app.doc.modified = false;
+    // the same name and URLs: nothing to save
+    set(&mut h, &b, "Dup", "http://a");
+    assert!(!h.app.doc.modified);
+    assert_eq!(h.app.doc.kit, Kit::Mod(b.clone()));
+    // other URLs: the save changes
+    set(&mut h, &a, "Dup", "http://b");
+    assert!(h.app.doc.modified);
+    assert_eq!(h.app.doc.source.glob.mod_www, "http://b");
+    h.app.doc.modified = false;
+    h.app.set_song_mod(
+        Kit::Mod(b),
+        "Dup".into(),
+        "ftp://x".into(),
+        "http://b".into(),
+    );
+    assert!(h.app.doc.modified, "the FTP URL changed");
+}
