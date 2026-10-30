@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/logo.gif" alt="OpenRB-338" width="378">
+  <img src="assets/readme/logo.gif" alt="OpenRB-338" width="378">
 </p>
 
 <p align="center">
   <a href="https://github.com/pingw33n/openrb-338/releases"><b>Download</b></a> ·
-  <a href="assets/screenshot.png"><b>Screenshot</b></a> ·
+  <a href="assets/readme/screenshot.png"><b>Screenshot</b></a> ·
   <a href="https://github.com/pingw33n/rb-songs"><b>Song collection</b></a> ·
   <a href="https://github.com/pingw33n/rb-mods"><b>Mod collection</b></a>
 </p>

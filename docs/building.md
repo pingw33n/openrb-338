@@ -275,7 +275,20 @@ GPL-3.0-only.
 
 Actions are pinned to a commit SHA (the version in a comment). No workflow uses a secret.
 
-- `ci.yml`, on every push and pull request:
+- `ci.yml`, on every push to main and every pull request, except those that change only files
+  no build or test reads (task-152; the user's list, 2026-10-30). `paths-ignore` on both
+  triggers: `backlog/**`, `docs/**`, `.claude/**`, `**.md` (every Markdown file, including
+  `tests/refs/MANIFEST.md`), `LICENSE` and `assets/readme/**` (the README's pictures). GitHub
+  skips a run only when every changed file matches, so a commit that also touches any other
+  file runs CI in full; the two lists in `ci.yml` are kept equal (YAML anchors are not used).
+  Not ignored, because a test or script reads them: `scripts/` (`crates/orb-ui/src/version.rs`
+  runs `scripts/version.sh`), `tools/` (tests run `tools/*.py`), `tests/`, `crates/`,
+  `assets/ui/`, `assets/Standard.rbm`, `assets/app_icon.ico`, `Cargo.*`, the toolchain,
+  rustfmt and clippy files, and `.github/workflows/`. Checked with `git grep` in `crates/`,
+  `tools/`, `tests/` and `scripts/`: the only `docs/` and `.md` mentions are in comments and
+  messages; no `include_str!`/`include_bytes!`, `build.rs` or test reads them, and no test checks
+  that `tests/refs/MANIFEST.md` is up to date. `release.yml` has no filter.
+  The jobs:
   - `fmt`: `cargo +nightly-2026-10-18 fmt --all --check`. `rustfmt.toml` has unstable options,
     so formatting needs a nightly; this one is pinned and installed with
     `rustup toolchain install nightly-2026-10-18 --profile minimal --component rustfmt`.

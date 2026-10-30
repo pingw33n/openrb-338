@@ -1,10 +1,11 @@
 ---
 id: TASK-152
 title: 'CI: don''t run on changes to docs, backlog and other non-build files'
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-30 07:52'
+updated_date: '2026-10-30 07:56'
 labels:
   - tools
 milestone: m-5
@@ -46,5 +47,25 @@ What:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ci.yml's push and pull_request triggers ignore backlog/**, docs/**, .claude/**, **.md, LICENSE and assets/readme/**; the README pictures live in assets/readme/ with the links updated; no test reads an ignored path (checked); the rule is documented in ci.yml and docs/building.md; actionlint passes
+- [x] #1 ci.yml's push and pull_request triggers ignore backlog/**, docs/**, .claude/**, **.md, LICENSE and assets/readme/**; the README pictures live in assets/readme/ with the links updated; no test reads an ignored path (checked); the rule is documented in ci.yml and docs/building.md; actionlint passes
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. git mv the two README pictures to assets/readme/, fix links in README.md and assets/README.md. 2. Add paths-ignore (6 patterns) to push and pull_request in ci.yml with a comment. 3. Document in docs/building.md CI section. 4. Verify by git grep that no test/build.rs reads an ignored path. 5. actionlint.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-aac1c1f4dc250842e (rebased on main 50d25ff)
+
+Grep findings (git grep in crates/, tools/, tests/, scripts/): every docs/ and .md mention is a comment, doc comment or message string; no include_str!/include_bytes! of .md, docs, LICENSE or the pictures; no fs::read/open of them; build.rs files only watch crates/orb-ui, assets/ui, .git and the .ico. tests/refs/MANIFEST.md (made by tools/rbcorpus.py manifest) is checked by no test (corpus_golden only mentions rbcorpus.py check-flac in a message; it reads manifest.json, which is not ignored). LICENSE is read only by the release package scripts (package-appimage.sh, package-dmg.sh, appimage-smoke.sh), not by CI tests. Other .md under crates/ and tests/ (fixtures/tables/README.md, tests/songs/diag/README.md) are read by no test. So the whole list is safe, nothing left out. YAML anchors not used (the two lists are duplicated). actionlint passes. No Rust changed.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ci.yml push and pull_request have paths-ignore for backlog/**, docs/**, .claude/**, **.md, LICENSE, assets/readme/**; pictures moved with git mv to assets/readme/, links in README.md and assets/README.md updated; rule documented in ci.yml and docs/building.md; grep check recorded in notes; actionlint ok. No Rust changed, so no cargo run. Branch worktree-agent-aac1c1f4dc250842e. The real check (backlog-only push runs no ci job, code push does) is for the supervisor after merge.
+<!-- SECTION:FINAL_SUMMARY:END -->

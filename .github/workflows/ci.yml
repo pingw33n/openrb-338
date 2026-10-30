@@ -5,9 +5,32 @@ name: ci
 
 on:
   # pushes to main, and pull requests (a push to a PR branch would run twice)
+  #
+  # paths-ignore (task-152): no run when EVERY changed file of the push (or of the pull
+  # request) matches one of the patterns; a commit that also touches any other file runs
+  # everything. The patterns are files that no build or test reads (checked with git grep
+  # in crates/, tools/, tests/ and scripts/). Not ignored, because tests or scripts read
+  # them: scripts/, tools/, tests/, crates/, assets/ui/, Standard.rbm, app_icon.ico,
+  # Cargo.*, the toolchain and rustfmt/clippy config, and .github/workflows/. (Every .md
+  # is ignored, tests/refs/MANIFEST.md too: no test reads it.) Keep the two lists equal
+  # (no YAML anchors). release.yml (tags) has no filter.
   push:
     branches: [main]
+    paths-ignore:
+      - "backlog/**"
+      - "docs/**"
+      - ".claude/**"
+      - "**.md"
+      - "LICENSE"
+      - "assets/readme/**"
   pull_request:
+    paths-ignore:
+      - "backlog/**"
+      - "docs/**"
+      - ".claude/**"
+      - "**.md"
+      - "LICENSE"
+      - "assets/readme/**"
 
 permissions:
   contents: read
