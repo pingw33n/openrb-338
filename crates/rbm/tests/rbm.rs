@@ -264,13 +264,21 @@ fn noise_aiff(frames: usize, seed: u64) -> Vec<u8> {
 /// the end marker FF D9.
 fn jpeg_like(len: usize, end: bool) -> Vec<u8> {
     let mut d = vec![0xFF, 0xD8];
-    d.extend((2..len).map(|i| {
-        if i % 97 == 0 {
-            0xFF
-        } else {
-            (i * 13) as u8 | 1
-        }
-    }));
+    // entropy-coded data looks like noise
+    d.extend(
+        noise(len - 2, len as u64)
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| {
+                if i % 97 == 95 {
+                    0xFF
+                } else if b == 0xFF {
+                    0xFE
+                } else {
+                    b
+                }
+            }),
+    );
     for i in 2..len - 1 {
         if d[i] == 0xFF {
             d[i + 1] = 0;
@@ -304,11 +312,21 @@ fn checked_files() -> Vec<(&'static str, Vec<u8>)> {
     v.push(("12017.jpg", jpeg_like(3000, true)));
     v.push(("12018.jpg", jpeg_like(2000, false))); // cut short, as YellowBirth's
     v.push(("12019.jpg", {
-        let mut j = jpeg_like(1500, true);
+        let mut j = jpeg_like(2600, true);
         j.extend([0u8; 40]); // trailing zero padding
         j
     }));
     v.push(("Demo.rbs", noise(3000, 9)));
+    v
+}
+
+/// [`checked_files`] with every JPEG complete: a cut-short JPEG stored unscrambled is not
+/// rescued (only a strict FF D9 end counts as stored).
+fn rescue_files() -> Vec<(&'static str, Vec<u8>)> {
+    let mut v = checked_files();
+    v[6].1 = jpeg_like(2000, true);
+    // a demo song whose window (186 entries) lies inside what the odd half's files prove zero
+    v[8].1 = noise(1200, 9);
     v
 }
 
@@ -421,18 +439,176 @@ fn loading_refuses_a_recrypted_noise_mod() {
     rbm.load_samples(&table, &builtin()).unwrap();
 }
 
+/// The mod with `files` stored unscrambled at the chunk ordinals where `plain` holds and
+/// scrambled with the table of the virtual DAT elsewhere, and that table.
+fn half_plain_mod(files: &[(&str, Vec<u8>)], plain: impl Fn(usize) -> bool) -> (Rbm, KeyTable) {
+    let (rbm, table) = clear_mod(files);
+    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"HEAD", vec![7u8; 256])];
+    for (n, f) in files {
+        chunks.push((b"EMBF", embf(n, f)));
+    }
+    chunks.push((b"INFO", info_chunk()));
+    for (i, c) in chunks.iter_mut().enumerate() {
+        if c.0 == b"EMBF" && !plain(i) {
+            scramble(&mut c.1, i as u16, &table).unwrap();
+        }
+    }
+    drop(rbm);
+    (Rbm::parse(cat(&chunks)).unwrap(), table)
+}
+
+/// `rbm` recrypted with `rescued` as stored reads back as exactly `files`.
+fn recrypted_equals(
+    rbm: &Rbm,
+    table: &KeyTable,
+    rescued: &dat::Rescued,
+    files: &[(&str, Vec<u8>)],
+) {
+    let out = recrypt_with(rbm, table, &rescued.ordinals).unwrap();
+    let back = Rbm::parse(out).unwrap();
+    let t = KeyTable::embedded(&back).unwrap();
+    assert!(back.all_covered(&t));
+    for (n, f) in files {
+        assert!(&back.file_by_name(n, &t).unwrap() == f, "{n}");
+    }
+}
+
+#[test]
+fn files_stored_unscrambled_are_rescued_per_file() {
+    let files = rescue_files();
+    // every file stored in the clear (a key file of zeros): the audio and the JPEGs are rescued
+    let (rbm, table) = clear_mod(&files);
+    let r = dat::check_and_rescue(&rbm, &table).unwrap();
+    // the demo song is of no checked kind and follows the key half of the files that are
+    assert_eq!(r.names.len(), 9, "{r:?}");
+    assert!(r.names.contains(&"Demo.rbs".to_string()));
+    recrypted_equals(&rbm, &table, &r, &files);
+
+    // only the even ordinals in the clear: those are rescued, the others pass with the key
+    let (rbm, table) = half_plain_mod(&files, |i| i % 2 == 0);
+    let r = dat::check_and_rescue(&rbm, &table).unwrap();
+    let even: Vec<_> = files
+        .iter()
+        .enumerate()
+        .filter(|(i, f)| (i + 1) % 2 == 0 && f.0 != "Demo.rbs")
+        .map(|(_, f)| f.0.to_string())
+        .collect();
+    assert_eq!(r.names, even);
+    recrypted_equals(&rbm, &table, &r, &files);
+
+    // a mod that is entirely scrambled with the key needs no rescue
+    let (data, table) = synthetic_mod(&files);
+    let r = dat::check_and_rescue(&Rbm::parse(data).unwrap(), &table).unwrap();
+    assert_eq!(r, dat::Rescued::default());
+}
+
+#[test]
+fn a_noise_drum_stored_unscrambled_follows_its_key_half() {
+    // The drum is noise as stored and with the key, so only the files of its half say so.
+    let mut files = rescue_files();
+    files[0].1 = noise_aiff(3000, 77); // ordinal 1, odd
+    let (rbm, table) = clear_mod(&files);
+    let r = dat::check_and_rescue(&rbm, &table).unwrap();
+    assert!(r.names.contains(&"TR808BD.aif".to_string()), "{r:?}");
+    recrypted_equals(&rbm, &table, &r, &files);
+    // alone in its half it cannot be told from a drum scrambled with the key: it stays
+    let mut files = audio_only(checked_files());
+    files[0].1 = noise_aiff(3000, 77);
+    let (rbm, table) = half_plain_mod(&files, |i| i == 1);
+    let r = dat::check_and_rescue(&rbm, &table).unwrap();
+    assert!(r.names.is_empty(), "{r:?}");
+}
+
+#[test]
+fn a_noise_jpeg_without_the_end_marker_is_not_rescued() {
+    // A short JPEG (the scramble starts at payload byte 1024, file byte 1014) with a foreign key:
+    // noise, without FF D9. The cut-short leniency must not take it as stored.
+    for len in [1100, 1250, 1500] {
+        let mut files = vec![("12017.jpg", jpeg_like(len, false))];
+        files[0].1.truncate(len);
+        let (_, table) = clear_mod(&files);
+        let foreign = wrong_table(4);
+        let mut p = embf("12017.jpg", &files[0].1);
+        scramble(&mut p, 1, &foreign).unwrap();
+        let rbm = Rbm::parse(cat(&[
+            (b"HEAD", vec![7u8; 256]),
+            (b"EMBF", p),
+            (b"INFO", info_chunk()),
+        ]))
+        .unwrap();
+        match dat::check_and_rescue(&rbm, &table) {
+            Ok(r) => assert!(r.names.is_empty(), "{len}: {r:?}"),
+            Err(e) => assert!(matches!(e, RbmError::WrongKey(_)), "{e}"),
+        }
+    }
+    // and a short JPEG that ends with FF D9, stored unscrambled, is
+    let files = vec![("12017.jpg", jpeg_like(1100, true))];
+    let (rbm, table) = clear_mod(&files);
+    let r = dat::check_and_rescue(&rbm, &table).unwrap();
+    assert_eq!(r.names, ["12017.jpg"]);
+    recrypted_equals(&rbm, &table, &r, &files);
+}
+
+#[test]
+fn a_file_follows_its_key_half_only_where_the_half_is_proven_zero() {
+    // Odd ordinals 1 (Demo.rbs, which cannot say) and 3 (a JPEG, stored): the Demo.rbs window
+    // is 140 entries (key 1), the JPEG proves its own window, min(174, size - 1024) entries.
+    let demo = ("Demo.rbs", noise(3000, 9));
+    let filler = ("TR808BD.aif", aiff(2000, 1));
+    // a short JPEG proves 86 entries: not enough for the Demo.rbs, which stays descrambled
+    let files = vec![
+        demo.clone(),
+        filler.clone(),
+        ("12017.jpg", jpeg_like(1100, true)),
+    ];
+    let (rbm, table) = half_plain_mod(&files, |i| i % 2 == 1);
+    let r = dat::check_and_rescue(&rbm, &table).unwrap();
+    assert_eq!(r.names, ["12017.jpg"], "{r:?}");
+    // a long one proves 174 entries: enough
+    let files = vec![demo, filler, ("12017.jpg", jpeg_like(3000, true))];
+    let (rbm, table) = half_plain_mod(&files, |i| i % 2 == 1);
+    let r = dat::check_and_rescue(&rbm, &table).unwrap();
+    assert_eq!(r.names, ["Demo.rbs", "12017.jpg"], "{r:?}");
+    recrypted_equals(&rbm, &table, &r, &files);
+}
+
+#[test]
+fn a_file_that_passes_neither_way_refuses_the_mod() {
+    let files = checked_files();
+    // even ordinals in the clear, but the JPEG at ordinal 7 ("12018.jpg", odd: scrambled with
+    // the key) is noise: neither descrambled nor as stored
+    let mut bad = files.clone();
+    bad[6].1 = noise(2000, 3);
+    bad[6].1[..2].copy_from_slice(&[0xFF, 0xD8]);
+    let (rbm, table) = half_plain_mod(&bad, |i| i % 2 == 0);
+    let err = dat::check_and_rescue(&rbm, &table).unwrap_err();
+    assert!(matches!(err, RbmError::WrongKey(_)), "{err}");
+    assert!(err.to_string().contains("12018.jpg"), "{err}");
+    // the odd half read with a foreign table: its JPEG is named, the even half is rescued
+    let (rbm, _) = half_plain_mod(&files, |i| i % 2 == 0);
+    let err = dat::check_and_rescue(&rbm, &wrong_table(9)).unwrap_err();
+    assert!(matches!(err, RbmError::WrongKey(_)), "{err}");
+    assert!(err.to_string().contains("12018.jpg"), "{err}");
+}
+
 #[test]
 fn jpeg_tails() {
-    assert!(dat::jpeg_end_ok(&jpeg_like(3000, true)));
-    assert!(dat::jpeg_end_ok(&jpeg_like(2000, false)));
-    assert!(dat::jpeg_end_ok(&noise(1024, 3))); // never scrambled, not checked
+    assert!(dat::jpeg_end_ok(&jpeg_like(3000, true), 1014));
+    assert!(dat::jpeg_end_ok(&jpeg_like(2000, false), 1014));
+    assert!(dat::jpeg_end_ok(&noise(1014, 3), 1014)); // never scrambled, not checked
+    assert!(dat::jpeg_end_ok(&noise(1050, 3), 1014)); // 36 bytes, by chance without a bad FF
+    // bytes past 1014 are checked now, not only those past 1024
+    let mut j = vec![0u8; 1014];
+    j.extend([0xFF, 0x12, 0, 0, 0, 0]);
+    assert!(!dat::jpeg_end_ok(&j, 1014));
+    assert_eq!(dat::clear_len("12016.jpg"), 1014);
     let mut j = jpeg_like(2000, true);
     j.extend([0u8; 100]);
-    assert!(dat::jpeg_end_ok(&j));
+    assert!(dat::jpeg_end_ok(&j, 1014));
     let mut j = jpeg_like(2000, false);
     j[1500..].copy_from_slice(&noise(500, 8));
-    assert!(!dat::jpeg_end_ok(&j));
-    assert!(!dat::jpeg_end_ok(&noise(3000, 3)));
+    assert!(!dat::jpeg_end_ok(&j, 1014));
+    assert!(!dat::jpeg_end_ok(&noise(3000, 3), 1014));
 }
 
 #[test]

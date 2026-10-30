@@ -42,6 +42,9 @@ pub enum Outcome {
         chunks_after: usize,
         bytes_before: usize,
         bytes_after: usize,
+        /// The embedded files that were stored unscrambled (made with another edition's key
+        /// file) and recovered (task-161).
+        rescued: Vec<String>,
     },
     /// The mod was recrypted already: its files were checked and it was copied unchanged.
     AlreadyRecrypted,
@@ -82,12 +85,33 @@ impl Report {
         let mut s =
             format!("{recrypted} recrypted, {already} already recrypted (copied), {failed} failed");
         for (input, _, o) in &self.results {
-            if let Outcome::Failed(why) = o {
-                s.push_str(&format!("\n  failed: {}: {why}", input.display()));
+            match o {
+                Outcome::Failed(why) => {
+                    s.push_str(&format!("\n  failed: {}: {why}", input.display()));
+                }
+                Outcome::Recrypted { rescued, .. } if !rescued.is_empty() => {
+                    s.push_str(&format!(
+                        "\n  {}: {}",
+                        input.display(),
+                        rescue_note(rescued)
+                    ));
+                }
+                _ => {}
             }
         }
         s
     }
+}
+
+/// The summary note for the files recovered from being stored unscrambled.
+fn rescue_note(names: &[String]) -> String {
+    let first = names.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+    let more = if names.len() > 3 { ", ..." } else { "" };
+    format!(
+        "{} files were stored unscrambled (made with another edition's key file); recovered \
+         ({first}{more})",
+        names.len()
+    )
 }
 
 /// What the key file is read through: a file or a window of the CD image.
@@ -345,8 +369,8 @@ fn one(dat: &mut Dat, job: &Job, force: bool) -> Result<Outcome, String> {
     } else {
         let f = dat.file()?;
         let table = rbm::KeyTable::read(&rbm, f).map_err(|e| e.to_string())?;
-        rbm::dat::validate_files(&rbm, &table).map_err(|e| e.to_string())?;
-        let out = rbm::recrypt(&rbm, &table).map_err(|e| e.to_string())?;
+        let rescued = rbm::dat::check_and_rescue(&rbm, &table).map_err(|e| e.to_string())?;
+        let out = rbm::recrypt_with(&rbm, &table, &rescued.ordinals).map_err(|e| e.to_string())?;
         let back = rbm::Rbm::parse(out.clone())
             .map_err(|e| format!("internal: the recrypted mod does not parse: {e}"))?;
         rbm::dat::validate_files(
@@ -359,6 +383,7 @@ fn one(dat: &mut Dat, job: &Job, force: bool) -> Result<Outcome, String> {
             chunks_after: back.chunks().len(),
             bytes_before: bytes.len(),
             bytes_after: out.len(),
+            rescued: rescued.names,
         };
         (out, o)
     };
@@ -399,12 +424,18 @@ pub fn run(o: &Options) -> Result<Report, Fail> {
                 chunks_after,
                 bytes_before,
                 bytes_after,
-            } => eprintln!(
-                "orb: {} -> {}: {chunks_before} -> {chunks_after} chunks, {bytes_before} -> \
-                 {bytes_after} bytes",
-                input.display(),
-                output.display()
-            ),
+                rescued,
+            } => {
+                eprintln!(
+                    "orb: {} -> {}: {chunks_before} -> {chunks_after} chunks, {bytes_before} -> \
+                     {bytes_after} bytes",
+                    input.display(),
+                    output.display()
+                );
+                if !rescued.is_empty() {
+                    eprintln!("orb: {}: {}", input.display(), rescue_note(rescued));
+                }
+            }
             Outcome::AlreadyRecrypted => eprintln!(
                 "orb: {} -> {}: already recrypted, copied unchanged",
                 input.display(),

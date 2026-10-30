@@ -56,7 +56,19 @@ fn aiff_comm_last(frames: usize) -> Vec<u8> {
 
 fn jpeg(len: usize, first: [u8; 2]) -> Vec<u8> {
     let mut d = first.to_vec();
-    d.extend((2..len).map(|i| (i * 13) as u8));
+    // noise like entropy-coded data, with the FF bytes stuffed (FF 00) as in real JPEGs
+    let mut x = len as u64;
+    d.extend((2..len).map(|_| {
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (x >> 33) as u8
+    }));
+    for i in 2..len - 2 {
+        if d[i] == 0xFF {
+            d[i + 1] = 0;
+        }
+    }
     d[len - 2..].copy_from_slice(&[0xFF, 0xD9]); // the end marker, as a real JPEG's
     d
 }
@@ -393,16 +405,85 @@ fn a_mod_scrambled_with_another_key_file_is_refused_past_byte_1024() {
     }
 }
 
-#[test]
-fn a_mod_stored_unscrambled_is_refused_past_byte_1024() {
-    // A key half of zeros stores the files in the clear; the original then descrambles garbage.
-    for with_jpeg in [true, false] {
-        let files = five_samples_and_a_jpeg(with_jpeg);
-        let f = fixture(vec![("a.rbm", files.clone())]);
-        std::fs::write(f.mods.join("a.rbm"), cat(&chunks_of(&files))).unwrap();
-        let why = failure_with(&f, &f.dat);
-        assert!(why.contains("another edition"), "{why}");
+/// Rewrites `a.rbm` of `f` with the files at the chunk ordinals where `plain` holds stored
+/// unscrambled (a key half of zeros) and the others scrambled with the stand-in key file.
+fn store_plain(f: &Fixture, files: &Files, plain: impl Fn(usize) -> bool) {
+    let mut chunks = chunks_of(files);
+    let clear = Rbm::parse(cat(&chunks)).unwrap();
+    let table = KeyTable::read(&clear, &mut File::open(&f.dat).unwrap()).unwrap();
+    for (i, c) in chunks.iter_mut().enumerate() {
+        if &c.0 == b"EMBF" && !plain(i) {
+            rbm::scramble(&mut c.1, i as u16, &table).unwrap();
+        }
     }
+    std::fs::write(f.mods.join("a.rbm"), cat(&chunks)).unwrap();
+}
+
+#[test]
+fn files_stored_unscrambled_are_recovered_per_file() {
+    // A key half of zeros stores the files in the clear; the original then descrambles garbage.
+    // Every file in the clear, or those of the even keys only: the mod is written, each file
+    // exactly as it was, with a note naming the recovered files.
+    let mut files = five_samples_and_a_jpeg(true);
+    files.push(("12018.jpg", jpeg(2800, [0xFF, 0xD8])));
+    files.push(("Demo.rbs", (0..1200).map(|i| (i * 7) as u8).collect()));
+    for all in [true, false] {
+        let f = fixture(vec![("a.rbm", files.clone())]);
+        store_plain(&f, &files, |i| all || i % 2 == 0);
+        let ins = [f.mods.join("a.rbm")];
+        let out = f.dir.path().join("o.rbm");
+        let r = run(&opts(&f, &ins, &out, false)).unwrap();
+        assert_eq!(r.failed(), 0, "{}", r.summary());
+        let (_, _, Outcome::Recrypted { rescued, .. }) = &r.results[0] else {
+            panic!("{:?}", r.results[0].2)
+        };
+        let want: Vec<String> = files
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| all || (i + 1) % 2 == 0)
+            .map(|(_, f)| f.0.to_string())
+            .collect();
+        assert_eq!(rescued, &want);
+        let s = r.summary();
+        assert!(s.contains("stored unscrambled"), "{s}");
+        assert!(s.contains(&format!("{} files", want.len())), "{s}");
+        check_recrypted(&std::fs::read(&out).unwrap(), &files);
+    }
+    // the audio alone, no JPEG, is recovered as well
+    let audio = five_samples_and_a_jpeg(false);
+    let f = fixture(vec![("a.rbm", audio.clone())]);
+    store_plain(&f, &audio, |_| true);
+    let ins = [f.mods.join("a.rbm")];
+    let out = f.dir.path().join("o2.rbm");
+    let r = run(&opts(&f, &ins, &out, false)).unwrap();
+    assert_eq!(r.failed(), 0, "{}", r.summary());
+    check_recrypted(&std::fs::read(&out).unwrap(), &audio);
+}
+
+#[test]
+fn a_mod_with_a_file_of_a_foreign_key_is_refused_with_the_file_named() {
+    // The even keys are stored in the clear, the odd ones are right, except one JPEG that is
+    // neither (scrambled with a foreign key): the mod is refused and nothing is written.
+    let mut files = five_samples_and_a_jpeg(true);
+    files.push(("12018.jpg", jpeg(2800, [0xFF, 0xD8])));
+    let f = fixture(vec![("a.rbm", files.clone())]);
+    let foreign = files.len(); // the ordinal of 12018.jpg, the last file: odd (7)
+    assert_eq!(foreign % 2, 1);
+    store_plain(&f, &files, |i| i % 2 == 0);
+    let mut bytes = std::fs::read(f.mods.join("a.rbm")).unwrap();
+    let rbm = Rbm::parse(bytes.clone()).unwrap();
+    let c = rbm.chunks().iter().find(|c| c.ordinal == foreign).unwrap();
+    let mut x = 99u64;
+    for b in &mut bytes[c.offset + 1100..c.offset + c.size] {
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        *b = (x >> 33) as u8;
+    }
+    std::fs::write(f.mods.join("a.rbm"), bytes).unwrap();
+    let why = failure_with(&f, &f.dat);
+    assert!(why.contains("12018.jpg"), "{why}");
+    assert!(why.contains("another edition"), "{why}");
 }
 
 #[test]

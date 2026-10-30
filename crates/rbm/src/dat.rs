@@ -192,7 +192,7 @@ pub fn check_file(name: &str, kind: Kind, file: &[u8]) -> Result<(), RbmError> {
                         .into(),
                 ));
             }
-            if !jpeg_end_ok(file) {
+            if !jpeg_end_ok(file, clear_len(name)) {
                 return Err(RbmError::WrongKey(format!(
                     "the JPEG {name} has no end marker FF D9 and its data is not JPEG data"
                 )));
@@ -202,8 +202,16 @@ pub fn check_file(name: &str, kind: Kind, file: &[u8]) -> Result<(), RbmError> {
     Ok(())
 }
 
-/// Whether the part of a JPEG past byte [`UNSCRAMBLED`] can be JPEG data. True if the file ends
-/// with FF D9 followed only by zero bytes. A file of [`UNSCRAMBLED`] bytes or fewer is not
+/// The bytes at the start of the file called `name` that are never scrambled: the scrambling
+/// counts from the start of the payload, which holds the name and its NUL first, so a file's
+/// own clear part is [`UNSCRAMBLED`] minus that (1014 for `12016.jpg`). A file that is longer
+/// than this has scrambled bytes even when it is not longer than [`UNSCRAMBLED`].
+pub fn clear_len(name: &str) -> usize {
+    UNSCRAMBLED.saturating_sub(name.len() + 1)
+}
+
+/// Whether the part of a JPEG past byte `clear` ([`clear_len`]) can be JPEG data. True if the
+/// file ends with FF D9 followed only by zero bytes. A file of `clear` bytes or fewer is not
 /// checked (it is never scrambled).
 ///
 /// A JPEG without the end marker is not necessarily noise: YellowBirth's 59 panel JPEGs were cut
@@ -213,17 +221,21 @@ pub fn check_file(name: &str, kind: Kind, file: &[u8]) -> Result<(), RbmError> {
 /// 190 times in 256 (about 3 in 4). A noise JPEG of `size` bytes passes with a probability of
 /// about exp(-0.0029 * (size - 1024)): 0.80 at 1.1 KB, 0.23 at 1.5 KB, 0.06 at 2 KB, 0.003 at
 /// 3 KB, about 0 from 5 KB. Any one failing JPEG refuses the mod.
-pub fn jpeg_end_ok(file: &[u8]) -> bool {
-    if file.len() <= UNSCRAMBLED {
+pub fn jpeg_end_ok(file: &[u8], clear: usize) -> bool {
+    if file.len() <= clear {
         return true;
     }
+    jpeg_has_end(file)
+        || file[clear..]
+            .windows(2)
+            .all(|w| w[0] != 0xFF || matches!(w[1], 0x00 | 0x01 | 0xC0..=0xFF))
+}
+
+/// Whether the file ends with FF D9 followed only by zero bytes (the strict JPEG end). Noise
+/// has it with a probability of about 2^-16.
+pub fn jpeg_has_end(file: &[u8]) -> bool {
     let end = file.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
-    if file[..end].ends_with(&[0xFF, 0xD9]) {
-        return true;
-    }
-    file[UNSCRAMBLED..]
-        .windows(2)
-        .all(|w| w[0] != 0xFF || matches!(w[1], 0x00 | 0x01 | 0xC0..=0xFF))
+    file[..end].ends_with(&[0xFF, 0xD9])
 }
 
 /// Checks the decrypted embedded files of `rbm` under `table`:
@@ -246,4 +258,146 @@ pub fn validate_files(rbm: &Rbm, table: &KeyTable) -> Result<(), RbmError> {
         }
     }
     check_audio(&shares)
+}
+
+/// A sample file whose share with the CD's key is above this may be one that was stored
+/// unscrambled (see [`check_and_rescue`]): a wrongly descrambled file has about 0.56.
+pub const RESCUE_CD_NOISY: f64 = 0.45;
+/// ... and it is taken as stored only if its share as stored is below this: real audio has
+/// 0.0000 to 0.2 (a noise drum stored unscrambled is left alone, it cannot be told apart).
+pub const RESCUE_STORED_CLEAN: f64 = 0.3;
+
+/// The files [`check_and_rescue`] found stored unscrambled.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Rescued {
+    /// Their chunk ordinals, for [`crate::recrypt_with`].
+    pub ordinals: Vec<usize>,
+    /// Their embedded names, in file order.
+    pub names: Vec<String>,
+}
+
+/// What [`check_and_rescue`] decided for one file.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pick {
+    /// Descrambled with the key table.
+    Key,
+    /// Stored unscrambled, by its own evidence.
+    Stored,
+    /// Looks like noise with the key and nothing says it is not stored unscrambled, or cannot
+    /// be checked at all (the demo song); taken as stored only if a sure stored file shares its
+    /// key half (the parity of its key).
+    Maybe,
+}
+
+/// [`validate_files`] for a mod made with a key file other than the 2001 CD's, which may hold
+/// files stored unscrambled (a key half of zeros, docs/rbm.md 12.5). A file that fails
+/// [`check_file`] with `table` is tried as stored; the file decides, not the mod:
+/// - a JPEG: as stored it must start with FF D8 and end with FF D9 ([`jpeg_has_end`]; the cut-short
+///   leniency of [`check_file`] never applies to a rescue), and the descrambled one must not have
+///   that end;
+/// - an AIFF: its [`file_jump_share`] with `table` must be above [`RESCUE_CD_NOISY`] and as stored
+///   below [`RESCUE_STORED_CLEAN`]. A file noisy both ways (a noise drum, or a foreign key) is
+///   taken as stored only when the entries of its key half that its window needs (the first
+///   `min(period, size - 1024)`, by the parity of the chunk key) are proven zero by the sure stored
+///   files of that half. The same goes for a file of no checked kind (the demo song) that the key
+///   changes.
+///
+/// The audio of the chosen versions is then judged as in [`validate_files`]. A mod in which a file
+/// passes neither way is refused, with all such files named. A mod that needs no rescue gives an
+/// empty [`Rescued`].
+pub fn check_and_rescue(rbm: &Rbm, table: &KeyTable) -> Result<Rescued, RbmError> {
+    struct Item {
+        ordinal: usize,
+        name: String,
+        parity: u16,
+        /// The entries of its key half the file's window needs (`key_need`).
+        need: usize,
+        pick: Pick,
+        share_key: Option<f64>,
+        share_stored: Option<f64>,
+    }
+    let mut items = Vec::new();
+    let mut bad: Vec<(String, RbmError)> = Vec::new();
+    for c in rbm.embedded() {
+        let name = c.name.clone().unwrap_or_default();
+        let file = rbm.file(c, table)?;
+        let stored = &rbm.raw_payload(c)[c.name_len..];
+        let mut item = Item {
+            ordinal: c.ordinal,
+            name: name.clone(),
+            parity: rbm.chunk_key(c) & 1,
+            need: crate::key_need(c.size, rbm.chunk_key(c)).1,
+            pick: Pick::Key,
+            share_key: None,
+            share_stored: None,
+        };
+        let Some(kind) = kind_of(&name) else {
+            // not checkable (the demo song): it follows its key half, if the key changes it
+            if file != stored {
+                item.pick = Pick::Maybe;
+                items.push(item);
+            }
+            continue;
+        };
+        match (kind, check_file(&name, kind, &file)) {
+            (Kind::Jpeg, keyed) if file.len() > clear_len(&name) => {
+                // Stored counts only with the strict end FF D9: the cut-short leniency of
+                // check_file passes keyed noise with few FF bytes, and stored JPEGs with it.
+                let stored_ends = stored.starts_with(&[0xFF, 0xD8]) && jpeg_has_end(stored);
+                if stored_ends && !(keyed.is_ok() && jpeg_has_end(&file)) {
+                    item.pick = Pick::Stored;
+                } else if let Err(e) = keyed {
+                    bad.push((name, e));
+                    continue;
+                }
+            }
+            (_, Err(e)) => return Err(e),
+            (Kind::Jpeg, Ok(())) => {}
+            (Kind::Aiff, Ok(())) => {
+                item.share_key = file_jump_share(&file);
+                item.share_stored = file_jump_share(stored);
+                if item.share_key.is_some_and(|s| s > RESCUE_CD_NOISY) {
+                    item.pick = if item.share_stored.is_some_and(|s| s < RESCUE_STORED_CLEAN) {
+                        Pick::Stored
+                    } else {
+                        Pick::Maybe
+                    };
+                }
+            }
+        }
+        items.push(item);
+    }
+    if bad.len() == 1 {
+        return Err(bad.remove(0).1);
+    }
+    if !bad.is_empty() {
+        let names: Vec<&str> = bad.iter().take(5).map(|b| b.0.as_str()).collect();
+        let more = if bad.len() > 5 { ", ..." } else { "" };
+        return Err(RbmError::WrongKey(format!(
+            "{} JPEGs are neither JPEG data descrambled with the key nor as stored ({}{more})",
+            bad.len(),
+            names.join(", ")
+        )));
+    }
+    // The entries of each key half proven zero: a file stored unscrambled uses entries 0..need
+    // of its half (`key_need`), so they are all zero, and a file that cannot say follows only if
+    // its own window lies inside them.
+    let mut zero = [0usize; 2];
+    for i in items.iter().filter(|i| i.pick == Pick::Stored) {
+        zero[i.parity as usize] = zero[i.parity as usize].max(i.need);
+    }
+    let mut shares = Vec::new();
+    let mut out = Rescued::default();
+    for i in &items {
+        let stored =
+            i.pick == Pick::Stored || (i.pick == Pick::Maybe && i.need <= zero[i.parity as usize]);
+        if stored {
+            out.ordinals.push(i.ordinal);
+            out.names.push(i.name.clone());
+        }
+        let share = if stored { i.share_stored } else { i.share_key };
+        shares.extend(share.map(|s| (i.name.clone(), s)));
+    }
+    check_audio(&shares)?;
+    Ok(out)
 }

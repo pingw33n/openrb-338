@@ -778,7 +778,8 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/orb-cli/src/recrypt.rs`):
   `rbm::dat::validate_files`). The scrambling adds key bytes to every byte from 1024 on, so a mod
   scrambled with another edition's key file, or stored unscrambled (a key half of zeros, section
   4), passes every header check and recrypts into garbage that plays as noise.
-  - *JPEG.* A `.jpg` longer than 1024 bytes must end with `FF D9` followed only by zero bytes,
+  - *JPEG.* A `.jpg` longer than its clear part (1024 bytes of the payload minus the name and
+    its NUL, so 1014 for `12016.jpg`; see *Rescue*) must end with `FF D9` followed only by zero bytes,
     or else hold only JPEG data past byte 1024: every `FF` there followed by `00`, `01`, `FF` or a
     marker `C0..FF`. The second clause exists for YellowBirth (in `~/rb-mods/mods`, from a
     collection of 2026-10-28): its 59 JPEGs were cut short by its packer (section 11.1) and lack
@@ -804,8 +805,9 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/orb-cli/src/recrypt.rs`):
     `AloNaNbox 2.0.rbm` (118557743 and 114850228), `MaShMoD.rbm` (20373127 and 84469203). One or
     both halves are zeros (mellow, House of love: both; TurnMod: the even half; AloNaNbox: the odd
     half) or foreign bytes found nowhere in the 2001 `RB20FUL.DAT` (MaShMoD: both; TurnMod, the
-    odd half; AloNaNbox, the even half). `orb mod recrypt` over the 317 originals now writes 312
-    and refuses exactly these five, each by the first JPEG: "the JPEG 12015.jpg has no end
+    odd half; AloNaNbox, the even half). With only the checks above (task-160) `orb mod
+    recrypt` over the 317 originals wrote 312 and refused exactly these five, each by the first
+    JPEG (since task-161 the first two are recovered, see *Rescue*): "the JPEG 12015.jpg has no end
     marker FF D9 and its data is not JPEG data; the mod was probably scrambled
     with the key file of another edition of ReBirth (or not scrambled at all)". Bulk mode goes on
     with the other mods. `~/rb-stuff-peff/mods_recrypted` holds three of them already recrypted
@@ -815,9 +817,57 @@ played noise. Now (`crates/rbm/src/dat.rs`, `crates/orb-cli/src/recrypt.rs`):
     instead of playing noise. **Decision: refuse, not warn**: a mod whose audio is noise is never
     what a user means to play, and the check only fires when most of at least 4 files are noise.
     It does not look at JPEGs (the engine uses none).
-  - *Rescue.* `check_file` takes one decrypted file, so a rescue of files stored unscrambled
-    (task-161) can call it per file for the JPEGs; the audio is judged per mod
-    (`audio_is_noise`), not per file.
+  - *Rescue* (task-161, 2026-10-30; `rbm::dat::check_and_rescue`, `rbm::recrypt_with`). A file
+    stored unscrambled (a key half of zeros, mellow, House of love, half of TurnMod and of
+    AloNaNbox) is recovered exactly, **per file**; recrypt takes it as stored only when the CD's
+    key fails it and it passes as stored:
+    - *JPEG:* the stored file starts with FF D8 and ends with FF D9 (trailing zeros allowed), and
+      the file descrambled with the CD's key does not. The cut-short leniency of the checks above
+      never applies to a rescue, because it also passes keyed noise that has few FF bytes. A bug
+      of the first version of the rescue (review round 1): the checks took the bytes up to 1024 of
+      the *file* as never scrambled, but the scrambling counts from the start of the *payload*,
+      which holds the name and its NUL first, so a file's own clear part is `1024 - (name length +
+      1)` (1014 for `12016.jpg`, `rbm::dat::clear_len`). A short JPEG of 1015 to 1024 bytes, or
+      the few bytes of a longer one, was taken as "never scrambled" and passed as noise with the
+      key, so 15 stored JPEGs (mellow: 12015, 12016, 12068, 12558 to 12562 and House of love:
+      12016, 12019, 12506, 12509, 12550, 12567, 12571) were written descrambled with the CD's key,
+      differing from the twin after file byte 1014. A guess that those halves are zero only in
+      part was **not** the cause: recovering the table bytes with the twins as known plaintext
+      gives stored == plaintext for all 104 files of mellow, so the half is zero over every window
+      tested (up to 1924 entries); with `clear_len` all 15 are rescued and equal.
+    - *AIFF:* the jump share (above) with the CD's key is above 0.45 (RESCUE_CD_NOISY) and as
+      stored below 0.3 (RESCUE_STORED_CLEAN). Measured over the 317 originals (the 171 recrypted
+      mods of `~/rb-mods/mods` are all recrypted, so they do not exercise the rescue; the evidence
+      for good mods is the 312 originals, of which recrypt reports no rescue): 0 files in a good
+      mod meet both; the noise drums that exceed 0.45 (Heavy Rhythm Machine 2 files, Inner mod,
+      Magica, Neurotek 1 each) are 0.556 to 0.570 as stored. In the files stored unscrambled the
+      share as stored is 0.000 to 0.069 (mellow 44 of 44 files, House of love 46 of 46, TurnMod
+      21 of 44, AloNaNbox 23 of 46) against 0.49 to 0.61 with the CD's key. MaShMoD: 0 files
+      (46 are 0.526 to 0.564 as stored: foreign key, noise either way). The margin is 0.069
+      against 0.556 for the stored share, 0.45 against at most 0.30 needed.
+    - *A file that cannot say* (noise as stored and with the key, a noise drum, or the demo
+      song, which has no check) follows the key half: the two halves of the key table are chosen
+      by the parity of the chunk key, and a file uses the entries `0 .. min(period, size -
+      1024)` of its half (`key_need`). A file that cannot say is taken as stored only if the
+      files of its parity found stored by their own evidence prove that many entries zero (the
+      largest `key_need` among them), else it is left to the key. A noise drum alone in its half,
+      or with a window past the proven entries, stays descrambled with the CD's key, which is
+      the one case the rescue cannot see (the mod's audio check still sees a mod of mostly
+      noise).
+    - *The mod:* it is written only if every checked file passes one way or the other, then the
+      audio of the chosen versions passes the per-mod check. Otherwise it is refused naming the
+      JPEGs (or the audio) that failed. The summary says "N files were stored unscrambled (made
+      with another edition's key file); recovered (first names)". Run over the 317 originals:
+      314 written (the 312 and mellow and House of love, 77 and 106 files recovered: every file
+      of the two) and exactly TurnMod (27 JPEGs), AloNaNbox (15) and MaShMoD (45) refused. The
+      recovered files of mellow equal the files of its correctly scrambled twin `Mellow
+      (SouthPark).rbm`: 104 of 104 identical. House of love Juam1 against its twin `House of love
+      Juamø.rbm` (on disk `JuamÃ¸`): 104 of 106 identical; `Demo.rbs` (a valid RBS, "Template
+      Mod") and `Splash.jpg` (ends with FF D9) differ, being that mod's own content. TurnMod's odd half, AloNaNbox's even half and all of MaShMoD stay unrecoverable
+      (they need the other key file). Not done: a `--force-partial` keeping the built-in sample for a
+      lost slot (a later decision). The original's load of the recovered mods was **not** checked
+      on the test machine (a ReBirth session was running there, PID 12704, that the run did not
+      start; rbhost refuses to run beside it).
 - **Bulk.** `orb mod recrypt IN.rbm... DIR... -o OUTDIR [--force]` takes any number of mod files
   and folders (every `.rbm` directly in a folder) and writes each mod under its own file name into
   `OUTDIR`. The single-file form `orb mod recrypt IN.rbm -o OUT.rbm` stays: one existing input

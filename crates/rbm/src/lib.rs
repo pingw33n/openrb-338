@@ -37,7 +37,7 @@ pub mod pack;
 mod recrypt;
 pub mod standard;
 
-pub use recrypt::{MAX_EMBF, PAD_NAME, recrypt};
+pub use recrypt::{MAX_EMBF, PAD_NAME, recrypt, recrypt_with};
 
 /// EMBF payload bytes `[0, CLEAR)` are stored as they are; the rest is scrambled.
 pub const CLEAR: usize = 1024;

@@ -90,6 +90,17 @@ fn push_chunk(out: &mut Vec<u8>, tag: &[u8; 4], payload: &[u8]) -> Result<(), Rb
 /// EMBF ([`PAD_NAME`]) and zero-size filler chunks are added (those of an earlier recrypt are
 /// dropped).
 pub fn recrypt(rbm: &Rbm, table: &KeyTable) -> Result<Vec<u8>, RbmError> {
+    recrypt_with(rbm, table, &[])
+}
+
+/// [`recrypt`], where the embedded files at the chunk ordinals `stored_plain` are taken as stored
+/// (a zero key: the mod's maker scrambled them with a key half of zeros, docs/rbm.md 12.5)
+/// instead of descrambled with `table`.
+pub fn recrypt_with(
+    rbm: &Rbm,
+    table: &KeyTable,
+    stored_plain: &[usize],
+) -> Result<Vec<u8>, RbmError> {
     let is_old_pad =
         |c: &Chunk| &c.tag == b"EMBF" && c.name.as_deref() == Some(PAD_NAME) && c.size == PAD_LEN;
     let is_filler = |c: &Chunk| c.tag == FILLER && c.size == 0;
@@ -112,7 +123,11 @@ pub fn recrypt(rbm: &Rbm, table: &KeyTable) -> Result<Vec<u8>, RbmError> {
             let prev = last_of.insert(name_lower.clone(), files.len());
             files.push(File {
                 name_lower,
-                payload: rbm.payload(c, table)?,
+                payload: if stored_plain.contains(&c.ordinal) {
+                    rbm.raw_payload(c).to_vec()
+                } else {
+                    rbm.payload(c, table)?
+                },
                 reader: rbm.reader(c),
                 prev,
             });
