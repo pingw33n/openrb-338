@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-30 07:52'
-updated_date: '2026-10-30 07:56'
+updated_date: '2026-10-30 08:29'
 labels:
   - tools
 milestone: m-5
@@ -62,6 +62,10 @@ What:
 Branch: worktree-agent-aac1c1f4dc250842e (rebased on main 50d25ff)
 
 Grep findings (git grep in crates/, tools/, tests/, scripts/): every docs/ and .md mention is a comment, doc comment or message string; no include_str!/include_bytes! of .md, docs, LICENSE or the pictures; no fs::read/open of them; build.rs files only watch crates/orb-ui, assets/ui, .git and the .ico. tests/refs/MANIFEST.md (made by tools/rbcorpus.py manifest) is checked by no test (corpus_golden only mentions rbcorpus.py check-flac in a message; it reads manifest.json, which is not ignored). LICENSE is read only by the release package scripts (package-appimage.sh, package-dmg.sh, appimage-smoke.sh), not by CI tests. Other .md under crates/ and tests/ (fixtures/tables/README.md, tests/songs/diag/README.md) are read by no test. So the whole list is safe, nothing left out. YAML anchors not used (the two lists are duplicated). actionlint passes. No Rust changed.
+
+Supervisor, post-merge check, 2026-10-30:
+- The merge push of b271ff7 (it changes ci.yml, so a code push) ran ci: run 41023332888, success.
+- The next push holds only backlog commits (task-037/144 backlog, task-153, and this note); it is checked for no ci run.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
