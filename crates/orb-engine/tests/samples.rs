@@ -173,7 +173,8 @@ fn aiff_errors() {
     assert!(err(Sample::from_aiff(&only_ssnd)).contains("missing COMM"));
 
     assert!(err(Sample::from_aiff(b"RIFF....WAVE")).contains("no FORM"));
-    assert!(err(Sample::from_aiff(b"FORM\0\0\0\x04AIFC")).contains("not AIFF"));
+    // The FORM type is not checked (sub_100054D4); the first chunk header is missing.
+    assert!(err(Sample::from_aiff(b"FORM\0\0\0\x04AIFC")).contains("outside the file"));
     assert!(err(Sample::from_aiff(b"")).contains("no FORM"));
 
     // Short audio: the COMM chunk says 4 frames, the SSND holds 1.

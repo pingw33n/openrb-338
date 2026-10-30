@@ -8,7 +8,9 @@ goes into this file as well as into its home document**, and the home document l
 Fields: **What**, **Where** (addresses), **Trigger** (the song data or action that reaches it),
 **Effect**, **Corpus** (the songs in `tests/songs` that reach it), **orb** (the model: file and
 function, and any deliberate deviation), and a mark: [C] confirmed in the disassembly (every
-address here was re-read with `llvm-objdump` on the installed exe and dll), [G] guessed or inferred.
+address here was re-read with `llvm-objdump` on the installed exe and dll, except OB-22's, which
+were read with a capstone disassembly of the CD's ReBirth.dll and confirmed independently by the
+task-155 reviewer with capstone 5.0.7), [G] guessed or inferred.
 
 Entries are numbered OB-n. "Quirks" at the end are behaviors that are odd but not defects, or whose
 status is a judgment call.
@@ -431,6 +433,29 @@ See OB-8 for the unclean buffer.
   reader parses any count, as it should for files the original never opens.
 - **Home.** `docs/rbm.md` section 12.
 
+### OB-22: the AIFF chunk walk trusts every chunk size, reads out of bounds and can loop forever [C: the code; G: the effect]
+
+- **Binary.** ReBirth.dll (the sample loader that reads the mod's samples), not Rebirth.exe like
+  the rest of this section; it is filed here because mods reach it.
+- **What.** The DLL's chunk search moves from a chunk it does not want to `pos + size + 8` (+1
+  after an odd size) in wrapping 32-bit arithmetic, stops only when `pos + 8 >= FORM size + 8`
+  (signed), and reads the next header from a memory stream with no bound check.
+- **Where.** `sub_10004F94`: the step 0x100050B1..0x100050CA, the stop 0x100050CD..0x100050D6
+  (`jge`), the seek and read 0x100050DC..0x1000510A. The memory stream (vtable 0x10030824): read
+  0x10007180 (`rep movsd`, no check), seek 0x10007200.
+- **Trigger.** An AIFF in a mod (or a resource) with a damaged chunk before COMM or SSND whose size
+  leads to a position inside the FORM size but past the file (a FORM size larger than the file),
+  or wraps to a negative position; or a size of 0xFFFFFFF8 (0xFFFFFFF7 with the pad).
+- **Effect.** A header is read from the heap past (or before) the payload buffer, or the process
+  faults; a size of -8 leaves the position unchanged, and the load never returns [G: not run].
+  A damaged chunk whose step lands past the FORM's end only makes the chunk "missing" (a throw).
+- **Corpus.** None. No known mod reaches it: the four of 2026-10-30 (Black_Steel, Black_Steel_2,
+  O.S.C., mellow) have their junk after SSND, which the walk never reads (docs/rbm.md 11.2).
+- **orb.** `crates/orb-engine/src/samples/aiff.rs` `find` walks as the DLL does and rejects the
+  sample where the DLL would read outside the file or never end; `Rbm::load_samples` then refuses
+  the mod.
+- **Home.** `docs/rbm.md` section 11.2.
+
 ## Quirks that are not claimed as defects
 
 ### Q-1: the export's frame count is one frame short of an exact length [C]
@@ -472,8 +497,13 @@ See OB-8 for the unclean buffer.
 - **Verdict.** Leniency, not a defect: the file holds the audio and the DLL plays all of it
   (rbhost `--dump-samples`: 42128 and 36104 bytes, equal to the file's audio; task-058).
 - **orb.** `crates/orb-engine/src/samples/aiff.rs` reads both through to the end of the file.
+- **Junk after SSND** (task-155): each chunk search stops at the first match, so the bytes after
+  the wanted chunk are never read; Black_Steel.rbm, Black_Steel_2.rbm and O.S.C.rbm (SSND size 8
+  short) and mellow.rbm (20 stray bytes after SSND) load whole. Leniency, like the rest of this
+  entry; the out-of-bounds side of the walk is OB-22.
 - **Open.** A file that really ends before `2 * frames` bytes: the DLL ignores the read's result
-  (0x10003071) and the stream's behavior at its end was not traced [G]; orb's policy is an error,
+  (0x10003071) and the memory stream copies past its buffer with no check (0x10007180) [C: the
+  code; G: the effect, heap bytes or a fault]; orb's policy is an error,
   which `Rbm::load_samples` propagates, refusing the whole mod rather than falling back for that
   slot. The stereo path (0x10003087, `sub_10009DD0`) was not examined. No mod reaches either.
 - **Home.** `docs/rbm.md` sections 9 and 11.

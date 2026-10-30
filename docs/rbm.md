@@ -247,6 +247,8 @@ The 909 records' stride and the record count are computed through the anti-tampe
 
 - More than 200 EMBF chunks overrun the open mod's entry table (section 12.1;
   `docs/original_bugs.md` OB-14).
+- The DLL's AIFF chunk walk trusts every chunk size and reads its memory stream with no bound
+  check (section 11.2; `docs/original_bugs.md` OB-22).
 - The DLL's key wraps every 256 chunks and the exe's every 65536 (section 12.1), and two EMBF of
   the same name leave the second unreachable; these are format limits, not defects.
 
@@ -406,12 +408,58 @@ Confirmed with `rbhost --dump-samples` and 8tRack.rbm / DJ Turn's MOD.rbm: slot 
 36104 bytes, equal to the file's audio sample for sample. `samples/aiff.rs` now reads the audio
 through to the end of the file, as it already did COMM (section 9). `docs/original_bugs.md` Q-3.
 
+**The chunk walk stops at the wanted chunk (task-155, 2026-10-30) [C].** On 2026-10-30, four
+mods of a 317-mod folder of the user's (`~/rb-stuff-peff/ReBirth Mods`) failed `orb mod recrypt`
+because the AIFF reader walked every chunk to the FORM's end: in Black_Steel.rbm (Startup.aif),
+Black_Steel_2.rbm (TR808MT.aif) and O.S.C.rbm (Startup.AIF) the SSND size is 8 too small (it leaves
+out the 8-byte offset and block-size header; Black_Steel: 226799 frames, 453598 bytes of audio =
+the SSND size, ending at the file's end, 453652), so the last 8 bytes of audio read as a chunk header
+with a huge size; mellow.rbm (Startup.aif) has COMM, INST (20), a correct SSND, then 20 stray bytes
+inside the FORM. The DLL never reads those bytes. From the disassembly of the CD's ReBirth.dll:
+- `sub_10004F94` (find a chunk; called through 0x10004F40 / 0x10004F44 by the COMM reader
+  `sub_10003170`, 18 bytes of id 0x1014F590 "COMM", and through 0x10004F00 by the SSND reader
+  `sub_10002FC4`, 8 bytes of id 0x1014F5A0 "SSND") **starts every search at the file's start**: it
+  seeks to 0 (vtable +0x14, 0x10004FD2), reads the 12-byte header (vtable +4, 0x10004FF2) and checks
+  it with `sub_100054D4`: the id equals "FORM" (the reader's this+6, copied by the constructor
+  0x10004EB0 from 0x1014F600) and the FORM size is at least 4 (unsigned, 0x1000550C `jae`). The
+  FORM type is decoded (0x10004A84) but never compared, so AIFC or any other type passes. A failed
+  check throws (0x1000504F).
+- The first chunk header is read at 12 with no bound check (0x10005071, `sub_10005474`: 8 bytes,
+  the id with a NUL by 0x10003FD0, the size big-endian by 0x100040B0).
+- **It stops at the first chunk with the id** (`strcmp` 0x10005084..0x100050AB, `je 0x100051AD`):
+  it stores the size, skips the requested offset (vtable +0x2C) and reads the requested bytes
+  (vtable +4, 0x100051C6..0x100051FB). Nothing past that chunk is read, so junk after SSND (or after
+  COMM, when COMM is the later one) is never seen.
+- On another id (0x100050B1..0x100050D6): `pos = pos + size + 8`, +1 when the pad flag this+4 is set
+  and the size is odd, in 32-bit wrapping arithmetic; then `lea eax,[ebp+8]; cmp eax,[end]; jge`
+  with `end` = FORM size + 8 (0x1000506A): a header with `pos + 8 >= end` (signed) is not read and
+  the search fails, returning 0; else seek(pos), read 8 bytes, compare again. A chunk size is
+  never compared with the stream.
+- So **a damaged chunk before the wanted one** sends the walk to `pos + size + 8`: past the FORM's
+  end, the chunk is "missing" and the reader throws (`_CxxThrowException` 0x1002E522 with type
+  0x10030420: COMM 0x10003209..0x1000321B, SSND 0x10002FFE..0x10003018); inside the FORM but past
+  the buffer (a FORM size larger than the file), or at a wrapped negative position, it reads
+  outside the buffer (below); a size of 0xFFFFFFF8, or 0xFFFFFFF7 with the pad, leaves `pos`
+  unchanged and the loop never ends. `docs/original_bugs.md` OB-22.
+- The SSND offset (0x1000302D..0x10003033 `test eax,eax; jle`) is skipped only when it is positive
+  as a signed 32-bit value.
+- The stream of a mod sample is a memory stream (constructed at 0x1001A563 by 0x10006FD0, vtable
+  0x10030824, a buffer of the payload's size): read 0x10007180 is a bare `memcpy` from buffer +
+  position (`rep movsd` / `rep movsb`), seek 0x10007200 stores the position, tell 0x1000DEE0
+  returns it, skip 0x10006E60 is seek(tell + n). **No bound check anywhere**.
+
+`samples/aiff.rs` (`find`) follows the walk: one search per id from the start, the FORM check
+(the type ignored), the first header at 12, the step and the signed `pos + 8 >= end` stop, the
+signed SSND offset. Where the DLL would read outside the file (a header, the 18 COMM bytes or the
+audio) orb rejects the sample, and a walk that would not end is an error too. All four mods
+recrypt, and the 317-mod folder gives 317 recrypted, 0 failed.
+
 Open (not checked against the DLL):
 - **A file that really ends early.** The read's result is ignored (0x10003071 goes straight on to
-  `sub_10009990`), and what the memory stream does when asked for more than it holds (a short
-  read, zeros, stale bytes or an exception) was not traced; no mod in the collection reaches it.
-  orb's policy is an error, and `Rbm::load_samples` propagates it, so the **whole mod** is refused
-  rather than that one slot falling back to its built-in sample.
+  `sub_10009990`), and the memory stream copies past its buffer with no check (above), so the
+  DLL reads whatever heap bytes follow the payload, or faults [G: the effect]; no mod in the
+  collection reaches it. orb's policy is an error, and `Rbm::load_samples` propagates it, so the
+  **whole mod** is refused rather than that one slot falling back to its built-in sample.
 - **Stereo.** Only the mono path was read; the multichannel path (0x10003087, `sub_10009DD0`) was
   not examined. Every slot AIFF of the collection is mono.
 

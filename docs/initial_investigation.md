@@ -965,9 +965,13 @@ every product in f64 in this order, one f32 store, then the voice's `f32(gain * 
   - [C] task-020, the details (`sub_10003300` 0x10003300 ties them together):
     - Chunk walk `sub_10004F94` (0x10004F94): the 12-byte header is checked by `sub_100054D4`;
       then chunks are walked by id, a pad byte after an odd size (the reader's flag at `this+4`
-      is set for AIFF); the first chunk with the wanted id is used. [G] What `sub_100054D4`
-      accepts (whether an AIFC form type is rejected) is not confirmed; orb requires FORM+AIFF,
-      and all 46 resources pass.
+      is set for AIFF); the first chunk with the wanted id is used. [C] task-155: every search
+      (COMM, then SSND) starts again at the file's start (seek 0, 0x10004FD2) and stops at the
+      first match, so bytes after the wanted chunk are never read; the walk ends unfound when
+      the next header's `pos + 8 >= FORM size + 8` (signed, 0x100050D6), and no chunk size is
+      compared with the stream. `sub_100054D4` accepts an id "FORM" with a size of at least 4
+      (0x1000550C) and never compares the FORM type: an AIFC type is read the same. orb follows
+      it (`samples/aiff.rs` `find`); docs/rbm.md 11.2 has the details.
     - The drum voices read the sample as `i16` (the CWaveSample buffer: `frames + 512` i16,
       `orb_engine::samples::Sample::padded`).
     - COMM `sub_10001674` (0x10001674): u16 channels, u32 frames, u16 bits, 80-bit extended rate

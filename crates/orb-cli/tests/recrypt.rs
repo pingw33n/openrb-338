@@ -316,16 +316,17 @@ fn a_failing_mod_does_not_stop_the_others() {
 
 #[test]
 fn a_corrupted_sample_is_caught_before_anything_is_written() {
-    // One byte of a scrambled sample's AIFF header, damaged after the scrambling: the decrypted
-    // COMM chunk no longer parses.
+    // One byte of a scrambled sample's AIFF header, damaged after the scrambling: the "FORM" id
+    // no longer matches, so the decrypted sample is not an AIFF file.
     let f = fixture(vec![("a.rbm", good_a())]);
     let path = f.mods.join("a.rbm");
     let mut bytes = std::fs::read(&path).unwrap();
     let rbm = Rbm::parse(bytes.clone()).unwrap();
     let c = rbm.find("TR808BD.aif").unwrap();
-    // Damage the "AIFF" form type, bytes 8..12 of the file: the first 1024 bytes of the payload
-    // (the name, then the AIFF header) are stored in the clear.
-    let at = c.offset + c.name_len + 8;
+    // Damage the "FORM" id, bytes 0..4 of the file (the DLL ignores the form type at 8..12,
+    // task-155): the first 1024 bytes of the payload (the name, then the AIFF header) are stored
+    // in the clear.
+    let at = c.offset + c.name_len;
     assert!(at < c.offset + 1024);
     bytes[at] ^= 0xFF;
     std::fs::write(&path, &bytes).unwrap();
