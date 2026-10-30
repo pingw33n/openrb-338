@@ -1160,7 +1160,13 @@ is one more entry.
 - **File > Info** (task-095). Below "Save As...", a closable window "Song Information"
   (`crates/orb-ui/src/info.rs`; the close button or Escape closes it). It shows the current
   document each frame, so it follows an open of another song. It has three parts, each a
-  two-column grid with the same label column, with a line between them:
+  two-column grid with the same label column, with a line between them. The window opens 570
+  points wide (`info::INFO_W`, 1.5 times the earlier 380, task-154; a smaller screen clamps it
+  to the screen less 16) and is resizable. The text edits fill the window's width and follow
+  it narrower and wider: an edit is as wide as the window leaves after the label column, less
+  its count (and the web page's "open" link) beside a one-line edit, computed from the window's
+  width and not from the content. The read-only grids cut a long value (a deep folder) at the
+  window's edge, so a long line never widens the window, and show all of the value on hover:
   - the file name and folder (Untitled for a song with no file);
   - **the editable song information** (task-117, `info::Field`): the song info chunk's window
     title, more text and web page, and the version chunk's copyright, each in a text edit (the
@@ -1175,9 +1181,9 @@ is one more entry.
       CR LF in its 400 (`sub_465D8D`), so it reads back whole any text orb writes. Typing and
       pasting stop at the limit; an edit that still passes it is refused, unless it shortens
       a value that was already longer. The count is in the same units (`info::left_text`):
-      the text's says "N left (a line break takes 2)", and with one byte left "1 left, too few
-      for a line break (2)", since egui's character limit lets an Enter through that
-      `set_field` then refuses.
+      is "N left", and the text's with one byte left is "1 left, too few for a line break
+      (2)", since egui's character limit lets an Enter through that `set_field` then
+      refuses.
     - The file stores Latin-1. A typed or pasted character outside Latin-1 becomes `?`, as
       does a control character, the C0 range (U+0000..U+001F, U+007F) and the C1 range
       (U+0080..U+009F) alike, though C1 is Latin-1; a tab, and a line break in a one-line

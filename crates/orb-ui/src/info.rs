@@ -268,21 +268,31 @@ pub fn set_field(doc: &mut Document, field: Field, text: &str) -> bool {
     true
 }
 
-/// The count next to a field: the bytes left, in the units of [`cost`]. The text's count says
-/// that a line break takes two, so with one byte left an Enter that does nothing is explained
+/// The count next to a field: the bytes left, in the units of [`cost`] (a line break takes two
+/// in the text). With one byte left the text's count explains an Enter that does nothing
 /// (egui's char limit counts a break once; `set_field` refuses it).
 pub fn left_text(field: Field, value: &str) -> String {
     let left = field.limit() as i64 - cost(field, value) as i64;
     match (field.multiline(), left) {
         (false, _) => format!("{left} left"),
         (true, 1) => "1 left, too few for a line break (2)".into(),
-        (true, _) => format!("{left} left (a line break takes 2)"),
+        (true, _) => format!("{left} left"),
     }
 }
 
 /// The text edit of a field, with the bytes left; an edit applies to the document on every
 /// change.
-fn field_ui(ui: &mut egui::Ui, doc: &mut Document, field: Field) {
+fn field_ui(ui: &mut egui::Ui, doc: &mut Document, field: Field, width: f32) {
+    // the edit's width: the whole value column, less what stands beside a one-line edit (its
+    // count, and the web page's "open" link); computed from the window's width, not from the
+    // content, so the edit follows the window narrower too and a long line never widens it
+    let gap = ui.spacing().item_spacing.x;
+    let beside = match field {
+        _ if field.multiline() => 0.0,
+        Field::WebPage => COUNT_W + OPEN_W + 2.0 * gap,
+        _ => COUNT_W + gap,
+    };
+    let edit_w = (width - beside).max(MIN_EDIT_W);
     // the edit applies its change to the document at once
     let edit = |ui: &mut egui::Ui, doc: &mut Document| {
         let mut buf = field_value(doc, field);
@@ -297,7 +307,7 @@ fn field_ui(ui: &mut egui::Ui, doc: &mut Document, field: Field) {
         let edit = edit
             .id(field.edit_id())
             .char_limit(field.limit().saturating_sub(breaks))
-            .desired_width(EDIT_W);
+            .desired_width(edit_w);
         if ui.add(edit).changed() {
             set_field(doc, field, &buf);
         }
@@ -324,19 +334,29 @@ fn field_ui(ui: &mut egui::Ui, doc: &mut Document, field: Field) {
     });
 }
 
-/// The width of the text edits.
-const EDIT_W: f32 = 230.0;
+/// The least width of a text edit, when the window is narrower than its content.
+const MIN_EDIT_W: f32 = 80.0;
+/// The room kept beside a one-line edit for its count ("400 left" in the small font), and for
+/// the web page's "open" link.
+const COUNT_W: f32 = 50.0;
+const OPEN_W: f32 = 30.0;
+/// The window's default width: 570 points, 1.5 times the earlier 380 (task-154). The most is
+/// the screen less 16 (`max_size`), so a small screen clamps it.
+pub const INFO_W: f32 = 570.0;
+/// The horizontal space between the grid's columns.
+const GRID_GAP: f32 = 12.0;
 /// The width of the label column, the same in the window's three grids.
 const LABEL_W: f32 = 72.0;
 
 /// A web address as a link when it is one, else as plain text.
+/// A cut text shows all of it on hover (a link's hover is its address).
 pub(crate) fn link(ui: &mut egui::Ui, text: &str) {
     match web_url(text) {
         Some(url) => {
             ui.hyperlink_to(text, url);
         }
         None => {
-            ui.label(RichText::new(text).color(INK));
+            ui.label(RichText::new(text).color(INK)).on_hover_text(text);
         }
     }
 }
@@ -392,12 +412,16 @@ impl App {
             .vscroll(true)
             // a small window: the info scrolls in a window that fits
             .max_size(ctx.content_rect().size() - egui::vec2(16.0, 16.0))
-            .default_width(380.0);
+            .default_width(INFO_W);
         let doc = &mut self.doc;
         window.show(ctx, |ui| {
+            // the value column of the edits grid is what the window leaves after the label
+            // column and the grid's spacing
+            let value_w = ui.available_width() - LABEL_W - GRID_GAP;
             let row = |ui: &mut egui::Ui, k: &str, v: &str| {
                 ui.label(RichText::new(k).color(INK_DIM));
-                ui.label(RichText::new(v).color(INK));
+                // the value may be cut at the window's edge: the hover has all of it
+                ui.label(RichText::new(v).color(INK)).on_hover_text(v);
                 ui.end_row();
             };
             // three grids with the same label column: the file, the editable song information
@@ -405,10 +429,16 @@ impl App {
             let grid = |id: &str| {
                 egui::Grid::new(id)
                     .num_columns(2)
-                    .spacing([12.0, 4.0])
+                    .spacing([GRID_GAP, 4.0])
                     .min_col_width(LABEL_W)
             };
+            // in the read-only grids a long value (a deep folder, a web address) is cut at
+            // the window's edge and never widens the window
+            let cut = |ui: &mut egui::Ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+            };
             grid("orb_song_info_file").show(ui, |ui| {
+                cut(ui);
                 row(ui, "File", &info.name);
                 if let Some(f) = &info.folder {
                     row(ui, "Folder", f);
@@ -418,12 +448,13 @@ impl App {
             grid("orb_song_info_edits").show(ui, |ui| {
                 for field in Field::ALL {
                     ui.label(RichText::new(field.label()).color(INK_DIM));
-                    field_ui(ui, doc, field);
+                    field_ui(ui, doc, field, value_w);
                     ui.end_row();
                 }
             });
             ui.separator();
             grid("orb_song_info_grid").show(ui, |ui| {
+                cut(ui);
                 row(
                     ui,
                     "Mod",
@@ -433,7 +464,8 @@ impl App {
                 link(ui, &info.mod_www);
                 ui.end_row();
                 ui.label(RichText::new("Mod ftp").color(INK_DIM));
-                ui.label(RichText::new(&info.mod_ftp).color(INK));
+                ui.label(RichText::new(&info.mod_ftp).color(INK))
+                    .on_hover_text(&info.mod_ftp);
                 ui.end_row();
                 row(ui, "Format", &info.format);
                 row(ui, "Tempo", &format!("{:.3} BPM", info.bpm));
@@ -608,10 +640,7 @@ mod tests {
         assert!(set_field(&mut d, Field::Text, &almost));
         assert!(!set_field(&mut d, Field::Text, &format!("{almost}\n")));
         assert!(set_field(&mut d, Field::Text, &format!("{almost}c")));
-        assert_eq!(
-            left_text(Field::Text, "a\n"),
-            "397 left (a line break takes 2)"
-        );
+        assert_eq!(left_text(Field::Text, "a\n"), "397 left");
         assert_eq!(left_text(Field::Title, "abc"), "37 left");
         // a text already longer than the limit (a file's) may still be shortened
         d.source.usri.text = "y".repeat(400) + "\r";

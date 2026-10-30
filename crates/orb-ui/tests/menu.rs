@@ -1803,7 +1803,8 @@ fn the_info_window_opens_centered_and_stays_draggable() {
 
     // drag the title bar: the window moves and stays where it was dropped
     let grab = Pos2::new(r.center().x, r.min.y + 8.0);
-    let to = grab + Vec2::new(-60.0, 40.0);
+    // (the window is 570 wide on a 624 screen, so it can move only a little sideways)
+    let to = grab + Vec2::new(-20.0, 40.0);
     let button = |pos, pressed| Event::PointerButton {
         pos,
         button: PointerButton::Primary,
@@ -1819,7 +1820,7 @@ fn the_info_window_opens_centered_and_stays_draggable() {
     }
     let moved = rect(&h);
     assert!(
-        (moved.min - (r.min + Vec2::new(-60.0, 40.0)))
+        (moved.min - (r.min + Vec2::new(-20.0, 40.0)))
             .abs()
             .max_elem()
             < 3.0,
@@ -3050,4 +3051,125 @@ fn a_variant_with_other_urls_marks_the_song_modified() {
         "http://b".into(),
     );
     assert!(h.app.doc.modified, "the FTP URL changed");
+}
+
+/// task-154: the info window opens 570 points wide, and the text fields span its width and
+/// follow it when it is made narrower or wider; a long line does not widen it.
+#[test]
+fn the_info_fields_fill_the_window_and_follow_its_width() {
+    use orb_ui::info::{Field, INFO_W};
+
+    let mut h = Harness::with_menu();
+    h.open(&root().join("tests/songs/diag/songs/303_saw_lowcut.rbs"));
+    h.app.show_info();
+    // the first frames lay the grid out
+    for _ in 0..4 {
+        h.frame(vec![]);
+    }
+    let win = |h: &Harness| h.ctx.memory(|m| m.area_rect(h.app.info_id())).unwrap();
+    let edit = |h: &Harness, f: Field| h.ctx.read_response(f.edit_id()).unwrap().rect;
+    let check = |h: &Harness, what: &str| {
+        let w = win(h);
+        let text = edit(h, Field::Text);
+        let title = edit(h, Field::Title);
+        assert!(text.right() <= w.right(), "{what}: text {text:?} in {w:?}");
+        assert!(
+            title.right() < w.right(),
+            "{what}: title {title:?} in {w:?}"
+        );
+        // the text edit has the whole value column, less the window's margins
+        assert!(
+            w.right() - text.right() < 24.0,
+            "{what}: the text edit stops short of the window: {text:?} in {w:?}"
+        );
+        assert!(
+            text.width() > 0.6 * w.width(),
+            "{what}: text {} wide in {}",
+            text.width(),
+            w.width()
+        );
+        // the one-line edits are as wide as the text edit less their count
+        assert!(
+            title.width() > text.width() - 80.0,
+            "{what}: title {title:?}"
+        );
+    };
+    assert!((win(&h).width() - INFO_W).abs() < 20.0, "{:?}", win(&h));
+    check(&h, "default");
+    let wide = edit(&h, Field::Text).width();
+
+    // drag the right edge 150 points left, then back out 100
+    let drag = |h: &mut Harness, dx: f32| {
+        let w = win(h);
+        let from = Pos2::new(w.right() - 1.0, w.center().y);
+        let to = from + Vec2::new(dx, 0.0);
+        let button = |pressed, pos| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        h.frame(vec![Event::PointerMoved(from)]);
+        h.frame(vec![button(true, from)]);
+        h.frame(vec![Event::PointerMoved(to)]);
+        h.frame(vec![Event::PointerMoved(to)]);
+        h.frame(vec![button(false, to)]);
+        h.frame(vec![]);
+        h.frame(vec![]);
+    };
+    let before = win(&h).width();
+    drag(&mut h, -150.0);
+    let narrow_w = win(&h).width();
+    assert!(narrow_w < before - 100.0, "{before} -> {narrow_w}");
+    check(&h, "narrower");
+    assert!(edit(&h, Field::Text).width() < wide - 100.0);
+    drag(&mut h, 100.0);
+    assert!(win(&h).width() > narrow_w + 50.0);
+    check(&h, "wider");
+
+    // a long folder (a song under a deep folder) is cut and does not widen the window; the
+    // hover of its row has all of it
+    let w0 = win(&h).width();
+    let deep = format!("/tmp/{}", "deep_folder/".repeat(20));
+    h.app.doc.path = Some(PathBuf::from(format!("{deep}song.rbs")));
+    for _ in 0..4 {
+        h.frame(vec![]);
+    }
+    assert!(
+        (win(&h).width() - w0).abs() < 1.0,
+        "deep folder: {w0} -> {}",
+        win(&h).width()
+    );
+    let w = win(&h);
+    let x = w.left() + 130.0;
+    let mut shown = false;
+    for y in (60..100).step_by(6) {
+        let p = Pos2::new(x, w.top() + y as f32);
+        h.frame(vec![Event::PointerMoved(p)]);
+        for _ in 0..45 {
+            if h.frame_shapes(vec![])
+                .contains("deep_folder/deep_folder/deep_folder/deep_folder/")
+            {
+                shown = true;
+                break;
+            }
+        }
+        if shown {
+            break;
+        }
+    }
+    assert!(shown, "the folder row's hover shows the whole path");
+    h.frame(vec![Event::PointerMoved(Pos2::new(1.0, 1.0))]);
+
+    // a long line in the one-line field does not widen the window
+    let w0 = win(&h).width();
+    let long = "w".repeat(Field::WebPage.limit());
+    orb_ui::info::set_field(&mut h.app.doc, Field::WebPage, &long);
+    h.frame(vec![]);
+    h.frame(vec![]);
+    assert!(
+        (win(&h).width() - w0).abs() < 1.0,
+        "{w0} -> {}",
+        win(&h).width()
+    );
 }
