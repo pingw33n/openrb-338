@@ -187,9 +187,11 @@ impl App {
         }
     }
 
-    /// The mods of the Mods folder in byte order of the file names, one entry per INFO name
-    /// (ASCII case ignored); the files that share a name are the variants of one entry, in the
-    /// same order (docs/rbm.md 11.3, task-151).
+    /// The mods of the Mods folder, one entry per INFO name (ASCII case ignored), ordered by
+    /// that name with ASCII case folded, lowercase first on a tie, then by path
+    /// (`mod_name_order`, task-167). The files that share a name are the variants of one entry,
+    /// in byte order of the file names, and the first of them owns the name (docs/rbm.md 11.3,
+    /// task-151).
     pub fn list_mods(&self) -> Result<Vec<ModEntry>, String> {
         let dir = match self.mod_opts().mod_dir() {
             Ok(Some(d)) => d,
@@ -205,6 +207,9 @@ impl App {
                 None => groups.push((name, vec![path])),
             }
         }
+        // by name, then by the owner's path as the last tie-break (it never fires, because
+        // entries with equal names merged above, but it makes the order total)
+        groups.sort_by(|(a, fa), (b, fb)| mod_name_order(a, b).then_with(|| fa[0].cmp(&fb[0])));
         Ok(groups
             .into_iter()
             .map(|(name, files)| {
@@ -1273,4 +1278,50 @@ fn item(ui: &mut Ui, text: &str, shortcut: Option<&egui::KeyboardShortcut>) -> b
         ui.close();
     }
     clicked
+}
+
+/// The order of the Mods menu's top-level entries (task-167): the names with ASCII letters
+/// folded to lowercase (no Unicode folding, no locale); names equal folded go lowercase first at
+/// the first position where they differ ("abc", "Abc", "ABC"). The caller breaks the rest by the
+/// file path.
+pub fn mod_name_order(a: &str, b: &str) -> std::cmp::Ordering {
+    let fold = |s: &str| {
+        s.bytes()
+            .map(|c| c.to_ascii_lowercase())
+            .collect::<Vec<u8>>()
+    };
+    // lowercase letters are the larger bytes, so the tie-break compares the other way round
+    fold(a)
+        .cmp(&fold(b))
+        .then_with(|| b.as_bytes().cmp(a.as_bytes()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mod_name_order;
+
+    fn sorted(names: &[&str]) -> Vec<String> {
+        let mut v: Vec<String> = names.iter().map(|s| s.to_string()).collect();
+        v.sort_by(|a, b| mod_name_order(a, b));
+        v
+    }
+
+    #[test]
+    fn fold_first_then_lowercase_first() {
+        assert_eq!(sorted(&["ac", "Ab"]), ["Ab", "ac"]);
+        assert_eq!(sorted(&["ABC", "Abc", "abc"]), ["abc", "Abc", "ABC"]);
+        // the first difference in case decides, not the count of lowercase letters
+        assert_eq!(sorted(&["aBc", "Abc", "abC"]), ["abC", "aBc", "Abc"]);
+    }
+
+    #[test]
+    fn non_letters_keep_their_byte_order() {
+        // digits and '[' (0x5B) and '_' (0x5F) are below the folded letters
+        assert_eq!(
+            sorted(&["beta", "_x", "Zed", "1a", "[b"]),
+            ["1a", "[b", "_x", "beta", "Zed"]
+        );
+        // no Unicode folding: a non-ASCII letter is above every ASCII one
+        assert_eq!(sorted(&["\u{e9}a", "za"]), ["za", "\u{e9}a"]);
+    }
 }

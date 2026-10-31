@@ -1116,10 +1116,11 @@ is one more entry.
   with an error box and the song keeps the name. A choice in the Mods menu is `sub_426FB3`: the same
   kit again does nothing; else the song is marked modified, its mod name is the mod's INFO menu
   name, and `Link::set_mod` (song msg 19, `Player::set_mod`) gives the newest song's drum machines
-  the kit; the save writes the name. The entries are the INFO names of the folder in the byte order of
-  the file names (task-151, docs/rbm.md 11.3); files that share an INFO name are one entry
-  ("Mods that share a name" below). The mod's panel art is not
-  drawn: the original redraws the window with the mod's bitmaps (`sub_42D80D`), and the user
+  the kit; the save writes the name. The entries are the INFO names of the folder, ordered by
+  name with ASCII case folded and lowercase first on a tie (task-167, below; the variants of a
+  shared name stay in the byte order of their file names, task-151, docs/rbm.md 11.3); files
+  that share an INFO name are one entry ("Mods that share a name" below). The mod's panel art
+  is not drawn: the original redraws the window with the mod's bitmaps (`sub_42D80D`), and the user
   decided (task-078, 2026-10-27) that OpenRB-338 keeps its SVG art and a mod changes the sound only.
   After the change the new mod's startup sound plays (`sub_426C67`, `Link::startup_sound`,
   task-074) when the preference "Play Mod Startup Sound" is on: `Settings::startup_sound`, on by
@@ -1133,8 +1134,12 @@ is one more entry.
   reads no folder and only `refresh_mods` fills the list; a mod added to or removed from the
   folder shows after Refresh List. A song open still resolves its mod in the folder
   (`mods::find_in_dir`) but does not touch the list. A read error stays in the menu as the
-  list's one line. Refresh List also clears the caches that depend on the folder's files: the
-  demo answer (`App::demo_cache`) and the splash picture of the 808's mod window
+  list's one line. The top-level entries are ordered by the INFO name with ASCII letters
+  folded to lowercase (no Unicode folding), lowercase first at the first case difference of
+  two names equal folded ("abc", "Abc", "ABC"; "Ab" before "ac"), then by file path
+  (`menu::mod_name_order`, task-167); the variants of a shared name stay in the byte order of
+  their file names (docs/rbm.md 11.3). Refresh List also clears the caches that depend on the
+  folder's files: the demo answer (`App::demo_cache`) and the splash picture of the 808's mod window
   (`App::splash`). The demo answer of the current mod is read once per mod file, when "Demo
   Song" is first drawn for it.
 - **The checked mod** (task-093). The Mods menu checks the item of the current song's mod:

@@ -1,10 +1,11 @@
 ---
 id: TASK-167
 title: 'Mods menu sorted by name ignoring ASCII case, lowercase first'
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-10-31 09:01'
+updated_date: '2026-10-31 09:14'
 labels:
   - ui
 milestone: m-5
@@ -33,8 +34,32 @@ Do not change orb_cli::mods::byte_order or scan: the byte order still decides wh
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The Mods menu's top-level entries are ordered by INFO name with ASCII case folded, lowercase first on a tie, then by path; a unit test covers 'Ab' < 'ac', 'abc' < 'Abc' < 'ABC' and non-letters
-- [ ] #2 A test of App::list_mods on a temp folder checks the order; byte_order, the owner of a shared name and the variant order are unchanged (the existing tests still pass)
-- [ ] #3 The list_mods doc comment and docs/ui_spec.md state the order
-- [ ] #4 fmt, clippy -D warnings and cargo test -p orb-ui pass
+- [x] #1 The Mods menu's top-level entries are ordered by INFO name with ASCII case folded, lowercase first on a tie, then by path; a unit test covers 'Ab' < 'ac', 'abc' < 'Abc' < 'ABC' and non-letters
+- [x] #2 A test of App::list_mods on a temp folder checks the order; byte_order, the owner of a shared name and the variant order are unchanged (the existing tests still pass)
+- [x] #3 The list_mods doc comment and docs/ui_spec.md state the order
+- [x] #4 fmt, clippy -D warnings and cargo test -p orb-ui pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. menu::mod_name_order (fold ASCII, lowercase first on tie). 2. sort groups in App::list_mods after grouping (scan/byte_order/owner/variants untouched). 3. unit tests + tests/mod_order.rs on a temp folder. 4. doc comment + docs/ui_spec.md.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: worktree-agent-a4924e026dfcd3576
+
+Tie-break by path never fires between entries (groups merge by ASCII-case-insensitive name), kept for totality. fmt, clippy -D warnings, cargo test -p orb-ui (ORB_CD_ISO unset) all pass; new tests: menu::tests (2), tests/mod_order.rs (1).
+
+Review round 1 (docs only): replaced the old byte-order sentence at docs/ui_spec.md (Mods menu entries), wrapped the over-long line, reworded the tie-break comment in menu.rs list_mods. Evidence: cargo +nightly fmt --all --check clean; cargo clippy --all-targets -- -D warnings clean; ORB_CD_ISO unset, cargo test -q -p orb-ui: 256 passed, 0 failed across 20 result lines (incl. menu::tests 2 and tests/mod_order.rs 1).
+
+Review round 2 (style only): rewrapped docs/ui_spec.md lines 1118-1122 to at most 100 columns; trailers kept. No Rust change.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Mods menu top-level entries are sorted by INFO name with ASCII case folded, lowercase first on a tie, then path (menu::mod_name_order, applied in App::list_mods). byte_order, scan, shared-name owner and variant order unchanged. Tests: unit tests for the comparator, tests/mod_order.rs for list_mods; fmt, clippy and cargo test -p orb-ui pass. Docs: list_mods comment and docs/ui_spec.md (mod list cache bullet).
+<!-- SECTION:FINAL_SUMMARY:END -->
