@@ -1,11 +1,11 @@
 ---
 id: TASK-148
 title: Repair or remove the three unreadable songs in the song collection
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-29 14:57'
-updated_date: '2026-10-29 14:57'
+updated_date: '2026-10-31 10:08'
 labels:
   - tests
 dependencies:
@@ -37,8 +37,7 @@ What (the user's work):
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each of the three files is repaired, removed, or kept as known-bad, and recorded here
-- [ ] #2 The task-129 manifest matches the collection again, and the gated songs test passes
+- [x] #1 Each of the three files is repaired, removed, or kept as known-bad, and recorded here
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -48,4 +47,16 @@ Supervisor, 2026-10-29, a look at the bytes (read only):
 - yawn.rbs: the 2 extra bytes are 0C 1A. 1A is the DOS end-of-file mark (Ctrl-Z), so they are probably junk from a transfer, and cutting them likely gives the original song.
 - Wax and Rain.RBS: it starts with '(This file must be converted with BinHex 4.0)', a BinHex 4.0 text; decode it.
 - thefur~1.rbs (63766 bytes): the first bytes (7A 79 7C 86 9E 78 59 73 ...) hover around 0x80. That looks like raw 8-bit unsigned audio, not a song: probably a sample saved with the wrong name. It is likely not repairable as a song.
+
+2026-10-31, the user (rb-songs commits e54e60d and 4af1075):
+- Battle of the Best/ChemicalPack/thefur~1.rbs is removed from the collection.
+- Top 25/005/Wax and Rain.RBS is repaired. orb info: RBS 4.2, built-in kit.
+- ReBirth 2.x Songs/Pack34/yawn.rbs is repaired. orb info: RBS 4.2, mod AXIOM peace.
+AC #2 (the manifest matches and the songs test passes) moved to task-168, which regenerates the manifests.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed by the user on 2026-10-31. Two of the three unreadable songs are repaired (Wax and Rain.RBS, yawn.rbs) and one is removed (thefur~1.rbs), in ~/rb-songs commit 4af1075. The manifest regeneration and the gated songs test moved to task-168.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,10 +1,11 @@
 ---
 id: TASK-164
 title: Watch the panel play after the task-153 repaint change
-status: To Do
+status: Done
 assignee:
   - '@pingw33n'
 created_date: '2026-10-30 15:19'
+updated_date: '2026-10-31 10:08'
 labels:
   - ui
   - tests
@@ -28,7 +29,13 @@ What: run OpenRB-338 from main, play a few songs (pattern and song mode, with a 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Played at the startup size and maximized: LEDs, meters, the 303 note flash and the song position move smoothly
-- [ ] #2 After resizing and moving between displays no panel part is missing or blurred
-- [ ] #3 Stopped, the panel still reacts at once to clicks, drags and keys
+- [x] #1 Played at the startup size and maximized: LEDs, meters, the 303 note flash and the song position move smoothly
+- [x] #2 After resizing and moving between displays no panel part is missing or blurred
+- [x] #3 Stopped, the panel still reacts at once to clicks, drags and keys
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Checked by the user on 2026-10-31: the playing panel after task-153's repaint change moves smoothly, no part is missing after resizes, and it reacts at once when stopped.
+<!-- SECTION:FINAL_SUMMARY:END -->
