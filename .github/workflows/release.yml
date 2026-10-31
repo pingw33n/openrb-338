@@ -202,8 +202,10 @@ jobs:
       - name: Refuse an empty build time
         run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the ALSA headers (ui-art links the workspace's cpal)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+      - name: Install the ALSA headers (ui-art links the workspace's cpal) and the keyboard libraries to bundle
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev libxkbcommon-x11-0 patchelf
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: bin-${{ matrix.target }}

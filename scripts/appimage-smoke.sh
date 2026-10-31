@@ -5,9 +5,11 @@
 #
 #   scripts/appimage-smoke.sh dist/<target>/OpenRB-338-<version>-<arch>.AppImage
 #
-# It installs the runtime libraries the host must provide (docs/building.md), then checks:
+# It installs the runtime libraries the host must provide (docs/building.md; not the X11
+# keyboard libraries, which the AppImage bundles: the container must not have them), then checks:
 #   - the AppImage extracts, with the desktop entry, the icons and LICENSE, and bundles no
-#     glibc (no libc.so.6, ld-linux, libm, libpthread) and no ELF file but OpenRB-338 and orb;
+#     glibc (no libc.so.6, ld-linux, libm, libpthread) and no ELF file but OpenRB-338, orb and
+#     libxkbcommon.so.0, libxkbcommon-x11.so.0, libxcb-xkb.so.1 (task-166);
 #   - the most recent GLIBC_ version the two programs need;
 #   - `--orb --help` and `--orb info` on a committed song (the CLI inside), also through a
 #     symlink named orb;
@@ -39,8 +41,13 @@ docker run --rm --platform "$platform" -e "ORB_APPIMAGE_EMULATED=$emulated" \
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends libasound2 libxcursor1 libxrandr2 libxi6 \
-    libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 xvfb xauth binutils desktop-file-utils \
+    libvulkan1 mesa-vulkan-drivers libegl1 xvfb xauth binutils desktop-file-utils \
     squashfs-tools >/dev/null
+# the X11 keyboard libraries are bundled (task-166): the container must not have them
+if ldconfig -p | grep -E "libxkbcommon|libxcb-xkb"; then
+    echo "the container has a keyboard library the AppImage must bring" >&2
+    exit 1
+fi
 cp /t/app.AppImage /tmp/app.AppImage
 chmod +x /tmp/app.AppImage
 cd /tmp
@@ -65,15 +72,31 @@ ls -A squashfs-root
 desktop-file-validate squashfs-root/OpenRB-338.desktop && echo "desktop entry valid"
 find squashfs-root/usr/share/icons -name "*.png" | sort
 test -s squashfs-root/LICENSE
-echo "== ELF files (only OpenRB-338 and orb are expected)"
+echo "== ELF files (OpenRB-338, orb and the three keyboard libraries are expected)"
 find squashfs-root -type f -exec sh -c "head -c4 \"\$1\" | grep -q ELF && echo \"\$1\"" _ {} \; \
     | sort | tee /tmp/elf.txt
-test "$(wc -l < /tmp/elf.txt)" = 2
+cat > /tmp/elf.want <<WANT
+squashfs-root/usr/bin/OpenRB-338
+squashfs-root/usr/bin/orb
+squashfs-root/usr/lib/libxcb-xkb.so.1
+squashfs-root/usr/lib/libxkbcommon-x11.so.0
+squashfs-root/usr/lib/libxkbcommon.so.0
+WANT
+diff <(sort /tmp/elf.want) /tmp/elf.txt
 if find squashfs-root | grep -E "/(libc\.so|ld-linux|libm\.so|libpthread|libdl\.so)"; then
     echo "a glibc file is bundled" >&2
     exit 1
 fi
 echo "no glibc bundled"
+echo "== RUNPATH (no LD_LIBRARY_PATH: it would leak into the children, task-166)"
+for f in $(cat /tmp/elf.txt); do
+    echo "$f $(readelf -d "$f" | grep -E "RUNPATH|RPATH" || echo none)"
+done
+readelf -d squashfs-root/usr/bin/OpenRB-338 | grep -q "RUNPATH.*\[\$ORIGIN/../lib\]"
+readelf -d squashfs-root/usr/bin/orb | grep -q "RUNPATH.*\[\$ORIGIN/../lib\]"
+for f in squashfs-root/usr/lib/*.so.*; do
+    readelf -d "$f" | grep -q "RUNPATH.*\[\$ORIGIN\]"
+done
 echo "== most recent GLIBC_ version per program"
 for f in $(cat /tmp/elf.txt); do
     max=$(objdump -T "$f" | grep -o "GLIBC_[0-9.]*" | sort -uV | tail -1)
@@ -122,5 +145,13 @@ shot "WGPU_BACKEND=vulkan" Vulkan WGPU_BACKEND=vulkan
 shot "WGPU_BACKEND=gl" Gl WGPU_BACKEND=gl
 shot "backend automatic, Vulkan present" Vulkan X=1
 shot "no Vulkan ICD, backend automatic" Gl VK_ICD_FILENAMES=/nonexistent
+# the three keyboard libraries must load from the AppDir, with no LD_LIBRARY_PATH set
+test -z "${LD_LIBRARY_PATH:-}"
+LD_DEBUG=libs xvfb-run -a bash -c \
+    "$(declare -f run_app); run_app --demo --screenshot /tmp/shot.png" > /tmp/ld.txt 2>&1
+for lib in libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb-xkb.so.1; do
+    grep -E "calling init: /.*/usr/(bin/\.\./)?lib/$lib\$" /tmp/ld.txt \
+        || { echo "$lib was not loaded from the AppDir" >&2; exit 1; }
+done
 echo SMOKE-OK
 '

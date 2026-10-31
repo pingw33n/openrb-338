@@ -61,8 +61,9 @@ if [ -z "${APPIMAGETOOL:-}" ]; then
     chmod +x "$tool"
 fi
 
-# The AppDir. Only the two programs and their metadata go in: no library is bundled (the host
-# provides libasound, X11 or Wayland and the GL or Vulkan driver; docs/building.md).
+# The AppDir. The two programs and their metadata go in; appimage-pack.sh adds the three X11
+# keyboard libraries on the Linux side (task-166). Nothing else is bundled (the host provides
+# glibc, libasound, X11 or Wayland and the GL or Vulkan driver; docs/building.md).
 appdir=$dist/$target/OpenRB-338.AppDir
 rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" "$appdir/usr/share/doc/OpenRB-338"

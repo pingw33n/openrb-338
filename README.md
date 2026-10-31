@@ -2,6 +2,12 @@
   <img src="assets/readme/logo.gif" alt="OpenRB-338" width="378">
 </p>
 
+<div align="center">
+
+# OpenRB-338
+
+</div>
+
 <p align="center">
   <a href="https://github.com/pingw33n/openrb-338/releases"><b>Download</b></a> ·
   <a href="assets/readme/screenshot.png"><b>Screenshot</b></a> ·

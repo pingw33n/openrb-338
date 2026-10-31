@@ -17,7 +17,7 @@ Every OS has an amd64 and an arm64 variant:
 
 | Target | Package | Notes |
 |---|---|---|
-| `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` | `.tar.gz`, `.AppImage` | built on Ubuntu 22.04: glibc 2.35 or newer; the AppImage is described under "The AppImage" |
+| `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` | `.tar.gz`, `.AppImage` | built on Ubuntu 22.04: glibc 2.35 or newer; the AppImage is described under "The AppImage"; it bundles three X11 keyboard libraries and nothing else |
 | `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` | `.zip` | MSVC, not gnu: it is what Rust, eframe's wgpu and the runners use; `cargo-xwin` cross-builds it from a Mac or Linux |
 | `x86_64-apple-darwin`, `aarch64-apple-darwin` | `.tar.gz` | two packages, no universal binary (nor in the `.dmg`: one image per architecture, below) |
 
@@ -116,8 +116,9 @@ the `.tar.gz`, the `.zip`, the `.dmg`, and the later installer and AppImages.
 On Linux, both `orb` and OpenRB-338 link `libasound.so.2` (ALSA, package `libasound2`), so even
 `orb --help` fails without it. OpenRB-338 also loads X11 or Wayland and the GL or Vulkan driver at
 run time (dlopen): on a bare Ubuntu 22.04 it needed `libxcursor1`, `libxrandr2`, `libxi6`,
-`libxkbcommon-x11-0`, `libegl1` and a driver (`mesa-vulkan-drivers` for software Vulkan, or
-Mesa's OpenGL and EGL drivers, `libgl1-mesa-dri` and `libegl-mesa0`; see "The AppImage"). The most
+`libegl1` and a driver (`mesa-vulkan-drivers` for software Vulkan, or
+Mesa's OpenGL and EGL drivers, `libgl1-mesa-dri` and `libegl-mesa0`; see "The AppImage"; the
+`.tar.gz` also needs `libxkbcommon-x11-0`, which the AppImage bundles). The most
 recent glibc symbol the binaries use is `GLIBC_2.35` (OpenRB-338) and `GLIBC_2.34` (orb), on both
 architectures, so the minimum is glibc 2.35. Both Linux packages were smoke-tested in
 `ubuntu:22.04` containers (`orb --help`, `orb info` on a shipped song, and OpenRB-338
@@ -663,7 +664,8 @@ toolchain. The AppDir:
 | `AppRun` | runs `usr/bin/OpenRB-338`; runs the bundled CLI when the AppImage is started through a symlink named `orb` or with `--orb` as the first argument |
 | `OpenRB-338.desktop` (and `usr/share/applications/`) | `Name=OpenRB-338`, `Exec=OpenRB-338 %f`, `Categories=AudioVideo;Audio;Music;`, `StartupWMClass=OpenRB-338` (the app id the window sets, so Wayland and X11 shells match the window to the entry) |
 | `OpenRB-338.png`, `.DirIcon`, `usr/share/icons/hicolor/{16,32,64,128,256,512}.../apps/OpenRB-338.png` | `assets/ui/app_icon.svg` rendered by `ui-art iconset` |
-| `usr/bin/OpenRB-338`, `usr/bin/orb` | the two programs |
+| `usr/bin/OpenRB-338`, `usr/bin/orb` | the two programs (RUNPATH `$ORIGIN/../lib`) |
+| `usr/lib/libxkbcommon.so.0`, `libxkbcommon-x11.so.0`, `libxcb-xkb.so.1` | the bundled X11 keyboard libraries (RUNPATH `$ORIGIN`), added by `appimage-pack.sh` |
 | `LICENSE`, `usr/share/doc/OpenRB-338/LICENSE` | GPL-3.0-only |
 
 **The CLI is inside** (decision of this task, since nothing decided otherwise). A user who has
@@ -676,20 +678,41 @@ aarch64 AppImage in an `ubuntu:22.04` container, under `--appimage-extract-and-r
 symlink named `orb` printed the same help as `--orb --help`. The `.tar.gz` stays for anyone who
 wants a plain `orb` without the AppImage.
 
-**What is bundled and why.** Only `OpenRB-338` and `orb`. No library: both binaries are Rust
-with the C parts (the vendored libvorbis) linked in statically, and what remains is the system
-set below, which must come from the host (a bundled `libasound`, GL or X11 would have to match
-the host's sound server, driver and display stack, and bundling glibc or the GL stack is what
-breaks AppImages on other distributions). `scripts/appimage-smoke.sh` checks that the AppDir has
-exactly two ELF files and no `libc.so`, `ld-linux`, `libm`, `libpthread` or `libdl`.
+**What is bundled and why (task-166).** `OpenRB-338`, `orb` and three libraries in `usr/lib`:
+`libxkbcommon.so.0`, `libxkbcommon-x11.so.0` and `libxcb-xkb.so.1`. Both binaries are Rust with
+the C parts (the vendored libvorbis) linked in statically, and the rest of the system set below
+must come from the host (a bundled `libasound`, GL or X11 would have to match the host's sound
+server, driver and display stack, and bundling glibc or the GL stack is what breaks AppImages on
+other distributions). The three keyboard libraries are the exception: winit loads
+`libxkbcommon-x11` with `dlopen`, and when it is missing the program panics at startup
+("Library libxkbcommon-x11.so could not be loaded", xkbcommon-dl). A bare X11 system lacks it:
+the AppImage catalog's test runner (Ubuntu 22.04, Xvfb, icewm, no `libxkbcommon-x11-0`) failed
+on exactly that (PR 11064 of AppImage/appimage.github.io). They are small, only depend on glibc
+and libxcb (which every X11 system has), and have a stable ABI. Their source is the Ubuntu 22.04
+build image (`libxkbcommon-x11-0` in `scripts/docker/linux-build.Dockerfile`; the 22.04 runner
+installs the same package in `release.yml`), so they need no newer glibc than 2.35.
+`scripts/appimage-pack.sh` copies them (looked up with `ldconfig -p`, for the target's
+architecture; a missing one fails the build) before it runs appimagetool, and sets the search
+path with `patchelf` (the image and the runner install it): `RUNPATH $ORIGIN/../lib` on the two
+programs in the AppDir (the `.tar.gz` binaries stay unchanged) and `RUNPATH $ORIGIN` on the
+three libraries, because a RUNPATH is not inherited: libxkbcommon-x11 finds libxcb-xkb and
+libxkbcommon through its own. There is no `LD_LIBRARY_PATH`, which would leak into the
+programs the app starts (zenity for the file and crash dialogs would load our 22.04 copies in
+place of its own). The bundled copies are used also when the host has its own: one tested
+version instead of the host's, and no case where a host copy is too old. The cost is that the
+bundled libxkbcommon reads the host's keymap data (`/usr/share/X11/xkb`) like any copy does, so
+it needs the host's `xkb-data` (every desktop has it). Wayland sessions load the bundled
+libxkbcommon too. `scripts/appimage-smoke.sh` checks that
+the AppDir has exactly these five ELF files and no `libc.so`, `ld-linux`, `libm`, `libpthread`
+or `libdl`, and its container does not install the three libraries (it fails when one is there).
 
 **The host provides:**
 - glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and newer; the most recent symbol the
   programs use is `GLIBC_2.35`, see "What may ship"; both architectures);
 - `libasound.so.2` (`libasound2` on Debian and Ubuntu, `alsa-lib` on Fedora and Arch): without
   it even `orb --help` fails; a PipeWire or PulseAudio system has the ALSA plugins for it;
-- for the window: X11 (`libxcursor1`, `libxrandr2`, `libxi6`, `libxkbcommon-x11-0`; the X11
-  libraries are loaded at run time) or Wayland (`libwayland-client0`, `libxkbcommon0`), and
+- for the window: X11 (`libxcursor1`, `libxrandr2`, `libxi6`; the X11 libraries are loaded at
+  run time; the keyboard libraries are bundled) or Wayland (`libwayland-client0`), and
   a graphics driver, Vulkan or OpenGL, either one. The window is drawn by wgpu, whose backends
   are Vulkan and OpenGL (EGL) here (Metal and DX12 are on the other systems). egui-wgpu asks
   for all of `Backends::PRIMARY | GL` with `PowerPreference::HighPerformance`, and wgpu sorts
