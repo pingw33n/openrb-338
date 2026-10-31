@@ -23,7 +23,7 @@ and Windows.
 
 - **Sounds exactly like the original.** The audio engine was rebuilt from ReBirth 2.01 to the
   bit. A song's exported loop equals the original's "Export Loop as Audio File" byte for byte. This
-  is tested on 1,266 songs of the song collection, 529 of them on 42 third-party mods, and on a
+  is tested on 1,268 songs of the song collection, 531 of them on 43 third-party mods, and on a
   175-render reference corpus.
 - **The whole machine on screen:** the two 303s, the 808 and the 909, the mixer, the delay,
   distortion, PCF and compressor, with pattern and song mode, the loop, shuffle and recording.

@@ -3368,6 +3368,19 @@
    "render_sha256": "9552409b0fa5bc98d10dce2b9ff9b2ffe9456043a52937429acf6074d94ff63e"
   },
   {
+   "file": "CaveysRebirthStuff/Battle of the Best/Top 25/005/Wax and Rain.RBS",
+   "files": [
+    "CaveysRebirthStuff/Battle of the Best/Top 25/005/Wax and Rain.RBS"
+   ],
+   "sha256": "ddff2cd219f705a4335d59ca8ad03c5fb5e45c9a513e7a83e2b4a4ee786a2a6d",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "Standard ReBirth",
+   "mod": null,
+   "idle_blocks": 9088,
+   "render_sha256": "6f0dc7f3db019714c831a179a1cad7b6741bbe2ff640a0206e726b524d476e15"
+  },
+  {
    "file": "CaveysRebirthStuff/Battle of the Best/Top 25/005/Wpx techno.RBS",
    "files": [
     "CaveysRebirthStuff/Battle of the Best/Top 25/005/Wpx techno.RBS"
@@ -9842,6 +9855,19 @@
    "render_sha256": "a947a9271c8efb52d4d49642dfac46e1bdfce96bd0773cca9908677a8c76912a"
   },
   {
+   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack34/yawn.rbs",
+   "files": [
+    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack34/yawn.rbs"
+   ],
+   "sha256": "25c54b17a9d5c8d1c53afc57eeb7f8a70fabc974c70ebf92608896caeb5d3f85",
+   "form": "rbs",
+   "version": "4.2",
+   "mod_name": "AXIOM peace",
+   "mod": "AXIOMpeace.rbm",
+   "idle_blocks": 9088,
+   "render_sha256": "b2e9882069c5cb6016cdf14f248dc3961f64ff50e4454d73865a66472f765121"
+  },
+  {
    "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack35/#Tiafala.rbs",
    "files": [
     "CaveysRebirthStuff/ReBirth 2.x Songs/Pack35/#Tiafala.rbs"
@@ -16257,13 +16283,13 @@
    "files": [
     "peff/pistolwh.rbs"
    ],
-   "sha256": "544e843f7abfa53f9108ffc28cee7ea468f9bcd22e8c3ec09f3a285ed3b57912",
+   "sha256": "bb977ad2599f4dc083fced9b80644571caae610cb6041a4ec9dbeea60e66d549",
    "form": "rbs",
-   "version": "4.1",
-   "mod_name": "senctionbirth",
-   "mod": null,
+   "version": "4.2",
+   "mod_name": "senction birth",
+   "mod": "senction birth.rbm",
    "idle_blocks": 9088,
-   "render_sha256": "3825f66236edec3e2f350650ca048c9e9d472c41f80d8a78bd4335a7c514f51a"
+   "render_sha256": "049cd8da310c70b6ca63361539d7a84e1c130f0e273389c7638b6d7471640476"
   },
   {
    "file": "peff/redshift.rbs",
@@ -16461,30 +16487,5 @@
    "render_sha256": "b827de2e62ebe4ef36c352745eb740e23334fbb6c640c5365f376bb742ac6548"
   }
  ],
- "skipped": [
-  {
-   "file": "CaveysRebirthStuff/Battle of the Best/ChemicalPack/thefur~1.rbs",
-   "files": [
-    "CaveysRebirthStuff/Battle of the Best/ChemicalPack/thefur~1.rbs"
-   ],
-   "sha256": "8954a0d4fbfbab83267b6bf6ade359ae08d71ee9db5c47faaebb9ca2a67adfb2",
-   "reason": "the original refuses it (sub_49F3B4): the first chunk b'zy|\\x86' is not FORM, CAT or LIST"
-  },
-  {
-   "file": "CaveysRebirthStuff/Battle of the Best/Top 25/005/Wax and Rain.RBS",
-   "files": [
-    "CaveysRebirthStuff/Battle of the Best/Top 25/005/Wax and Rain.RBS"
-   ],
-   "sha256": "462e480eb4bee87c49f4653c8d158ef55668d056200e67d5bc42ce0c50bf8764",
-   "reason": "the original refuses it (sub_49F3B4): the first chunk b'\\r\\n(T' is not FORM, CAT or LIST"
-  },
-  {
-   "file": "CaveysRebirthStuff/ReBirth 2.x Songs/Pack34/yawn.rbs",
-   "files": [
-    "CaveysRebirthStuff/ReBirth 2.x Songs/Pack34/yawn.rbs"
-   ],
-   "sha256": "26e9e2d676697c9e0cdb6d10edf296e1b8da4d611e48119733d65d79f06fdf9f",
-   "reason": "the original refuses it (sub_49F3B4): the first chunk is 18018 bytes long, the file 18020"
-  }
- ]
+ "skipped": []
 }

@@ -358,6 +358,12 @@ fail to recrypt and are not collection mods). `tools/thirdparty_mods_manifest.py
 those originals reports `equal`. The 171-mod counts in the rest of this section are those of
 the 2026-10-29 folder.
 
+**The folder since 2026-10-31 (task-168).** The user added 9 mods (`Modyssey`, `PhaseII.2`,
+`Polar a1`, `Polar v`, `Polar vx`, `Polar vx3`, `Polar vx3a`, `Polar vx4`, `R-SP 1200.2`): 320
+recrypted mods, none removed or changed. The originals were found again by content as in
+task-165 (534 candidates, 3 of which fail to recrypt and are not collection mods; all 320
+found), the manifest lists all 320, and `--check` over them reports `equal`.
+
 **The check.** `tools/rbm.py check-dir DIR RB20FUL.DAT [--json]` (the reference: every mod's
 parse, key pages, every embedded file descrambled, the 46 slots' AIFFs, JPEG end markers,
 duplicate INFO names in the original's folder order) and the env-gated cargo test
@@ -547,9 +553,9 @@ in the list (0x415A90), deletes it and shows message 500128050 (`sub_475C12`). [
 ### 11.5 Every song against rbhost: the songs manifest (task-129, 2026-10-29)
 
 The collection moved to `~/rb-songs/songs` (songs, read recursively: the top level and the
-`CaveysRebirthStuff` archive) and `~/rb-mods/mods` (311 recrypted mods since 2026-10-30; 171 on
-2026-10-29, after the user removed DJ Turn's 8-Track.rbm; 172 before). The user asked
-(2026-10-29) that all songs be handled recursively.
+`CaveysRebirthStuff` archive) and `~/rb-mods/mods` (320 recrypted mods since 2026-10-31; 311 on
+2026-10-30; 171 on 2026-10-29, after the user removed DJ Turn's 8-Track.rbm; 172 before). The
+user asked (2026-10-29) that all songs be handled recursively.
 
 **The manifest.** `tests/refs/thirdparty_songs.json` holds, per distinct song (by SHA-256), its
 paths under the folder, its form and version, the mod name and the mod file the original
@@ -573,7 +579,7 @@ The gated `songs` test (`crates/orb-cli/tests/thirdparty.rs`) renders every list
 `orb render --idle-blocks N --mod-dir ORB_THIRDPARTY_MODS_DIR --standard-kit` and requires the
 WAV's SHA-256 to equal the manifest's; a song file of the folder the manifest does not list fails
 it, and so does a run without `ORB_THIRDPARTY_MODS_DIR` when the manifest lists a song with a
-third-party mod (529 of them), so a green run has compared all 1266. Regenerate the manifest when
+third-party mod (531 of them), so a green run has compared all 1268. Regenerate the manifest when
 the collection changes.
 
 **Positions that wrap.** The reader adds the deltas in u32 (`docs/song_load.md` section 10), so
@@ -600,6 +606,17 @@ mod by itself: pass the songs of a changed mod to `--only`). Result: **1266 rend
 all equal `orb render`**, 3 skipped (the three below); 426 ReBirth 1.x and 840 RBS (461 of 4.2,
 371 of 4.1, 8 of 4.0); 529 RBS play a mod, 42 mods in all; 311 play the built-in kit (310
 `Standard ReBirth`, 1 `senctionbirth`, which no mod has).
+
+**The run of 2026-10-31 (task-168).** The user's repairs closed task-148: `thefur~1.rbs` was
+deleted, and `Top 25/005/Wax and Rain.RBS` and `Pack34/yawn.rbs` were repaired (both now RBS
+4.2), and the mod name of `peff/pistolwh.rbs` was fixed (`senction birth`, found as `senction
+birth.rbm`). `~/rb-songs/songs` now has 1270 song files, 1268 distinct. The 9 new mods are
+named by no song in the folder that did not already resolve (the stale check below found no
+other song whose resolution changed), so 3 songs were rendered on the machine again with
+`thirdparty_songs.py --only`: the two repaired ones and `pistolwh.rbs`. Result: **1268 rendered
+by rbhost, 0 skipped** (the three refused songs of section 11.4 are repaired or gone); 426
+ReBirth 1.x and 842 RBS (464 of 4.2, 370 of 4.1, 8 of 4.0); 531 RBS play a mod, 43 mods in all
+(`yawn.rbs` plays `AXIOMpeace.rbm`); 311 play the built-in kit, all `Standard ReBirth`.
 
 **The run of 2026-10-29.** 1242 song files (a name containing `.rbs`), 1242 distinct:
 - 426 ReBirth 1.x (built-in kit) and 813 RBS: 436 of 4.2, 369 of 4.1, 8 of 4.0. 510 RBS play a
