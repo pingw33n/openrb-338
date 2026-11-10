@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbs", "crates/orb-engine", "crates/orb-cli", "crates/rbm", "crates/orb-player", "crates/orb-ui-art", "crates/orb-ui", "crates/orb-testkit"]
+members = ["crates/rbs", "crates/orb-engine", "crates/orb-cli", "crates/rbm", "crates/orb-player", "crates/orb-ui-art", "crates/orb-ui", "crates/orb-testkit", "crates/orb-mcp"]
 
 [workspace.package]
 version = "0.1.0"

@@ -1,0 +1,32 @@
+[package]
+name = "orb-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The MCP server over orb: songs, mods and renders as tools for an agent"
+
+[lib]
+name = "orb_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "orb-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# Everything the tools wrap: loading a song, the renderer, the encoders, the mod lookup.
+orb-cli = { path = "../orb-cli" }
+rbs = { path = "../rbs" }
+orb-engine = { path = "../orb-engine" }
+# The official Rust MCP SDK (Apache-2.0, GPL-3.0 compatible); stdio is the transport.
+rmcp = { version = "3.9.0", features = ["server", "macros", "transport-io"] }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The reference FLACs `orb_compare` decodes (the same crate orb-cli compares with).
+claxon = "0.4.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
