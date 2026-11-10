@@ -2,7 +2,7 @@
 
 OpenRB-338 (the command line tool is `orb`, the crates are `orb-*`, the environment variables
 `ORB_*`; the GitHub repository and the local checkout folder are both `openrb-338`) is a
-reimplementation in Rust of the audio engine of Propellerhead ReBirth RB-338 2.01. It renders an `.rbs` song, optionally with an `.rbm` mod, to audio. The rendered audio must match the original's "Export Loop as Audio File" output sample for sample, within a tolerance set by a `Decide:` task. A UI with a similar look and feel comes after the engine; it does not have to match the original exactly. MIDI and ReWire are out of scope for now.
+reimplementation in Rust of the audio engine of Propellerhead ReBirth RB-338 2.01. It renders an `.rbs` song, optionally with an `.rbm` mod, to audio. The rendered audio must match the original's "Export Loop as Audio File" output sample for sample, within a tolerance set by a `Decide:` task. A UI with a similar look and feel comes after the engine; it does not have to match the original exactly. ReWire is out of scope. The standalone app has no MIDI. The VST3 instrument is `crates/orb-vst`.
 
 The original program (`Rebirth.exe`, `ReBirth.dll`) is not in git: it is copyrighted, so it lives only on the user's machine, in their ReBirth installation, and in the test machine's setup. The user's local IDA databases of it (`Rebirth.exe.i64`, `ReBirth.dll.i64`) are not part of the repository either; agents open a copy through the idalib MCP tools (IDA needs no exe or dll next to the `.i64`). OpenRB-338 needs the program only for the reverse engineering; the tests take the same files from the CD image (`ORB_CD_ISO`, orb-testkit) and skip when it is not set. What is known about the engine is in `docs/initial_investigation.md`, and the official song format is in `docs/RBS42.txt`.
 
@@ -118,7 +118,7 @@ Everything else goes into the task's notes or a knowledge document.
 
 ## Build and test
 
-The Rust workspace is at the repository root (`crates/rbs`, `crates/rbm`, `crates/orb-engine`, `crates/orb-cli`, whose binary is `orb`, `orb-player`, `orb-ui`, `orb-ui-art` and `orb-testkit`; `rbs` and `rbm` keep their names because they are ReBirth's file formats). The toolchain is pinned in `rust-toolchain.toml`.
+The Rust workspace is at the repository root (`crates/rbs`, `crates/rbm`, `crates/orb-engine`, `crates/orb-cli`, whose binary is `orb`, `orb-player`, `orb-ui`, `orb-ui-art`, `orb-vst` and `orb-testkit`; `rbs` and `rbm` keep their names because they are ReBirth's file formats). The toolchain is pinned in `rust-toolchain.toml`.
 
 - Build: `cargo build --release`
 - Test: `cargo test`. Tests that run `tools/*.py` find Python 3 through `tests/common/python.rs`: `ORB_PYTHON` (a program path, or a command split on whitespace such as `py -3`) if set, else `python3`, `python` or `py -3` on PATH; none is a failure naming `ORB_PYTHON`, not a skip.
@@ -154,7 +154,8 @@ The Rust workspace is at the repository root (`crates/rbs`, `crates/rbm`, `crate
   rbhost's render in `tests/refs/thirdparty_songs.json`, failing on a song file it does not list;
   regenerate it on the test machine with `tools/rbhost/thirdparty_songs.py --songs SONGS --mods
   MODS --rb20ful RB20FUL.DAT` (batched and resumable; docs/rbm.md 11.5). Not test
-  inputs: `ORB_LIVE_OUT` (orb-player's live_messages: an output folder) and `RBM_TEST_DAT` /
+  inputs: `ORB_LIVE_OUT` (orb-player's live_messages: an output folder), `ORB_VST_SONG` (a song
+  the VST loads at startup) and `RBM_TEST_DAT` /
   `RBM_TEST_MODS` (set by a cargo test for its child process only, `tools/rbm_test.py`).
 - Song metadata: `orb info SONG.rbs [--mod-dir DIR] [--json]` prints the facts File > Info shows (format and version, title, text, web page, copyright, the mod and whether it is the built-in kit, a file of `--mod-dir` / `ORB_MOD_DIR`, missing, or not checked, tempo, shuffle, mode, loop, synth sound) for an RBS 4.x or a ReBirth 1.x song; `--json` keys are in `orb info --help`. The code is `crates/orb-cli/src/info.rs`, shared with orb-ui.
 - Corpus summary: `cargo run --release -p orb-cli -- compare --manifest tests/refs/manifest.json [--mod-dir DIR] [--set diag,app,shipped] [NAME...]` (the 11 mod songs need `--mod-dir` with the four recrypted shipped mods; `orb mod recrypt --iso "$ORB_CD_ISO" -o DIR` makes them from the CD image) prints per song `EQUAL` or the first difference (frame, time, bar, channel, both values) and exits 1 on any difference. One song: `orb compare SONG.rbs --reference REF.flac|REF.wav [--idle-blocks N]`.

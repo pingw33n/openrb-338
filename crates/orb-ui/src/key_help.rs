@@ -292,6 +292,7 @@ pub fn groups(is_mac: bool) -> Vec<Group> {
                 menu_row(is_mac, &shortcuts::NEW, "File > New"),
                 menu_row(is_mac, &shortcuts::OPEN, "File > Open..."),
                 menu_row(is_mac, &shortcuts::SAVE, "File > Save"),
+                menu_row(is_mac, &shortcuts::INFO, "File > Info..."),
                 menu_row(
                     is_mac,
                     &shortcuts::KEYS_SYNTH,
@@ -754,10 +755,13 @@ mod tests {
                 .map(|r| r.keys.clone())
                 .collect()
         };
-        assert_eq!(text(true), ["Cmd+N", "Cmd+O", "Cmd+S", "Cmd+F", "Cmd+G"]);
+        assert_eq!(
+            text(true),
+            ["Cmd+N", "Cmd+O", "Cmd+S", "Cmd+I", "Cmd+F", "Cmd+G"]
+        );
         assert_eq!(
             text(false),
-            ["Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+F", "Ctrl+G"]
+            ["Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+I", "Ctrl+F", "Ctrl+G"]
         );
     }
 

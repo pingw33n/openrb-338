@@ -4,8 +4,8 @@
 //! What each item does (docs/ui_spec.md section 18):
 //! - **File**: New (Ctrl/Cmd+N: the state of the app's start), Open (Ctrl/Cmd+O), Save (Ctrl/Cmd+S;
 //!   the texts come from [`crate::shortcuts`]; a song that was never saved goes to Save As), Save
-//!   As, Info ([`crate::info`]), Export loop as audio file. The browser (task-046) returns paths
-//!   only; the writes happen here and their errors are shown in the message box
+//!   As, Info (Ctrl/Cmd+I, [`crate::info`]), Export loop as audio file. The browser (task-046)
+//!   returns paths only; the writes happen here and their errors are shown in the message box
 //!   ([`crate::error_box`]).
 //! - **Mods**: "Standard ReBirth", the mods of the Mods folder (one entry per INFO menu name, as
 //!   the original's Mods menu: `sub_40C163`, docs/rbm.md section 14), and a file picked in the
@@ -587,6 +587,13 @@ impl App {
         }
     }
 
+    /// Opens a song that has no file. The plugin uses this to recall the song stored in the
+    /// host's project. Save goes to Save As, the same as a song that was never saved.
+    pub fn open_unsaved(&mut self, opened: session::Opened) {
+        self.refresh_mods();
+        self.action(|s| s.adopt_as(None, opened, None));
+    }
+
     /// The state of an app started without a song: the empty song, Untitled, on the standard
     /// mod, not modified, stopped, the panel at its values; its mod's startup sound plays when
     /// the preference is on and the kit changed ([`App::mod_opened`], task-099). The settings
@@ -1117,7 +1124,7 @@ impl App {
                             if item(ui, "Save As...", None) {
                                 cmd = Some(Cmd::SaveAs);
                             }
-                            if item(ui, "Info...", None) {
+                            if item(ui, "Info...", Some(&shortcuts::INFO)) {
                                 cmd = Some(Cmd::Info);
                             }
                             ui.separator();

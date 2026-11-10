@@ -86,7 +86,7 @@ use std::sync::Arc;
 
 use orb_engine::frame::edit::PatternShape;
 use orb_engine::frame::export::REALTIME_FRAMES;
-use orb_engine::frame::{Devices, Engine, LoadRefused, MixerParams};
+use orb_engine::frame::{BlockCapture, Devices, Engine, LoadRefused, MixerParams};
 use orb_engine::process::ProcessState;
 use orb_engine::samples::{Retired, STARTUP_ID, Sample, SampleSet};
 use orb_engine::seq::Pool;
@@ -97,6 +97,8 @@ use orb_engine::tables::Tables;
 pub const RATE: u32 = 44_100;
 /// The frames of one engine call: one MME buffer of the original.
 pub const CALL_FRAMES: usize = REALTIME_FRAMES;
+/// Blocks in one call. `CALL_FRAMES` is a multiple of the mixer block.
+const CALL_BLOCKS: usize = CALL_FRAMES / orb_engine::frame::BLOCK;
 /// The command queue's capacity.
 pub const COMMANDS: usize = 1024;
 /// The garbage queue's capacity. Each command lets go of at most [`GARBAGE_PER_COMMAND`]
@@ -411,6 +413,11 @@ pub struct Audio {
     tracks_published: Option<(u32, u64)>,
     /// The int16 output of the last engine call.
     buf: Box<[i16; 2 * CALL_FRAMES]>,
+    /// Per frame of `buf`: four post-pan contributions, the send bus twice, pre-master.
+    /// Filled beside the mix so a host can take the separate outputs.
+    taps: Box<[[f32; 12]; CALL_FRAMES]>,
+    /// One slot per block of `buf`. Filled by the same `render` that writes `buf`.
+    caps: Box<[BlockCapture; CALL_BLOCKS]>,
     /// The frames of `buf` already handed out.
     pos: usize,
     frames: u64,
@@ -448,6 +455,8 @@ impl Player {
             tracks: ti,
             tracks_published: None,
             buf: Box::new([0; 2 * CALL_FRAMES]),
+            taps: Box::new([[0.0; 12]; CALL_FRAMES]),
+            caps: Box::new([BlockCapture::default(); CALL_BLOCKS]),
             pos: CALL_FRAMES,
             frames: 0,
             generation: 0,
@@ -568,6 +577,36 @@ impl Player {
     }
 }
 
+fn render_call(
+    engine: &mut Engine,
+    buf: &mut [i16; 2 * CALL_FRAMES],
+    caps: &mut [BlockCapture; CALL_BLOCKS],
+) -> usize {
+    engine.render_captured(&mut buf[..], CALL_FRAMES, caps)
+}
+
+fn store_taps(caps: &[BlockCapture], taps: &mut [[f32; 12]]) {
+    let block = orb_engine::frame::BLOCK;
+    for (step, cap) in caps.iter().enumerate() {
+        let at = step * block;
+        if at + block > taps.len() {
+            break;
+        }
+        for i in 0..block {
+            let mut t = [0.0; 12];
+            for c in 0..4 {
+                t[2 * c] = cap.channel[c][0][i];
+                t[2 * c + 1] = cap.channel[c][1][i];
+            }
+            t[8] = cap.send[i];
+            t[9] = cap.send[i];
+            t[10] = cap.pre_master[0][i];
+            t[11] = cap.pre_master[1][i];
+            taps[at + i] = t;
+        }
+    }
+}
+
 impl Audio {
     /// Fills `out` (interleaved stereo int16 at 44.1 kHz, `out.len() / 2` frames) with the
     /// engine's output, running an engine call whenever the last one is used up.
@@ -584,6 +623,30 @@ impl Audio {
             out[2 * i] = l as f32 / 32768.0;
             out[2 * i + 1] = r as f32 / 32768.0;
         });
+    }
+
+    /// [`Audio::render_f32`] plus the separate outputs of the same frames.
+    /// `taps[i]` is channel 303-1, 303-2, 808, 909 (L, R each), the delay send
+    /// twice, then pre-master L, R. `taps.len()` is the frame count.
+    pub fn render_f32_taps(&mut self, out: &mut [f32], taps: &mut [[f32; 12]]) {
+        let frames = out.len() / 2;
+        let mut i = 0;
+        while i < frames {
+            if self.pos == CALL_FRAMES {
+                self.call();
+            }
+            let n = (CALL_FRAMES - self.pos).min(frames - i);
+            for k in 0..n {
+                let s = 2 * (self.pos + k);
+                out[2 * (i + k)] = self.buf[s] as f32 / 32768.0;
+                out[2 * (i + k) + 1] = self.buf[s + 1] as f32 / 32768.0;
+                if let Some(t) = taps.get_mut(i + k) {
+                    *t = self.taps[self.pos + k];
+                }
+            }
+            self.pos += n;
+            i += n;
+        }
     }
 
     fn pull(&mut self, frames: usize, mut put: impl FnMut(usize, i16, i16)) {
@@ -608,12 +671,16 @@ impl Audio {
             let Ok(c) = self.commands.pop() else { break };
             self.apply(c);
         }
-        // a faulting call writes nothing (`Engine::fault`): silence rather than the last call
+        // a faulting call writes nothing (`Engine::fault`): silence rather than the last call.
+        // One render of 1024, as before. The captures are copies from that same call.
         self.buf.fill(0);
+        self.taps.fill([0.0; 12]);
         let faults = self.faults();
-        self.current.render(&mut self.buf[..], CALL_FRAMES);
+        let ncap = render_call(&mut self.current, &mut self.buf, &mut self.caps);
         if self.faults() != faults {
             self.buf.fill(0);
+        } else {
+            store_taps(&self.caps[..ncap], &mut self.taps[..]);
         }
         // the preview player, after the song (`SafeSoundCallback` step 4)
         if self.preview_on

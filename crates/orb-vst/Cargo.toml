@@ -1,0 +1,33 @@
+[package]
+name = "orb-vst"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenRB-338 as a VST3 instrument"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "openrb338"
+
+[dependencies]
+orb-engine = { path = "../orb-engine" }
+orb-player = { path = "../orb-player" }
+orb-ui = { path = "../orb-ui" }
+rbm = { path = "../rbm" }
+rbs = { path = "../rbs" }
+# Not on crates.io. third_party/nih-plug is upstream
+# de421011f41a6d10fc8c7a6084e4f4dee0143683 with host resize enabled.
+nih_plug = { path = "../../third_party/nih-plug", default-features = false, features = ["vst3"] }
+# The panel is egui 0.37, the same as the app. baseview parents that window into
+# the host without taking the host's event loop.
+eframe = "0.37.0"
+egui_extras = { version = "0.37.0", features = ["svg"] }
+egui_glow = "0.37"
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "237d323c729f3aa99476ba3efa50129c5e86cad3", features = ["opengl"] }
+keyboard-types = { version = "0.6", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.24"
+objc = "0.2"
+raw-window-handle = "0.5"
