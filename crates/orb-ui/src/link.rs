@@ -291,17 +291,15 @@ pub struct Link {
     /// The drum samples of the newest song (its mod's), whose startup sound
     /// [`Link::startup_sound`] plays.
     kit: Option<Arc<SampleSet>>,
-    /// The open song's tracks once recording has changed them (task-057), as the player last
-    /// copied them ([`orb_player::Tracks`]); what Save writes then.
-    recorded: Option<[Vec<TrackEvent>; 9]>,
-    /// The generation and revision of `recorded`.
+    /// The generation and revision last published after recording changed the open song.
     recorded_at: Option<(u32, u64)>,
     /// The first player generation that can be the open song: a copy of an older song's tracks
     /// is not the open song's.
     tracks_from: u32,
-    /// The tracks of the song [`Link::load`] built last, as the engine holds them after the
-    /// load (task-125).
+    /// The open song's latest tracks, initially from its built engine, then from the callback.
     loaded: [Vec<TrackEvent>; 9],
+    /// The generation and revision last copied into `loaded`.
+    loaded_at: Option<(u32, u64)>,
     /// The open song's saved blocks while the engine plays it in song mode
     /// ([`Link::song_mode_blocks`]).
     saved: Option<SavedBlocks>,
@@ -346,6 +344,7 @@ impl Link {
                 .map(|p| p.to_vec())
                 .unwrap_or_default()
         });
+        let loaded = std::array::from_fn(|t| audio.current_mut().frame.seq.events(t).to_vec());
         let link = Link {
             player,
             controls: controls(),
@@ -356,10 +355,10 @@ impl Link {
             mark: 0,
             log: None,
             kit,
-            recorded: None,
             recorded_at: None,
             tracks_from: 0,
-            loaded: Default::default(),
+            loaded,
+            loaded_at: None,
             saved: None,
             shown_gr: None,
         };
@@ -370,13 +369,11 @@ impl Link {
     /// of the loop wrap, record off or the song end), else `None`: Save writes these, as the
     /// original's save writes the tracks it reads back from the DLL (`sub_437CFF`).
     pub fn recorded_tracks(&self) -> Option<&[Vec<TrackEvent>; 9]> {
-        self.recorded.as_ref()
+        self.recorded_at.map(|_| &self.loaded)
     }
 
-    /// The tracks of the song [`Link::load`] opened last, as the engine holds them right after
-    /// the load: what the original's TRAK writer `sub_437CFF` would read back from the DLL
-    /// with song msg 22 then (sorted by tick, the song constructor's tick-0 events included;
-    /// `docs/song_load.md` section 12.6). A ReBirth 1.x song's document takes them.
+    /// The open song's latest known engine tracks, including constructor events and any
+    /// published merges or stop prunes. Before its load runs, these are the built song's tracks.
     pub fn loaded_tracks(&self) -> &[Vec<TrackEvent>; 9] {
         &self.loaded
     }
@@ -447,8 +444,6 @@ impl Link {
         panel: &mut Panel,
     ) -> Result<(), LoadRefused> {
         let engine = self.player.build(song, samples.clone())?;
-        let seq = &engine.frame.seq;
-        self.loaded = std::array::from_fn(|t| seq.events(t).to_vec());
         self.queue_song(engine, samples, panel);
         let g = &song.globals;
         *panel = Panel::new();
@@ -526,14 +521,21 @@ impl Link {
         // what the panel did before is sent first (the panel is replaced after)
         self.forward(panel);
         self.kit = samples;
+        self.loaded = std::array::from_fn(|t| engine.frame.seq.events(t).to_vec());
+        self.loaded_at = None;
         // the open song stops first (task-090): the new song then becomes current at once, at
         // its start, stopped, instead of waiting as the pending song behind a playing one
         self.backlog.push_back(Command::Stop);
         self.backlog.push_back(Command::Load(engine));
-        self.recorded = None;
         self.recorded_at = None;
         self.saved = None;
-        self.tracks_from = self.player.snapshot().generation + 1;
+        // Every Load queued here becomes current at once (the Stop before it), so each raises
+        // the player's generation by exactly one; a pending song would break `tracks_from`.
+        debug_assert!(
+            !self.player.snapshot().pending,
+            "a load waits behind a playing song"
+        );
+        self.tracks_from = self.tracks_from.max(self.player.snapshot().generation) + 1;
     }
 
     /// The Mods menu's mod change of the open song (song msg 19): the pending panel events go
@@ -866,15 +868,25 @@ impl Link {
 
     // ---- in -----------------------------------------------------------------------------
 
+    /// Refreshes the open song's tracks from the latest callback publication.
+    /// A stop's prune changes `loaded` (what Save writes) but not `recorded_revision`, so it
+    /// does not mark an unrecorded song modified: it never changes playback.
+    pub fn refresh_tracks(&mut self) {
+        let t = self.player.tracks();
+        let at = Some((t.generation, t.revision));
+        if t.generation >= self.tracks_from && at != self.loaded_at {
+            self.loaded = std::array::from_fn(|i| t.events[i].to_vec());
+            self.loaded_at = at;
+            if t.merges > 0 {
+                self.recorded_at = at;
+            }
+        }
+    }
+
     /// Takes the engine's state into the panel.
     pub fn follow(&mut self, panel: &mut Panel) {
         let s = *self.player.snapshot();
-        let t = self.player.tracks();
-        let at = Some((t.generation, t.revision));
-        if t.generation >= self.tracks_from && t.merges > 0 && at != self.recorded_at {
-            self.recorded = Some(std::array::from_fn(|i| t.events[i].to_vec()));
-            self.recorded_at = at;
-        }
+        self.refresh_tracks();
         // the meters and the running lights follow every call
         for c in 0..4 {
             panel.meters.insert(

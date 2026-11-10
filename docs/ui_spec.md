@@ -901,14 +901,17 @@ read, and what it leaves out.
   `{16, end}`. Stop while stopped sends the locate `{8, t}`. Record sends `{2, v}`
   (`orb_player::Command::Record`, task-057), in song mode only; the switch to pattern mode sends
   `{2, 0}` after `{0, 0}`. The Record LED follows the engine's byte (`Snapshot::recording`).
-- **Saving a recorded song** (task-057). Once a merge has put recorded events into the song's
-  tracks (the loop wrap, record off, the song end), the song is modified and Save writes the
-  engine's tracks (`orb_player::Player::tracks`, copied by the callback whenever they change;
-  `Link::recorded_tracks`), as the original's save writes what it reads back from the DLL
-  (`sub_437CFF`, song msg 22). A song that was not recorded keeps the tracks of its file, so an
-  unedited save gives back the file; the original would write the DLL's tracks there too (with
-  the stop prune's removals and the ctor's tick-0 events, which shipped songs already have):
-  task-080 decides whether OpenRB-338 should always do so.
+- **Saving tracks** (task-143; task-080's changed decision). Save always writes the engine's
+  tracks, as the original's save reads them back from the DLL (`sub_437CFF`, song msg 22).
+  They include constructor tick-0 events, accepted and deduplicated events in engine order, and
+  recordings merged so far; a stop's prune is reflected only after that stop has run. The
+  callback publishes track changes via `orb_player::Player::tracks`; before a queued load is
+  adopted, the newly built song's tracks are used. A merge of recorded events marks the song
+  modified. A stop's prune does not: it removes only events that repeat their controller's
+  previous value (not at tick 0), so the song plays the same, and Play then Stop leaves an
+  unedited song unmodified although its next save drops those events.
+  An unedited save can differ from its source: events rejected by the load or removed
+  by a stop are not written.
 - **Saving in song mode** (task-159). In song mode the panel shows the live values the tracks
   set, but Save writes the devices' pattern-mode copies, as the original's save does
   (`docs/song_load.md` section 4.11): the device chunks read, or the values pattern mode had when
@@ -1088,20 +1091,16 @@ is one more entry.
   file as read, with over it: the controllers (`link::controls`, controller c = parameter c), the
   pattern selection and on/off switches, the 32 patterns of the four pattern devices
   (`Link::patterns`), the mixer, the tempo, mode, loop and shuffle, GLOB's vintage byte 482, and the
-  mod name and its INFO URLs. The track events, the user text, unknown chunks and unused bytes stay
-  as read. The values are those the panel shows, which follow the song's automation while it plays
-  (the original also saves the live blocks). The version is written as 4.2 [G: the original's
-  version write in `sub_438025` was not read; OpenRB-338 writes the version it reads, 4.2]. A 4.2 file whose
-  controls were not touched is saved byte for byte, including the bytes the load changes
-  (the 909's mid tom decay is the low tom's after a load: such a byte keeps the file's value until
-  the control is changed; 146 songs of the corpus are saved byte for byte, the 17 older ones load to the same engine
-  song, `tests/menu.rs`). An older file
-  (4.0, 4.1) is saved as a 4.2 file with the values the load made of it: the tom tunings of the
-  808's controllers and track events, every mixer channel enabled in a 4.1 file; it loads to the
-  same engine song. A ReBirth 1.x song has no `rbs` file: the empty song stands in, with the
-  tracks the engine holds after the load (`Link::loaded_tracks`: sorted by tick, the song
-  constructor's tick-0 events included), as the original's save writes them (task-125,
-  `docs/song_load.md` section 12.6). A new song is saved from the empty 4.2 song (`rbs::Song::empty`) and the panel.
+  mod name and its INFO URLs. The user text, unknown chunks and unused bytes stay as read; tracks
+  always come from the engine (section 16). Device values in song mode use the pattern-mode
+  copies, as described above. The version is written as 4.2 [G: the original's version write in
+  `sub_438025` was not read; OpenRB-338 writes the version it reads, 4.2]. Untouched device
+  bytes of a 4.2 file keep their original values even when the load changes them (the 909's mid
+  tom decay, for example). An older file (4.0, 4.1) is saved as a 4.2 file with the values the
+  load made of it, including converted 808 tom tunings and mixer channel enables. A ReBirth 1.x
+  song has no `rbs` file: the empty song stands in, and Save uses the same engine-track path as
+  for 4.x songs (`docs/song_load.md` section 12.6). A new song is saved from the empty 4.2 song
+  (`rbs::Song::empty`), the panel and the constructor's tracks.
   The file is written next to itself and renamed over it; an error is shown in the error message box.
 - **Export** uses `orb render`'s code (`orb_cli::render`, the `orb-cli` library: `Renderer::render_to_file`,
   the same encoders, 9088 idle blocks, Ogg quality 0.5): the song as saved (composed, written, parsed
@@ -1276,12 +1275,13 @@ is one more entry.
   shuffle and synth sound of the file, and "Last event": `bar N` (1-based) of the song's last
   track event, or `none` (task-124; `SongFacts::last_event_bar`, the same facts `orb info`
   prints, for a 4.x and a 1.x song; an .rbs song has no length field, so this is its useful
-  length). The row follows the song as it is now: after a recording (the Link's recorded
-  tracks, which Save writes) it is the latest tick over those tracks
-  (`orb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), and a
-  successful Save of any song makes the document's song the one written, so the document
-  matches the file. `SongInfo::of` builds the facts from the document (and the recorded
-  tracks) without a player. "Show song info on open" (the
+  length). The row follows the song as it is now: it is the latest tick over the engine's
+  tracks (`Link::loaded_tracks`, which Save writes since task-143: without the events the load
+  dropped, such as those past bar 999, with a recording's merges and a stop's prune;
+  `orb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), so it can be
+  below what `orb info` prints for the file, and a successful Save of any song makes the
+  document's song the one written, so the document matches the file. `SongInfo::of` builds the
+  facts from the document (and the engine's tracks when there is a player). "Show song info on open" (the
   USRI flag, `docs/RBS42.txt`) is not done either: the window opens only from the menu. The
   original shows these in its Song Information dialog; its layout is not copied.
 - **The startup sound of an open and of the start** (task-087). Below.

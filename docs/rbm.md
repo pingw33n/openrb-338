@@ -589,9 +589,9 @@ only from u32 deltas, so every backward step of a parsed track is a wrap (whatev
 every parsed track writes back byte for byte. The order is checked where tracks are built from a
 model instead: orb-ui's `document::set_engine_tracks` (the engine's lists, a 1.x import included)
 debug-asserts that its positions never go back ("events not sorted by position"), and
-`tools/rbs.py`'s `validate` refuses an unsorted spec. No song of the collection wraps. Today
-orb-ui's Save writes a song's own events through this writer; task-143 (open) makes it write the
-engine's tracks instead, whose positions are below 32000 and sorted, so they never wrap.
+`tools/rbs.py`'s `validate` refuses an unsorted spec. No song of the collection wraps. orb-ui's
+Save writes the engine's tracks instead of the file's own events (task-143); their positions are
+below 32000 and sorted, so they never wrap.
 
 **The run of 2026-10-30 (task-165).** The user added 29 songs and moved 7 (mostly into
 `peff/`); `~/rb-songs/songs` now has 1271 song files, 1269 distinct. Three songs of the

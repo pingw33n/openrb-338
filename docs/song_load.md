@@ -1090,9 +1090,10 @@ every event of a 1.x import replaces a constructor node, because the import's co
 among the constructor's. So a save and a reopen give the import's lists with each tick's events
 reversed, tick 0 excepted. The original does the same.
 
-**orb.** orb-ui gives a 1.x song's document the tracks of the engine it built
-(`Link::loaded_tracks`, `document::set_engine_tracks`, `App::adopt_as`), which is what msg 22
-would read back right after the load. It does not copy `load_1x`'s buffers, which made
+**orb.** At save time `document::compose` writes `Link::loaded_tracks` through
+`document::set_engine_tracks` for both 1.x and 4.x songs (task-143). These are the latest known
+engine lists, initially from the built song and then refreshed from callback publications.
+It does not copy `load_1x`'s buffers, which made
 `rbs::Track::build` refuse the save ("events not sorted by position"; since task-129 the writer
 refuses nothing and writes a backward step as a u32 wrap, and `set_engine_tracks` debug-asserts
 the order instead, `docs/rbm.md` 11.5). The mod does not matter:

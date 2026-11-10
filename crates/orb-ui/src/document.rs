@@ -8,14 +8,14 @@
 //! the link: [`compose`] takes the song file as it was read, and puts over it everything the
 //! panel can change (the controllers, the pattern selection and on/off switches, the patterns,
 //! the mixer, the transport's tempo, mode, loop and shuffle, the sound model and the mod name).
-//! What the panel cannot change (the user text, unknown chunks, the unused bytes, and the track
-//! events unless recording changed them) stays as read, so a song saved without an edit is the
-//! file read, byte for byte, for a canonical 4.2 file. In song mode the device values come from
+//! The user text, unknown chunks and unused bytes stay as read. Tracks always come from the
+//! engine, as task-080's changed decision requires (task-143): rejected events are absent,
+//! constructor events and merged recordings are included, and a stop's prune is reflected only
+//! after it has run. An unedited save need not be byte-identical to its source. In song mode
+//! the device values come from
 //! the engine's pattern-mode copies ([`Link::song_mode_blocks`]), which the original's queries
 //! reply with then (docs/song_load.md section 4.11), not from the panel, which shows the live
-//! values the tracks set. A song whose tracks recording changed
-//! (task-057) is saved with the engine's tracks ([`Link::recorded_tracks`]), as the original
-//! saves the tracks it reads back from the DLL.
+//! values the tracks set. The original saves the tracks it reads back from the DLL.
 
 use std::path::PathBuf;
 
@@ -77,9 +77,8 @@ impl Default for Document {
 /// so the empty song stands in, with the engine song's mod name and the song information (the
 /// devices come from the panel when the song is saved). Its tracks are empty here: the import's
 /// lists are in the order of the MIDI tracks, not of the ticks (several MIDI tracks feed the
-/// mixer), and the document takes the tracks the engine holds after the load instead
-/// ([`set_engine_tracks`] with [`Link::loaded_tracks`], `App::adopt_as`), as the original's save
-/// writes them.
+/// mixer). At save time [`compose`] uses [`set_engine_tracks`] with [`Link::loaded_tracks`],
+/// the same path as for 4.x songs, as the original's save writes the engine's lists.
 pub fn source_of_1x(engine: &EngineSong, song: &rbs::rb1x::Song1x) -> rbs::Song {
     let mut s = rbs::Song::empty();
     s.glob.mod_name = engine.mod_name.clone();
@@ -116,23 +115,6 @@ pub fn set_engine_tracks(s: &mut rbs::Song, tracks: &[Vec<TrackEvent>; 9]) {
     }
 }
 
-/// The track events the load accepted (converted, as an older file's values are), as the file
-/// holds them: a position in 32nd notes is a tick over 24. Not checked for order: a file's
-/// huge deltas wrap in u32 and may put an accepted event before the one before it, which the
-/// writer stores as the same wrap.
-fn set_tracks(s: &mut rbs::Song, engine: &EngineSong) {
-    for (t, events) in engine.tracks.iter().enumerate() {
-        s.tracks[t].events = events
-            .iter()
-            .map(|e| rbs::Event {
-                pos: e.tick / 24,
-                ctrl: e.ctrl,
-                value: e.value,
-            })
-            .collect();
-    }
-}
-
 /// The song to write: `base` with the panel's state (`link` has the patterns) over it.
 pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> rbs::Song {
     let mut s = base.clone();
@@ -144,14 +126,7 @@ pub fn compose(base: &rbs::Song, panel: &Panel, link: &Link, mod_name: &str) -> 
     let current = (base.head.major, base.head.minor, base.head.revision) == (4, 2, 0);
     let engine = orb_engine::load::convert(base).ok();
     let loaded = engine.as_ref().filter(|_| current);
-    if let (false, Some(e)) = (current, &engine) {
-        // the events of an older file, as the load converted them (the 808's tom tunings)
-        set_tracks(&mut s, e);
-    }
-    if let Some(tracks) = link.recorded_tracks() {
-        // a recorded song: the tracks as the engine holds them, as the original's save does
-        set_engine_tracks(&mut s, tracks);
-    }
+    set_engine_tracks(&mut s, link.loaded_tracks());
     s.head.major = 4;
     s.head.minor = 2;
     s.head.revision = 0;

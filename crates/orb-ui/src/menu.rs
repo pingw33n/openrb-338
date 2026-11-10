@@ -10,8 +10,8 @@
 //! - **Mods**: "Standard ReBirth", the mods of the Mods folder (one entry per INFO menu name, as
 //!   the original's Mods menu: `sub_40C163`, docs/rbm.md section 14), and a file picked in the
 //!   browser. A choice is the original's `sub_42D80D` -> `sub_426FB3`: the song is marked modified,
-//!   the new kit goes to the player as song msg 19 ([`Link::set_mod`]) and a save writes the new
-//!   name. With the preference "Play Mod Startup Sound" on
+//!   the new kit goes to the player as song msg 19 ([`crate::link::Link::set_mod`]) and a save
+//!   writes the new name. With the preference "Play Mod Startup Sound" on
 //!   ([`crate::settings::Settings::startup_sound`]) the new mod's startup sound plays, as it does
 //!   when a song is opened and at the start ([`App::start`]), but only when the kit changes
 //!   (task-099). "Demo Song" opens the `Demo.rbs` of the current mod as an unsaved song (task-094).
@@ -32,13 +32,11 @@ use orb_cli::mods::{self, Kit, ModOpts, STANDARD};
 use orb_cli::render::{DEFAULT_IDLE_BLOCKS, DEFAULT_QUALITY, Renderer, load_mod};
 use orb_engine::frame::LoadRefused;
 use orb_engine::samples::SampleSet;
-use orb_engine::song::LoadForm;
 
 use crate::app::App;
 use crate::browser::{ExportFormat, Mode};
 use crate::document::{self, Document};
 use crate::keys::KeyMode;
-use crate::link::Link;
 use crate::palette::{INK, INK_DIM, SLATE_DARK, SLATE_LINE};
 use crate::session;
 use crate::shortcuts;
@@ -484,13 +482,7 @@ impl App {
         // the song document's constructor `sub_425C4D` opens the mod, then `sub_426C67`
         // (0x425FAB for a 1.x song, 0x426400 for an RBS song): the old song was closed first
         // (the unsaved prompt is the close's), so this song is its mod's only user
-        let mut source = opened.source;
-        if opened.engine.form == LoadForm::Rb1x {
-            // a 1.x song has no TRAK chunks to keep: it saves the tracks the engine holds, as
-            // the original does (task-125)
-            document::set_engine_tracks(&mut source, link.loaded_tracks());
-        }
-        self.settle(path, source, opened.facts_1x, mod_name, kit);
+        self.settle(path, opened.source, opened.facts_1x, mod_name, kit);
     }
 
     /// Whether the current song's mod has a `Demo.rbs` (the Mods menu's "Demo Song"): never for
@@ -655,17 +647,25 @@ impl App {
     // ---- saving -------------------------------------------------------------------------
 
     /// The song as the panel shows it, as an `.rbs` file's bytes.
-    pub fn song_bytes(&self) -> Result<Vec<u8>, String> {
-        let Some(link) = &self.link else {
-            return Err("There is no song to save.".into());
-        };
-        self.composed_song(link)
+    pub fn song_bytes(&mut self) -> Result<Vec<u8>, String> {
+        self.song_for_save()?
             .write()
             .map_err(|e| format!("cannot write the song: {e}"))
     }
 
-    fn composed_song(&self, link: &Link) -> rbs::Song {
-        document::compose(&self.doc.source, &self.panel, link, &self.doc.mod_name)
+    fn song_for_save(&mut self) -> Result<rbs::Song, String> {
+        let Some(link) = &mut self.link else {
+            return Err("There is no song to save.".into());
+        };
+        let before = link.recorded_revision();
+        link.refresh_tracks();
+        self.doc.modified |= link.recorded_revision() != before;
+        Ok(document::compose(
+            &self.doc.source,
+            &self.panel,
+            link,
+            &self.doc.mod_name,
+        ))
     }
 
     /// Save: to the song's file, or Save As for a song that has none.
@@ -683,17 +683,17 @@ impl App {
     }
 
     fn save_to_inner(&mut self, path: &Path) {
-        let result = self
-            .song_bytes()
-            .and_then(|bytes| session::write_file(path, &bytes));
+        let result = self.song_for_save().and_then(|song| {
+            let bytes = song
+                .write()
+                .map_err(|e| format!("cannot write the song: {e}"))?;
+            session::write_file(path, &bytes)?;
+            Ok(song)
+        });
         match result {
-            Ok(()) => {
+            Ok(song) => {
                 self.doc.facts_1x = None;
-                if let Some(link) = &self.link {
-                    // the file is an RBS 4.2 song now (a 1.x song included): the document is
-                    // the song as written, so File > Info shows what the file says
-                    self.doc.source = self.composed_song(link);
-                }
+                self.doc.source = song;
                 self.doc.path = Some(path.to_path_buf());
                 self.doc.modified = false;
                 self.status = Some(format!("Saved {}", path.display()));
