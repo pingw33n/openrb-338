@@ -162,20 +162,12 @@ fn read_rbs(path: &Path) -> rbs::Song {
     rbs::Song::parse(&std::fs::read(path).unwrap()).unwrap()
 }
 
-fn assert_engine_tracks(song: &rbs::Song, h: &mut Harness) {
-    let seq = &h.audio.current_mut().frame.seq;
-    for (i, track) in song.tracks.iter().enumerate() {
-        let expected: Vec<_> = seq
-            .events(i)
-            .iter()
-            .map(|e| rbs::Event {
-                pos: e.tick as u32 / 24,
-                ctrl: e.ctrl,
-                value: e.value,
-            })
-            .collect();
-        assert_eq!(track.events, expected, "track {i}");
-    }
+fn assert_engine_tracks(song: &rbs::Song, audio: &mut Audio) {
+    let seq = &audio.current_mut().frame.seq;
+    let tracks = std::array::from_fn(|i| seq.events(i).to_vec());
+    let mut expected = rbs::Song::empty();
+    orb_ui::document::set_engine_tracks(&mut expected, &tracks);
+    assert_eq!(song.tracks, expected.tracks);
 }
 
 /// Each track's events as (tick, controller, value), sorted: a save and a reopen keep the
@@ -293,87 +285,96 @@ fn every_controller_has_a_panel_value() {
 
 #[test]
 fn save_uses_loaded_tracks_and_the_latest_stop_prune() {
-    let dir = tempfile::tempdir().unwrap();
-    let src = dir.path().join("source.rbs");
-    let out = dir.path().join("saved.rbs");
-    let mut song = rbs::Song::empty();
-    song.tracks[1].events = vec![
-        rbs::Event {
-            pos: 1,
-            ctrl: 3,
-            value: 11,
-        },
-        rbs::Event {
-            pos: 1,
-            ctrl: 3,
-            value: 22,
-        },
-        rbs::Event {
-            pos: 1,
-            ctrl: 4,
-            value: 31,
-        },
-        rbs::Event {
-            pos: 2,
-            ctrl: 3,
-            value: 22,
-        },
-        rbs::Event {
-            pos: 32000,
-            ctrl: 3,
-            value: 33,
-        },
-    ];
-    std::fs::write(&src, song.write().unwrap()).unwrap();
+    for follow_stop in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("source.rbs");
+        let out = dir.path().join("saved.rbs");
+        let mut song = rbs::Song::empty();
+        song.tracks[1].events = vec![
+            rbs::Event {
+                pos: 1,
+                ctrl: 3,
+                value: 11,
+            },
+            rbs::Event {
+                pos: 1,
+                ctrl: 3,
+                value: 22,
+            },
+            rbs::Event {
+                pos: 1,
+                ctrl: 4,
+                value: 31,
+            },
+            rbs::Event {
+                pos: 2,
+                ctrl: 3,
+                value: 22,
+            },
+            rbs::Event {
+                pos: 32000,
+                ctrl: 3,
+                value: 33,
+            },
+        ];
+        std::fs::write(&src, song.write().unwrap()).unwrap();
 
-    let mut h = Harness::new();
-    h.app.open_now(&src);
-    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
-    // Saving before the callback adopts the load must still use the new song's tracks.
-    h.app.save_to(&out);
-    let before = read_rbs(&out);
-    let events = &before.tracks[1].events;
-    assert!(events.iter().any(|e| e.pos == 0 && e.ctrl == 3));
-    assert_eq!(
-        events
-            .iter()
-            .filter(|e| e.pos == 1 && e.ctrl == 3)
-            .map(|e| e.value)
-            .collect::<Vec<_>>(),
-        [22]
-    );
-    assert_eq!(
-        events
-            .iter()
-            .filter(|e| e.pos == 1)
-            .map(|e| e.ctrl)
-            .collect::<Vec<_>>(),
-        [4, 3]
-    );
-    assert!(
-        events
-            .iter()
-            .any(|e| e.pos == 2 && e.ctrl == 3 && e.value == 22)
-    );
-    assert!(!events.iter().any(|e| e.pos >= 32000));
+        let mut h = Harness::new();
+        h.app.open_now(&src);
+        assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
+        // Saving before the callback adopts the load must still use the new song's tracks.
+        h.app.save_to(&out);
+        let before = read_rbs(&out);
+        let events = &before.tracks[1].events;
+        assert!(events.iter().any(|e| e.pos == 0 && e.ctrl == 3));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e.pos == 1 && e.ctrl == 3)
+                .map(|e| e.value)
+                .collect::<Vec<_>>(),
+            [22]
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e.pos == 1)
+                .map(|e| e.ctrl)
+                .collect::<Vec<_>>(),
+            [4, 3]
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e.pos == 2 && e.ctrl == 3 && e.value == 22)
+        );
+        assert!(!events.iter().any(|e| e.pos >= 32000));
 
-    h.calls(2);
-    h.app.panel.press("transport.play", 0.0);
-    h.frame(vec![]);
-    h.calls(2);
-    h.app.panel.press("transport.stop", 0.0);
-    h.frame(vec![]);
-    // The callback has run the stop, but the UI has not followed its publication.
-    h.audio.render_i16(&mut vec![0; 2 * CALL_FRAMES * 2]);
-    h.app.save_to(&out);
-    let after = read_rbs(&out);
-    assert!(
-        !after.tracks[1]
-            .events
-            .iter()
-            .any(|e| e.pos == 2 && e.ctrl == 3)
-    );
-    assert_engine_tracks(&after, &mut h);
+        h.calls(2);
+        assert!(!h.app.doc.modified);
+        h.app.panel.press("transport.play", 0.0);
+        h.frame(vec![]);
+        h.calls(2);
+        h.app.panel.press("transport.stop", 0.0);
+        h.frame(vec![]);
+        // The callback has run the stop, but the UI has not followed its publication.
+        h.audio.render_i16(&mut vec![0; 2 * CALL_FRAMES * 2]);
+        if follow_stop {
+            h.frame(vec![]);
+            assert!(!h.app.doc.modified, "a stop's prune is not an edit");
+        }
+        h.app.save_to(&out);
+        let after = read_rbs(&out);
+        assert!(
+            !after.tracks[1]
+                .events
+                .iter()
+                .any(|e| e.pos == 2 && e.ctrl == 3)
+        );
+        assert_engine_tracks(&after, &mut h.audio);
+        h.frame(vec![]);
+        assert!(!h.app.doc.modified, "a stop's prune is not an edit");
+    }
 }
 
 #[test]
@@ -452,21 +453,7 @@ fn saving_an_unedited_corpus_song_writes_the_engine_tracks() {
         let bytes = song.write().unwrap();
         let mut a = read_rbs(path);
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        let seq = &audio.current_mut().frame.seq;
-        for (t, track) in song.tracks.iter().enumerate() {
-            let expected: Vec<_> = seq
-                .events(t)
-                .iter()
-                .map(|e| rbs::Event {
-                    pos: e.tick as u32 / 24,
-                    ctrl: e.ctrl,
-                    value: e.value,
-                })
-                .collect();
-            if track.events != expected {
-                different.push(format!("{name}: track {t} differs from engine"));
-            }
-        }
+        assert_engine_tracks(&song, &mut audio);
         if (a.head.major, a.head.minor, a.head.revision) == (4, 2, 0) {
             // Only the tracks may change in an unedited 4.2 file.
             a.tracks = song.tracks.clone();
@@ -477,7 +464,10 @@ fn saving_an_unedited_corpus_song_writes_the_engine_tracks() {
             // An older file is saved with the converted device values.
             older += 1;
             let again = rbs::Song::parse(&bytes).unwrap();
-            let (x, y) = (&opened.engine, orb_engine::load::convert(&again).unwrap());
+            let (x, mut y) = (&opened.engine, orb_engine::load::convert(&again).unwrap());
+            // Track normalization also changes the load's per-track event batch counts.
+            y.tracks = x.tracks.clone();
+            y.batches = x.batches.clone();
             let field = if x.globals != y.globals {
                 "globals"
             } else if x.mixer != y.mixer {
@@ -490,6 +480,8 @@ fn saving_an_unedited_corpus_song_writes_the_engine_tracks() {
                 "the 808"
             } else if x.tr909 != y.tr909 {
                 "the 909"
+            } else if *x != y {
+                "something else"
             } else {
                 ""
             };
@@ -552,7 +544,7 @@ fn save_and_save_as_reopen_identically() {
     assert!(h.app.browsing());
     h.app.chosen(Mode::SaveSong, copy.clone());
     assert_eq!(h.app.doc.path.as_deref(), Some(copy.as_path()));
-    assert_engine_tracks(&read_rbs(&copy), &mut h);
+    assert_engine_tracks(&read_rbs(&copy), &mut h.audio);
 
     // an edit is saved by Save, over the same file, and re-opens as it was (in pattern mode: a
     // song-mode edit of a controller changes only the live value, which the save does not write,
@@ -580,7 +572,7 @@ fn save_and_save_as_reopen_identically() {
     // Saving again writes the reopened engine's lists, including its same-tick order.
     let again = dir.path().join("again.rbs");
     h2.app.save_to(&again);
-    assert_engine_tracks(&read_rbs(&again), &mut h2);
+    assert_engine_tracks(&read_rbs(&again), &mut h2.audio);
 }
 
 #[test]
@@ -636,7 +628,7 @@ fn an_edit_of_each_kind_is_saved() {
     assert_eq!(b.delay.values[3], 32);
     assert_eq!(b.mixer.channels[1].level, 76);
     assert_eq!(b.mixer.channels[2].enabled, 1 - a.mixer.channels[2].enabled);
-    assert_engine_tracks(&b, &mut h);
+    assert_engine_tracks(&b, &mut h.audio);
     assert_eq!(a.usri, b.usri);
     assert_eq!(a.head, b.head);
 }
@@ -1930,7 +1922,7 @@ fn the_info_window_edits_the_song_information_and_save_writes_it() {
     assert_eq!(b.usri.text, want.usri.text);
     assert_eq!(b.usri.web_page, want.usri.web_page);
     assert_eq!(b.head.copyright, want.head.copyright);
-    assert_engine_tracks(&b, &mut h);
+    assert_engine_tracks(&b, &mut h.audio);
     assert_eq!(b.usri.show_on_open, was.usri.show_on_open);
     // another open shows that song's values
     h.ctx

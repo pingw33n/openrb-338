@@ -96,10 +96,10 @@ fn song(song_mode: u8) -> (rbs::Song, Vec<u8>) {
     (s, bytes)
 }
 
-/// The device chunks are preserved while the panel shows the tracks' values; tracks themselves
-/// are written from the engine.
+/// The device bytes are preserved while the panel shows the tracks' values. Tracks are
+/// excluded from this comparison because they are written from the engine.
 #[test]
-fn an_unedited_song_mode_song_saves_the_file_read_after_frames() {
+fn an_unedited_song_mode_song_preserves_device_bytes_after_frames() {
     let (_, bytes) = song(1);
     let dir = tempfile::tempdir().unwrap();
     let mut h = Harness::open(dir.path(), &bytes);

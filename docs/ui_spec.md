@@ -907,7 +907,10 @@ read, and what it leaves out.
   recordings merged so far; a stop's prune is reflected only after that stop has run. The
   callback publishes track changes via `orb_player::Player::tracks`; before a queued load is
   adopted, the newly built song's tracks are used. A merge of recorded events marks the song
-  modified. An unedited save can differ from its source: events rejected by the load or removed
+  modified. A stop's prune does not: it removes only events that repeat their controller's
+  previous value (not at tick 0), so the song plays the same, and Play then Stop leaves an
+  unedited song unmodified although its next save drops those events.
+  An unedited save can differ from its source: events rejected by the load or removed
   by a stop are not written.
 - **Saving in song mode** (task-159). In song mode the panel shows the live values the tracks
   set, but Save writes the devices' pattern-mode copies, as the original's save does

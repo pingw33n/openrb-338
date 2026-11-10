@@ -77,9 +77,8 @@ impl Default for Document {
 /// so the empty song stands in, with the engine song's mod name and the song information (the
 /// devices come from the panel when the song is saved). Its tracks are empty here: the import's
 /// lists are in the order of the MIDI tracks, not of the ticks (several MIDI tracks feed the
-/// mixer), and the document takes the tracks the engine holds after the load instead
-/// ([`set_engine_tracks`] with [`Link::loaded_tracks`], `App::adopt_as`), as the original's save
-/// writes them.
+/// mixer). At save time [`compose`] uses [`set_engine_tracks`] with [`Link::loaded_tracks`],
+/// the same path as for 4.x songs, as the original's save writes the engine's lists.
 pub fn source_of_1x(engine: &EngineSong, song: &rbs::rb1x::Song1x) -> rbs::Song {
     let mut s = rbs::Song::empty();
     s.glob.mod_name = engine.mod_name.clone();

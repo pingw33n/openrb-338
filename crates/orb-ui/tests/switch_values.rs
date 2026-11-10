@@ -150,14 +150,15 @@ fn out_of_range_switch_values_open_play_and_draw() {
 
 /// Opened and saved without an edit, the out-of-range device switch values
 /// (303 waveforms 127 and 2, 808 selectors 255, 64, 200, 9, PCF mode 2, delay mode 127) and
-/// and the 909 step bytes 4, 7, 255 are written back as the song holds them. The save comes before
+/// the 909 step bytes 4, 7, 255 are written back as the song holds them. The save comes before
 /// the first frame, after the panel has drawn and followed the engine, and while the song
 /// plays. In song mode the panel shows the tracks' values, which the load's range check makes
 /// in-range defaults for these switches (waveform 2 becomes 0, the 808 selector 255 becomes
 /// 0, the PCF mode 2 becomes 1, the delay mode 127 becomes 1), and the save still writes the
 /// devices' pattern-mode copies, the file's bytes, as the original's does (task-159).
+/// Tracks are excluded from this comparison because they are written from the engine.
 #[test]
-fn out_of_range_switch_values_save_back_unchanged() {
+fn out_of_range_device_switch_bytes_save_back_unchanged() {
     for song_mode in [0, 1] {
         let bytes = song_bytes(song_mode);
         let dir = tempfile::tempdir().unwrap();

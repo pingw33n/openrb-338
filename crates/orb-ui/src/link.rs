@@ -291,10 +291,7 @@ pub struct Link {
     /// The drum samples of the newest song (its mod's), whose startup sound
     /// [`Link::startup_sound`] plays.
     kit: Option<Arc<SampleSet>>,
-    /// The open song's tracks once recording has changed them (task-057), as the player last
-    /// copied them ([`orb_player::Tracks`]); what Save writes then.
-    recorded: Option<[Vec<TrackEvent>; 9]>,
-    /// The generation and revision of `recorded`.
+    /// The generation and revision last published after recording changed the open song.
     recorded_at: Option<(u32, u64)>,
     /// The first player generation that can be the open song: a copy of an older song's tracks
     /// is not the open song's.
@@ -358,7 +355,6 @@ impl Link {
             mark: 0,
             log: None,
             kit,
-            recorded: None,
             recorded_at: None,
             tracks_from: 0,
             loaded,
@@ -373,7 +369,7 @@ impl Link {
     /// of the loop wrap, record off or the song end), else `None`: Save writes these, as the
     /// original's save writes the tracks it reads back from the DLL (`sub_437CFF`).
     pub fn recorded_tracks(&self) -> Option<&[Vec<TrackEvent>; 9]> {
-        self.recorded.as_ref()
+        self.recorded_at.map(|_| &self.loaded)
     }
 
     /// The open song's latest known engine tracks, including constructor events and any
@@ -531,9 +527,14 @@ impl Link {
         // its start, stopped, instead of waiting as the pending song behind a playing one
         self.backlog.push_back(Command::Stop);
         self.backlog.push_back(Command::Load(engine));
-        self.recorded = None;
         self.recorded_at = None;
         self.saved = None;
+        // Every Load queued here becomes current at once (the Stop before it), so each raises
+        // the player's generation by exactly one; a pending song would break `tracks_from`.
+        debug_assert!(
+            !self.player.snapshot().pending,
+            "a load waits behind a playing song"
+        );
         self.tracks_from = self.tracks_from.max(self.player.snapshot().generation) + 1;
     }
 
@@ -868,6 +869,8 @@ impl Link {
     // ---- in -----------------------------------------------------------------------------
 
     /// Refreshes the open song's tracks from the latest callback publication.
+    /// A stop's prune changes `loaded` (what Save writes) but not `recorded_revision`, so it
+    /// does not mark an unrecorded song modified: it never changes playback.
     pub fn refresh_tracks(&mut self) {
         let t = self.player.tracks();
         let at = Some((t.generation, t.revision));
@@ -875,7 +878,6 @@ impl Link {
             self.loaded = std::array::from_fn(|i| t.events[i].to_vec());
             self.loaded_at = at;
             if t.merges > 0 {
-                self.recorded = Some(self.loaded.clone());
                 self.recorded_at = at;
             }
         }
