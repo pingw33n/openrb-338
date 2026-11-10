@@ -1028,6 +1028,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | File | Open... (Ctrl+O, Cmd+O on macOS) | the browser for a song; with unsaved changes the prompt first |
 | File | Save (Ctrl+S, Cmd+S on macOS) | writes the song's file; a song with none goes to Save As |
 | File | Save As... | the browser for a `.rbs`; the file becomes the song's file |
+| File | Info... (Ctrl+I, Cmd+I on macOS) | opens Song Information (below) |
 | File | Export Loop as Audio File... | the browser for `.wav`, `.flac` or `.ogg`; enabled in song mode only (the original disables it in pattern mode, section 12) |
 | Mods | Standard ReBirth, a mod per file, Choose file... | the song's kit, checked (below) |
 | Mods | Refresh List | reads the Mods folder again (the list cache, below; task-101); directly after "Choose file..." with a separator after it, so the two form one group (task-118); the status line then says "Mod list refreshed: N mods in <folder> (+a, -b)" (what changed against the previous list, by file), a read error of the folder goes to the error message box (section 18.0) |
@@ -1228,7 +1229,7 @@ is one more entry.
   `physical_width`, `splash_width`, `format_size` and `format_version` are unit-tested from
   given DPIs. On the developer's MacBook (main display 345.44 mm, 2992 px wide: 8.66 px/mm) a
   256 px splash is 702.9 px, i.e. 351.4 points at 2 pixels per point.
-- **File > Info** (task-095). Below "Save As...", a closable window "Song Information"
+- **File > Info** (task-095; Ctrl+I, Cmd+I on macOS). Below "Save As...", a closable window "Song Information"
   (`crates/orb-ui/src/info.rs`; the close button or Escape closes it). It shows the current
   document each frame, so it follows an open of another song. It has three parts, each a
   two-column grid with the same label column, with a line between them. The window opens 570
@@ -1267,7 +1268,7 @@ is one more entry.
     - While a text edit has the keyboard focus the panel takes no computer keys
       (`App::show`, `text_edit_focused`): Space types a space instead of playing. The menu's
       shortcuts that `App::show` takes still work: Cmd/Ctrl+N (New), +O (Open), +S (Save),
-      +F (Program Synth from Keyboard) and +G (Select Patterns from Keyboard). Escape closes
+      +I (Info), +F (Program Synth from Keyboard) and +G (Select Patterns from Keyboard). Escape closes
       the window. When the field loses the focus (or the window closes) the panel takes its
       keys again.
   - the read-only facts: the mod's name with its state

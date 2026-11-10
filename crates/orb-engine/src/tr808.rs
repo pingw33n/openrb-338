@@ -342,6 +342,18 @@ impl Tr808 {
     fn params_live(&mut self) {
         self.live = self.params;
     }
+
+    /// A live hit of column `instrument` (1..=11), the step function's trigger.
+    /// `velocity` 0..127 takes the accent step's place in the accent formula.
+    /// 100 and above is only a stronger accent input, not a second gain (the 808
+    /// has no accent/normal gain pair).
+    pub fn hit(&mut self, instrument: usize, velocity: u8) {
+        if !(1..=11).contains(&instrument) {
+            return;
+        }
+        self.accent = st((velocity as f64 * self.live[ACCENT] as f64) * ACC_STEP as f64 + ACC_BASE);
+        self.trigger(instrument);
+    }
 }
 
 impl SongDevice for Tr808 {
@@ -503,6 +515,10 @@ impl SongDevice for Tr808 {
 }
 
 impl ChannelDevice for Tr808 {
+    fn as_tr808(&mut self) -> Option<&mut Tr808> {
+        Some(self)
+    }
+
     fn playing_pattern(&self) -> Option<u8> {
         Some(self.cur_pattern)
     }

@@ -34,6 +34,35 @@ use crate::tables::Tables;
 pub const BLOCK: usize = 64;
 /// One block of one mono bus.
 pub type Block = [f32; BLOCK];
+
+/// One block of the taps a plugin reads as separate outputs.
+///
+/// Not part of the original, and not read by the mix. [`Frame::block`] still
+/// writes the master with the original expressions; these fields store copies
+/// of values that expression already computed.
+#[derive(Clone, Copy)]
+pub struct BlockCapture {
+    /// Channel c's contribution after pan, L then R: `f32(bus * gain)` at each
+    /// sample, the term added into the master. Before the delay, the master
+    /// compressor and the master gain.
+    pub channel: [[[f32; BLOCK]; 2]; 4],
+    /// The send bus after every channel has added to it, before the delay
+    /// reads it and refills it with the denormal guard.
+    pub send: Block,
+    /// The master after the delay and the master compressor, before the
+    /// master gain.
+    pub pre_master: [Block; 2],
+}
+
+impl Default for BlockCapture {
+    fn default() -> Self {
+        BlockCapture {
+            channel: [[[0.0; BLOCK]; 2]; 4],
+            send: [0.0; BLOCK],
+            pre_master: [[0.0; BLOCK]; 2],
+        }
+    }
+}
 /// The denormal guard every bus is filled with before it accumulates (`0x358637BD`, the
 /// immediate at 0x10013471 and 0x10013AD3).
 pub const GUARD: f32 = f32::from_bits(0x3586_37BD);
@@ -279,6 +308,21 @@ pub trait ChannelDevice: SongDevice {
     /// `+0x18DC`) becomes `samples`. The old table and the samples the voices held go into
     /// `retired`. The 303s and the placeholders have no table and do nothing.
     fn set_samples(&mut self, _samples: &Arc<SampleSet>, _retired: &mut Retired) {}
+
+    /// Not a slot: downcast for a live note. Only [`crate::tb303::Tb303`].
+    fn as_tb303(&mut self) -> Option<&mut crate::tb303::Tb303> {
+        None
+    }
+
+    /// Not a slot: downcast for a live hit. Only [`crate::tr808::Tr808`].
+    fn as_tr808(&mut self) -> Option<&mut crate::tr808::Tr808> {
+        None
+    }
+
+    /// Not a slot: downcast for a live hit. Only [`crate::tr909::Tr909`].
+    fn as_tr909(&mut self) -> Option<&mut crate::tr909::Tr909> {
+        None
+    }
 }
 
 /// An insert effect: the distortion, the PCF or the compressor.
@@ -798,6 +842,9 @@ pub struct Frame {
     /// object (`song+0x30C`, a heap address). Set by [`Engine::render`]; the delay leaves it on
     /// the stack ([`SendEffect::stack_word`]).
     pub out_end: Option<i32>,
+    /// The last block's separate outputs ([`BlockCapture`]). A faulting block does not
+    /// replace it.
+    capture: BlockCapture,
 }
 
 /// `unk_100F012C`: the right channel's float output of a render call (0x10013A3A), at the
@@ -842,7 +889,13 @@ impl Frame {
             blocks: 0,
             stack_word: None,
             out_end: None,
+            capture: BlockCapture::default(),
         }
+    }
+
+    /// The taps of the last block that finished ([`BlockCapture`]).
+    pub fn capture(&self) -> &BlockCapture {
+        &self.capture
     }
 
     pub fn tables(&self) -> &Tables {
@@ -930,6 +983,7 @@ impl Frame {
         let mi = mi as usize;
         l.fill(GUARD);
         r.fill(GUARD);
+        let mut cap = BlockCapture::default();
         let mut ctx = BlockContext {
             tables: &self.tables,
             meter_index: mi,
@@ -988,11 +1042,15 @@ impl Frame {
                     let b = bus[j] as f64;
                     l[j] = st(b * gl + l[j] as f64);
                     r[j] = st(b * gr + r[j] as f64);
+                    // The term the mix just added. Not fed back into `l` or `r`.
+                    cap.channel[c][0][j] = st(b * gl);
+                    cap.channel[c][1][j] = st(b * gr);
                 }
                 gl += dl;
                 gr += dr;
             }
         }
+        cap.send = self.state.send;
         // 0x10013844: the send effect
         ctx.stack_word = None;
         self.devices.delay.process(&mut self.state.send, l, r, &ctx);
@@ -1001,6 +1059,7 @@ impl Frame {
         if self.state.master_comp {
             self.devices.comp.process_stereo(l, r, &ctx);
         }
+        cap.pre_master = [*l, *r];
         // 0x100138AE: the master gain, constant over the block, unrounded
         let m = self.state.master as f64 * KEEP + self.state.master_target as f64 * TAKE;
         self.state.master = st(m);
@@ -1014,6 +1073,7 @@ impl Frame {
                 self.state.master_peak[k] = v;
             }
         }
+        self.capture = cap;
         Ok(())
     }
 }
@@ -1251,6 +1311,20 @@ impl Engine {
     /// stereo into `buf[..2n]`, through the leftover block. A call with `n = 0` renders nothing
     /// but drops a pending leftover (`L` becomes `L - 64`).
     pub fn render(&mut self, buf: &mut [i16], n: usize) {
+        self.render_captured(buf, n, &mut []);
+    }
+
+    /// [`Engine::render`], and a copy of each block that finished.
+    ///
+    /// `captures` receives the successful blocks in order, until it is full.
+    /// A faulting call still writes no int16. The copies are not read by the mix.
+    pub fn render_captured(
+        &mut self,
+        buf: &mut [i16],
+        n: usize,
+        captures: &mut [BlockCapture],
+    ) -> usize {
+        let mut wrote = 0;
         let n = n.min(MAX_FRAMES);
         // 0x10013A5E: the song's try-lock, before the leftover and the first block
         self.frame.stack_word = Some(LOCK_WORD);
@@ -1294,7 +1368,11 @@ impl Engine {
                     calls: 0,
                 });
                 r.calls += 1;
-                return;
+                return wrote;
+            }
+            if wrote < captures.len() {
+                captures[wrote] = self.frame.capture;
+                wrote += 1;
             }
             if !whole {
                 break;
@@ -1317,6 +1395,7 @@ impl Engine {
             buf[2 * i] = to_i16(ol[i]);
             buf[2 * i + 1] = to_i16(or[i]);
         }
+        wrote
     }
 
     /// Song msg 35 `{1,0}` (`sub_1001E100`).

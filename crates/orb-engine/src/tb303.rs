@@ -532,6 +532,39 @@ impl Tb303 {
         self.env = st(e);
         self.amp = st(amp);
     }
+
+    /// A note from outside the pattern (the VST). `midi` 36 is the pattern's low C
+    /// (note byte 0). Octaves go in the up and down bytes [`Tb303::note_on`] already
+    /// multiplies by 12. The semitone is clamped so `pitch >> 4` stays inside the
+    /// pitch table at the current tune.
+    pub fn live_note(&mut self, midi: u8, velocity: u8, slide: bool) {
+        let tune = TUNE_TABLE[(self.live[TUNE] >> 2) as usize] as i32;
+        // index = 3072 + (tune + semis) * 64, and the table has 6144 entries.
+        let mut semis = midi as i32 - 36;
+        let lo = -48 - tune;
+        let hi = 47 - tune;
+        if semis < lo {
+            semis = lo;
+        }
+        if semis > hi {
+            semis = hi;
+        }
+        let (note, up, down) = if semis >= 0 {
+            let up = semis / 12;
+            (semis - up * 12, up, 0)
+        } else {
+            let down = ((-semis) + 11) / 12;
+            (semis + down * 12, 0, down)
+        };
+        self.note_on([
+            note as u8,
+            u8::from(slide),
+            u8::from(velocity >= 100),
+            up as u8,
+            down as u8,
+            0,
+        ]);
+    }
 }
 
 impl SongDevice for Tb303 {
@@ -724,6 +757,10 @@ impl SongDevice for Tb303 {
 }
 
 impl ChannelDevice for Tb303 {
+    fn as_tb303(&mut self) -> Option<&mut Tb303> {
+        Some(self)
+    }
+
     fn playing_pattern(&self) -> Option<u8> {
         Some(self.cur_pattern)
     }

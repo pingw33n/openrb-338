@@ -47,7 +47,9 @@ and Windows.
 
 ## Not implemented
 
-- MIDI, VST and ReWire. OpenRB-338 is a standalone application only, with no MIDI input or sync.
+- MIDI and ReWire in the standalone application. The separate VST3 instrument
+  (`crates/orb-vst`) takes MIDI, follows the host clock and exposes a
+  stereo mix plus separate module and bus outputs.
 - Mod themes: a mod changes the drum sounds, not the look of the panel.
 - The original's Edit menu functions on patterns (copy, paste, clear, shift, randomize and the
   like), and undo.

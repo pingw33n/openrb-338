@@ -269,3 +269,16 @@ fn a_note_sounds_in_both_models() {
         assert_eq!(d.retrig, vintage);
     }
 }
+
+#[test]
+fn live_note_stays_inside_the_pitch_table() {
+    let mut d = Tb303::new();
+    for tune in [0u8, 64, 127] {
+        d.live[TUNE] = tune;
+        for midi in [0u8, 36, 60, 83, 127] {
+            d.live_note(midi, 100, false);
+            let index = (d.pitch_target >> 4) as usize;
+            assert!(index < 6144, "tune {tune} midi {midi} -> {index}");
+        }
+    }
+}

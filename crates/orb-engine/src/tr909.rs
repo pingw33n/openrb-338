@@ -407,6 +407,23 @@ impl Tr909 {
     pub fn params_rbs_order(&self) -> Params {
         std::array::from_fn(|c| self.params[internal_index(c)])
     }
+
+    /// A live hit of column `instrument` (1..=11). `velocity` stands in for the
+    /// step's accent byte. Below 100 the hit uses the normal gain 0.8; from 100
+    /// the accented gain 2.0, as step values 1 and 2 do.
+    pub fn hit(&mut self, instrument: usize, velocity: u8) {
+        if !(1..=11).contains(&instrument) {
+            return;
+        }
+        self.accent = st((velocity as f64 * self.live[ACCENT] as f64) * ACC_STEP as f64 + ACC_BASE);
+        let k = if velocity >= 100 {
+            GAIN_ACCENT
+        } else {
+            GAIN_ON
+        };
+        self.gain = st(self.accent as f64 * k);
+        self.trigger(instrument);
+    }
 }
 
 impl SongDevice for Tr909 {
@@ -600,6 +617,10 @@ impl SongDevice for Tr909 {
 }
 
 impl ChannelDevice for Tr909 {
+    fn as_tr909(&mut self) -> Option<&mut Tr909> {
+        Some(self)
+    }
+
     fn playing_pattern(&self) -> Option<u8> {
         Some(self.cur_pattern)
     }
