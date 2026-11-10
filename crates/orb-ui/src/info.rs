@@ -73,16 +73,18 @@ pub struct SongInfo {
 }
 
 impl SongInfo {
-    /// The information of a document.
-    pub fn of(doc: &Document, recorded: Option<&[Vec<TrackEvent>; 9]>) -> Self {
+    /// The information of a document; `tracks` are the engine's tracks of the open song
+    /// ([`crate::link::Link::loaded_tracks`]), `None` without a player.
+    pub fn of(doc: &Document, tracks: Option<&[Vec<TrackEvent>; 9]>) -> Self {
         // the facts are those of `orb info` (orb_cli::info)
         // a 1.x song has no `rbs` song: its facts were taken when it was opened (task-123)
         let mut f = match &doc.facts_1x {
             Some(f) => f.clone(),
             None => SongFacts::of_source(&doc.source),
         };
-        if let Some(tracks) = recorded {
-            // a recorded song: the tracks as the engine holds them (what Save writes)
+        if let Some(tracks) = tracks {
+            // the tracks as the engine holds them, what Save writes (task-143): without the
+            // events the load dropped, with a recording's merges and a stop's prune
             f.last_event_tick = last_tick(tracks.iter().flatten().map(|e| e.tick as u32));
         }
         let format = f.format();
@@ -372,12 +374,10 @@ impl App {
         self.info_open = true;
     }
 
-    /// The information of the song now: the document, and the tracks recording has made.
+    /// The information of the song now: the document, and the engine's tracks (what Save
+    /// writes).
     pub fn song_info(&self) -> SongInfo {
-        SongInfo::of(
-            &self.doc,
-            self.link.as_ref().and_then(|l| l.recorded_tracks()),
-        )
+        SongInfo::of(&self.doc, self.link.as_ref().map(|l| l.loaded_tracks()))
     }
 
     /// The id of the info window now (for tests, to look its place up).

@@ -1275,12 +1275,13 @@ is one more entry.
   shuffle and synth sound of the file, and "Last event": `bar N` (1-based) of the song's last
   track event, or `none` (task-124; `SongFacts::last_event_bar`, the same facts `orb info`
   prints, for a 4.x and a 1.x song; an .rbs song has no length field, so this is its useful
-  length). The row follows the song as it is now: after a recording (the Link's recorded
-  tracks, which Save writes) it is the latest tick over those tracks
-  (`orb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), and a
-  successful Save of any song makes the document's song the one written, so the document
-  matches the file. `SongInfo::of` builds the facts from the document (and the recorded
-  tracks) without a player. "Show song info on open" (the
+  length). The row follows the song as it is now: it is the latest tick over the engine's
+  tracks (`Link::loaded_tracks`, which Save writes since task-143: without the events the load
+  dropped, such as those past bar 999, with a recording's merges and a stop's prune;
+  `orb_cli::info::last_tick`, the one computation `SongFacts::of_1x` also uses), so it can be
+  below what `orb info` prints for the file, and a successful Save of any song makes the
+  document's song the one written, so the document matches the file. `SongInfo::of` builds the
+  facts from the document (and the engine's tracks when there is a player). "Show song info on open" (the
   USRI flag, `docs/RBS42.txt`) is not done either: the window opens only from the menu. The
   original shows these in its Song Information dialog; its layout is not copied.
 - **The startup sound of an open and of the start** (task-087). Below.

@@ -2837,6 +2837,42 @@ fn the_last_event_row_follows_a_recording_and_save() {
     }
 }
 
+/// task-143: File > Info's "Last event" is the engine's (what Save writes), so an event the load
+/// drops (past bar 999) is not counted, and an unedited Save does not change the row.
+#[test]
+fn the_last_event_row_is_the_engine_tracks_before_and_after_save() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("far.rbs");
+    let mut song = rbs::Song::empty();
+    // bar 3 (32 positions a bar), then bar 1001, which the load drops
+    song.tracks[1].events = vec![
+        rbs::Event {
+            pos: 70,
+            ctrl: 3,
+            value: 11,
+        },
+        rbs::Event {
+            pos: 32000,
+            ctrl: 3,
+            value: 22,
+        },
+    ];
+    std::fs::write(&src, song.write().unwrap()).unwrap();
+    let file = orb_cli::info::SongFacts::of_file(&src).unwrap();
+    assert_eq!(file.last_event_bar(), Some(1001));
+    let mut h = Harness::new();
+    h.app.settings.startup_sound = false;
+    h.app.open_now(&src);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
+    assert_eq!(h.app.song_info().last_event_bar, Some(3));
+    let saved = dir.path().join("saved.rbs");
+    h.app.save_to(&saved);
+    assert!(h.app.errors.is_empty(), "{:?}", h.app.errors);
+    assert_eq!(h.app.song_info().last_event_bar, Some(3));
+    let facts = orb_cli::info::SongFacts::of_file(&saved).unwrap();
+    assert_eq!(facts.last_event_bar(), Some(3));
+}
+
 /// task-131: Save twice (the second Save takes the first file's bytes as its base), then change
 /// a knob, a fader and a switch, put each back, and Save a third time: the three files are the
 /// same bytes. Returns the file.
