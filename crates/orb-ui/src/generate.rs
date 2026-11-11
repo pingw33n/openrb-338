@@ -2,24 +2,25 @@
 //! generator. A press of the button opens its synth's menu under it and a second press closes
 //! it; Escape and a click outside close it too.
 //!
-//! The menu is a table thought of as a spreadsheet: columns A and B, rows 1 to 4, every cell of
-//! one size, black with white lines. Column A names the rows in the red of the step displays;
-//! column B is empty for now.
+//! The menu is a table thought of as a spreadsheet: columns A and B, rows 1 to 4 of one height,
+//! column B twice as wide as column A. It is black with white lines between the cells (no
+//! outer frame; the lines stop short of the menu's edges). Column A names the rows in the red
+//! of the step displays; column B is empty for now.
 
 use eframe::egui::{
-    self, Align2, Color32, FontId, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Stroke,
-    StrokeKind, Ui,
+    self, Align2, Color32, FontId, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Stroke, Ui,
 };
 
 use crate::app::{App, View};
 
 /// The row names in column A (A1 to A4).
 pub const ROWS: [&str; 4] = ["SCALE/KEY", "RANDOM", "ALTER", "MOVE"];
-/// The number of columns (A and B).
-pub const COLS: usize = 2;
-/// One cell in panel pixels; every cell has the same width and height.
-pub const CELL_W: f32 = 48.0;
+/// The widths of columns A and B in panel pixels: B is twice as wide as A.
+pub const COL_W: [f32; 2] = [48.0, 96.0];
+/// The height of every row in panel pixels.
 pub const CELL_H: f32 = 14.0;
+/// How far short of the menu's edges the lines between the cells stop, in panel pixels.
+const LINE_INSET: f32 = 3.0;
 /// The space between the button's bottom edge and the menu, in panel pixels.
 const GAP: f32 = 2.0;
 /// The red of the step displays (the digits of STEPS and EDIT STEP, `LCD_ON` of orb-ui-art).
@@ -61,7 +62,7 @@ impl App {
     /// The menu's panel rectangle (x, y, w, h): under the button, the right edges aligned.
     pub fn generate_rect(&self, synth: usize) -> Option<(f32, f32, f32, f32)> {
         let (bx, by, bw, bh) = self.generate_button(synth)?;
-        let w = CELL_W * COLS as f32;
+        let w: f32 = COL_W.iter().sum();
         let h = CELL_H * ROWS.len() as f32;
         Some((bx + bw - w, by + bh + GAP, w, h))
     }
@@ -109,25 +110,32 @@ impl App {
     }
 }
 
-/// The table: the black fill, the white lines around and between the cells, the row names.
+/// The table: the black fill, the white lines between the cells (stopping short of the
+/// edges), the row names.
 fn paint_table(ui: &Ui, r: Rect, scale: f32) {
     let p = ui.painter();
     p.rect_filled(r, 0.0, FILL);
     let stroke = Stroke::new((0.6 * scale).max(1.0), LINE);
-    let cw = r.width() / COLS as f32;
-    let ch = r.height() / ROWS.len() as f32;
-    for i in 1..COLS {
-        let x = r.min.x + cw * i as f32;
-        p.line_segment([Pos2::new(x, r.min.y), Pos2::new(x, r.max.y)], stroke);
-    }
+    let inset = LINE_INSET * scale;
+    let col_a = COL_W[0] * scale;
+    let ch = CELL_H * scale;
+    // the line between columns A and B
+    let x = r.min.x + col_a;
+    p.line_segment(
+        [Pos2::new(x, r.min.y + inset), Pos2::new(x, r.max.y - inset)],
+        stroke,
+    );
+    // the lines between the rows
     for j in 1..ROWS.len() {
         let y = r.min.y + ch * j as f32;
-        p.line_segment([Pos2::new(r.min.x, y), Pos2::new(r.max.x, y)], stroke);
+        p.line_segment(
+            [Pos2::new(r.min.x + inset, y), Pos2::new(r.max.x - inset, y)],
+            stroke,
+        );
     }
-    p.rect_stroke(r, 0.0, stroke, StrokeKind::Inside);
     let font = FontId::proportional(CELL_H * 0.5 * scale);
     for (j, name) in ROWS.into_iter().enumerate() {
-        let c = Pos2::new(r.min.x + cw * 0.5, r.min.y + ch * (j as f32 + 0.5));
+        let c = Pos2::new(r.min.x + col_a * 0.5, r.min.y + ch * (j as f32 + 0.5));
         p.text(c, Align2::CENTER_CENTER, name, font.clone(), RED);
     }
 }

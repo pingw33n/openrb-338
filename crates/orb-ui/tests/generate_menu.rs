@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect, Vec2};
 use orb_ui::app::App;
-use orb_ui::generate::{CELL_H, CELL_W, COLS, ROWS};
+use orb_ui::generate::{CELL_H, COL_W, ROWS};
 use orb_ui::layout::{self, PANEL_H, PANEL_W};
 use orb_ui::model::Panel;
 
@@ -99,12 +99,13 @@ fn escape_and_a_click_outside_close_the_menu_and_a_click_inside_does_not() {
 }
 
 #[test]
-fn the_menu_is_a_table_of_equal_cells_under_its_button_inside_the_panel() {
+fn the_menu_is_under_its_button_inside_the_panel_with_column_b_twice_as_wide() {
     assert_eq!(ROWS, ["SCALE/KEY", "RANDOM", "ALTER", "MOVE"]);
+    assert_eq!(COL_W[1], 2.0 * COL_W[0]);
     let h = Harness::new();
     for synth in 0..2 {
         let (x, y, w, h_) = h.app.generate_rect(synth).unwrap();
-        assert_eq!((w, h_), (CELL_W * COLS as f32, CELL_H * ROWS.len() as f32));
+        assert_eq!((w, h_), (COL_W[0] + COL_W[1], CELL_H * ROWS.len() as f32));
         let b = button(synth);
         assert!(y > b.y, "the menu is under the button");
         assert!(x >= 0.0 && y >= 0.0 && x + w <= PANEL_W && y + h_ <= PANEL_H);
