@@ -5,7 +5,7 @@
 //! The menu is a table thought of as a spreadsheet: columns A and B, rows 1 to 4 of one height,
 //! column B twice as wide as column A. It is black with white lines between the cells (no
 //! outer frame; the lines stop short of the menu's edges). Column A names the rows in the red
-//! of the step displays.
+//! of the step displays; a row's name turns green once its choice in column B is complete.
 //!
 //! Row 1 (SCALE/KEY): column B is split into the scale (the wider part) and the key note. A
 //! press on one opens its list under it, scrolled with the mouse wheel or its slider; a press on
@@ -98,6 +98,16 @@ pub fn paint_glow(ui: &Ui, key: Rect, scale: f32) {
             CornerRadius::same((2.5 * scale) as u8),
             Color32::from_rgba_unmultiplied(GREEN.r(), GREEN.g(), GREEN.b(), alpha),
         );
+    }
+}
+
+/// Whether row `row` (0 is A1) of a synth's menu has its choice in column B complete: its name
+/// in column A then turns green. Row 1 needs both the scale and the key note; the other rows
+/// have no choice yet.
+pub fn row_done(sk: &ScaleKeys, synth: usize, row: usize) -> bool {
+    match row {
+        0 => sk.get(synth).mask().is_some(),
+        _ => false,
     }
 }
 
@@ -300,9 +310,11 @@ impl App {
             .order(egui::Order::Foreground)
             .fixed_pos(menu.min)
             .constrain(false)
+            // solid from the first frame, like the panel's own parts
+            .fade_in(false)
             .show(&ctx, |ui| {
                 let (r, _) = ui.allocate_exact_size(menu.size(), Sense::click());
-                paint_table(ui, r, view.scale);
+                paint_table(ui, r, view.scale, |row| row_done(&sk, k, row));
                 paint_fields(ui, &sk, k, scale_field, key_field, view.scale);
             });
         if let (Some(l), Some(lr)) = (self.generate_list, list_rect) {
@@ -310,6 +322,7 @@ impl App {
                 .order(egui::Order::Tooltip)
                 .fixed_pos(lr.min)
                 .constrain(false)
+                .fade_in(false)
                 .show(&ctx, |ui| {
                     let (r, _) = ui.allocate_exact_size(lr.size(), Sense::click());
                     paint_list(ui, &sk, &l, r, hover, view.scale);
@@ -352,8 +365,8 @@ fn slider_track(lr: Rect, n: usize, slider_w: f32) -> (Rect, f32) {
 }
 
 /// The table: the black fill, the white lines between the cells (stopping short of the
-/// edges), the row names.
-fn paint_table(ui: &Ui, r: Rect, scale: f32) {
+/// edges), the row names (red, green once the row's choice is complete).
+fn paint_table(ui: &Ui, r: Rect, scale: f32, done: impl Fn(usize) -> bool) {
     let p = ui.painter();
     p.rect_filled(r, 0.0, FILL);
     let stroke = Stroke::new((0.6 * scale).max(1.0), LINE);
@@ -382,7 +395,8 @@ fn paint_table(ui: &Ui, r: Rect, scale: f32) {
     }
     for (j, name) in ROWS.into_iter().enumerate() {
         let c = Pos2::new(r.min.x + col_a * 0.5, r.min.y + ch * (j as f32 + 0.5));
-        p.text(c, Align2::CENTER_CENTER, name, font(scale), RED);
+        let color = if done(j) { GREEN } else { RED };
+        p.text(c, Align2::CENTER_CENTER, name, font(scale), color);
     }
 }
 

@@ -169,6 +169,8 @@ fn baze_1_chooses_a_scale_then_a_key_and_its_keys_glow() {
     assert_eq!(h.app.generate_open(), Some(0), "choosing keeps the menu open");
     assert_eq!(h.app.scale_keys().get(0).scale, Some(scale("MINOR")));
     assert!(!generate::glows(h.app.scale_keys(), "tb303_1.key0"));
+    // SCALE/KEY turns green only with the key note too
+    assert!(!generate::row_done(h.app.scale_keys(), 0, 0));
     h.click_field(0, Field::Key);
     assert_eq!(h.app.generate_list(), Some((0, Field::Key)));
     // A is the tenth key note: the wheel brings it into view
@@ -176,6 +178,11 @@ fn baze_1_chooses_a_scale_then_a_key_and_its_keys_glow() {
     h.wheel_at(Pos2::new(x + w / 2.0, y + 10.0), 7.0);
     h.click_list_row(key("A") - (KEYS.len() - LIST_ROWS));
     assert_eq!(h.app.scale_keys().get(0).key, Some(key("A")));
+    // the row is complete: SCALE/KEY is green on BAZE 1, not on BAZE 2; the other rows stay red
+    let sk = h.app.scale_keys();
+    assert!(generate::row_done(sk, 0, 0));
+    assert!(!generate::row_done(sk, 1, 0));
+    assert!((1..ROWS.len()).all(|row| !generate::row_done(sk, 0, row)));
     // A minor: the white keys glow, the black ones and the LEDs do not; BAZE 2's do not
     let sk = h.app.scale_keys();
     for n in [0, 2, 4, 5, 7, 9, 11, 12] {
