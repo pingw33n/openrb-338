@@ -21,6 +21,10 @@
 //! Row 3 (ALTER): the same five buttons, chosen the same way (each row keeps its own choice),
 //! but its run makes nothing new: it moves the chosen fields of the steps to other steps along
 //! one random chain (`random::alter`), the chosen fields of a step together.
+//!
+//! Row 4 (MOVE): five buttons, -2, -1, ?, +1 and +2, one of them chosen at a time, the same
+//! way; its run moves the whole pattern that many steps around in a ring (`?`: a random 1 to
+//! 15 steps; `random::rotate`).
 
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontId, Key, Modifiers, PointerButton, Pos2, Rect,
@@ -60,15 +64,17 @@ const LIST_FILL: Color32 = Color32::from_gray(0x14);
 /// not).
 const BLINK: f64 = 0.6;
 
-/// The rows of five buttons: RANDOM makes new values, ALTER moves the values there are.
+/// The rows of five buttons: RANDOM makes new values, ALTER moves the values there are to other
+/// steps, MOVE moves the whole pattern (one button at a time).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Random = 0,
     Alter = 1,
+    Move = 2,
 }
 
 impl Op {
-    pub const ALL: [Op; 2] = [Op::Random, Op::Alter];
+    pub const ALL: [Op; 3] = [Op::Random, Op::Alter, Op::Move];
 
     /// The menu row (0 is A1).
     pub fn row(self) -> usize {
@@ -160,7 +166,7 @@ impl App {
 
     /// Whether row `row` (0 is A1) of a synth's menu has its choice in column B complete: its
     /// name in column A then turns green. SCALE/KEY needs both the scale and the key note,
-    /// RANDOM and ALTER a last run that changed something; MOVE has no choice yet.
+    /// RANDOM, ALTER and MOVE a last run that changed something.
     pub fn row_done(&self, synth: usize, row: usize) -> bool {
         match row {
             0 => self.scale_keys.get(synth).mask().is_some(),
@@ -170,14 +176,14 @@ impl App {
         }
     }
 
-    // ---- the RANDOM and ALTER rows --------------------------------------------------------
+    // ---- the RANDOM, ALTER and MOVE rows --------------------------------------------------
 
     /// The synth and row whose fields are being chosen (the row's name blinks), if any.
     pub fn op_picking(&self) -> Option<(usize, Op)> {
         self.op_picking
     }
 
-    /// A synth's chosen fields of a row, indexed by `random::PARAMS`.
+    /// A synth's chosen buttons of a row, indexed by `random::PARAMS` (MOVE: `random::MOVES`).
     pub fn op_selection(&self, synth: usize, op: Op) -> [bool; 5] {
         self.op_sel[op as usize][synth]
     }
@@ -188,13 +194,14 @@ impl App {
     }
 
     /// Whether a row's field can be chosen: RANDOM's NOTE needs the synth's scale and key note
-    /// (it makes notes of the scale); ALTER only moves what is there, so all of its can.
+    /// (it makes notes of the scale); ALTER and MOVE only move what is there, so all can.
     pub fn op_param_usable(&self, synth: usize, op: Op, param: usize) -> bool {
-        op == Op::Alter || param != random::NOTE || self.scale_keys.get(synth).mask().is_some()
+        op != Op::Random || param != random::NOTE || self.scale_keys.get(synth).mask().is_some()
     }
 
-    /// A press on RANDOM or ALTER: starts choosing the row's fields (its name blinks; its last
-    /// choice is shown), or, while choosing, runs the row on the synth's pattern and stops.
+    /// A press on RANDOM, ALTER or MOVE: starts choosing the row's buttons (its name blinks;
+    /// its last choice is shown), or, while choosing, runs the row on the synth's pattern and
+    /// stops.
     pub fn press_op(&mut self, synth: usize, op: Op) {
         self.generate_list = None;
         if self.op_picking != Some((synth, op)) {
@@ -216,16 +223,26 @@ impl App {
                     random::randomize(&mut steps, on, mask, &mut self.rng);
                 }
                 Op::Alter => random::alter(&mut steps, on, &mut self.rng),
+                Op::Move => {
+                    let choice = on.iter().position(|&o| o).unwrap_or(random::MOVE_RANDOM);
+                    random::rotate(&mut steps, random::move_offset(choice, &mut self.rng));
+                }
             }
             self.panel.set_pattern_303(synth, steps);
         }
     }
 
-    /// A press on one of a row's five buttons: while choosing, turns its field on or off.
+    /// A press on one of a row's five buttons: while choosing, turns it on or off. MOVE's are
+    /// one at a time: turning one on turns the others off.
     pub fn press_op_param(&mut self, synth: usize, op: Op, param: usize) {
         self.generate_list = None;
         if self.op_picking == Some((synth, op)) && self.op_param_usable(synth, op, param) {
-            self.op_sel[op as usize][synth][param] ^= true;
+            let sel = &mut self.op_sel[op as usize][synth];
+            let on = !sel[param];
+            if op == Op::Move {
+                *sel = [false; 5];
+            }
+            sel[param] = on;
         }
     }
 
@@ -372,10 +389,10 @@ impl App {
             .and_then(|l| screen(self.list_rect(l.synth, l.field)));
         let item_h = CELL_H * view.scale;
         let slider_w = SLIDER_W * view.scale;
-        // RANDOM's and ALTER's names and buttons, indexed by `Op`
-        let op_labels: [Rect; 2] = Op::ALL
+        // RANDOM's, ALTER's and MOVE's names and buttons, indexed by `Op`
+        let op_labels: [Rect; 3] = Op::ALL
             .map(|op| screen(self.op_label_rect(k, op)).unwrap_or(Rect::NOTHING));
-        let op_buttons: [[Rect; 5]; 2] = Op::ALL.map(|op| {
+        let op_buttons: [[Rect; 5]; 3] = Op::ALL.map(|op| {
             std::array::from_fn(|i| screen(self.op_button_rect(k, op, i)).unwrap_or(Rect::NOTHING))
         });
 
@@ -454,7 +471,7 @@ impl App {
                 Some(RED)
             }
         });
-        let buttons: [[(Rect, bool, Color32); 5]; 2] = Op::ALL.map(|op| {
+        let buttons: [[(Rect, bool, Color32); 5]; 3] = Op::ALL.map(|op| {
             let choosing = picking == Some(op.row());
             std::array::from_fn(|i| {
                 let usable = self.op_param_usable(k, op, i);
@@ -478,8 +495,8 @@ impl App {
                 let (r, _) = ui.allocate_exact_size(menu.size(), Sense::click());
                 paint_table(ui, r, view.scale, names);
                 paint_fields(ui, &sk, k, scale_field, key_field, view.scale);
-                for row in &buttons {
-                    paint_op_buttons(ui, row, view.scale);
+                for op in Op::ALL {
+                    paint_op_buttons(ui, op, &buttons[op as usize], view.scale);
                 }
             });
         if let (Some(l), Some(lr)) = (self.generate_list, list_rect) {
@@ -644,9 +661,9 @@ fn paint_list(ui: &Ui, sk: &ScaleKeys, l: &List, r: Rect, hover: Option<Pos2>, s
     );
 }
 
-/// A row's five buttons (RANDOM, ALTER): (rect, on, ink of the symbol). A chosen button glows
-/// green; thin lines part the buttons, stopping short of the row's edges like the table's.
-fn paint_op_buttons(ui: &Ui, buttons: &[(Rect, bool, Color32); 5], scale: f32) {
+/// A row's five buttons (RANDOM, ALTER, MOVE): (rect, on, ink of the symbol). A chosen button
+/// glows green; thin lines part the buttons, stopping short of the row's edges like the table's.
+fn paint_op_buttons(ui: &Ui, op: Op, buttons: &[(Rect, bool, Color32); 5], scale: f32) {
     let p = ui.painter();
     let inset = LINE_INSET * scale;
     let line = Stroke::new((0.6 * scale).max(1.0), LINE);
@@ -670,7 +687,16 @@ fn paint_op_buttons(ui: &Ui, buttons: &[(Rect, bool, Color32); 5], scale: f32) {
                 );
             }
         }
-        paint_symbol(ui, param, r.center(), CELL_H * 0.27 * scale, ink, scale);
+        if op == Op::Move {
+            // MOVE's steps as text, bold: drawn twice, a hair apart
+            let f = FontId::proportional(CELL_H * 0.6 * scale);
+            for dx in [0.0, 0.35 * scale] {
+                let at = r.center() + Vec2::new(dx, 0.0);
+                p.text(at, Align2::CENTER_CENTER, random::MOVES[param], f.clone(), ink);
+            }
+        } else {
+            paint_symbol(ui, param, r.center(), CELL_H * 0.27 * scale, ink, scale);
+        }
     }
 }
 

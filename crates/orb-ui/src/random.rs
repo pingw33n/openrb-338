@@ -104,6 +104,32 @@ pub fn randomize(steps: &mut [Step303; 16], on: [bool; 5], mask: Option<u16>, rn
     }
 }
 
+/// The MOVE row's five buttons, in their order: the steps the pattern moves by (`?`: a random
+/// number of steps).
+pub const MOVES: [&str; 5] = ["-2", "-1", "?", "+1", "+2"];
+/// The index of `?` in `MOVES`.
+pub const MOVE_RANDOM: usize = 2;
+
+/// The steps MOVE's button `choice` moves the pattern by: -2, -1, a random 1 to 15, +1, +2.
+pub fn move_offset(choice: usize, rng: &mut Rng) -> i32 {
+    match choice {
+        0 => -2,
+        1 => -1,
+        3 => 1,
+        4 => 2,
+        _ => 1 + rng.below(15) as i32,
+    }
+}
+
+/// Moves the whole pattern by `offset` steps (negative: to the left, earlier), around in a ring:
+/// what leaves one end comes in at the other, so no step is lost.
+pub fn rotate(steps: &mut [Step303; 16], offset: i32) {
+    let old = *steps;
+    for (i, st) in old.into_iter().enumerate() {
+        steps[(i as i32 + offset).rem_euclid(16) as usize] = st;
+    }
+}
+
 /// A random chain through the 16 steps (Sattolo's shuffle): `to[i]` is the step that step `i`'s
 /// values move to. It is one cycle, so no step keeps its own values.
 pub fn chain(rng: &mut Rng) -> [usize; 16] {
@@ -295,5 +321,36 @@ mod tests {
         let mut p = varied();
         alter(&mut p, [false; 5], &mut rng);
         assert_eq!(p, varied(), "nothing chosen, nothing moves");
+    }
+
+    #[test]
+    fn move_rotates_the_whole_pattern_around_and_loses_nothing() {
+        let old = varied();
+        let mut p = old;
+        rotate(&mut p, -1);
+        // step 1 is now first, the first step is last
+        assert_eq!(p[0], old[1]);
+        assert_eq!(p[15], old[0]);
+        rotate(&mut p, 1);
+        assert_eq!(p, old, "+1 undoes -1");
+        rotate(&mut p, 2);
+        assert_eq!(p[2], old[0]);
+        assert_eq!(p[0], old[14]);
+        rotate(&mut p, -2);
+        assert_eq!(p, old);
+        rotate(&mut p, 16);
+        assert_eq!(p, old, "a whole turn");
+    }
+
+    #[test]
+    fn the_random_move_always_moves() {
+        let mut rng = Rng::new(17);
+        assert_eq!(MOVES[MOVE_RANDOM], "?");
+        for _ in 0..200 {
+            let o = move_offset(MOVE_RANDOM, &mut rng);
+            assert!((1..=15).contains(&o), "{o}");
+        }
+        let fixed: Vec<i32> = [0, 1, 3, 4].iter().map(|&c| move_offset(c, &mut rng)).collect();
+        assert_eq!(fixed, [-2, -1, 1, 2]);
     }
 }

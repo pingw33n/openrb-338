@@ -379,3 +379,52 @@ fn alter_keeps_its_own_choice_and_moves_what_random_made() {
     assert_eq!(h.app.op_selection(0, Op::Alter), [false, false, true, false, true]);
     assert_eq!(h.app.op_selection(0, Op::Random), [false, false, true, false, true]);
 }
+
+#[test]
+fn move_takes_one_button_at_a_time_and_moves_the_whole_pattern_around() {
+    use orb_ui::random::{ACCENT, NOTE, SLIDE};
+    let mut h = Harness::new();
+    h.app.set_random_seed(23);
+    h.click_at(button(0));
+    // a pattern to move: C major notes, accents and slides from RANDOM
+    h.click_field(0, Field::Scale);
+    h.click_list_row(0);
+    h.click_field(0, Field::Key);
+    h.click_list_row(0);
+    let l = random_label(&h, 0);
+    h.click_at(l);
+    for param in [ACCENT, SLIDE, NOTE] {
+        let p = random_button(&h, 0, param);
+        h.click_at(p);
+    }
+    h.click_at(l);
+    let made = h.app.panel.pattern_303(0);
+    let m = op_label(&h, 0, Op::Move);
+    h.click_at(m);
+    assert_eq!(h.app.op_picking(), Some((0, Op::Move)));
+    // -2, then -1: only the last stays on
+    for param in [0, 1] {
+        let p = op_button(&h, 0, Op::Move, param);
+        h.click_at(p);
+    }
+    assert_eq!(h.app.op_selection(0, Op::Move), [false, true, false, false, false]);
+    h.click_at(m);
+    assert!(h.app.row_done(0, 3), "MOVE is green after a run");
+    let moved = h.app.panel.pattern_303(0);
+    // -1: every step one to the left, the first one around to the end
+    for (i, st) in moved.iter().enumerate() {
+        assert_eq!(*st, made[(i + 1) % 16], "step {i}");
+    }
+    // +1 brings it back; a second press on +1 turns it off again
+    h.click_at(m);
+    let p = op_button(&h, 0, Op::Move, 3);
+    h.click_at(p);
+    h.click_at(m);
+    assert_eq!(h.app.panel.pattern_303(0), made);
+    h.click_at(m);
+    h.click_at(p);
+    assert_eq!(h.app.op_selection(0, Op::Move), [false; 5]);
+    h.click_at(m);
+    assert!(!h.app.row_done(0, 3), "nothing chosen: nothing moved");
+    assert_eq!(h.app.panel.pattern_303(0), made);
+}
