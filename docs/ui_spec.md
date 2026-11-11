@@ -129,6 +129,9 @@ column. Values passed to the engine are 0..127 unless stated.
   section 6). No double-click, wheel or keyboard behavior exists.
 - Measured in the app (2026-10-27): CUTOFF dragged to 0, then 31 px up, saved as 64
   (`1000*31/62 = 500`, value 64); RESO with Shift, 31 px up from 0, saved as 13 [C].
+- **orb**: a double click sets a knob to its value in a new empty song (File > New), whatever
+  song is open (`Link::knob_default`): a pan knob to the center (64), a mixer delay send to 0.
+  The value is sent and recorded as a drag's. The faders and the demo panel have no reset.
 
 **Fader** (`CBitmapFaderView`, ctor 0x469240, mouse-down 0x469708, drag 0x46965F) [C].
 - Handle 15 x 11 (resource 12031) on a 15 x 54 track (12032); position p in 0..999.

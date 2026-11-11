@@ -969,6 +969,14 @@ impl App {
         }
         g.down = down;
         ui.data_mut(|d| d.insert_temp(id, g));
+        // A double click sets the knob to its value in a new empty song (docs/ui_spec.md
+        // section 2); the demo panel has no link and no such song.
+        if r.double_clicked()
+            && let Some(v) = self.link.as_ref().and_then(|l| l.knob_default(&c.id))
+        {
+            self.panel
+                .set_knob(&c.id, behavior::knob_from_engine(v as i32));
+        }
 
         let k = art::knob_design(&c.part);
         let p = self.panel.knob(&c.id);

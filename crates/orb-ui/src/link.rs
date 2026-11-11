@@ -267,6 +267,50 @@ pub fn mixer_target(id: &str) -> Option<MixerTarget> {
     (c < 4).then_some(MixerTarget::Channel(c, k))
 }
 
+/// The value of every knob of the panel in `engine`, a new empty song as the song constructor
+/// made it, by layout id: the values [`Link::follow_values`] gives the panel for such a song
+/// (the devices' live blocks, the mixer's pan and delay send, the shuffle). The values are the
+/// device constructors' and do not depend on the kit; a drum machine built without samples is
+/// a placeholder with no live block, so its knobs are left out.
+fn new_song_knobs(
+    engine: &Engine,
+    controls: &HashMap<String, (Device, u8)>,
+) -> HashMap<String, u8> {
+    let f = &engine.frame;
+    let d = &f.devices;
+    let live = |dev: Device, c: u8| {
+        let (block, i) = match dev {
+            Device::Mixer => return None,
+            Device::Tr909 => (d.channels[3].live(), tr909::internal_index(c as usize)),
+            Device::Tb303_1 | Device::Tb303_2 | Device::Tr808 => {
+                (d.channels[dev as usize - 1].live(), c as usize)
+            }
+            Device::Delay => (d.delay.live(), c as usize),
+            Device::Distortion => (d.dist.live(), c as usize),
+            Device::Pcf => (d.pcf.live(), c as usize),
+            Device::Compressor => (d.comp.live(), c as usize),
+        };
+        block.get(i).copied()
+    };
+    let mut knobs = HashMap::new();
+    for c in crate::layout::controls() {
+        if c.kind != "knob" {
+            continue;
+        }
+        let v = match mixer_target(&c.id) {
+            Some(MixerTarget::Channel(ch, 2)) => Some(d.mixer.live.channels[ch as usize].pan),
+            Some(MixerTarget::Channel(ch, 3)) => Some(d.mixer.live.channels[ch as usize].send),
+            Some(_) => None,
+            None if c.id == "transport.shuffle" => Some(f.seq.globals.shuffle),
+            None => controls.get(&c.id).and_then(|&(dev, ctrl)| live(dev, ctrl)),
+        };
+        if let Some(v) = v {
+            knobs.insert(c.id, v);
+        }
+    }
+    knobs
+}
+
 /// The meter state 0..=10 of a meter byte 0..=127: linear, rounded up so that any signal shows
 /// [G: the scale was not read, `sub_424220`].
 pub fn meter_state(byte: u8) -> u8 {
@@ -277,6 +321,8 @@ pub fn meter_state(byte: u8) -> u8 {
 pub struct Link {
     player: Player,
     controls: HashMap<String, (Device, u8)>,
+    /// The value each knob has in a new empty song ([`Link::knob_default`]).
+    knob_defaults: HashMap<String, u8>,
     /// The four pattern arrays (32 patterns each), as the engine holds them.
     patterns: [Vec<u8>; 4],
     /// The pattern each section edits: the selected one.
@@ -345,9 +391,12 @@ impl Link {
                 .unwrap_or_default()
         });
         let loaded = std::array::from_fn(|t| audio.current_mut().frame.seq.events(t).to_vec());
+        let controls = controls();
+        let knob_defaults = new_song_knobs(audio.current_mut(), &controls);
         let link = Link {
             player,
-            controls: controls(),
+            controls,
+            knob_defaults,
             patterns,
             row_pattern: [0; 4],
             shown: [None; 4],
@@ -363,6 +412,13 @@ impl Link {
             shown_gr: None,
         };
         (link, audio)
+    }
+
+    /// The value (0..=127) the knob `id` has in a new empty song, which a double click sets.
+    /// `None` for an id that is not a knob, and for a drum machine's knob on a link made
+    /// without samples.
+    pub fn knob_default(&self, id: &str) -> Option<u8> {
+        self.knob_defaults.get(id).copied()
     }
 
     /// The open song's tracks when recording has changed them since it was opened (the merge

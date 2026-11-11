@@ -172,6 +172,17 @@ impl Harness {
         self.click_at(Self::center(id));
     }
 
+    /// Two clicks on the knob `id` within 0.1 s: a double click. Waits 0.4 s first, for the
+    /// clicks before it to expire.
+    fn double_click_knob(&mut self, id: &str) {
+        for _ in 0..25 {
+            self.frame(vec![]);
+        }
+        let p = Self::center_of("knob", id);
+        self.click_at(p);
+        self.click_at(p);
+    }
+
     /// Drags a knob or fader `dy` panel pixels up (negative: down) from its center.
     fn drag(&mut self, id: &str, dy: f32) {
         let start = Self::center(id);
@@ -1181,4 +1192,173 @@ fn the_wind_bar_and_loop_arrows_send_nothing_in_pattern_mode() {
             global(16, 2 * BAR as u32)
         ]
     );
+}
+
+fn knob_ids() -> Vec<String> {
+    layout::controls()
+        .into_iter()
+        .filter(|c| c.kind == "knob")
+        .map(|c| c.id)
+        .collect()
+}
+
+/// The engine's value of the knob `id`, from the snapshot.
+fn engine_knob(h: &mut Harness, id: &str) -> u8 {
+    let s = h.snap();
+    let (section, name) = id.split_once('.').unwrap();
+    if id == "transport.shuffle" {
+        s.shuffle
+    } else if let Some(n) = section.strip_prefix("mixer") {
+        let ch = &s.mixer.channels[n.parse::<usize>().unwrap() - 1];
+        if name == "pan" { ch.pan } else { ch.send }
+    } else {
+        let (d, ctrl) = orb_ui::link::controls()[id];
+        s.live[d as usize].as_slice()[live_index(d, ctrl)]
+    }
+}
+
+#[test]
+fn a_double_click_sets_every_knob_to_its_value_in_a_new_song() {
+    let mut h = Harness::new();
+    let knobs = knob_ids();
+    assert_eq!(knobs.len(), 77);
+    for id in &knobs {
+        // the panel shows the new empty song: its value is the knob's default
+        let new_song = h.app.panel.value(id).unwrap();
+        let default = h.app.link.as_ref().unwrap().knob_default(id);
+        assert_eq!(default, Some(new_song), "{id}");
+        let up = h.app.panel.knob(id) < 500;
+        h.drag(id, if up { 20.0 } else { -20.0 });
+        h.calls(2);
+        assert_ne!(engine_knob(&mut h, id), new_song, "{id} was dragged away");
+        h.take_log();
+
+        h.double_click_knob(id);
+        assert_eq!(h.app.panel.value(id), Some(new_song), "{id}");
+        assert_eq!(
+            h.take_log().len(),
+            1,
+            "{id}: one message, as a drag sends it"
+        );
+        h.calls(2);
+        assert_eq!(
+            engine_knob(&mut h, id),
+            new_song,
+            "{id}: the engine did not take {new_song}"
+        );
+        assert_eq!(h.app.panel.value(id), Some(new_song), "{id} stays");
+    }
+    // the mixer's pan knobs are centered and its delay sends closed in a new song
+    let link = h.app.link.as_ref().unwrap();
+    assert_eq!(link.knob_default("mixer1.pan"), Some(64));
+    assert_eq!(link.knob_default("mixer4.delay"), Some(0));
+    assert_eq!(
+        link.knob_default("mixer1.level"),
+        None,
+        "a fader has no reset"
+    );
+}
+
+#[test]
+fn a_double_click_on_a_knob_at_its_default_sends_nothing() {
+    let mut h = Harness::new();
+    let before = h.app.panel.value("tb303_1.cutoff");
+    h.double_click_knob("tb303_1.cutoff");
+    assert_eq!(h.app.panel.value("tb303_1.cutoff"), before);
+    assert_eq!(h.take_log(), vec![]);
+}
+
+#[test]
+fn two_slow_clicks_on_a_knob_are_not_a_double_click() {
+    let mut h = Harness::new();
+    h.drag("tb303_1.cutoff", 20.0);
+    let dragged = h.app.panel.knob("tb303_1.cutoff");
+    h.take_log();
+    h.click("tb303_1.cutoff");
+    // 0.8 s: longer than a double click
+    for _ in 0..50 {
+        h.frame(vec![]);
+    }
+    h.click("tb303_1.cutoff");
+    assert_eq!(h.app.panel.knob("tb303_1.cutoff"), dragged);
+    assert_eq!(h.take_log(), vec![]);
+}
+
+#[test]
+fn a_double_click_sets_the_new_songs_value_with_another_song_open() {
+    let mut h = Harness::with_song("tests/songs/shipped/Calm.rbs");
+    let link = h.app.link.as_ref().unwrap();
+    // the knobs the song holds at another value than a new song
+    let moved: Vec<(String, u8)> = knob_ids()
+        .into_iter()
+        .map(|id| {
+            let d = link.knob_default(&id).unwrap();
+            (id, d)
+        })
+        .filter(|(id, d)| h.app.panel.value(id) != Some(*d))
+        .collect();
+    assert!(moved.len() > 10, "the song moved knobs: {}", moved.len());
+    for (id, default) in &moved {
+        h.double_click_knob(id);
+        h.calls(2);
+        assert_eq!(h.app.panel.value(id), Some(*default), "{id}");
+    }
+}
+
+#[test]
+fn a_double_click_while_recording_is_recorded_as_a_drag_is() {
+    let mut h = Harness::new();
+    h.click("transport.mode");
+    h.click("transport.record");
+    h.click("transport.play");
+    h.calls(20);
+    assert!(h.app.panel.transport.recording);
+    h.drag("tb303_1.cutoff", 20.0);
+    let dragged = h.app.panel.value("tb303_1.cutoff").unwrap();
+    h.calls(10);
+    h.double_click_knob("tb303_1.cutoff");
+    h.calls(10);
+    h.click("transport.record");
+    h.calls(2);
+    assert!(!h.app.panel.transport.recording);
+
+    let link = h.app.link.as_ref().unwrap();
+    let default = link.knob_default("tb303_1.cutoff").unwrap();
+    // the cutoff (controller 3) of the first 303's track: the drag, then the reset, then the
+    // event record off adds at its tick (after two drags too)
+    let recorded: Vec<u8> = link.recorded_tracks().expect("the merge's tracks")[1]
+        .iter()
+        .filter(|e| e.tick > 0 && e.ctrl == 3)
+        .map(|e| e.value)
+        .collect();
+    assert_ne!(dragged, default);
+    assert_eq!(recorded.len(), 3, "{recorded:?}");
+    assert_eq!(recorded[..2], [dragged, default]);
+}
+
+#[test]
+fn the_songs_automation_moves_a_knob_on_after_a_double_click() {
+    // Fast Forward automates the first 303's cutoff (controller 3)
+    let mut h = Harness::with_song("tests/songs/shipped/Fast Forward.rbs");
+    let default = h.app.link.as_ref().unwrap().knob_default("tb303_1.cutoff");
+    let default = default.unwrap();
+    h.click("transport.play");
+    let mut calls = 0;
+    while engine_knob(&mut h, "tb303_1.cutoff") == default {
+        h.calls(1);
+        calls += 1;
+        assert!(calls < 800, "the automation never left {default}");
+    }
+    h.take_log();
+    h.double_click_knob("tb303_1.cutoff");
+    assert_eq!(h.take_log(), vec![dev(Device::Tb303_1, 40, &[3, default])]);
+    // the panel keeps following the engine, and the song moves the cutoff again
+    let mut seen = std::collections::HashSet::new();
+    for _ in 0..800 {
+        h.calls(1);
+        let live = engine_knob(&mut h, "tb303_1.cutoff");
+        assert_eq!(h.app.panel.value("tb303_1.cutoff"), Some(live));
+        seen.insert(live);
+    }
+    assert!(seen.len() > 3, "the cutoff moved: {seen:?}");
 }
