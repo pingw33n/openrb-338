@@ -82,7 +82,9 @@ backgrounds (808: 12 cells of 22 px at (10, 71); 909: the 12 instrument chips of
 (4, 4) with the edges of `EDGES_909` in `parts.rs`, and the name row at (26, 74)). The 303's key
 band (`BAND_303`) is three blocks of one height (y 46..112): pitch mode and clear (black), the
 keys (gray), and the flags with the edit step display in their top row (black). The six knobs
-start at `KNOB_X0_303` (95), the waveform switch is labeled "WAVEFORM" and sits at (15, 20)
+start at `KNOB_X0_303` (68.5), `KNOB_DX_303` (43.5) apart, followed by the GENERATE pill
+(22 x 10, centered at `GENERATE_X_303`, y 22), all spread evenly between the waveform switch and
+the section's right edge; the waveform switch is labeled "WAVEFORM" and sits at (15, 20)
 (task-115; the placement is in docs/ui_spec.md section 19).
 
 The logo is the wordmark `OPENRB-338`, its underline of four segments in the 808's step colors

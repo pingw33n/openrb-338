@@ -991,8 +991,14 @@ pub const FLAGS_303: [f32; 5] = [250.5, 272.5, 294.5, 316.5, 338.5];
 /// The edit step display's left and top, in the flags block's top row (the display and its
 /// arrows are 31 px wide).
 pub const EDIT_303: (f32, f32) = (296.0, 50.0);
-/// The first knob's left edge: the six knobs, 40 px apart, are centered in the paper.
-pub const KNOB_X0_303: f32 = 95.0;
+/// The six knobs (30 wide) and the GENERATE pill (22 wide) are spread evenly between the
+/// waveform switch's right edge (55) and the section's right edge (366): one gap of about
+/// 13.5 px before, between and after them.
+/// The first knob's left edge, and the step from one knob to the next.
+pub const KNOB_X0_303: f32 = 68.5;
+pub const KNOB_DX_303: f32 = 43.5;
+/// The center x of the GENERATE pill and its label: one gap after the last knob.
+pub const GENERATE_X_303: f32 = KNOB_X0_303 + 5.0 * KNOB_DX_303 + 30.0 + 14.0 + 11.0;
 /// The center x of the pitch mode and clear block.
 pub const LEFT_X_303: f32 = 29.0;
 
@@ -1015,8 +1021,9 @@ fn tb303_bg_one(out: &mut Vec<Part>, name: &'static str, title: &'static str) {
             .into_iter()
             .enumerate()
         {
-            label(s, KNOB_X0_303 + 15.0 + 40.0 * k as f32, 5.5, 3.6, ink, name);
+            label(s, KNOB_X0_303 + 15.0 + KNOB_DX_303 * k as f32, 5.5, 3.6, ink, name);
         }
+        label(s, GENERATE_X_303, 5.5, 3.6, ink, "GENERATE");
         // The key band: pitch mode and clear, the keys on gray, the flags.
         for (i, (x, y, w, h)) in BAND_303.into_iter().enumerate() {
             s.rect(x, y, w, h, 4.0, if i == 1 { "#7d8087" } else { pal::BLACK });
