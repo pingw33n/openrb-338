@@ -50,9 +50,9 @@ const ROW_H: f32 = 20.0;
 /// What the browser is asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// An existing `.rbs` song.
+    /// An existing `.rbs` or `.rbsx` song.
     OpenSong,
-    /// A `.rbs` song to write (an existing file is replaced after a confirmation).
+    /// An `.rbs` or `.rbsx` song to write (an existing file is replaced after a confirmation).
     SaveSong,
     /// The audio file to write: `.wav`, `.flac` or `.ogg`.
     Export,
@@ -298,7 +298,8 @@ impl Browser {
     /// The extensions the mode lists (lowercase).
     fn extensions(&self) -> Vec<&'static str> {
         match self.mode {
-            Mode::OpenSong | Mode::SaveSong => vec!["rbs"],
+            // the .rbsx keeps the GENERATE menu too (rbsx.rs)
+            Mode::OpenSong | Mode::SaveSong => vec!["rbs", "rbsx"],
             Mode::Export => vec![self.format.extension()],
             Mode::ChooseMod => vec!["rbm"],
         }
@@ -486,11 +487,15 @@ impl Browser {
         }
         let ext = Path::new(name).extension().and_then(|e| e.to_str());
         let name = match self.mode {
+            // a name with .rbs stays an .rbs; any other is an .rbsx, which keeps the GENERATE
+            // menu too (rbsx.rs)
             Mode::SaveSong => {
-                if ext.is_some_and(|e| e.eq_ignore_ascii_case("rbs")) {
+                if ext.is_some_and(|e| {
+                    e.eq_ignore_ascii_case("rbs") || e.eq_ignore_ascii_case(crate::rbsx::EXTENSION)
+                }) {
                     name.to_string()
                 } else {
-                    format!("{name}.rbs")
+                    format!("{name}.{}", crate::rbsx::EXTENSION)
                 }
             }
             _ => match (ext, ExportFormat::from_extension(ext)) {

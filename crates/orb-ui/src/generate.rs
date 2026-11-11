@@ -364,12 +364,21 @@ impl App {
         let Some(k) = self.generate_open else {
             return;
         };
+        // a change of the menu's settings is a change of the song (an .rbsx keeps them)
+        let before = self.gen_state();
+        self.generate_menu(view, k, ui.ctx().clone());
+        if self.gen_state() != before {
+            self.doc.modified = true;
+        }
+    }
+
+    /// [`App::generate_ui`] for the open menu of synth `k`.
+    fn generate_menu(&mut self, view: &View, k: usize, ctx: egui::Context) {
         let (Some((x, y, w, h)), Some((bx, by, bw, bh))) =
             (self.generate_rect(k), self.generate_button(k))
         else {
             return;
         };
-        let ctx = ui.ctx().clone();
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             if self.generate_list.is_some() {
                 self.generate_list = None;

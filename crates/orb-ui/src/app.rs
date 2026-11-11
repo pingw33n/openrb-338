@@ -126,7 +126,7 @@ pub struct App {
     /// The folders of the file browser (task-046).
     pub settings: Settings,
     /// The open file browser, if any (`open_browser`).
-    browser: Option<Browser>,
+    pub(crate) browser: Option<Browser>,
     /// The open song: its file, its mod, whether it has unsaved changes (task-047).
     pub doc: Document,
     /// Whether a song has settled yet; until then the "previous kit" of the startup sound's
@@ -174,6 +174,9 @@ pub struct App {
     /// Whether the Help > About window is open, and the number of its opens (its id, as
     /// `info_serial`; `App::about_ui`).
     pub(crate) about_open: bool,
+    /// Whether Save asks if an `.rbs` song with GENERATE settings is to become an `.rbsx`
+    /// (`rbsx.rs`).
+    pub(crate) format_prompt: bool,
     pub(crate) about_serial: u32,
     /// The bass synth (0 or 1) whose GENERATE menu is open, if any, the menu's open list, and
     /// the scale and key note chosen for each synth (`generate.rs`, `scale.rs`).
@@ -249,6 +252,7 @@ impl App {
             info_open: false,
             info_serial: 0,
             about_open: false,
+            format_prompt: false,
             about_serial: 0,
             generate_open: None,
             generate_list: None,
@@ -341,7 +345,10 @@ impl App {
             Color32::from_rgb(0xb8, 0xd8, 0xc0),
         );
         // Clicks in the browser, the prompt or the box over it do not dismiss it.
-        let blocked = self.browser.is_some() || self.prompt.is_some() || self.error_open();
+        let blocked = self.browser.is_some()
+            || self.prompt.is_some()
+            || self.format_prompt
+            || self.error_open();
         if !blocked && self.export.is_none() && ui.input(|i| i.pointer.any_click()) {
             self.status = None;
         }
@@ -621,7 +628,11 @@ impl App {
 
         // While the file browser, the prompt or the error box is open the panel takes no keys
         // and no clicks of its own.
-        if self.browser.is_none() && self.prompt.is_none() && !self.error_open() {
+        if self.browser.is_none()
+            && self.prompt.is_none()
+            && !self.format_prompt
+            && !self.error_open()
+        {
             if shortcuts::consume(ui, &shortcuts::NEW) {
                 self.new_song();
             } else if shortcuts::consume(ui, &shortcuts::OPEN) {
@@ -710,6 +721,7 @@ impl App {
         }
         self.browse(&ctx);
         self.prompt_ui(&ctx);
+        self.format_prompt_ui(&ctx);
         self.info_ui(&ctx);
         self.about_ui(&ctx);
         self.key_help_ui(&ctx);

@@ -25,6 +25,7 @@ pub mod mod_info;
 pub mod model;
 pub mod palette;
 pub mod random;
+pub mod rbsx;
 pub mod scale;
 pub mod session;
 pub mod settings;
