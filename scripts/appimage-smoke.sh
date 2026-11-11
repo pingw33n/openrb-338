@@ -3,27 +3,27 @@
 # Docker; the container is removed afterwards. The image runs for the AppImage's architecture
 # (emulated off a matching host).
 #
-#   scripts/appimage-smoke.sh dist/<target>/OpenRB-338-<version>-<arch>.AppImage
+#   scripts/appimage-smoke.sh dist/<target>/OpenRB-338x-<version>-<arch>.AppImage
 #
 # It installs the runtime libraries the host must provide (docs/building.md; not the X11
 # keyboard libraries, which the AppImage bundles: the container must not have them), then checks:
 #   - the AppImage extracts, with the desktop entry, the icons and LICENSE, and bundles no
-#     glibc (no libc.so.6, ld-linux, libm, libpthread) and no ELF file but OpenRB-338, orb and
+#     glibc (no libc.so.6, ld-linux, libm, libpthread) and no ELF file but OpenRB-338x, orb and
 #     libxkbcommon.so.0, libxkbcommon-x11.so.0, libxcb-xkb.so.1 (task-166);
 #   - the most recent GLIBC_ version the two programs need;
 #   - `--orb --help` and `--orb info` on a committed song (the CLI inside), also through a
 #     symlink named orb;
-#   - OpenRB-338 --screenshot under xvfb writes a PNG with Vulkan, with OpenGL, automatically
+#   - OpenRB-338x --screenshot under xvfb writes a PNG with Vulkan, with OpenGL, automatically
 #     (it must choose Vulkan) and with the Vulkan ICDs hidden (the fallback: OpenGL).
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-appimage=${1:?usage: scripts/appimage-smoke.sh OpenRB-338-<version>-<arch>.AppImage}
+appimage=${1:?usage: scripts/appimage-smoke.sh OpenRB-338x-<version>-<arch>.AppImage}
 appimage=$(cd "$(dirname "$appimage")" && pwd)/$(basename "$appimage")
 case $appimage in
     *-x86_64.AppImage) platform=linux/amd64 ;;
     *-aarch64.AppImage) platform=linux/arm64 ;;
-    *) echo "not an OpenRB-338 AppImage name: $appimage" >&2; exit 2 ;;
+    *) echo "not an OpenRB-338x AppImage name: $appimage" >&2; exit 2 ;;
 esac
 
 # the same pinned base image as scripts/docker/linux-build.Dockerfile
@@ -69,14 +69,14 @@ else
 fi
 echo "== AppDir"
 ls -A squashfs-root
-desktop-file-validate squashfs-root/OpenRB-338.desktop && echo "desktop entry valid"
+desktop-file-validate squashfs-root/OpenRB-338x.desktop && echo "desktop entry valid"
 find squashfs-root/usr/share/icons -name "*.png" | sort
 test -s squashfs-root/LICENSE
-echo "== ELF files (OpenRB-338, orb and the three keyboard libraries are expected)"
+echo "== ELF files (OpenRB-338x, orb and the three keyboard libraries are expected)"
 find squashfs-root -type f -exec sh -c "head -c4 \"\$1\" | grep -q ELF && echo \"\$1\"" _ {} \; \
     | sort | tee /tmp/elf.txt
 cat > /tmp/elf.want <<WANT
-squashfs-root/usr/bin/OpenRB-338
+squashfs-root/usr/bin/OpenRB-338x
 squashfs-root/usr/bin/orb
 squashfs-root/usr/lib/libxcb-xkb.so.1
 squashfs-root/usr/lib/libxkbcommon-x11.so.0
@@ -92,7 +92,7 @@ echo "== RUNPATH (no LD_LIBRARY_PATH: it would leak into the children, task-166)
 for f in $(cat /tmp/elf.txt); do
     echo "$f $(readelf -d "$f" | grep -E "RUNPATH|RPATH" || echo none)"
 done
-readelf -d squashfs-root/usr/bin/OpenRB-338 | grep -q "RUNPATH.*\[\$ORIGIN/../lib\]"
+readelf -d squashfs-root/usr/bin/OpenRB-338x | grep -q "RUNPATH.*\[\$ORIGIN/../lib\]"
 readelf -d squashfs-root/usr/bin/orb | grep -q "RUNPATH.*\[\$ORIGIN/../lib\]"
 for f in squashfs-root/usr/lib/*.so.*; do
     readelf -d "$f" | grep -q "RUNPATH.*\[\$ORIGIN\]"
@@ -118,10 +118,10 @@ run_as_orb --help > /tmp/help2.txt 2>&1
 head -3 /tmp/help2.txt
 cmp /tmp/help.txt /tmp/help2.txt
 echo "the symlink named orb ran the CLI"
-echo "== OpenRB-338 --screenshot under xvfb"
+echo "== OpenRB-338x --screenshot under xvfb"
 ls /usr/share/vulkan/icd.d
 # shot LABEL BACKEND VAR=VALUE...: a screenshot with that environment, checked for the PNG
-# signature and for the backend wgpu chose (ORB_GPU_INFO=1 makes OpenRB-338 print it).
+# signature and for the backend wgpu chose (ORB_GPU_INFO=1 makes OpenRB-338x print it).
 shot() {
     local label=$1 want=$2; shift 2
     rm -f /tmp/shot.png

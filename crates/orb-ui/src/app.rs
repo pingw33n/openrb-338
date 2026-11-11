@@ -155,7 +155,7 @@ pub struct App {
     pub status: Option<String>,
     /// The Options menu's keyboard mode (Ctrl/Cmd+F / +G).
     pub key_mode: KeyMode,
-    /// Whether the window draws the menu bar (the window of OpenRB-338 does; the headless tests
+    /// Whether the window draws the menu bar (the window of OpenRB-338x does; the headless tests
     /// of the panel at 1:1 do not).
     pub menu: bool,
     pub(crate) prompt: Option<Then>,
@@ -471,7 +471,7 @@ fn capped_hint(pixels: Vec2, max: usize) -> Option<egui::load::SizeHint> {
 
 fn missing_part(name: &str) {
     if art::report_missing(name) {
-        eprintln!("OpenRB-338: no art part {name}; drawn as nothing");
+        eprintln!("OpenRB-338x: no art part {name}; drawn as nothing");
     }
 }
 

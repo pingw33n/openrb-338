@@ -1097,7 +1097,7 @@ impl App {
     /// The window's title: the song's name, marked when modified.
     pub fn update_title(&mut self, ctx: &Context) {
         let title = format!(
-            "OpenRB-338 - {}{}",
+            "OpenRB-338x - {}{}",
             self.doc.name(),
             if self.doc.modified { " *" } else { "" }
         );
@@ -1278,7 +1278,7 @@ impl App {
 /// The items of the Help menu, in order.
 const HELP_ITEMS: &[(&str, Cmd)] = &[
     ("Keyboard Shortcuts...", Cmd::KeyHelp),
-    ("About OpenRB-338...", Cmd::About),
+    ("About OpenRB-338x...", Cmd::About),
 ];
 
 /// A menu item with its shortcut; true when clicked (the menu closes).

@@ -1,12 +1,12 @@
-//! `OpenRB-338`: the panel window, wired to the real-time player (task-045). The binary has this
+//! `OpenRB-338x`: the panel window, wired to the real-time player (task-045). The binary has this
 //! name (crate `orb-ui`) because the macOS Dock and Activity Monitor show the executable's name.
 //!
 //! ```text
-//! OpenRB-338 [SONG]
+//! OpenRB-338x [SONG]
 //! ```
 //! `--help` shows only this. The options below are for developers, tests and screenshots
 //! (task-137): hidden from `--help` and the usage text, but they all work (docs/building.md,
-//! "OpenRB-338 developer options"):
+//! "OpenRB-338x developer options"):
 //!
 //! ```text
 //! --demo  --size WxH  --ppp S  --browse open|save|export|mod  --about  --info
@@ -31,7 +31,7 @@
 //! Info's Song Information window (task-117). `--play` presses Play once the song is open (CPU
 //! measurements, task-153).
 //! `--browse MODE` starts with the browser open for a mode. The browser's folders are kept in the
-//! settings file (`OpenRB-338/ui.toml` in the configuration folder, or `$ORB_UI_CONFIG`).
+//! settings file (`OpenRB-338x/ui.toml` in the configuration folder, or `$ORB_UI_CONFIG`).
 
 // The Windows release build is a GUI-subsystem program: no console window opens behind the
 // panel (task-111). `orb` is not affected (this attribute is in the UI binary only). A debug
@@ -53,7 +53,7 @@ use orb_ui::session;
 use orb_ui::settings::Settings;
 
 /// The visible help: only the song. The developer options are hidden (task-137).
-const USAGE: &str = "usage: OpenRB-338 [SONG]\n\
+const USAGE: &str = "usage: OpenRB-338x [SONG]\n\
                      SONG is a ReBirth song (.rbs, RBS 4.x or ReBirth 1.x) to open";
 
 /// The command line, parsed.
@@ -177,7 +177,7 @@ fn usage(e: Exit) -> ! {
 /// console and points the standard output and error at it, unless they were redirected (a file
 /// or a pipe stays as it is). Started from the Start menu or Explorer there is no parent
 /// console and nothing happens. What stays lost: `cmd` does not wait for a GUI program, so the
-/// prompt comes back at once and the text appears over it; `start /wait OpenRB-338.exe` waits.
+/// prompt comes back at once and the text appears over it; `start /wait OpenRB-338x.exe` waits.
 #[cfg(all(windows, not(debug_assertions)))]
 fn attach_parent_console() {
     use std::fs::OpenOptions;
@@ -252,7 +252,7 @@ fn main() -> eframe::Result {
                 Ok(o) => startup = Some((path.clone(), o)),
                 // the app starts on the new song, with the error in its message box
                 Err(e) => {
-                    eprintln!("OpenRB-338: {e}");
+                    eprintln!("OpenRB-338x: {e}");
                     start_errors.push(e);
                 }
             }
@@ -263,7 +263,7 @@ fn main() -> eframe::Result {
                 _stream = Some(s);
             }
             Err(e) => {
-                eprintln!("OpenRB-338: audio output: {e}; the panel runs without sound");
+                eprintln!("OpenRB-338x: audio output: {e}; the panel runs without sound");
                 // the one failure at the launch is an error the user expects to hear of: the
                 // box. Later audio errors repeat: `App::notify`.
                 start_errors.push(format!("Audio output: {e}; the panel runs without sound"));
@@ -274,8 +274,8 @@ fn main() -> eframe::Result {
 
     // The window starts maximized; an explicit --size opens at that size instead.
     let viewport = egui::ViewportBuilder::default()
-        .with_title("OpenRB-338")
-        .with_app_id("OpenRB-338")
+        .with_title("OpenRB-338x")
+        .with_app_id("OpenRB-338x")
         .with_icon(Arc::new(orb_ui::art::app_icon(256)))
         // the menu bar is above the panel
         .with_inner_size([size[0], size[1] + MENU_H])
@@ -287,7 +287,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "OpenRB-338",
+        "OpenRB-338x",
         options,
         Box::new(move |cc| {
             // always dark, whatever the system theme (task-127; `App::show` keeps it)

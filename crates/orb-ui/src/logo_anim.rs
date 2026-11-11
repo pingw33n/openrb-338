@@ -1,10 +1,12 @@
-//! The startup animation of the wordmark (task-114), approved by the user on 2026-10-29:
+//! The startup animation of the wordmark OpenRB-338x (task-114, redone for this fork): the
+//! pieces appear one after another, each fading in:
 //!
-//! - RB-338 is in place from the start;
-//! - OPEN slides left into place over [`SLIDE_S`] with an ease-out, masked to the left of the R, so
-//!   it comes out from behind RB-338 at full opacity;
-//! - the four underline segments fade in left to right, each over [`SEG_FADE_S`], from
+//! - `OpenRB-` over [`OPENRB_S`], from 0;
+//! - `338` over [`N338_S`], right after it;
+//! - the four underline segments, red, orange, yellow, white, each over [`SEG_FADE_S`], from
 //!   [`SEG_START_S`] on, [`SEG_STEP_S`] apart;
+//! - last the `x`, above the white segment, over [`X_FADE_S`] from [`X_START_S`], with a soft
+//!   flash: a glow around it that rises with it and dies away by [`FLASH_END_S`];
 //! - the subtitle fades in over [`SUB_START_S`]..[`SUB_END_S`];
 //! - in the About window the icon also fades in over [`ICON_FADE_S`].
 //!
@@ -19,15 +21,20 @@ use eframe::egui::{self, Color32, Rect, Ui};
 
 use crate::app;
 
-/// OPEN's slide: its duration.
-pub const SLIDE_S: f32 = 1.0;
+/// `OpenRB-`'s fade, from 0, and `338`'s, right after it.
+pub const OPENRB_S: f32 = 0.35;
+pub const N338_S: f32 = 0.35;
 /// The first underline segment's start, the step to the next, and each one's fade.
-pub const SEG_START_S: f32 = 0.55;
+pub const SEG_START_S: f32 = 0.75;
 pub const SEG_STEP_S: f32 = 0.20;
 pub const SEG_FADE_S: f32 = 0.25;
+/// The x: its start (after the white segment), its fade, and the end of its flash.
+pub const X_START_S: f32 = 1.65;
+pub const X_FADE_S: f32 = 0.15;
+pub const FLASH_END_S: f32 = 2.25;
 /// The subtitle's fade.
-pub const SUB_START_S: f32 = 1.35;
-pub const SUB_END_S: f32 = 1.85;
+pub const SUB_START_S: f32 = 1.9;
+pub const SUB_END_S: f32 = 2.3;
 /// The About icon's fade, from 0.
 pub const ICON_FADE_S: f32 = 0.6;
 /// The end of the whole animation.
@@ -37,26 +44,21 @@ pub const END_S: f32 = SUB_END_S;
 pub const LOGO_PART: &str = "logo";
 pub const LOGO_W: f32 = 134.0;
 pub const LOGO_H: f32 = 48.0;
-/// How far OPEN is shifted right at the start: its width and the gap to RB-338 (the x of the R
-/// in the part, 8, less the wordmark's left edge; a test checks it against the art's font).
-pub const OPEN_TRAVEL: f32 = 49.466_667;
-/// The x where RB-338 starts in the logo part: OPEN is clipped to the left of it.
-pub const RB_X: f32 = 8.0 + OPEN_TRAVEL;
+/// The center of the x in the logo part, where it flashes (orb-ui-art's `logo_x_pos`; a test
+/// checks it).
+pub const X_CENTER: (f32, f32) = (127.033_3, 17.0);
 
-/// The animation's state at one moment.
+/// The animation's state at one moment: each piece's opacity, and the x's flash (0 to 1).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame {
-    /// OPEN's offset to the right of its final place, in logo units.
-    pub open_dx: f32,
+    pub openrb: f32,
+    pub n338: f32,
     /// The underline segments' opacities, left to right.
     pub seg: [f32; 4],
+    pub x: f32,
+    pub flash: f32,
     pub sub: f32,
     pub icon: f32,
-}
-
-fn ease_out(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    1.0 - (1.0 - t).powi(3)
 }
 
 /// 0 before `t0`, 1 after `t0 + d`, linear between.
@@ -71,9 +73,20 @@ impl Frame {
         for (i, a) in seg.iter_mut().enumerate() {
             *a = ramp(t, SEG_START_S + SEG_STEP_S * i as f32, SEG_FADE_S);
         }
+        // the flash rises with the x and fades out after it, eased so it stays soft
+        let peak = X_START_S + X_FADE_S;
+        let flash = if t < peak {
+            ramp(t, X_START_S, X_FADE_S)
+        } else {
+            let k = 1.0 - ramp(t, peak, FLASH_END_S - peak);
+            k * k
+        };
         Self {
-            open_dx: OPEN_TRAVEL * (1.0 - ease_out(ramp(t, 0.0, SLIDE_S))),
+            openrb: ramp(t, 0.0, OPENRB_S),
+            n338: ramp(t, OPENRB_S, N338_S),
             seg,
+            x: ramp(t, X_START_S, X_FADE_S),
+            flash,
             sub: ramp(t, SUB_START_S, SUB_END_S - SUB_START_S),
             icon: ramp(t, 0.0, ICON_FADE_S),
         }
@@ -117,21 +130,26 @@ pub fn paint_logo(ui: &mut Ui, rect: Rect, t: Option<f32>) {
     }
     let k = rect.width() / LOGO_W;
     let f = Frame::at(t);
-    paint_piece(ui, "logo_rb338", rect, 1.0);
-    // OPEN, masked to the left of the R
-    let old = ui.clip_rect();
-    let mask = Rect::from_min_max(rect.min, egui::pos2(rect.min.x + RB_X * k, rect.max.y));
-    ui.set_clip_rect(old.intersect(mask));
-    paint_piece(
-        ui,
-        "logo_open",
-        rect.translate(egui::vec2(f.open_dx * k, 0.0)),
-        1.0,
-    );
-    ui.set_clip_rect(old);
+    paint_piece(ui, "logo_openrb", rect, f.openrb);
+    paint_piece(ui, "logo_338", rect, f.n338);
     for (i, a) in f.seg.iter().enumerate() {
         paint_piece(ui, &format!("logo_line_{i}"), rect, *a);
     }
+    if f.flash > 0.0 {
+        // a soft glow behind the x, and the x itself a little larger and fainter over it
+        let c = rect.min + egui::vec2(X_CENTER.0, X_CENTER.1) * k;
+        let p = ui.painter();
+        for (r, a) in [(11.0, 0.10), (7.0, 0.16), (4.5, 0.22)] {
+            p.circle_filled(c, r * k, Color32::WHITE.gamma_multiply(a * f.flash));
+        }
+        let grow = 1.0 + 0.18 * f.flash;
+        let big = Rect::from_min_size(
+            c + (rect.min - c) * grow,
+            rect.size() * grow,
+        );
+        paint_piece(ui, "logo_x", big, 0.5 * f.flash);
+    }
+    paint_piece(ui, "logo_x", rect, f.x);
     paint_piece(ui, "logo_sub", rect, f.sub);
 }
 
@@ -143,16 +161,26 @@ mod tests {
         (a - b).abs() < 1e-4
     }
 
-    /// The travel is OPEN's width and the gap, as the art lays the wordmark out.
+    /// The flash's center is the x's center, as the art lays the wordmark out.
     #[test]
-    fn travel_matches_the_art() {
-        let want = orb_ui_art::font::text_width(14.0, "OPEN") + orb_ui_art::font::gap(14.0);
-        assert!(
-            (OPEN_TRAVEL - want).abs() < 0.001,
-            "{OPEN_TRAVEL} vs {want}"
-        );
+    fn the_flash_is_on_the_x() {
+        let (_, cx) = orb_ui_art::parts::logo_x_pos();
+        assert!((X_CENTER.0 - cx).abs() < 0.001, "{} vs {cx}", X_CENTER.0);
         assert_eq!(orb_ui_art::parts::LOGO_W, LOGO_W);
         assert_eq!(orb_ui_art::parts::LOGO_H, LOGO_H);
+        assert_eq!(
+            orb_ui_art::parts::LOGO_PIECES,
+            [
+                "logo_openrb",
+                "logo_338",
+                "logo_line_0",
+                "logo_line_1",
+                "logo_line_2",
+                "logo_line_3",
+                "logo_x",
+                "logo_sub"
+            ]
+        );
     }
 
     /// Runs the panel for a few frames at egui times from `t0` (so the SVGs are loaded) and
@@ -215,37 +243,47 @@ mod tests {
     #[test]
     fn the_start() {
         let f = Frame::at(0.0);
-        assert!(close(f.open_dx, OPEN_TRAVEL));
+        assert_eq!((f.openrb, f.n338, f.x, f.flash), (0.0, 0.0, 0.0, 0.0));
         assert_eq!(f.seg, [0.0; 4]);
         assert_eq!((f.sub, f.icon), (0.0, 0.0));
     }
 
+    /// OpenRB-, then 338, then the segments red to white, then the x: each starts when the one
+    /// before it is in.
     #[test]
-    fn the_slide_eases_out() {
-        // ease-out cubic: 1 - (1 - t)^3 of the way at t seconds of 1
-        assert!(close(Frame::at(0.5).open_dx, OPEN_TRAVEL * 0.125));
-        assert!(close(Frame::at(0.25).open_dx, OPEN_TRAVEL * 0.421875));
-        assert!(close(Frame::at(1.0).open_dx, 0.0));
-        assert!(Frame::at(0.1).open_dx > Frame::at(0.2).open_dx);
+    fn the_pieces_come_in_order() {
+        assert!(close(Frame::at(0.175).openrb, 0.5));
+        assert_eq!(Frame::at(0.35).n338, 0.0);
+        assert!(close(Frame::at(0.35).openrb, 1.0));
+        assert!(close(Frame::at(0.525).n338, 0.5));
+        assert_eq!(Frame::at(0.75).seg[0], 0.0);
+        assert!(close(Frame::at(0.875).seg[0], 0.5));
+        assert!(close(Frame::at(1.075).seg[1], 0.5));
+        assert!(close(Frame::at(1.275).seg[2], 0.5));
+        assert!(close(Frame::at(1.475).seg[3], 0.5));
+        assert!(close(Frame::at(1.6).seg[3], 1.0));
+        assert_eq!(Frame::at(1.6).x, 0.0);
+        assert!(close(Frame::at(1.725).x, 0.5));
+        assert!(close(Frame::at(1.8).x, 1.0));
     }
 
+    /// The x's flash rises with it, is full when the x is in, and dies away softly after.
     #[test]
-    fn the_underline_fades_left_to_right() {
-        assert_eq!(Frame::at(0.55).seg[0], 0.0);
-        assert!(close(Frame::at(0.675).seg[0], 0.5));
-        assert!(close(Frame::at(0.8).seg[0], 1.0));
-        assert!(close(Frame::at(0.875).seg[1], 0.5));
-        assert!(close(Frame::at(1.075).seg[2], 0.5));
-        assert!(close(Frame::at(1.275).seg[3], 0.5));
-        assert_eq!(Frame::at(0.7).seg[1], 0.0);
-        assert!(close(Frame::at(1.4).seg[3], 1.0));
+    fn the_x_flashes_softly() {
+        assert_eq!(Frame::at(1.6).flash, 0.0);
+        assert!(close(Frame::at(1.725).flash, 0.5));
+        assert!(close(Frame::at(1.8).flash, 1.0));
+        let a = Frame::at(1.9).flash;
+        let b = Frame::at(2.1).flash;
+        assert!(a < 1.0 && b < a && b > 0.0, "{a} {b}");
+        assert_eq!(Frame::at(FLASH_END_S).flash, 0.0);
     }
 
     #[test]
     fn the_subtitle_and_the_icon_fade() {
-        assert_eq!(Frame::at(1.35).sub, 0.0);
-        assert!(close(Frame::at(1.6).sub, 0.5));
-        assert!(close(Frame::at(1.85).sub, 1.0));
+        assert_eq!(Frame::at(1.9).sub, 0.0);
+        assert!(close(Frame::at(2.1).sub, 0.5));
+        assert!(close(Frame::at(2.3).sub, 1.0));
         assert!(close(Frame::at(0.3).icon, 0.5));
         assert!(close(Frame::at(0.6).icon, 1.0));
     }
@@ -254,7 +292,7 @@ mod tests {
     #[test]
     fn the_final_state() {
         let end = Frame::at(END_S);
-        assert_eq!(end.open_dx, 0.0);
+        assert_eq!((end.openrb, end.n338, end.x, end.flash), (1.0, 1.0, 1.0, 0.0));
         assert_eq!(end.seg, [1.0; 4]);
         assert_eq!((end.sub, end.icon), (1.0, 1.0));
         assert_eq!(Frame::at(10.0), end);

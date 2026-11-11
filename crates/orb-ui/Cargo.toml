@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 # The file name is the process name the macOS Dock and Activity Monitor show (task-104).
 [[bin]]
-name = "OpenRB-338"
+name = "OpenRB-338x"
 path = "src/main.rs"
 
 [dependencies]

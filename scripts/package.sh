@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds one target (scripts/build.sh) and packs dist/<target>/bin/ into
-# dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz (Linux, macOS) or .zip (Windows;
+# dist/<target>/OpenRB-338x-<YYYY.MMDD.HHMM>-<target>.tar.gz (Linux, macOS) or .zip (Windows;
 # the version is the UTC build time, scripts/version.sh), with
 # the license and a short readme (task-108).
 #
@@ -17,7 +17,7 @@ dist=${DIST:-$root/dist}
 # one build time for the name, the binaries (About box) and the archive
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(date +%s)}
 version=$("$root/scripts/version.sh")
-name=OpenRB-338-$version-$target
+name=OpenRB-338x-$version-$target
 
 [ -n "${SKIP_BUILD:-}" ] || "$root/scripts/build.sh" "$target"
 
@@ -28,11 +28,11 @@ cp "$dist/$target/bin/"* "$stage/"
 cp "$root/LICENSE" "$stage/LICENSE"
 
 case $target in
-    *-windows-*) run="OpenRB-338.exe (the app) and orb.exe (the command line)" ;;
-    *) run="OpenRB-338 (the app) and orb (the command line)" ;;
+    *-windows-*) run="OpenRB-338x.exe (the app) and orb.exe (the command line)" ;;
+    *) run="OpenRB-338x (the app) and orb (the command line)" ;;
 esac
 cat > "$stage/README.txt" <<EOF
-OpenRB-338 $version ($target)
+OpenRB-338x $version ($target)
 
 A reimplementation of the audio engine of Propellerhead ReBirth RB-338 2.01.
 
@@ -41,7 +41,7 @@ Neither needs any file of the original program: the standard drum kit is built i
 
   orb render SONG.rbs -o SONG.flac    render a song to FLAC, Ogg Vorbis or WAV
   orb --help                          all commands
-  OpenRB-338                          the desktop UI
+  OpenRB-338x                          the desktop UI
 
 The binaries are not signed (docs/building.md says what the system shows for that).
 Licensed under the GNU General Public License, version 3 only (GPL-3.0-only; see LICENSE).

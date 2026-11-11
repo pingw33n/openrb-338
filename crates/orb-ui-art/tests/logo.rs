@@ -34,27 +34,47 @@ fn the_logo_is_its_own_part() {
     assert!(pos("bg_transport") < pos("logo"));
     let b = &l.backgrounds[pos("logo")];
     assert_eq!((b.1, b.2), (LOGO_X, LOGO_Y));
-    assert_eq!((LOGO_X + LOGO_W, LOGO_Y + LOGO_H), (608.0, 49.0));
+    // (this fork: 7 px left of the original's 608, about 10 px from the transport's edge)
+    assert_eq!((LOGO_X + LOGO_W, LOGO_Y + LOGO_H), (601.0, 49.0));
 }
 
-/// The wordmark as task-068 drew it into `bg_transport`: one INK run 'OPENRB-' and the rest.
+/// The underline's segments (x, width): four, as long as the wordmark `OpenRB-338x`, 1.5 px
+/// apart, from the wordmark's left edge (this fork's wordmark; task-115 had 28.4 px at 29.9).
+fn segments() -> [(f32, f32); 4] {
+    use orb_ui_art::font::{gap, text_width};
+    use orb_ui_art::parts::{LOGO_CAP, LOGO_TEXT_X};
+    let (cap, x0) = (LOGO_CAP, LOGO_TEXT_X);
+    // summed in the order the logo lays the wordmark out, so the floats agree to the last bit
+    let x1 = x0 + text_width(cap, "OpenRB-") + gap(cap);
+    let x2 = x1 + text_width(cap, "338") + gap(cap);
+    // to the outer edge of the x's round stroke
+    let word = x2 + text_width(cap, "x") + orb_ui_art::font::stroke(cap) / 2.0 - x0;
+    let w = (word - 3.0 * 1.5) / 4.0;
+    std::array::from_fn(|i| (LOGO_TEXT_X + (w + 1.5) * i as f32, w))
+}
+
+/// The wordmark drawn as one run: one INK run 'OpenRB-', the ORANGE '338', the WHITE 'x', the
+/// underline and the subtitle (as task-068 drew it into `bg_transport`, in this fork's form).
 fn wordmark_as_one_run() -> String {
     use orb_ui_art::font::{Anchor, gap, text, text_width};
+    use orb_ui_art::parts::{LOGO_CAP, LOGO_TEXT_X};
     use orb_ui_art::svg::Svg;
     let mut s = Svg::new();
-    let cap = 14.0;
-    text(&mut s, 8.0, 17.0, cap, Anchor::Start, pal::INK, "OPENRB-");
-    let x1 = 8.0 + text_width(cap, "OPENRB-") + gap(cap);
+    let (cap, x0) = (LOGO_CAP, LOGO_TEXT_X);
+    text(&mut s, x0, 17.0, cap, Anchor::Start, pal::INK, "OpenRB-");
+    let x1 = x0 + text_width(cap, "OpenRB-") + gap(cap);
     text(&mut s, x1, 17.0, cap, Anchor::Start, pal::ORANGE, "338");
+    let x2 = x1 + text_width(cap, "338") + gap(cap);
+    text(&mut s, x2, 17.0, cap, Anchor::Start, pal::WHITE, "x");
     // the underline: four segments in the 808's step colors
-    for (i, color) in [pal::RED, pal::ORANGE, pal::YELLOW, pal::WHITE]
+    for ((x, w), color) in segments()
         .into_iter()
-        .enumerate()
+        .zip([pal::RED, pal::ORANGE, pal::YELLOW, pal::WHITE])
     {
-        s.rect(8.0 + 29.9 * i as f32, 28.0, 28.4, 1.5, 0.75, color);
+        s.rect(x, 28.0, w, 1.5, 0.75, color);
     }
     let sub = "BASS LINE AND DRUM MACHINE";
-    text(&mut s, 8.0, 37.0, 3.4, Anchor::Start, pal::INK_DIM, sub);
+    text(&mut s, x0, 37.0, 3.4, Anchor::Start, pal::INK_DIM, sub);
     s.s
 }
 
@@ -83,23 +103,29 @@ fn the_logo_pieces_render_like_the_single_run() {
 }
 
 /// task-115: the underline is four separate pieces, one per segment, each in one step color of
-/// the 808 and 28.4 px wide at 29.9 px steps, so an animation can fade them in one by one.
+/// the 808, so an animation can fade them in one by one; together as long as the wordmark,
+/// which still fits in the logo part.
 #[test]
 fn the_underline_is_four_colored_segments() {
     let parts = all_parts();
     let colors = [pal::RED, pal::ORANGE, pal::YELLOW, pal::WHITE];
+    let segs = segments();
     for (i, color) in colors.into_iter().enumerate() {
         let name = format!("logo_line_{i}");
         let p = parts.iter().find(|p| p.name == name).expect(&name);
-        let x = orb_ui_art::svg::n(8.0 + 29.9 * i as f32);
+        let (x, w) = segs[i];
         let want = format!(
             concat!(
-                "<rect x=\"{}\" y=\"28\" width=\"28.4\" height=\"1.5\" rx=\"0.75\" ",
+                "<rect x=\"{}\" y=\"28\" width=\"{}\" height=\"1.5\" rx=\"0.75\" ",
                 "fill=\"{}\"/>"
             ),
-            x, color
+            orb_ui_art::svg::n(x),
+            orb_ui_art::svg::n(w),
+            color
         );
         assert_eq!(p.body, want, "{name}");
     }
+    let (last_x, last_w) = segs[3];
+    assert!(last_x + last_w < LOGO_W, "the wordmark fits in the logo");
     assert!(parts.iter().all(|p| p.name != "logo_line"));
 }

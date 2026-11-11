@@ -28,7 +28,7 @@ All art is our own work, drawn in code, released under the repository's license 
 see `Cargo.toml`). It contains no Propellerhead or Roland artwork, logo or mark and no copy of the
 original's bitmaps: the original's screenshots were used for layout only (`docs/ui_spec.md`
 places the controls). Visible texts are generic: the sections carry no product names, the
-effect blocks are PCF, DELAY, DIST and COMP, and the logo is the wordmark "OPENRB-338" (the
+effect blocks are PCF, DELAY, DIST and COMP, and the logo is the wordmark "OpenRB-338x" (the
 project's name, task-068). File names keep the spec's short names (`tb303`, `tr808`, `tr909`) because they are
 code identifiers, not art. The labels are vector paths of a built-in stroke font
 (`src/font.rs`), so the SVGs hold no `<text>` and need no font file.
@@ -63,8 +63,8 @@ Place each at its section origin (panel pixels).
 |---|---|---|---|
 | `wood` | 16 x 510 | (0, 0) and (608, 0) | left and right side wood |
 | `bg_transport` | 592 x 50 | (16, 0) | transport (no logo: it is its own part) |
-| `logo` | 134 x 48 | (474, 1) | the wordmark, over `bg_transport`; the click area of the logo |
-| `logo_open`, `logo_rb338`, `logo_line_0` .. `logo_line_3`, `logo_sub` | 134 x 48 | (474, 1) | the pieces of `logo` |
+| `logo` | 134 x 48 | (467, 1) | the wordmark, over `bg_transport`; the click area of the logo |
+| `logo_openrb`, `logo_338`, `logo_line_0` .. `logo_line_3`, `logo_x`, `logo_sub` | 134 x 48 | (467, 1) | the pieces of `logo` |
 | `bg_pattern` | 70 x 115 | (16, 50 + 115 r) | pattern section of row r = 0..3 |
 | `focus_off`, `focus_on` | 4 x 115 | (86, 50 + 115 r) | the row's focus bar (lit orange) |
 | `bg_tb303_1`, `bg_tb303_2` | 366 x 115 | (90, 50) and (90, 165) | the two bass synths (titled "BAZE 1" and "BAZE 2") |
@@ -87,16 +87,18 @@ start at `KNOB_X0_303` (68.5), `KNOB_DX_303` (43.5) apart, followed by the GENER
 the section's right edge; the waveform switch is labeled "WAVEFORM" and sits at (15, 20)
 (task-115; the placement is in docs/ui_spec.md section 19).
 
-The logo is the wordmark `OPENRB-338`, its underline of four segments in the 808's step colors
-(red, orange, yellow, white; each 28.4 x 1.5 at (8 + 29.9 i, 28)) and the subtitle `BASS LINE
-AND DRUM MACHINE`. `logo` is the whole (the panel draws it at (474, 1) after `bg_transport`,
-and Help > About draws it scaled up, crisp because it is SVG). `logo_open` ('OPEN'),
-`logo_rb338` ('RB-' in ink and '338' in orange), `logo_line_0` .. `logo_line_3` (the underline
-segments, left to right) and `logo_sub` (the subtitle) are its pieces for an animation
-(task-114): each is on the whole 134 x 48 canvas and is placed at the same (474, 1), so an
-offset or an opacity moves it with no placement math (`LOGO_PIECES` in `parts.rs`; `logo` is
-exactly the seven in that order). The app draws `logo`; the pieces are generated but unused
-until task-114.
+The logo is this fork's wordmark `OpenRB-338x` (`OpenRB-` ink, `338` orange, `x` white, from
+x = 5), its underline of four segments in the 808's step colors
+(red, orange, yellow, white; 1.5 px high at y 28, 1.5 px apart, together as long as the wordmark,
+to the outer edge of the x's stroke) and the subtitle `BASS LINE
+AND DRUM MACHINE`. `logo` is the whole (the panel draws it at (467, 1) after `bg_transport`,
+and Help > About draws it scaled up, crisp because it is SVG). `logo_openrb` ('OpenRB-'),
+`logo_338` ('338' in orange), `logo_line_0` .. `logo_line_3` (the underline segments, left to
+right), `logo_x` (the white 'x') and `logo_sub` (the subtitle) are its pieces for the startup
+animation (task-114, redone for this fork in `logo_anim.rs`: they appear in that order, the x
+with a soft flash): each is on the whole 134 x 48 canvas and is placed at the same (467, 1),
+so an offset or an opacity moves it with no placement math (`LOGO_PIECES` in `parts.rs`;
+`logo` is exactly the eight in that order). After the animation the app draws `logo`.
 
 `app_icon` (64 x 64) is the 303's saw running into a square wave (orange, 4 px stroke) over four
 step keys in the 808's colors, on a slate tile. It is not part of the panel: the app renders it

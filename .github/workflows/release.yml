@@ -1,4 +1,4 @@
-# Builds the packages of orb (the CLI) and OpenRB-338 (the UI) for the six targets on native
+# Builds the packages of orb (the CLI) and OpenRB-338x (the UI) for the six targets on native
 # runners and uploads them as workflow artifacts (task-108). Runs on a release tag (v*) or by
 # hand. Needs no secret, and fetches no Propellerhead file: the standard mod is in the
 # repository (assets/Standard.rbm). The draft release, the installers, the .dmg and the
@@ -94,8 +94,8 @@ jobs:
         with:
           name: package-${{ matrix.target }}
           path: |
-            dist/${{ matrix.target }}/OpenRB-338-*.tar.gz
-            dist/${{ matrix.target }}/OpenRB-338-*.zip
+            dist/${{ matrix.target }}/OpenRB-338x-*.tar.gz
+            dist/${{ matrix.target }}/OpenRB-338x-*.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -105,7 +105,7 @@ jobs:
           if-no-files-found: error
 
   dmg:
-    # The macOS .dmg (task-110, task-136): one per architecture, each an OpenRB-338.app of that
+    # The macOS .dmg (task-110, task-136): one per architecture, each an OpenRB-338x.app of that
     # architecture only with the CLI inside, signed ad hoc only (no Developer ID, no
     # notarization). Each runs on the runner of its target, like the package jobs, so the
     # target's own tools check it and no job needs the other build.
@@ -141,7 +141,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dmg-${{ matrix.target }}
-          path: dist/${{ matrix.target }}/OpenRB-338-*.dmg
+          path: dist/${{ matrix.target }}/OpenRB-338x-*.dmg
           if-no-files-found: error
 
   installer:
@@ -178,7 +178,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installer-${{ matrix.arch }}
-          path: dist/${{ matrix.target }}/OpenRB-338-*-setup.exe
+          path: dist/${{ matrix.target }}/OpenRB-338x-*-setup.exe
           if-no-files-found: error
 
   appimage:
@@ -218,11 +218,11 @@ jobs:
           chmod +x "dist/${{ matrix.target }}/bin/"*
           SKIP_BUILD=1 scripts/package-appimage.sh "${{ matrix.target }}"
       - name: Smoke test in ubuntu:22.04
-        run: scripts/appimage-smoke.sh dist/${{ matrix.target }}/OpenRB-338-*-${{ matrix.arch }}.AppImage
+        run: scripts/appimage-smoke.sh dist/${{ matrix.target }}/OpenRB-338x-*-${{ matrix.arch }}.AppImage
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: appimage-${{ matrix.arch }}
-          path: dist/${{ matrix.target }}/OpenRB-338-*.AppImage
+          path: dist/${{ matrix.target }}/OpenRB-338x-*.AppImage
           if-no-files-found: error
 
   release:
@@ -268,5 +268,5 @@ jobs:
             echo "replacing the draft $id of $TAG"
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
           done <<<"$ids"
-          gh release create "$TAG" --draft --verify-tag --title "OpenRB-338 ${TAG#v}" \
+          gh release create "$TAG" --draft --verify-tag --title "OpenRB-338x ${TAG#v}" \
             --notes-file release-notes.md release-in/*

@@ -56,5 +56,5 @@ echo
 echo "built:   ${done_[*]:-none}"
 for s in "${skipped[@]:-}"; do [ -z "$s" ] || echo "skipped: $s"; done
 echo "failed:  ${failed[*]:-none}"
-ls -l "$root"/dist/*/OpenRB-338-*.tar.gz "$root"/dist/*/OpenRB-338-*.zip 2>/dev/null
+ls -l "$root"/dist/*/OpenRB-338x-*.tar.gz "$root"/dist/*/OpenRB-338x-*.zip 2>/dev/null
 [ ${#failed[@]} -eq 0 ]

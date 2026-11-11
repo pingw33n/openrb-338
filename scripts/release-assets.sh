@@ -6,12 +6,12 @@
 # DIR holds the downloaded artifacts of release.yml, flat. The 12 files that a release has
 # must all be there, and nothing else (a missing package fails the release instead of
 # shipping without it):
-#   OpenRB-338-<version>-<target>.tar.gz   x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu,
+#   OpenRB-338x-<version>-<target>.tar.gz   x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu,
 #                                          x86_64-apple-darwin, aarch64-apple-darwin
-#   OpenRB-338-<version>-<target>.zip      x86_64-pc-windows-msvc, aarch64-pc-windows-msvc
-#   OpenRB-338-<version>-<target>.dmg     x86_64-apple-darwin, aarch64-apple-darwin
-#   OpenRB-338-<version>-<x64|arm64>-setup.exe
-#   OpenRB-338-<version>-<x86_64|aarch64>.AppImage
+#   OpenRB-338x-<version>-<target>.zip      x86_64-pc-windows-msvc, aarch64-pc-windows-msvc
+#   OpenRB-338x-<version>-<target>.dmg     x86_64-apple-darwin, aarch64-apple-darwin
+#   OpenRB-338x-<version>-<x64|arm64>-setup.exe
+#   OpenRB-338x-<version>-<x86_64|aarch64>.AppImage
 # SHA256SUMS.txt lists them by name, sorted, in the format of `sha256sum -c`.
 set -euo pipefail
 
@@ -22,7 +22,7 @@ tag=${2:?usage: scripts/release-assets.sh DIR TAG}
     exit 1
 }
 version=${tag#v}
-p=OpenRB-338-$version
+p=OpenRB-338x-$version
 
 expected=(
     "$p-x86_64-unknown-linux-gnu.tar.gz"

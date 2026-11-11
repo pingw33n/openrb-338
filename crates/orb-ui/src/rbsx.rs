@@ -28,7 +28,7 @@ use crate::scale::{KEYS, SCALES, ScaleKeys};
 /// The chunk's tag.
 pub const TAG: [u8; 4] = *b"OGEN";
 /// The first line of the chunk's body: the format and its version.
-const HEADER: &str = "OpenRB-338 GENERATE 1";
+const HEADER: &str = "OpenRB-338x GENERATE 1";
 /// The file extension of a song with the GENERATE settings.
 pub const EXTENSION: &str = "rbsx";
 
@@ -97,7 +97,7 @@ pub fn decode(body: &[u8]) -> Option<GenState> {
     let text = std::str::from_utf8(body).ok()?;
     let mut lines = text.lines();
     let header = lines.next()?.trim();
-    let version: u32 = header.strip_prefix("OpenRB-338 GENERATE ")?.parse().ok()?;
+    let version: u32 = header.strip_prefix("OpenRB-338x GENERATE ")?.parse().ok()?;
     if version < 1 {
         return None;
     }
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(body.len() % 2, 0, "an even chunk");
         assert_eq!(decode(&body), Some(st));
         let text = String::from_utf8(body).unwrap();
-        assert!(text.starts_with("OpenRB-338 GENERATE 1\n"));
+        assert!(text.starts_with("OpenRB-338x GENERATE 1\n"));
         assert!(text.contains("baze1.scale=IONIAN\n"));
         assert!(text.contains("baze1.random=ACCENT,SLIDE,NOTE\n"));
         assert!(text.contains("baze1.move=+1\n"));
@@ -323,7 +323,7 @@ mod tests {
     fn decoding_is_lenient_but_keeps_the_rules() {
         // unknown names are skipped, MOVE keeps one button, a BAZE 2 that does not fit BAZE 1
         // is left out, and something else than this format is no state
-        let body = b"OpenRB-338 GENERATE 2\nfuture.thing=7\nbaze1.scale=IONIAN\nbaze1.key=C\n\
+        let body = b"OpenRB-338x GENERATE 2\nfuture.thing=7\nbaze1.scale=IONIAN\nbaze1.key=C\n\
                      baze1.move=-2,+2\nbaze2.scale=BLUES?\nbaze2.key=D\n\
                      baze2.scale=HARM MINOR\n";
         let st = decode(body).unwrap();

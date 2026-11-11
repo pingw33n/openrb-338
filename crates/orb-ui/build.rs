@@ -132,13 +132,13 @@ fn embed_windows_resources(manifest: &Path, version: &str) {
          BEGIN\n\
          BLOCK \"040904B0\"\n\
          BEGIN\n\
-         VALUE \"CompanyName\", \"OpenRB-338\\0\"\n\
-         VALUE \"FileDescription\", \"OpenRB-338\\0\"\n\
+         VALUE \"CompanyName\", \"OpenRB-338x\\0\"\n\
+         VALUE \"FileDescription\", \"OpenRB-338x\\0\"\n\
          VALUE \"FileVersion\", \"{version}\\0\"\n\
-         VALUE \"InternalName\", \"OpenRB-338\\0\"\n\
+         VALUE \"InternalName\", \"OpenRB-338x\\0\"\n\
          VALUE \"LegalCopyright\", \"GPL-3.0-only\\0\"\n\
-         VALUE \"OriginalFilename\", \"OpenRB-338.exe\\0\"\n\
-         VALUE \"ProductName\", \"OpenRB-338\\0\"\n\
+         VALUE \"OriginalFilename\", \"OpenRB-338x.exe\\0\"\n\
+         VALUE \"ProductName\", \"OpenRB-338x\\0\"\n\
          VALUE \"ProductVersion\", \"{version}\\0\"\n\
          END\n\
          END\n\

@@ -1,24 +1,24 @@
-; The Windows installer of OpenRB-338 (task-111). Built by scripts/package-installer.sh, which
+; The Windows installer of OpenRB-338x (task-111). Built by scripts/package-installer.sh, which
 ; passes the defines below; docs/building.md ("The Windows installer") describes it.
 ;
 ;   VERSION   YYYY.MMDD.HHMM, the build time (scripts/version.sh)
 ;   ARCH      x64 or arm64 (names the file, the title and the registry entry; the binaries
 ;             are those of the target the script was given)
-;   BINDIR    the folder with OpenRB-338.exe and orb.exe (dist/<target>/bin)
+;   BINDIR    the folder with OpenRB-338x.exe and orb.exe (dist/<target>/bin)
 ;   STAGEDIR  the folder with LICENSE.txt and README.txt (CRLF)
 ;   PATHPS1   scripts/installer/path.ps1
 ;   ICON      assets/app_icon.ico (the icon of the installer and the uninstaller)
 ;   OUTFILE   the installer to write
 ;
 ; Per-user install (no administrator rights, no UAC prompt): the files go to
-; %LOCALAPPDATA%\Programs\OpenRB-338, the shortcuts to the user's Start menu and desktop, the
+; %LOCALAPPDATA%\Programs\OpenRB-338x, the shortcuts to the user's Start menu and desktop, the
 ; uninstall entry to HKCU, and the optional PATH change to the user's PATH. Why: the program is
 ; two executables with no service, driver or shared file; an unsigned installer that also asks
 ; for administrator rights is a second warning for nothing; and a per-user PATH needs no rights
 ; either. /D=DIR installs somewhere else, /S runs silently.
 ;
 ; Silent options (the checkboxes, for /S): /STARTMENU=0|1 (default 1), /DESKTOP=0|1 (default 0),
-; /PATH=0|1 (default 0). Example:  setup.exe /S /PATH=1 /D=C:\Tools\OpenRB-338
+; /PATH=0|1 (default 0). Example:  setup.exe /S /PATH=1 /D=C:\Tools\OpenRB-338x
 
 Unicode true
 SetCompressor /SOLID lzma
@@ -29,7 +29,7 @@ ManifestDPIAware true
   !error "VERSION, ARCH, BINDIR, STAGEDIR, PATHPS1, ICON and OUTFILE must be defined (-D)"
 !endif
 
-!define NAME "OpenRB-338"
+!define NAME "OpenRB-338x"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
 !define APP_KEY "Software\${NAME}"
 
@@ -80,7 +80,7 @@ VIAddVersionKey "LegalCopyright" "GPL-3.0-only"
 
 ; ---------------------------------------------------------------------------------------------
 
-; A running OpenRB-338.exe or orb.exe cannot be overwritten or deleted. Opening the file for
+; A running OpenRB-338x.exe or orb.exe cannot be overwritten or deleted. Opening the file for
 ; writing fails while a program runs from it (a sharing violation), so that is the check; it
 ; changes nothing. EnsureClosed asks the user to close the program (Retry); under /S, or on
 ; Cancel, it sets the exit code 5 and aborts before anything is changed.
