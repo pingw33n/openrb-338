@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! --demo  --size WxH  --ppp S  --browse open|save|export|mod  --about  --info
-//! --screenshot OUT.png  --play
+//! --screenshot OUT.png  --play  --generate 1|2
 //! ```
 //!
 //! `-h` is `--help`; an argument `-psn_...` (Finder on old macOS) is ignored; a bad option prints
@@ -64,6 +64,8 @@ struct Args {
     info: bool,
     /// `--play`: press Play once the song is open (CPU measurements, task-153).
     play: bool,
+    /// `--generate 1|2`: start with that bass synth's GENERATE menu open (screenshots).
+    generate: Option<usize>,
     size: [f32; 2],
     sized: bool,
     ppp: Option<f32>,
@@ -100,6 +102,7 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
         about: false,
         info: false,
         play: false,
+        generate: None,
         size: [PANEL_W, PANEL_H],
         sized: false,
         ppp: None,
@@ -116,6 +119,13 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, Exit> {
             "--about" => r.about = true,
             "--info" => r.info = true,
             "--play" => r.play = true,
+            "--generate" => {
+                r.generate = Some(match args.next().as_deref() {
+                    Some("1") => 0,
+                    Some("2") => 1,
+                    _ => return Err(Exit::Bad),
+                })
+            }
             "--debug-panic" => r.debug_panic = Some(DebugPanic::Start),
             "--debug-panic-window" => r.debug_panic = Some(DebugPanic::Window),
             "--debug-panic-thread" => r.debug_panic = Some(DebugPanic::Thread),
@@ -210,6 +220,7 @@ fn main() -> eframe::Result {
         about,
         info,
         play,
+        generate,
         size,
         sized,
         ppp,
@@ -334,6 +345,9 @@ fn main() -> eframe::Result {
             }
             if play {
                 app.panel.press("transport.play", 0.0);
+            }
+            if let Some(k) = generate {
+                app.toggle_generate(k);
             }
             Ok(Box::new(app))
         }),

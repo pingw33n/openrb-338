@@ -21,6 +21,7 @@ use crate::art::{self, KnobDesign};
 use crate::behavior::{self, Mods};
 use crate::browser::{Browser, Mode, Poll};
 use crate::document::Document;
+use crate::generate;
 use crate::keys::{self, Action, KeyMode};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
@@ -173,6 +174,8 @@ pub struct App {
     /// `info_serial`; `App::about_ui`).
     pub(crate) about_open: bool,
     pub(crate) about_serial: u32,
+    /// The bass synth (0 or 1) whose GENERATE menu is open, if any (`generate.rs`).
+    pub(crate) generate_open: Option<usize>,
     /// Whether the logo plays its startup animation (task-114): the panel once, from the first
     /// frame it is drawn, and the About window at each open. Off by default, so the headless
     /// tests and `--screenshot` see the final state; `enable_logo_anim` turns it on.
@@ -198,7 +201,7 @@ pub struct App {
     /// The window title last sent (`App::update_title`).
     pub title: String,
     holds: Vec<Hold>,
-    ctls: Vec<Ctl>,
+    pub(crate) ctls: Vec<Ctl>,
     shot: Option<Shot>,
     /// `ORB_UI_FRAME_STATS=1`: the frame rate and cost, printed (`FrameStats`).
     pub frame_stats: Option<FrameStats>,
@@ -236,6 +239,7 @@ impl App {
             info_serial: 0,
             about_open: false,
             about_serial: 0,
+            generate_open: None,
             logo_anim: false,
             logo_start: None,
             about_start: None,
@@ -658,6 +662,7 @@ impl App {
         self.ctls = ctls;
         self.drum_strips(ui, &view);
         self.instrument_selection(ui, &view);
+        self.generate_ui(ui, &view);
 
         // Send what was done, take what the engine did (the panel follows playback).
         self.note_edits();
@@ -839,6 +844,9 @@ impl App {
                     "repeat" | "wind" => self.repeat(ui, c, &r),
                     "switch" | "toggle" | "radio" | "trigger" | "grid" => {
                         if self.first_press(ui, c, &r) {
+                            if let Some(k) = generate::synth_of(&c.id) {
+                                self.toggle_generate(k);
+                            }
                             self.panel.press(&c.id, now);
                         }
                     }
