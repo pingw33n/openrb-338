@@ -70,7 +70,8 @@ pub fn backgrounds() -> Vec<(&'static str, f32, f32)> {
         v.push(("bg_pattern", 16.0, y));
         v.push((
             match r {
-                0 | 1 => "bg_tb303",
+                0 => "bg_tb303_1",
+                1 => "bg_tb303_2",
                 2 => "bg_tr808",
                 _ => "bg_tr909",
             },

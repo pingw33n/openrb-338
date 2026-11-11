@@ -1165,7 +1165,7 @@ fn part_size(name: &str) -> (f32, f32) {
         "bg_transport" => (592.0, 50.0),
         logo_anim::LOGO_PART => (logo_anim::LOGO_W, logo_anim::LOGO_H),
         "bg_pattern" | "bg_mixer" => (70.0, 115.0),
-        "bg_tb303" | "bg_tr808" | "bg_tr909" => (366.0, 115.0),
+        "bg_tb303_1" | "bg_tb303_2" | "bg_tr808" | "bg_tr909" => (366.0, 115.0),
         "bg_master" => (82.0, 98.0),
         "bg_pcf" => (82.0, 111.0),
         "bg_delay" | "bg_comp" => (82.0, 93.0),

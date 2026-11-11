@@ -67,7 +67,7 @@ Place each at its section origin (panel pixels).
 | `logo_open`, `logo_rb338`, `logo_line_0` .. `logo_line_3`, `logo_sub` | 134 x 48 | (474, 1) | the pieces of `logo` |
 | `bg_pattern` | 70 x 115 | (16, 50 + 115 r) | pattern section of row r = 0..3 |
 | `focus_off`, `focus_on` | 4 x 115 | (86, 50 + 115 r) | the row's focus bar (lit orange) |
-| `bg_tb303` | 366 x 115 | (90, 50) and (90, 165) | the two bass synths |
+| `bg_tb303_1`, `bg_tb303_2` | 366 x 115 | (90, 50) and (90, 165) | the two bass synths (titled "BAZE 1" and "BAZE 2") |
 | `bg_tr808` | 366 x 115 | (90, 280) | drum machine A |
 | `bg_tr909` | 366 x 115 | (90, 395) | drum machine B |
 | `bg_mixer` | 70 x 115 | (456, 50 + 115 c) | mixer channel c = 0..3 |

@@ -258,7 +258,12 @@ fn pattern(b: &mut Builder, r: usize) {
 
 fn tb303(b: &mut Builder, r: usize) {
     let oy = 50.0 + 115.0 * r as f32;
-    b.section(&format!("tb303_{}", r + 1), "bg_tb303", 90.0, oy);
+    b.section(
+        &format!("tb303_{}", r + 1),
+        &format!("bg_tb303_{}", r + 1),
+        90.0,
+        oy,
+    );
     // The waveform switch carries the saw and the square on its frame, under the label.
     b.part("wave", "hswitch", "switch_wave_0", 15.0, 20.0);
     let vals = [0.5, 0.35, 0.6, 0.45, 0.4, 0.55];

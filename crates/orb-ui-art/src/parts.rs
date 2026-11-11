@@ -997,11 +997,20 @@ pub const KNOB_X0_303: f32 = 95.0;
 pub const LEFT_X_303: f32 = 29.0;
 
 fn tb303_bg(out: &mut Vec<Part>) {
-    out.push(Part::new("bg_tb303", 366.0, 115.0, |s| {
+    // One background per bass synth: the title above the waveform switch names it.
+    for (name, title) in [("bg_tb303_1", "BAZE 1"), ("bg_tb303_2", "BAZE 2")] {
+        tb303_bg_one(out, name, title);
+    }
+}
+
+fn tb303_bg_one(out: &mut Vec<Part>, name: &'static str, title: &'static str) {
+    out.push(Part::new(name, 366.0, 115.0, |s| {
         face(s, 366.0, 115.0, pal::PAPER);
         let ink = pal::BLACK;
-        // The waveform switch (40 x 14 at (15, 20)) is labeled like a knob.
-        label(s, 35.0, 5.5, 3.6, ink, "WAVEFORM");
+        // The synth's title on top, then the waveform switch (40 x 14 at (15, 20)) labeled
+        // just above it.
+        label(s, 35.0, 5.5, 3.6, ink, title);
+        label(s, 35.0, 13.0, 3.6, ink, "WAVEFORM");
         for (k, name) in ["TUNE", "CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT"]
             .into_iter()
             .enumerate()
