@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use crate::parts::{
-    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOB_X0_303, KNOBS, KNOBS_909, LEFT_X_303, LOGO_X, LOGO_Y,
-    MOD_VIEW_808, STEPS_Y_909, WHITE_303, column_909, knob_y_909,
+    EDIT_303, FLAGS_303, GENERATE_X_303, KNOB_DX_303, KNOB_SWEEP, KNOB_X0_303, KNOBS, KNOBS_909,
+    LEFT_X_303, LOGO_X, LOGO_Y, MOD_VIEW_808, STEPS_Y_909, WHITE_303, column_909, knob_y_909,
 };
 use crate::svg::{Part, Svg, arc_path, n, pal};
 
@@ -258,7 +258,12 @@ fn pattern(b: &mut Builder, r: usize) {
 
 fn tb303(b: &mut Builder, r: usize) {
     let oy = 50.0 + 115.0 * r as f32;
-    b.section(&format!("tb303_{}", r + 1), "bg_tb303", 90.0, oy);
+    b.section(
+        &format!("tb303_{}", r + 1),
+        &format!("bg_tb303_{}", r + 1),
+        90.0,
+        oy,
+    );
     // The waveform switch carries the saw and the square on its frame, under the label.
     b.part("wave", "hswitch", "switch_wave_0", 15.0, 20.0);
     let vals = [0.5, 0.35, 0.6, 0.45, 0.4, 0.55];
@@ -266,8 +271,16 @@ fn tb303(b: &mut Builder, r: usize) {
         .into_iter()
         .enumerate()
     {
-        b.knob(name, KNOB_303, KNOB_X0_303 + 40.0 * k as f32, 12.0, vals[k]);
+        b.knob(name, KNOB_303, KNOB_X0_303 + KNOB_DX_303 * k as f32, 12.0, vals[k]);
     }
+    // GENERATE: a pill in the slot after the knobs, level with the knobs' centers (y 27).
+    b.part(
+        "generate",
+        "trigger",
+        "btn_pill_22x10_rest",
+        GENERATE_X_303 - 11.0,
+        22.0,
+    );
     let (ex, ey) = EDIT_303;
     b.display("edit_step", ex, ey, 19.0, 2, " 1");
     b.part("step", "trigger", "arrow303_inc_rest", ex + 20.0, ey - 1.0);

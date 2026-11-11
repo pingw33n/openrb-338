@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x86_64|aarch64>.AppImage, the Linux package of
-# OpenRB-338 and orb (task-112; the version is the UTC build time, scripts/version.sh).
+# Builds dist/<target>/OpenRB-338x-<YYYY.MMDD.HHMM>-<x86_64|aarch64>.AppImage, the Linux package of
+# OpenRB-338x and orb (task-112; the version is the UTC build time, scripts/version.sh).
 #
 #   scripts/package-appimage.sh x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu
 #
@@ -39,7 +39,7 @@ version=$("$root/scripts/version.sh")
 
 [ -n "${SKIP_BUILD:-}" ] || "$root/scripts/build.sh" "$target"
 bin=$dist/$target/bin
-for f in OpenRB-338 orb; do
+for f in OpenRB-338x orb; do
     [ -f "$bin/$f" ] || { echo "missing $bin/$f (run scripts/build.sh $target)" >&2; exit 1; }
 done
 
@@ -64,15 +64,15 @@ fi
 # The AppDir. The two programs and their metadata go in; appimage-pack.sh adds the three X11
 # keyboard libraries on the Linux side (task-166). Nothing else is bundled (the host provides
 # glibc, libasound, X11 or Wayland and the GL or Vulkan driver; docs/building.md).
-appdir=$dist/$target/OpenRB-338.AppDir
+appdir=$dist/$target/OpenRB-338x.AppDir
 rm -rf "$appdir"
-mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" "$appdir/usr/share/doc/OpenRB-338"
-cp "$bin/OpenRB-338" "$bin/orb" "$appdir/usr/bin/"
-chmod 755 "$appdir/usr/bin/OpenRB-338" "$appdir/usr/bin/orb"
+mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" "$appdir/usr/share/doc/OpenRB-338x"
+cp "$bin/OpenRB-338x" "$bin/orb" "$appdir/usr/bin/"
+chmod 755 "$appdir/usr/bin/OpenRB-338x" "$appdir/usr/bin/orb"
 cp "$root/LICENSE" "$appdir/LICENSE"
-cp "$root/LICENSE" "$appdir/usr/share/doc/OpenRB-338/LICENSE"
+cp "$root/LICENSE" "$appdir/usr/share/doc/OpenRB-338x/LICENSE"
 
-# AppRun: OpenRB-338 by default; the bundled CLI as `orb`, when the AppImage is run through a
+# AppRun: OpenRB-338x by default; the bundled CLI as `orb`, when the AppImage is run through a
 # symlink named orb (the runtime puts the name in ARGV0) or with --orb as the first argument.
 cat > "$appdir/AppRun" <<'EOF'
 #!/bin/sh
@@ -85,26 +85,26 @@ if [ "${1:-}" = --orb ]; then
     shift
     exec "$here/usr/bin/orb" "$@"
 fi
-exec "$here/usr/bin/OpenRB-338" "$@"
+exec "$here/usr/bin/OpenRB-338x" "$@"
 EOF
 chmod 755 "$appdir/AppRun"
 
 # The desktop entry: the file name and StartupWMClass are the app id the window sets
-# (with_app_id("OpenRB-338") in orb-ui), so Wayland and X11 shells match the window to it.
-cat > "$appdir/usr/share/applications/OpenRB-338.desktop" <<EOF
+# (with_app_id("OpenRB-338x") in orb-ui), so Wayland and X11 shells match the window to it.
+cat > "$appdir/usr/share/applications/OpenRB-338x.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=OpenRB-338
+Name=OpenRB-338x
 GenericName=Bass line and drum machine
 Comment=A reimplementation of the audio engine of Propellerhead ReBirth RB-338
-Exec=OpenRB-338 %f
-Icon=OpenRB-338
+Exec=OpenRB-338x %f
+Icon=OpenRB-338x
 Terminal=false
 Categories=AudioVideo;Audio;Music;
-StartupWMClass=OpenRB-338
+StartupWMClass=OpenRB-338x
 X-AppImage-Version=$version
 EOF
-cp "$appdir/usr/share/applications/OpenRB-338.desktop" "$appdir/OpenRB-338.desktop"
+cp "$appdir/usr/share/applications/OpenRB-338x.desktop" "$appdir/OpenRB-338x.desktop"
 
 # The icon: the committed app_icon part (assets/ui/app_icon.svg) rendered with resvg by ui-art,
 # at 16 to 512 px (the 64 px one is the 32 px size at 2x).
@@ -117,9 +117,9 @@ for pair in 16:icon_16x16 32:icon_32x32 64:icon_32x32@2x 128:icon_128x128 256:ic
     size=${pair%%:*}
     dir=$appdir/usr/share/icons/hicolor/${size}x${size}/apps
     mkdir -p "$dir"
-    cp "$icons/${pair#*:}.png" "$dir/OpenRB-338.png"
+    cp "$icons/${pair#*:}.png" "$dir/OpenRB-338x.png"
 done
-cp "$icons/icon_256x256.png" "$appdir/OpenRB-338.png"
+cp "$icons/icon_256x256.png" "$appdir/OpenRB-338x.png"
 cp "$icons/icon_256x256.png" "$appdir/.DirIcon"
 
 # the squashfs stores the file times: give every file the build time
@@ -127,7 +127,7 @@ stamp=$(TZ=UTC date -r "$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S 2>/dev/null \
     || TZ=UTC date -d "@$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S)
 find "$appdir" -exec touch -h -t "$stamp" {} +
 
-out=$dist/$target/OpenRB-338-$version-$arch.AppImage
+out=$dist/$target/OpenRB-338x-$version-$arch.AppImage
 rm -f "$out"
 
 host_arch=

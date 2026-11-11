@@ -17,6 +17,9 @@ pub struct Opened {
     /// The facts of a ReBirth 1.x song, which has no `rbs` song of its own (`source` is a
     /// stand-in): File > Info shows them (task-123).
     pub facts_1x: Option<SongFacts>,
+    /// The GENERATE menu's settings an `.rbsx` song kept (its `OGEN` chunk, taken out of
+    /// `source`; `rbsx.rs`); None for a song without them.
+    pub generate: Option<crate::rbsx::GenState>,
 }
 
 /// Reads and converts an `.rbs` song, keeping the file's `rbs` song.
@@ -38,16 +41,20 @@ pub fn open_bytes(data: &[u8], label: &str) -> Result<Opened, String> {
             engine,
             source,
             facts_1x,
+            generate: None,
         });
     }
-    let source =
+    let mut source =
         rbs::Song::parse(data).map_err(|e| format!("{label}: not a valid .rbs song: {e}"))?;
+    // the GENERATE settings of an .rbsx leave the song: only an .rbsx save writes them back
+    let generate = crate::rbsx::split(&mut source);
     let engine = orb_engine::load::convert(&source)
         .map_err(|e| format!("{label}: cannot load the song: {e:?}"))?;
     Ok(Opened {
         engine,
         source,
         facts_1x: None,
+        generate,
     })
 }
 

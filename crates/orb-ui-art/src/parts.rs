@@ -887,54 +887,65 @@ fn transport_bg(out: &mut Vec<Part>) {
 /// The size of the logo parts, and of the logo's click area (`layout::on_logo` of orb-ui).
 pub const LOGO_W: f32 = 134.0;
 pub const LOGO_H: f32 = 48.0;
-/// Where the logo sits on the panel (the transport section is at x = 16, the logo at 458 in it).
-pub const LOGO_X: f32 = 474.0;
+/// Where the logo sits on the panel (the transport section is at x = 16, the logo at 451 in it).
+/// This fork moved it 7 px left of the original's 474, so the wider wordmark OpenRB-338x ends
+/// about 10 px before the transport's right edge (608).
+pub const LOGO_X: f32 = 467.0;
 pub const LOGO_Y: f32 = 1.0;
 /// The pieces of the logo, each on the whole `LOGO_W` x `LOGO_H` canvas: every piece is placed
-/// at (0, 0) of the logo, so an animation only offsets or fades a piece.
-pub const LOGO_PIECES: [&str; 7] = [
-    "logo_open",
-    "logo_rb338",
+/// at (0, 0) of the logo, so an animation only offsets or fades a piece. In the order the
+/// startup animation shows them (logo_anim.rs of orb-ui): OpenRB-, 338, the four underline
+/// segments left to right, the x, the subtitle.
+pub const LOGO_PIECES: [&str; 8] = [
+    "logo_openrb",
+    "logo_338",
     "logo_line_0",
     "logo_line_1",
     "logo_line_2",
     "logo_line_3",
+    "logo_x",
     "logo_sub",
 ];
 
-/// Our own wordmark, `OPENRB-338`: the whole, and its pieces (`LOGO_PIECES`) for task-114.
-/// The underline is four segments in the 808's step colors.
+/// The left edge of the wordmark, its underline and its subtitle in the logo part.
+pub const LOGO_TEXT_X: f32 = 5.0;
+/// The wordmark's cap height.
+pub const LOGO_CAP: f32 = 14.0;
+/// The space between the underline's four segments.
+const LOGO_LINE_GAP: f32 = 1.5;
+
+/// Where the wordmark's `x` starts in the logo part, and its center (the startup animation
+/// flashes it there).
+pub fn logo_x_pos() -> (f32, f32) {
+    let cap = LOGO_CAP;
+    let x_338 = LOGO_TEXT_X + font::text_width(cap, "OpenRB-") + font::gap(cap);
+    let x_x = x_338 + font::text_width(cap, "338") + font::gap(cap);
+    (x_x, x_x + font::text_width(cap, "x") / 2.0)
+}
+
+/// The wordmark of this fork, `OpenRB-338x`: the whole, and its pieces (`LOGO_PIECES`) for
+/// task-114. `OpenRB-` is INK, `338` ORANGE and the `x` WHITE. The underline is four segments
+/// in the 808's step colors, from the wordmark's left edge to the outer edge of the x's stroke.
 fn logo(out: &mut Vec<Part>) {
-    let cap = 14.0;
-    let x0 = 8.0;
-    // 'OPEN' and 'RB-' are one INK run in the whole word: each piece draws its glyphs of that
-    // run (`text_range`), so the pieces sit exactly where the whole put them.
-    let x_338 = x0 + font::text_width(cap, "OPENRB-") + font::gap(cap);
-    let run = |s: &mut Svg, from, to| {
-        font::text_range(
-            s,
-            x0,
-            17.0,
-            cap,
-            Anchor::Start,
-            pal::INK,
-            "OPENRB-",
-            from..to,
-        );
-    };
-    let open = |s: &mut Svg| run(s, 0, 4);
-    let rb338 = |s: &mut Svg| {
-        run(s, 4, 7);
-        text(s, x_338, 17.0, cap, Anchor::Start, pal::ORANGE, "338");
-    };
+    let cap = LOGO_CAP;
+    let x0 = LOGO_TEXT_X;
+    let x_338 = x0 + font::text_width(cap, "OpenRB-") + font::gap(cap);
+    let (x_x, _) = logo_x_pos();
+    // the x's round stroke ends half a stroke past its box: the underline goes there too
+    let word_w = x_x + font::text_width(cap, "x") + font::stroke(cap) / 2.0 - x0;
+    let seg_w = (word_w - 3.0 * LOGO_LINE_GAP) / 4.0;
+    let openrb = |s: &mut Svg| text(s, x0, 17.0, cap, Anchor::Start, pal::INK, "OpenRB-");
+    let n338 = |s: &mut Svg| text(s, x_338, 17.0, cap, Anchor::Start, pal::ORANGE, "338");
+    let x = |s: &mut Svg| text(s, x_x, 17.0, cap, Anchor::Start, pal::WHITE, "x");
     let line = |s: &mut Svg, i: usize| {
-        s.rect(8.0 + 29.9 * i as f32, 28.0, 28.4, 1.5, 0.75, STEP_COLORS[i]);
+        let x = x0 + (seg_w + LOGO_LINE_GAP) * i as f32;
+        s.rect(x, 28.0, seg_w, 1.5, 0.75, STEP_COLORS[i]);
     };
     let sub = |s: &mut Svg| {
         let y = 37.0;
         text(
             s,
-            8.0,
+            x0,
             y,
             3.4,
             Anchor::Start,
@@ -942,21 +953,24 @@ fn logo(out: &mut Vec<Part>) {
             "BASS LINE AND DRUM MACHINE",
         );
     };
+    // the whole is the pieces in `LOGO_PIECES` order
     out.push(Part::new("logo", LOGO_W, LOGO_H, |s| {
-        open(s);
-        rb338(s);
+        openrb(s);
+        n338(s);
         for i in 0..4 {
             line(s, i);
         }
+        x(s);
         sub(s);
     }));
-    out.push(Part::new("logo_open", LOGO_W, LOGO_H, open));
-    out.push(Part::new("logo_rb338", LOGO_W, LOGO_H, rb338));
+    out.push(Part::new("logo_openrb", LOGO_W, LOGO_H, openrb));
+    out.push(Part::new("logo_338", LOGO_W, LOGO_H, n338));
     for i in 0..4 {
         out.push(Part::new(format!("logo_line_{i}"), LOGO_W, LOGO_H, |s| {
             line(s, i)
         }));
     }
+    out.push(Part::new("logo_x", LOGO_W, LOGO_H, x));
     out.push(Part::new("logo_sub", LOGO_W, LOGO_H, sub));
 }
 
@@ -991,23 +1005,39 @@ pub const FLAGS_303: [f32; 5] = [250.5, 272.5, 294.5, 316.5, 338.5];
 /// The edit step display's left and top, in the flags block's top row (the display and its
 /// arrows are 31 px wide).
 pub const EDIT_303: (f32, f32) = (296.0, 50.0);
-/// The first knob's left edge: the six knobs, 40 px apart, are centered in the paper.
-pub const KNOB_X0_303: f32 = 95.0;
+/// The six knobs (30 wide) and the GENERATE pill (22 wide) are spread evenly between the
+/// waveform switch's right edge (55) and the section's right edge (366): one gap of about
+/// 13.5 px before, between and after them.
+/// The first knob's left edge, and the step from one knob to the next.
+pub const KNOB_X0_303: f32 = 68.5;
+pub const KNOB_DX_303: f32 = 43.5;
+/// The center x of the GENERATE pill and its label: one gap after the last knob.
+pub const GENERATE_X_303: f32 = KNOB_X0_303 + 5.0 * KNOB_DX_303 + 30.0 + 14.0 + 11.0;
 /// The center x of the pitch mode and clear block.
 pub const LEFT_X_303: f32 = 29.0;
 
 fn tb303_bg(out: &mut Vec<Part>) {
-    out.push(Part::new("bg_tb303", 366.0, 115.0, |s| {
+    // One background per bass synth: the title above the waveform switch names it.
+    for (name, title) in [("bg_tb303_1", "BAZE 1"), ("bg_tb303_2", "BAZE 2")] {
+        tb303_bg_one(out, name, title);
+    }
+}
+
+fn tb303_bg_one(out: &mut Vec<Part>, name: &'static str, title: &'static str) {
+    out.push(Part::new(name, 366.0, 115.0, |s| {
         face(s, 366.0, 115.0, pal::PAPER);
         let ink = pal::BLACK;
-        // The waveform switch (40 x 14 at (15, 20)) is labeled like a knob.
-        label(s, 35.0, 5.5, 3.6, ink, "WAVEFORM");
+        // The synth's title on top, then the waveform switch (40 x 14 at (15, 20)) labeled
+        // just above it.
+        label(s, 35.0, 5.5, 3.6, ink, title);
+        label(s, 35.0, 13.0, 3.6, ink, "WAVEFORM");
         for (k, name) in ["TUNE", "CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT"]
             .into_iter()
             .enumerate()
         {
-            label(s, KNOB_X0_303 + 15.0 + 40.0 * k as f32, 5.5, 3.6, ink, name);
+            label(s, KNOB_X0_303 + 15.0 + KNOB_DX_303 * k as f32, 5.5, 3.6, ink, name);
         }
+        label(s, GENERATE_X_303, 5.5, 3.6, ink, "GENERATE");
         // The key band: pitch mode and clear, the keys on gray, the flags.
         for (i, (x, y, w, h)) in BAND_303.into_iter().enumerate() {
             s.rect(x, y, w, h, 4.0, if i == 1 { "#7d8087" } else { pal::BLACK });

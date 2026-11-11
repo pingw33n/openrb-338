@@ -153,16 +153,21 @@ fn open_without_selection_is_an_error_shown_in_the_dialog() {
 #[test]
 fn save_asks_before_replacing_a_file() {
     let d = tree();
+    // (the fork's .rbsx: a name without an extension becomes an .rbsx, rbsx.rs)
+    fs::write(d.path().join("a.rbsx"), b"x").unwrap();
     let (mut b, mut s) = browser(Mode::SaveSong, d.path());
     let mut h = Harness::new();
     h.frame(&mut b, &mut s, vec![]);
-    b.set_name("a");
-    // The name gets the extension; "a.rbs" exists, so the dialog asks.
+    // A name with .rbs stays an .rbs.
+    b.set_name("a.rbs");
     assert_eq!(b.target().unwrap(), d.path().join("a.rbs"));
+    b.set_name("a");
+    // The name gets the extension; "a.rbsx" exists, so the dialog asks.
+    assert_eq!(b.target().unwrap(), d.path().join("a.rbsx"));
     assert_eq!(b.accept(&mut s), Poll::Open);
     assert_eq!(
         b.pending_overwrite(),
-        Some(d.path().join("a.rbs").as_path())
+        Some(d.path().join("a.rbsx").as_path())
     );
     // Esc answers no and keeps the dialog open.
     assert_eq!(h.key(&mut b, &mut s, Key::Escape), Poll::Open);
@@ -182,7 +187,7 @@ fn save_asks_before_replacing_a_file() {
     b.accept(&mut s);
     assert_eq!(
         h.key(&mut b, &mut s, Key::Y),
-        Poll::Chosen(d.path().join("a.rbs"))
+        Poll::Chosen(d.path().join("a.rbsx"))
     );
 }
 

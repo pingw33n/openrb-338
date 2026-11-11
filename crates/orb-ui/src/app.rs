@@ -21,6 +21,8 @@ use crate::art::{self, KnobDesign};
 use crate::behavior::{self, Mods};
 use crate::browser::{Browser, Mode, Poll};
 use crate::document::Document;
+use crate::generate;
+use crate::scale::ScaleKeys;
 use crate::keys::{self, Action, KeyMode};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
@@ -124,7 +126,7 @@ pub struct App {
     /// The folders of the file browser (task-046).
     pub settings: Settings,
     /// The open file browser, if any (`open_browser`).
-    browser: Option<Browser>,
+    pub(crate) browser: Option<Browser>,
     /// The open song: its file, its mod, whether it has unsaved changes (task-047).
     pub doc: Document,
     /// Whether a song has settled yet; until then the "previous kit" of the startup sound's
@@ -153,7 +155,7 @@ pub struct App {
     pub status: Option<String>,
     /// The Options menu's keyboard mode (Ctrl/Cmd+F / +G).
     pub key_mode: KeyMode,
-    /// Whether the window draws the menu bar (the window of OpenRB-338 does; the headless tests
+    /// Whether the window draws the menu bar (the window of OpenRB-338x does; the headless tests
     /// of the panel at 1:1 do not).
     pub menu: bool,
     pub(crate) prompt: Option<Then>,
@@ -172,7 +174,22 @@ pub struct App {
     /// Whether the Help > About window is open, and the number of its opens (its id, as
     /// `info_serial`; `App::about_ui`).
     pub(crate) about_open: bool,
+    /// Whether Save asks if an `.rbs` song with GENERATE settings is to become an `.rbsx`
+    /// (`rbsx.rs`).
+    pub(crate) format_prompt: bool,
     pub(crate) about_serial: u32,
+    /// The bass synth (0 or 1) whose GENERATE menu is open, if any, the menu's open list, and
+    /// the scale and key note chosen for each synth (`generate.rs`, `scale.rs`).
+    pub(crate) generate_open: Option<usize>,
+    pub(crate) generate_list: Option<generate::List>,
+    pub(crate) scale_keys: ScaleKeys,
+    /// The RANDOM, ALTER and MOVE rows (`generate.rs`, `random.rs`), indexed by row (`Op`)
+    /// then synth: the chosen buttons, the synth and row whose buttons are being chosen (its
+    /// name blinks), whether the last run changed something, and the random numbers.
+    pub(crate) op_sel: [[[bool; 5]; 2]; 3],
+    pub(crate) op_picking: Option<(usize, generate::Op)>,
+    pub(crate) op_done: [[bool; 2]; 3],
+    pub(crate) rng: crate::random::Rng,
     /// Whether the logo plays its startup animation (task-114): the panel once, from the first
     /// frame it is drawn, and the About window at each open. Off by default, so the headless
     /// tests and `--screenshot` see the final state; `enable_logo_anim` turns it on.
@@ -198,7 +215,7 @@ pub struct App {
     /// The window title last sent (`App::update_title`).
     pub title: String,
     holds: Vec<Hold>,
-    ctls: Vec<Ctl>,
+    pub(crate) ctls: Vec<Ctl>,
     shot: Option<Shot>,
     /// `ORB_UI_FRAME_STATS=1`: the frame rate and cost, printed (`FrameStats`).
     pub frame_stats: Option<FrameStats>,
@@ -235,7 +252,15 @@ impl App {
             info_open: false,
             info_serial: 0,
             about_open: false,
+            format_prompt: false,
             about_serial: 0,
+            generate_open: None,
+            generate_list: None,
+            scale_keys: ScaleKeys::default(),
+            op_sel: [[[false; 5]; 2]; 3],
+            op_picking: None,
+            op_done: [[false; 2]; 3],
+            rng: crate::random::Rng::from_time(),
             logo_anim: false,
             logo_start: None,
             about_start: None,
@@ -320,7 +345,10 @@ impl App {
             Color32::from_rgb(0xb8, 0xd8, 0xc0),
         );
         // Clicks in the browser, the prompt or the box over it do not dismiss it.
-        let blocked = self.browser.is_some() || self.prompt.is_some() || self.error_open();
+        let blocked = self.browser.is_some()
+            || self.prompt.is_some()
+            || self.format_prompt
+            || self.error_open();
         if !blocked && self.export.is_none() && ui.input(|i| i.pointer.any_click()) {
             self.status = None;
         }
@@ -443,7 +471,7 @@ fn capped_hint(pixels: Vec2, max: usize) -> Option<egui::load::SizeHint> {
 
 fn missing_part(name: &str) {
     if art::report_missing(name) {
-        eprintln!("OpenRB-338: no art part {name}; drawn as nothing");
+        eprintln!("OpenRB-338x: no art part {name}; drawn as nothing");
     }
 }
 
@@ -600,7 +628,11 @@ impl App {
 
         // While the file browser, the prompt or the error box is open the panel takes no keys
         // and no clicks of its own.
-        if self.browser.is_none() && self.prompt.is_none() && !self.error_open() {
+        if self.browser.is_none()
+            && self.prompt.is_none()
+            && !self.format_prompt
+            && !self.error_open()
+        {
             if shortcuts::consume(ui, &shortcuts::NEW) {
                 self.new_song();
             } else if shortcuts::consume(ui, &shortcuts::OPEN) {
@@ -658,6 +690,7 @@ impl App {
         self.ctls = ctls;
         self.drum_strips(ui, &view);
         self.instrument_selection(ui, &view);
+        self.generate_ui(ui, &view);
 
         // Send what was done, take what the engine did (the panel follows playback).
         self.note_edits();
@@ -688,6 +721,7 @@ impl App {
         }
         self.browse(&ctx);
         self.prompt_ui(&ctx);
+        self.format_prompt_ui(&ctx);
         self.info_ui(&ctx);
         self.about_ui(&ctx);
         self.key_help_ui(&ctx);
@@ -839,6 +873,9 @@ impl App {
                     "repeat" | "wind" => self.repeat(ui, c, &r),
                     "switch" | "toggle" | "radio" | "trigger" | "grid" => {
                         if self.first_press(ui, c, &r) {
+                            if let Some(k) = generate::synth_of(&c.id) {
+                                self.toggle_generate(k);
+                            }
                             self.panel.press(&c.id, now);
                         }
                     }
@@ -848,6 +885,10 @@ impl App {
                         self.panel.set_switch(&c.id, v);
                     }
                     _ => {}
+                }
+                // the 303's keys of the chosen scale glow under the key (generate.rs)
+                if generate::glows(&self.scale_keys, &c.id) {
+                    generate::paint_glow(ui, rect, view.scale);
                 }
                 let name = self.panel.part_name(c, down, now);
                 paint_part(ui, &name, rect);
@@ -1165,7 +1206,7 @@ fn part_size(name: &str) -> (f32, f32) {
         "bg_transport" => (592.0, 50.0),
         logo_anim::LOGO_PART => (logo_anim::LOGO_W, logo_anim::LOGO_H),
         "bg_pattern" | "bg_mixer" => (70.0, 115.0),
-        "bg_tb303" | "bg_tr808" | "bg_tr909" => (366.0, 115.0),
+        "bg_tb303_1" | "bg_tb303_2" | "bg_tr808" | "bg_tr909" => (366.0, 115.0),
         "bg_master" => (82.0, 98.0),
         "bg_pcf" => (82.0, 111.0),
         "bg_delay" | "bg_comp" => (82.0, 93.0),

@@ -23,6 +23,32 @@ fn gap_units(cap: f32) -> f32 {
 
 /// (width, path) of a glyph on a 6-unit-high grid, or None.
 fn glyph(c: char) -> Option<(f32, &'static str)> {
+    // The few small letters the wordmark OpenRB-338x needs: x-height 4 (y 2 to 6), the p's
+    // stem down to 7.2. Any other small letter is drawn as its capital.
+    match c {
+        'e' => {
+            return Some((
+                3.6,
+                "M0.1 4 H3.5 C3.5 2.8 2.8 2 1.8 2 C0.8 2 0.1 2.8 0.1 4 C0.1 5.2 0.8 6 1.8 6 \
+                 C2.6 6 3.1 5.7 3.4 5.2",
+            ));
+        }
+        'n' => {
+            return Some((
+                3.4,
+                "M0 2 V6 M0 3.5 C0.3 2.5 1 2 1.8 2 C2.8 2 3.4 2.6 3.4 3.6 V6",
+            ));
+        }
+        'p' => {
+            return Some((
+                3.6,
+                "M0 2 V7.2 M0 3.2 C0.4 2.4 1.1 2 1.8 2 C2.9 2 3.6 2.9 3.6 4 C3.6 5.1 2.9 6 1.8 6 \
+                 C1.1 6 0.4 5.6 0 4.8",
+            ));
+        }
+        'x' => return Some((3.4, "M0 2 L3.4 6 M3.4 2 L0 6")),
+        _ => {}
+    }
     Some(match c.to_ascii_uppercase() {
         'A' => (4.0, "M0 6 L2 0 L4 6 M0.8 4 L3.2 4"),
         'B' => (
@@ -125,6 +151,11 @@ fn units(cap: f32, text: &str) -> f32 {
         w += gw;
     }
     w
+}
+
+/// The stroke width in pixels at cap height `cap` (half of it reaches past a glyph's box).
+pub fn stroke(cap: f32) -> f32 {
+    stroke_units(cap) * cap / 6.0
 }
 
 /// The gap between two glyphs in pixels at cap height `cap`.

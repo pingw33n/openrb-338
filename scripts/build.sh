@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the dist-profile binaries of orb (the CLI) and OpenRB-338 (orb-ui) for one target triple and
+# Builds the dist-profile binaries of orb (the CLI) and OpenRB-338x (orb-ui) for one target triple and
 # copies them to dist/<target>/bin/ (task-108). scripts/package.sh packs them.
 #
 #   scripts/build.sh TARGET
@@ -41,6 +41,13 @@ esac
 # are in target/<target>/dist/.
 profile=dist
 cargo_args=(--profile "$profile" --locked --target "$target" -p orb-cli -p orb-ui)
+# This fork: the packaged binaries name no folder of the machine that built them. The compiler
+# keeps source paths for panic messages, and the home folder in them holds the user's name
+# (/Users/NAME/.cargo/registry/...): it is written as "~" instead. Encoded, so a home folder
+# with a space still works; a RUSTFLAGS of one's own is left alone.
+if [ -z "${RUSTFLAGS:-}${CARGO_ENCODED_RUSTFLAGS:-}" ] && [ -n "${HOME:-}" ]; then
+    export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$HOME=~"
+fi
 target_dir=${CARGO_TARGET_DIR:-$root/target}
 
 build_docker() {
@@ -70,7 +77,7 @@ build_docker() {
         "$image" scripts/build.sh "$target"
     # the success line is only true when the files are on the host
     local b
-    for b in orb OpenRB-338; do
+    for b in orb OpenRB-338x; do
         [ -f "$bin_dir/$b" ] || {
             echo "docker build finished but $bin_dir/$b is missing" >&2
             exit 1
@@ -131,7 +138,7 @@ case $os in
 esac
 
 mkdir -p "$bin_dir"
-for b in orb OpenRB-338; do
+for b in orb OpenRB-338x; do
     cp "$target_dir/$target/$profile/$b$exe" "$bin_dir/$b$exe"
 done
 echo "built $target -> $bin_dir"

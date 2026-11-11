@@ -13,7 +13,7 @@ fn p(s: &str) -> PathBuf {
 #[test]
 fn the_settings_round_trip_through_toml() {
     let d = tempfile::tempdir().unwrap();
-    let file = d.path().join("OpenRB-338").join("ui.toml");
+    let file = d.path().join("OpenRB-338x").join("ui.toml");
     let mut s = Settings::load_from(&file);
     assert!(s.startup_sound);
     s.songs_dir = Some(p("/songs"));
@@ -206,9 +206,32 @@ fn orb_ui_config_names_the_settings_file() {
     unsafe { std::env::set_var("ORB_UI_CONFIG", "") };
     assert_ne!(orb_ui::settings::default_file(), Some(PathBuf::new()));
     unsafe { std::env::remove_var("ORB_UI_CONFIG") };
-    // Without the variable the file is OpenRB-338/ui.toml (there is none when no home is known).
+    // Without the variable the file is OpenRB-338x/ui.toml (there is none when no home is known).
     if let Some(default) = orb_ui::settings::default_file() {
         assert_eq!(default.file_name().unwrap(), "ui.toml");
-        assert_eq!(default.parent().unwrap().file_name().unwrap(), "OpenRB-338");
+        assert_eq!(default.parent().unwrap().file_name().unwrap(), "OpenRB-338x");
     }
+}
+
+/// The fork renamed the program OpenRB-338x: the settings of the old name carry over once.
+#[test]
+fn the_old_names_settings_carry_over_to_the_new_name_once() {
+    use orb_ui::settings::carry_over;
+    let base = tempfile::tempdir().unwrap();
+    let old = base.path().join("OpenRB-338").join("ui.toml");
+    let new = base.path().join("OpenRB-338x").join("ui.toml");
+    // no old file: nothing to carry
+    assert!(!carry_over(&new));
+    assert!(!new.exists());
+    std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+    std::fs::write(&old, "startup_sound = false\n").unwrap();
+    assert!(carry_over(&new));
+    assert_eq!(std::fs::read_to_string(&new).unwrap(), "startup_sound = false\n");
+    assert!(old.exists(), "the old file stays");
+    // once the new file exists it is never replaced
+    std::fs::write(&new, "startup_sound = true\n").unwrap();
+    assert!(!carry_over(&new));
+    assert_eq!(std::fs::read_to_string(&new).unwrap(), "startup_sound = true\n");
+    // a file elsewhere ($ORB_UI_CONFIG) is not touched
+    assert!(!carry_over(&base.path().join("mine.toml")));
 }

@@ -1,4 +1,4 @@
-//! The command line of `OpenRB-338` (task-137): the help shows only `[SONG]`, `--help` exits 0, a
+//! The command line of `OpenRB-338x` (task-137): the help shows only `[SONG]`, `--help` exits 0, a
 //! bad option exits 2; the positional song opens RBS 4.x and ReBirth 1.x songs and paths with
 //! spaces, and a bad path is an error (the one File > Open reports). The hidden options' parsing
 //! is tested in `src/main.rs`.
@@ -14,7 +14,7 @@ fn root() -> PathBuf {
 }
 
 fn run(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_OpenRB-338"))
+    Command::new(env!("CARGO_BIN_EXE_OpenRB-338x"))
         .args(args)
         .output()
         .unwrap()
@@ -26,7 +26,7 @@ fn help_shows_only_the_song_and_exits_0() {
         let o = run(&[flag]);
         assert_eq!(o.status.code(), Some(0), "{flag}");
         let out = String::from_utf8(o.stdout).unwrap();
-        assert!(out.contains("usage: OpenRB-338 [SONG]"), "{out}");
+        assert!(out.contains("usage: OpenRB-338x [SONG]"), "{out}");
         for hidden in [
             "--demo",
             "--size",
@@ -48,7 +48,7 @@ fn a_bad_option_exits_2_with_the_same_usage() {
         let o = run(args);
         assert_eq!(o.status.code(), Some(2), "{args:?}");
         let err = String::from_utf8(o.stderr).unwrap();
-        assert!(err.contains("usage: OpenRB-338 [SONG]"), "{err}");
+        assert!(err.contains("usage: OpenRB-338x [SONG]"), "{err}");
         assert!(!err.contains("--demo"), "{err}");
     }
 }

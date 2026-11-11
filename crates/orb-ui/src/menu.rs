@@ -483,6 +483,8 @@ impl App {
         // (0x425FAB for a 1.x song, 0x426400 for an RBS song): the old song was closed first
         // (the unsaved prompt is the close's), so this song is its mod's only user
         self.settle(path, opened.source, opened.facts_1x, mod_name, kit);
+        // the GENERATE menu as an .rbsx kept it; empty for any other song (rbsx.rs)
+        self.set_gen_state(opened.generate.unwrap_or_default());
     }
 
     /// Whether the current song's mod has a `Demo.rbs` (the Mods menu's "Demo Song"): never for
@@ -594,6 +596,8 @@ impl App {
     /// ([`App::new_now`]) both come here. Without a player there is nothing to load: the
     /// panel and the document are made new.
     fn fresh(&mut self) {
+        // a new song starts with an empty GENERATE menu (rbsx.rs)
+        self.set_gen_state(Default::default());
         if self.link.is_none() {
             self.panel = crate::model::Panel::new();
             self.settle(
@@ -668,9 +672,13 @@ impl App {
         ))
     }
 
-    /// Save: to the song's file, or Save As for a song that has none.
+    /// Save: to the song's file, or Save As for a song that has none. An `.rbs` file of a song
+    /// with GENERATE settings first asks whether to save it as an `.rbsx` (rbsx.rs).
     pub fn save(&mut self) {
         match self.doc.path.clone() {
+            Some(p) if !crate::rbsx::is_rbsx(&p) && !self.gen_state().is_empty() => {
+                self.format_prompt = true;
+            }
             Some(p) => self.save_to(&p),
             None => self.open_browser(Mode::SaveSong),
         }
@@ -683,8 +691,14 @@ impl App {
     }
 
     fn save_to_inner(&mut self, path: &Path) {
+        let generate = crate::rbsx::is_rbsx(path).then(|| self.gen_state());
         let result = self.song_for_save().and_then(|song| {
-            let bytes = song
+            // an .rbsx also keeps the GENERATE menu; the document's song stays without it
+            let file = match &generate {
+                Some(g) => crate::rbsx::attach(&song, g),
+                None => song.clone(),
+            };
+            let bytes = file
                 .write()
                 .map_err(|e| format!("cannot write the song: {e}"))?;
             session::write_file(path, &bytes)?;
@@ -1083,7 +1097,7 @@ impl App {
     /// The window's title: the song's name, marked when modified.
     pub fn update_title(&mut self, ctx: &Context) {
         let title = format!(
-            "OpenRB-338 - {}{}",
+            "OpenRB-338x - {}{}",
             self.doc.name(),
             if self.doc.modified { " *" } else { "" }
         );
@@ -1264,7 +1278,7 @@ impl App {
 /// The items of the Help menu, in order.
 const HELP_ITEMS: &[(&str, Cmd)] = &[
     ("Keyboard Shortcuts...", Cmd::KeyHelp),
-    ("About OpenRB-338...", Cmd::About),
+    ("About OpenRB-338x...", Cmd::About),
 ];
 
 /// A menu item with its shortcut; true when clicked (the menu closes).

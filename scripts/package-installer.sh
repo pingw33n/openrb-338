@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds dist/<target>/OpenRB-338-<YYYY.MMDD.HHMM>-<x64|arm64>-setup.exe, the NSIS installer of
-# OpenRB-338 and orb for a Windows target (task-111; the version is the UTC build time,
+# Builds dist/<target>/OpenRB-338x-<YYYY.MMDD.HHMM>-<x64|arm64>-setup.exe, the NSIS installer of
+# OpenRB-338x and orb for a Windows target (task-111; the version is the UTC build time,
 # scripts/version.sh).
 #
 #   scripts/package-installer.sh x86_64-pc-windows-msvc|aarch64-pc-windows-msvc
@@ -33,7 +33,7 @@ version=$("$root/scripts/version.sh")
 
 [ -n "${SKIP_BUILD:-}" ] || "$root/scripts/build.sh" "$target"
 bin=$dist/$target/bin
-for f in OpenRB-338.exe orb.exe; do
+for f in OpenRB-338x.exe orb.exe; do
     [ -f "$bin/$f" ] || { echo "missing $bin/$f (run scripts/build.sh $target)" >&2; exit 1; }
 done
 
@@ -44,12 +44,12 @@ mkdir -p "$stage"
 crlf() { awk '{ printf "%s\r\n", $0 }' "$1" > "$2"; }
 crlf "$root/LICENSE" "$stage/LICENSE.txt"
 cat > "$stage/readme.in" <<EOF
-OpenRB-338 $version ($arch)
+OpenRB-338x $version ($arch)
 
 A reimplementation of the audio engine of Propellerhead ReBirth RB-338 2.01.
 It needs no file of the original program: the standard drum kit is built in.
 
-OpenRB-338.exe is the desktop app (Start menu: OpenRB-338). orb.exe is the command line tool:
+OpenRB-338x.exe is the desktop app (Start menu: OpenRB-338x). orb.exe is the command line tool:
 
   orb render SONG.rbs -o SONG.flac    render a song to FLAC, Ogg Vorbis or WAV
   orb --help                          all commands
@@ -57,7 +57,7 @@ OpenRB-338.exe is the desktop app (Start menu: OpenRB-338). orb.exe is the comma
 To run orb from any folder, add this folder to your PATH: run the installer again with "Add orb to
 the PATH of the current user" ticked, or add it in Settings > System > About > Advanced system
 settings > Environment Variables. The uninstaller (Settings > Apps) removes what the installer
-added; your songs and the settings file (%APPDATA%\OpenRB-338) are kept.
+added; your songs and the settings file (%APPDATA%\OpenRB-338x) are kept.
 
 The installer and the programs are not signed, so Windows SmartScreen may say "Windows protected
 your PC": choose "More info", then "Run anyway".
@@ -67,12 +67,12 @@ crlf "$stage/readme.in" "$stage/README.txt"
 rm "$stage/readme.in"
 # NSIS stores the time of every file it packs: copy all of them here and give them the build
 # time, so two runs of one build make the same installer (BSD date -r, GNU date -d)
-cp "$bin/OpenRB-338.exe" "$bin/orb.exe" "$root/scripts/installer/path.ps1" "$stage/"
+cp "$bin/OpenRB-338x.exe" "$bin/orb.exe" "$root/scripts/installer/path.ps1" "$stage/"
 stamp=$(TZ=UTC date -r "$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S 2>/dev/null \
     || TZ=UTC date -d "@$SOURCE_DATE_EPOCH" +%Y%m%d%H%M.%S)
 touch -t "$stamp" "$stage"/*
 
-out=$dist/$target/OpenRB-338-$version-$arch-setup.exe
+out=$dist/$target/OpenRB-338x-$version-$arch-setup.exe
 rm -f "$out"
 # shellcheck disable=SC2086  # the flags are words on purpose
 # -WX (the default of MAKENSIS_FLAGS; set it empty to drop it): a warning fails the build. The time inside the file comes from SOURCE_DATE_EPOCH.

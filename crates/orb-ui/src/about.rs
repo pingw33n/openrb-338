@@ -20,14 +20,22 @@ const ICON_SIZE: f32 = 64.0;
 const CONTENT_W: f32 = 450.0;
 /// The width of the label column of the collection lines (the links start at TEXT_X + this).
 const LABEL_W: f32 = 100.0;
-/// 156 with one link line (task-115), plus two lines at the same 22 pt spacing (task-138).
-const CONTENT_H: f32 = 200.0;
+/// 156 with one link line (task-115), plus two lines at the same 22 pt spacing (task-138),
+/// plus the fork's credit line (`FORK_CREDIT`).
+const CONTENT_H: f32 = 222.0;
 const TEXT_X: f32 = 108.0;
 
 /// The name of the app.
-pub const NAME: &str = "OpenRB-338";
-/// The project page.
+pub const NAME: &str = "OpenRB-338x";
+/// The project page (the original project, by its author).
 pub const URL: &str = "https://github.com/pingw33n/openrb-338";
+/// The credit of this fork, under the original project's page: the text, then the fork's
+/// author linked to the fork.
+pub const FORK_CREDIT: (&str, &str, &str) = (
+    "Xtended features injected by",
+    "lovkov-ops",
+    "https://github.com/lovkov-ops/openrb-338",
+);
 /// The user's public collections, shown under the project page as `label url` (task-138).
 /// The user's song collection.
 pub const SONGS_URL: &str = "https://github.com/pingw33n/rb-songs";
@@ -123,10 +131,19 @@ impl App {
                 line(ui, 126.0, &|ui| {
                     ui.hyperlink_to(URL, URL);
                 });
+                // the fork's credit, next to the original project's page
+                line(ui, 148.0, &|ui| {
+                    let (text, who, url) = FORK_CREDIT;
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label(RichText::new(text).color(INK_DIM));
+                        ui.hyperlink_to(who, url);
+                    });
+                });
                 for (i, (label, url)) in COLLECTIONS.into_iter().enumerate() {
                     // the label and the link each in a rect of their own, so the links start at
                     // exactly the same x whatever the width of the label
-                    let y = 148.0 + 22.0 * i as f32;
+                    let y = 170.0 + 22.0 * i as f32;
                     line(ui, y, &|ui| {
                         ui.label(RichText::new(label).color(INK_DIM));
                     });

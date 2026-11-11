@@ -1,4 +1,4 @@
-//! The crash hook end to end (task-157): `OpenRB-338 --debug-panic` panics on purpose before any
+//! The crash hook end to end (task-157): `OpenRB-338x --debug-panic` panics on purpose before any
 //! window, with the box off (`ORB_UI_NO_CRASH_DIALOG`) and the log folder a temp folder
 //! (`ORB_UI_LOG_DIR`, so the user's real log folder is never written). The process exits with
 //! 101, stderr has the panic text, and one `crash-*.log` appears with the fields.
@@ -6,7 +6,7 @@
 use std::process::Command;
 
 fn run(log_dir: &std::path::Path, home: &std::path::Path) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_OpenRB-338"))
+    Command::new(env!("CARGO_BIN_EXE_OpenRB-338x"))
         .arg("--debug-panic")
         .env("ORB_UI_LOG_DIR", log_dir)
         .env("ORB_UI_NO_CRASH_DIALOG", "1")
@@ -39,7 +39,7 @@ fn a_deliberate_panic_exits_101_and_writes_the_log() {
     );
     let log = std::fs::read_to_string(&files[0]).unwrap();
     for want in [
-        "OpenRB-338 crash log",
+        "OpenRB-338x crash log",
         "UTC",
         "version:  ",
         "thread:   main",

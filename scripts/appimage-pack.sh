@@ -44,7 +44,7 @@ for soname in $bundled_libs; do
     chmod 644 "$appdir/usr/lib/$soname"
     patchelf --set-rpath "\$ORIGIN" "$appdir/usr/lib/$soname"
 done
-for prog in OpenRB-338 orb; do
+for prog in OpenRB-338x orb; do
     patchelf --set-rpath "\$ORIGIN/../lib" "$appdir/usr/bin/$prog"
 done
 # the squashfs stores the file times (package-appimage.sh stamped the rest of the AppDir)

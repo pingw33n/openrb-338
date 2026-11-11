@@ -42,7 +42,7 @@ impl Harness {
         h
     }
 
-    /// The same with the player the panel drives, as OpenRB-338 runs.
+    /// The same with the player the panel drives, as OpenRB-338x runs.
     fn with_player() -> Self {
         let mut h = Self::new();
         let tables = Arc::new(Tables::new());
