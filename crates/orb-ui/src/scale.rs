@@ -6,20 +6,54 @@
 //! class n. The 303's keys `key0` to `key12` are the notes C to the C an octave up.
 
 /// The scales of the list: the name shown and the notes as semitones above the key note.
-pub const SCALES: [(&str, &[u8]); 13] = [
-    ("MAJOR", &[0, 2, 4, 5, 7, 9, 11]),
-    ("MINOR", &[0, 2, 3, 5, 7, 8, 10]),
-    ("HARM MINOR", &[0, 2, 3, 5, 7, 8, 11]),
-    ("MEL MINOR", &[0, 2, 3, 5, 7, 9, 11]),
+///
+/// KORG's scale set (KORG Gadget's, as on their Kaossilator and Kaoss Pad), in its order. Raga
+/// 2, Arabic, Spanish, Gypsy, Hawaiian, Chinese, Bass Line, Major and Minor are as read in
+/// Gadget's piano roll on C. The interval scales (Minor 3rd to Octave) climb by that interval
+/// over octaves on KORG's pads; in the 303's one octave they are the notes that interval gives.
+/// Gadget's Major 1 to 8 and Minor 1 to 8 have the notes of Major and Minor (Ionian and
+/// Aeolian); in the 303's one octave they would be eight times the same, so each is here once.
+pub const SCALES: [(&str, &[u8]); 37] = [
+    ("CHROMATIC", &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+    ("IONIAN", &[0, 2, 4, 5, 7, 9, 11]),
     ("DORIAN", &[0, 2, 3, 5, 7, 9, 10]),
     ("PHRYGIAN", &[0, 1, 3, 5, 7, 8, 10]),
     ("LYDIAN", &[0, 2, 4, 6, 7, 9, 11]),
     ("MIXOLYDIAN", &[0, 2, 4, 5, 7, 9, 10]),
+    ("AEOLIAN", &[0, 2, 3, 5, 7, 8, 10]),
     ("LOCRIAN", &[0, 1, 3, 5, 6, 8, 10]),
+    ("HARM MINOR", &[0, 2, 3, 5, 7, 8, 11]),
+    ("MEL MINOR", &[0, 2, 3, 5, 7, 9, 11]),
+    ("MAJ BLUES", &[0, 2, 3, 4, 7, 9]),
+    ("MIN BLUES", &[0, 3, 5, 6, 7, 10]),
+    // whole-half and half-whole
+    ("DIMINISH", &[0, 2, 3, 5, 6, 8, 9, 11]),
+    ("COM DIM", &[0, 1, 3, 4, 6, 7, 9, 10]),
     ("MAJ PENTA", &[0, 2, 4, 7, 9]),
     ("MIN PENTA", &[0, 3, 5, 7, 10]),
-    ("BLUES", &[0, 3, 5, 6, 7, 10]),
-    ("CHROMATIC", &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+    // Bhairav and Todi
+    ("RAGA 1", &[0, 1, 4, 5, 7, 8, 11]),
+    ("RAGA 2", &[0, 1, 4, 6, 7, 9, 11]),
+    ("RAGA 3", &[0, 1, 3, 6, 7, 8, 11]),
+    ("ARABIC", &[0, 3, 4, 5, 6, 8, 10]),
+    ("SPANISH", &[0, 1, 3, 4, 5, 7, 8, 10]),
+    ("GYPSY", &[0, 2, 3, 6, 7, 8, 11]),
+    ("EGYPTIAN", &[0, 2, 5, 7, 10]),
+    ("HAWAIIAN", &[0, 2, 3, 7, 9]),
+    ("BALI PELOG", &[0, 1, 3, 7, 8]),
+    // Miyako-bushi
+    ("JAPANESE", &[0, 1, 5, 7, 8]),
+    ("RYUKYU", &[0, 4, 5, 7, 11]),
+    ("CHINESE", &[0, 4, 6, 7, 11]),
+    ("BASS LINE", &[0, 7, 10]),
+    ("WHOLETONE", &[0, 2, 4, 6, 8, 10]),
+    ("MINOR 3RD", &[0, 3, 6, 9]),
+    ("MAJOR 3RD", &[0, 4, 8]),
+    ("FOURTH", &[0, 5]),
+    ("FIFTH", &[0, 7]),
+    ("OCTAVE", &[0]),
+    ("MAJOR", &[0, 2, 4, 5, 7, 9, 11]),
+    ("MINOR", &[0, 2, 3, 5, 7, 8, 10]),
 ];
 
 /// The key notes of the list, pitch classes 0 to 11.
@@ -164,13 +198,46 @@ mod tests {
 
     #[test]
     fn the_scales_have_their_notes() {
-        assert_eq!(notes(mask(s("MAJOR"), k("C"))), ["C", "D", "E", "F", "G", "A", "B"]);
-        assert_eq!(notes(mask(s("MINOR"), k("A"))), ["C", "D", "E", "F", "G", "A", "B"]);
+        assert_eq!(notes(mask(s("IONIAN"), k("C"))), ["C", "D", "E", "F", "G", "A", "B"]);
+        assert_eq!(notes(mask(s("AEOLIAN"), k("A"))), ["C", "D", "E", "F", "G", "A", "B"]);
         assert_eq!(notes(mask(s("MAJ PENTA"), k("G"))), ["D", "E", "G", "A", "B"]);
-        assert_eq!(notes(mask(s("BLUES"), k("C"))), ["C", "D#", "F", "F#", "G", "A#"]);
+        assert_eq!(notes(mask(s("MIN BLUES"), k("C"))), ["C", "D#", "F", "F#", "G", "A#"]);
         assert_eq!(mask(s("CHROMATIC"), k("F#")), 0xfff);
+        // KORG's other scales, on C
+        let on_c = |name: &str| notes(mask(s(name), k("C")));
+        assert_eq!(on_c("MAJ BLUES"), ["C", "D", "D#", "E", "G", "A"]);
+        assert_eq!(on_c("DIMINISH"), ["C", "D", "D#", "F", "F#", "G#", "A", "B"]);
+        assert_eq!(on_c("COM DIM"), ["C", "C#", "D#", "E", "F#", "G", "A", "A#"]);
+        assert_eq!(on_c("RAGA 1"), ["C", "C#", "E", "F", "G", "G#", "B"]);
+        assert_eq!(on_c("RAGA 2"), ["C", "C#", "E", "F#", "G", "A", "B"]);
+        assert_eq!(on_c("RAGA 3"), ["C", "C#", "D#", "F#", "G", "G#", "B"]);
+        assert_eq!(on_c("ARABIC"), ["C", "D#", "E", "F", "F#", "G#", "A#"]);
+        assert_eq!(on_c("SPANISH"), ["C", "C#", "D#", "E", "F", "G", "G#", "A#"]);
+        assert_eq!(on_c("GYPSY"), ["C", "D", "D#", "F#", "G", "G#", "B"]);
+        assert_eq!(on_c("HAWAIIAN"), ["C", "D", "D#", "G", "A"]);
+        assert_eq!(on_c("CHINESE"), ["C", "E", "F#", "G", "B"]);
+        assert_eq!(on_c("BASS LINE"), ["C", "G", "A#"]);
+        assert_eq!(on_c("MAJOR"), on_c("IONIAN"));
+        assert_eq!(on_c("MAJOR"), ["C", "D", "E", "F", "G", "A", "B"]);
+        assert_eq!(on_c("MINOR"), on_c("AEOLIAN"));
+        assert_eq!(on_c("MINOR"), ["C", "D", "D#", "F", "G", "G#", "A#"]);
+        assert_eq!(on_c("EGYPTIAN"), ["C", "D", "F", "G", "A#"]);
+        assert_eq!(on_c("BALI PELOG"), ["C", "C#", "D#", "G", "G#"]);
+        assert_eq!(on_c("JAPANESE"), ["C", "C#", "F", "G", "G#"]);
+        assert_eq!(on_c("RYUKYU"), ["C", "E", "F", "G", "B"]);
+        assert_eq!(on_c("WHOLETONE"), ["C", "D", "E", "F#", "G#", "A#"]);
+        assert_eq!(on_c("MINOR 3RD"), ["C", "D#", "F#", "A"]);
+        assert_eq!(on_c("MAJOR 3RD"), ["C", "E", "G#"]);
+        assert_eq!(on_c("FOURTH"), ["C", "F"]);
+        assert_eq!(on_c("FIFTH"), ["C", "G"]);
+        assert_eq!(on_c("OCTAVE"), ["C"]);
+        // every scale starts on its key note, with no note twice
+        for (name, steps) in SCALES {
+            assert_eq!(steps[0], 0, "{name}");
+            assert!(steps.windows(2).all(|w| w[0] < w[1] && w[1] < 12), "{name}");
+        }
         // the upper C key (12) is the same note as the lower one
-        let m = mask(s("MAJOR"), k("C"));
+        let m = mask(s("IONIAN"), k("C"));
         assert!(key_in(m, 0) && key_in(m, 12) && !key_in(m, 1));
     }
 
@@ -179,11 +246,11 @@ mod tests {
         let mut sk = ScaleKeys::default();
         assert!(sk.enabled(0) && !sk.enabled(1));
         assert!(sk.scale_options(1).is_empty());
-        assert!(!sk.set_scale(1, s("MAJOR")));
+        assert!(!sk.set_scale(1, s("IONIAN")));
         // a key needs a scale first
         assert!(sk.key_options(0).is_empty());
         assert!(!sk.set_key(0, k("C")));
-        assert!(sk.set_scale(0, s("MAJOR")));
+        assert!(sk.set_scale(0, s("IONIAN")));
         assert!(!sk.enabled(1));
         assert!(sk.set_key(0, k("C")));
         assert!(sk.enabled(1));
@@ -192,25 +259,37 @@ mod tests {
     #[test]
     fn baze_2_is_offered_only_what_fits_baze_1() {
         let mut sk = ScaleKeys::default();
-        sk.set_scale(0, s("MAJOR"));
+        sk.set_scale(0, s("IONIAN"));
         sk.set_key(0, k("C"));
         let names: Vec<&str> = sk.scale_options(1).into_iter().map(|i| SCALES[i].0).collect();
         assert_eq!(
             names,
             [
-                "MAJOR",
-                "MINOR",
+                "IONIAN",
                 "DORIAN",
                 "PHRYGIAN",
                 "LYDIAN",
                 "MIXOLYDIAN",
+                "AEOLIAN",
                 "LOCRIAN",
                 "MAJ PENTA",
-                "MIN PENTA"
+                "MIN PENTA",
+                "EGYPTIAN",
+                "HAWAIIAN",
+                "BALI PELOG",
+                "JAPANESE",
+                "RYUKYU",
+                "CHINESE",
+                "BASS LINE",
+                "FOURTH",
+                "FIFTH",
+                "OCTAVE",
+                "MAJOR",
+                "MINOR"
             ]
         );
-        assert!(!sk.set_scale(1, s("BLUES")));
-        assert!(sk.set_scale(1, s("MINOR")));
+        assert!(!sk.set_scale(1, s("MIN BLUES")));
+        assert!(sk.set_scale(1, s("AEOLIAN")));
         assert_eq!(sk.key_options(1), [k("A")]);
         sk.set_scale(1, s("MAJ PENTA"));
         assert_eq!(sk.key_options(1), [k("C"), k("F"), k("G")]);
@@ -222,19 +301,19 @@ mod tests {
     #[test]
     fn a_change_of_baze_1_clears_baze_2_when_it_no_longer_fits() {
         let mut sk = ScaleKeys::default();
-        sk.set_scale(0, s("MAJOR"));
+        sk.set_scale(0, s("IONIAN"));
         sk.set_key(0, k("C"));
-        sk.set_scale(1, s("MINOR"));
+        sk.set_scale(1, s("AEOLIAN"));
         sk.set_key(1, k("A"));
         // C minor lacks A minor's E, A and B: BAZE 2 is cleared
-        sk.set_scale(0, s("MINOR"));
-        assert_eq!(sk.get(0), ScaleKey { scale: Some(s("MINOR")), key: Some(k("C")) });
+        sk.set_scale(0, s("AEOLIAN"));
+        assert_eq!(sk.get(0), ScaleKey { scale: Some(s("AEOLIAN")), key: Some(k("C")) });
         assert_eq!(sk.get(1), ScaleKey::default());
         // a chromatic BAZE 1 lets everything fit, and BAZE 2 stays when BAZE 1 goes back
         sk.set_scale(0, s("CHROMATIC"));
         sk.set_scale(1, s("MIN PENTA"));
         sk.set_key(1, k("A"));
-        sk.set_scale(0, s("MAJOR"));
+        sk.set_scale(0, s("IONIAN"));
         assert_eq!(sk.get(1).mask(), Some(mask(s("MIN PENTA"), k("A"))));
     }
 }

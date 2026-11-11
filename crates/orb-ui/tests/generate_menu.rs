@@ -82,6 +82,19 @@ impl Harness {
         self.click_at(Pos2::new(x + 8.0, y + CELL_H * (row as f32 + 0.5)));
     }
 
+    /// Opens a synth's scale list and chooses `name`: the wheel scrolls it to the top of the
+    /// list (or as far as the list goes), then a click.
+    fn choose_scale(&mut self, synth: usize, name: &str) {
+        self.click_field(synth, Field::Scale);
+        let options = self.app.scale_keys().scale_options(synth);
+        let at = options.iter().position(|&i| SCALES[i].0 == name).unwrap();
+        let (x, y, w, _) = self.app.list_rect(synth, Field::Scale).unwrap();
+        self.wheel_at(Pos2::new(x + w / 2.0, y + 10.0), at as f32);
+        let max = options.len().saturating_sub(LIST_ROWS);
+        self.click_list_row(at - at.min(max));
+        assert_eq!(self.app.scale_keys().get(synth).scale, Some(scale(name)));
+    }
+
     fn key(&mut self, key: Key) {
         for pressed in [true, false] {
             self.frame(vec![Event::Key {
@@ -167,7 +180,7 @@ fn baze_1_chooses_a_scale_then_a_key_and_its_keys_glow() {
     h.click_list_row(1);
     assert_eq!(h.app.generate_list(), None);
     assert_eq!(h.app.generate_open(), Some(0), "choosing keeps the menu open");
-    assert_eq!(h.app.scale_keys().get(0).scale, Some(scale("MINOR")));
+    assert_eq!(h.app.scale_keys().get(0).scale, Some(scale("IONIAN")));
     assert!(!generate::glows(h.app.scale_keys(), "tb303_1.key0"));
     // SCALE/KEY turns green only with the key note too
     assert!(!h.app.row_done(0, 0));
@@ -182,12 +195,13 @@ fn baze_1_chooses_a_scale_then_a_key_and_its_keys_glow() {
     assert!(h.app.row_done(0, 0));
     assert!(!h.app.row_done(1, 0));
     assert!((1..ROWS.len()).all(|row| !h.app.row_done(0, row)));
-    // A minor: the white keys glow, the black ones and the LEDs do not; BAZE 2's do not
+    // A major (A B C# D E F# G#): its keys glow, the others and the LEDs do not; BAZE 2's do
+    // not
     let sk = h.app.scale_keys();
-    for n in [0, 2, 4, 5, 7, 9, 11, 12] {
+    for n in [1, 2, 4, 6, 8, 9, 11] {
         assert!(generate::glows(sk, &format!("tb303_1.key{n}")), "key{n}");
     }
-    for n in [1, 3, 6, 8, 10] {
+    for n in [0, 3, 5, 7, 10, 12] {
         assert!(!generate::glows(sk, &format!("tb303_1.key{n}")), "key{n}");
     }
     assert!(!generate::glows(sk, "tb303_1.key0_led"));
@@ -200,27 +214,27 @@ fn baze_2_waits_for_baze_1_and_lists_only_what_fits() {
     h.click_at(button(1));
     h.click_field(1, Field::Scale);
     assert_eq!(h.app.generate_list(), None, "nothing to offer before BAZE 1");
-    // BAZE 1: C major
+    // BAZE 1: C major (IONIAN, the list's second item)
     h.click_at(button(0));
     h.click_field(0, Field::Scale);
-    h.click_list_row(0);
+    h.click_list_row(1);
     h.click_field(0, Field::Key);
     h.click_list_row(0);
     assert_eq!(h.app.scale_keys().get(0).mask().unwrap(), 0b1010_1011_0101);
-    // BAZE 2: its list has the 9 scales that fit C major, slider and all
+    // BAZE 2: its list has the 21 scales that fit C major, slider and all
     h.click_at(button(1));
     h.click_field(1, Field::Scale);
     let (_, _, _, lh) = h.app.list_rect(1, Field::Scale).unwrap();
     assert_eq!(lh, CELL_H * LIST_ROWS as f32);
-    // the second item is MINOR, whose only fitting key is A
+    // the second item is DORIAN, whose only fitting key is D
     h.click_list_row(1);
-    assert_eq!(h.app.scale_keys().get(1).scale, Some(scale("MINOR")));
+    assert_eq!(h.app.scale_keys().get(1).scale, Some(scale("DORIAN")));
     h.click_field(1, Field::Key);
     let (_, _, _, lh) = h.app.list_rect(1, Field::Key).unwrap();
     assert_eq!(lh, CELL_H, "one key note fits");
     h.click_list_row(0);
-    assert_eq!(h.app.scale_keys().get(1).key, Some(key("A")));
-    assert!(generate::glows(h.app.scale_keys(), "tb303_2.key9"));
+    assert_eq!(h.app.scale_keys().get(1).key, Some(key("D")));
+    assert!(generate::glows(h.app.scale_keys(), "tb303_2.key2"));
     // a list's Escape closes the list only, the next closes the menu
     h.click_field(1, Field::Scale);
     h.key(Key::Escape);
@@ -308,10 +322,7 @@ fn random_notes_follow_the_scale_and_key() {
     h.app.set_random_seed(9);
     h.click_at(button(0));
     // C major pentatonic: C D E G A
-    h.click_field(0, Field::Scale);
-    let (x, y, w, _) = h.app.list_rect(0, Field::Scale).unwrap();
-    h.wheel_at(Pos2::new(x + w / 2.0, y + 10.0), 8.0);
-    h.click_list_row(scale("MAJ PENTA") - (SCALES.len() - LIST_ROWS));
+    h.choose_scale(0, "MAJ PENTA");
     h.click_field(0, Field::Key);
     h.click_list_row(0);
     let mask = h.app.scale_keys().get(0).mask().unwrap();
@@ -334,8 +345,7 @@ fn alter_keeps_its_own_choice_and_moves_what_random_made() {
     h.app.set_random_seed(13);
     h.click_at(button(0));
     // C major, then RANDOM makes notes and accents
-    h.click_field(0, Field::Scale);
-    h.click_list_row(0);
+    h.choose_scale(0, "IONIAN");
     h.click_field(0, Field::Key);
     h.click_list_row(0);
     let l = random_label(&h, 0);
@@ -387,8 +397,7 @@ fn move_takes_one_button_at_a_time_and_moves_the_whole_pattern_around() {
     h.app.set_random_seed(23);
     h.click_at(button(0));
     // a pattern to move: C major notes, accents and slides from RANDOM
-    h.click_field(0, Field::Scale);
-    h.click_list_row(0);
+    h.choose_scale(0, "IONIAN");
     h.click_field(0, Field::Key);
     h.click_list_row(0);
     let l = random_label(&h, 0);

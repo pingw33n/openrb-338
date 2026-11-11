@@ -183,7 +183,7 @@ mod tests {
     use crate::scale::{KEYS, SCALES, mask};
 
     fn c_major() -> u16 {
-        let s = SCALES.iter().position(|(n, _)| *n == "MAJOR").unwrap();
+        let s = SCALES.iter().position(|(n, _)| *n == "IONIAN").unwrap();
         let k = KEYS.iter().position(|n| *n == "C").unwrap();
         mask(s, k)
     }
