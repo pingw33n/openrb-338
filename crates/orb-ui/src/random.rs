@@ -2,11 +2,16 @@
 //! chosen step fields of all 16 steps get new random values. DOWN, UP, ACCENT and SLIDE are each
 //! set on about one step in four (UP and DOWN never on one step); NOTE makes about three steps
 //! in four a note (the rest are rests), each a note of the synth's chosen scale and key.
+//!
+//! The ALTER row (`alter`) makes nothing new: it moves the chosen fields of the steps to other
+//! steps, all along one chain through the 16 steps (step 3's to step 15, step 15's to another,
+//! and so on back to step 3), so every step's values land somewhere else. The chosen fields of
+//! a step move together.
 
 use crate::model::Step303;
 use crate::scale;
 
-/// The RANDOM row's five buttons, in their order: the step fields they randomize.
+/// The RANDOM and ALTER rows' five buttons, in their order: the step fields they act on.
 pub const PARAMS: [&str; 5] = ["DOWN", "UP", "ACCENT", "SLIDE", "NOTE"];
 pub const DOWN: usize = 0;
 pub const UP: usize = 1;
@@ -99,6 +104,53 @@ pub fn randomize(steps: &mut [Step303; 16], on: [bool; 5], mask: Option<u16>, rn
     }
 }
 
+/// A random chain through the 16 steps (Sattolo's shuffle): `to[i]` is the step that step `i`'s
+/// values move to. It is one cycle, so no step keeps its own values.
+pub fn chain(rng: &mut Rng) -> [usize; 16] {
+    let mut to: [usize; 16] = std::array::from_fn(|i| i);
+    for i in (1..16).rev() {
+        let j = rng.below(i);
+        to.swap(i, j);
+    }
+    to
+}
+
+/// Moves the fields `on` (indexed by `PARAMS`) of every step along one random chain (`chain`):
+/// the chosen fields of a step move together, the others stay. NOTE moves the note with its
+/// rest flag. When UP or DOWN alone moves onto a step that has the other, the one moved in
+/// stays and the other is cleared (never both on one step).
+pub fn alter(steps: &mut [Step303; 16], on: [bool; 5], rng: &mut Rng) {
+    if !on.iter().any(|&o| o) {
+        return;
+    }
+    let to = chain(rng);
+    let old = *steps;
+    for (from, &dest) in to.iter().enumerate() {
+        let (o, n) = (&old[from], &mut steps[dest]);
+        if on[DOWN] {
+            n.down = o.down;
+        }
+        if on[UP] {
+            n.up = o.up;
+        }
+        match (on[DOWN], on[UP]) {
+            (true, false) if n.down => n.up = false,
+            (false, true) if n.up => n.down = false,
+            _ => {}
+        }
+        if on[ACCENT] {
+            n.accent = o.accent;
+        }
+        if on[SLIDE] {
+            n.slide = o.slide;
+        }
+        if on[NOTE] {
+            n.note = o.note;
+            n.rest = o.rest;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +232,68 @@ mod tests {
         randomize(&mut p, [false, false, true, true, false], None, &mut rng);
         assert!(p.iter().any(|st| !st.accent) && p.iter().any(|st| !st.slide));
         assert!(p.iter().all(|st| st.note == 1 && st.up && !st.down && !st.rest));
+    }
+
+    /// A pattern whose every step has its own note value (i, so a moved note is easy to see;
+    /// alter does not look at the value) and a flag pattern by step.
+    fn varied() -> [Step303; 16] {
+        std::array::from_fn(|i| Step303 {
+            note: i as u8,
+            slide: i % 3 == 0,
+            accent: i % 4 == 0,
+            up: i % 5 == 1,
+            down: i % 5 == 3,
+            rest: i % 7 == 6,
+        })
+    }
+
+    #[test]
+    fn the_chain_moves_every_step_somewhere_else_in_one_cycle() {
+        let mut rng = Rng::new(21);
+        for _ in 0..50 {
+            let to = chain(&mut rng);
+            let mut seen = [false; 16];
+            let mut i = 0;
+            for _ in 0..16 {
+                assert!(!seen[i]);
+                seen[i] = true;
+                assert_ne!(to[i], i);
+                i = to[i];
+            }
+            assert_eq!(i, 0, "one cycle through all 16 steps");
+        }
+    }
+
+    #[test]
+    fn alter_moves_the_chosen_fields_together_and_keeps_the_others() {
+        let old = varied();
+        let mut p = old;
+        alter(&mut p, [false, false, true, false, true], &mut Rng::new(4));
+        assert_ne!(p, old);
+        // the same notes, rests and accents, in other places, moved together
+        let mut a: Vec<_> = old.iter().map(|s| (s.note, s.rest, s.accent)).collect();
+        let mut b: Vec<_> = p.iter().map(|s| (s.note, s.rest, s.accent)).collect();
+        a.sort();
+        b.sort();
+        assert_eq!(a, b);
+        for (i, (o, n)) in old.iter().zip(p.iter()).enumerate() {
+            assert_ne!(n.note, o.note, "step {i} got another step's note");
+            assert_eq!((n.slide, n.up, n.down), (o.slide, o.up, o.down), "step {i}");
+        }
+    }
+
+    #[test]
+    fn alter_never_puts_up_and_down_on_one_step() {
+        let mut rng = Rng::new(8);
+        for on in [[true, false, false, false, false], [false, true, false, false, false]] {
+            for _ in 0..50 {
+                let mut p = varied();
+                alter(&mut p, on, &mut rng);
+                assert!(p.iter().all(|s| !(s.up && s.down)));
+            }
+        }
+        let mut p = varied();
+        alter(&mut p, [false; 5], &mut rng);
+        assert_eq!(p, varied(), "nothing chosen, nothing moves");
     }
 }

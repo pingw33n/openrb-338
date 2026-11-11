@@ -180,12 +180,12 @@ pub struct App {
     pub(crate) generate_open: Option<usize>,
     pub(crate) generate_list: Option<generate::List>,
     pub(crate) scale_keys: ScaleKeys,
-    /// The RANDOM row (`generate.rs`, `random.rs`): each synth's chosen fields, the synth
-    /// whose fields are being chosen (its RANDOM blinks), whether each synth's last RANDOM
-    /// randomized something, and the random numbers.
-    pub(crate) random_sel: [[bool; 5]; 2],
-    pub(crate) random_picking: Option<usize>,
-    pub(crate) random_done: [bool; 2],
+    /// The RANDOM and ALTER rows (`generate.rs`, `random.rs`), indexed by row (`Op`) then
+    /// synth: the chosen fields, the synth and row whose fields are being chosen (its name
+    /// blinks), whether the last run changed something, and the random numbers.
+    pub(crate) op_sel: [[[bool; 5]; 2]; 2],
+    pub(crate) op_picking: Option<(usize, generate::Op)>,
+    pub(crate) op_done: [[bool; 2]; 2],
     pub(crate) rng: crate::random::Rng,
     /// Whether the logo plays its startup animation (task-114): the panel once, from the first
     /// frame it is drawn, and the About window at each open. Off by default, so the headless
@@ -253,9 +253,9 @@ impl App {
             generate_open: None,
             generate_list: None,
             scale_keys: ScaleKeys::default(),
-            random_sel: [[false; 5]; 2],
-            random_picking: None,
-            random_done: [false; 2],
+            op_sel: [[[false; 5]; 2]; 2],
+            op_picking: None,
+            op_done: [[false; 2]; 2],
             rng: crate::random::Rng::from_time(),
             logo_anim: false,
             logo_start: None,

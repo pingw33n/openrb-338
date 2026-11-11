@@ -17,6 +17,10 @@
 //! A press on RANDOM starts choosing them (RANDOM blinks, the last choice is shown, a chosen
 //! button glows green); the next press randomizes the chosen fields of the synth's pattern
 //! (`random.rs`) and stops.
+//!
+//! Row 3 (ALTER): the same five buttons, chosen the same way (each row keeps its own choice),
+//! but its run makes nothing new: it moves the chosen fields of the steps to other steps along
+//! one random chain (`random::alter`), the chosen fields of a step together.
 
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontId, Key, Modifiers, PointerButton, Pos2, Rect,
@@ -52,8 +56,25 @@ const FILL: Color32 = Color32::BLACK;
 /// A field that cannot be used yet.
 const OFF: Color32 = Color32::from_gray(0x55);
 const LIST_FILL: Color32 = Color32::from_gray(0x14);
-/// The period of RANDOM's blink while its fields are chosen, in seconds (half shown, half not).
+/// The period of a row name's blink while its fields are chosen, in seconds (half shown, half
+/// not).
 const BLINK: f64 = 0.6;
+
+/// The rows of five buttons: RANDOM makes new values, ALTER moves the values there are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Op {
+    Random = 0,
+    Alter = 1,
+}
+
+impl Op {
+    pub const ALL: [Op; 2] = [Op::Random, Op::Alter];
+
+    /// The menu row (0 is A1).
+    pub fn row(self) -> usize {
+        1 + self as usize
+    }
+}
 
 /// Row 1's two fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,30 +155,31 @@ impl App {
             Some(synth)
         };
         self.generate_list = None;
-        self.random_picking = None;
+        self.op_picking = None;
     }
 
     /// Whether row `row` (0 is A1) of a synth's menu has its choice in column B complete: its
     /// name in column A then turns green. SCALE/KEY needs both the scale and the key note,
-    /// RANDOM a last run that randomized something; the other rows have no choice yet.
+    /// RANDOM and ALTER a last run that changed something; MOVE has no choice yet.
     pub fn row_done(&self, synth: usize, row: usize) -> bool {
         match row {
             0 => self.scale_keys.get(synth).mask().is_some(),
-            1 => self.random_done[synth],
-            _ => false,
+            _ => Op::ALL
+                .into_iter()
+                .any(|op| op.row() == row && self.op_done[op as usize][synth]),
         }
     }
 
-    // ---- the RANDOM row -------------------------------------------------------------------
+    // ---- the RANDOM and ALTER rows --------------------------------------------------------
 
-    /// The synth whose RANDOM fields are being chosen (its RANDOM blinks), if any.
-    pub fn random_picking(&self) -> Option<usize> {
-        self.random_picking
+    /// The synth and row whose fields are being chosen (the row's name blinks), if any.
+    pub fn op_picking(&self) -> Option<(usize, Op)> {
+        self.op_picking
     }
 
-    /// A synth's chosen RANDOM fields, indexed by `random::PARAMS`.
-    pub fn random_selection(&self, synth: usize) -> [bool; 5] {
-        self.random_sel[synth]
+    /// A synth's chosen fields of a row, indexed by `random::PARAMS`.
+    pub fn op_selection(&self, synth: usize, op: Op) -> [bool; 5] {
+        self.op_sel[op as usize][synth]
     }
 
     /// Restarts the random numbers from `seed` (tests).
@@ -165,52 +187,65 @@ impl App {
         self.rng = Rng::new(seed);
     }
 
-    /// Whether a RANDOM field can be chosen: NOTE needs the synth's scale and key note.
-    pub fn random_param_usable(&self, synth: usize, param: usize) -> bool {
-        param != random::NOTE || self.scale_keys.get(synth).mask().is_some()
+    /// Whether a row's field can be chosen: RANDOM's NOTE needs the synth's scale and key note
+    /// (it makes notes of the scale); ALTER only moves what is there, so all of its can.
+    pub fn op_param_usable(&self, synth: usize, op: Op, param: usize) -> bool {
+        op == Op::Alter || param != random::NOTE || self.scale_keys.get(synth).mask().is_some()
     }
 
-    /// A press on RANDOM: starts choosing the fields (RANDOM blinks; the last choice is shown),
-    /// or, while choosing, randomizes the chosen fields of the synth's pattern and stops.
-    pub fn press_random(&mut self, synth: usize) {
+    /// A press on RANDOM or ALTER: starts choosing the row's fields (its name blinks; its last
+    /// choice is shown), or, while choosing, runs the row on the synth's pattern and stops.
+    pub fn press_op(&mut self, synth: usize, op: Op) {
         self.generate_list = None;
-        if self.random_picking != Some(synth) {
-            self.random_picking = Some(synth);
+        if self.op_picking != Some((synth, op)) {
+            self.op_picking = Some((synth, op));
             return;
         }
-        self.random_picking = None;
-        let mut on = self.random_sel[synth];
+        self.op_picking = None;
+        let mut on = self.op_sel[op as usize][synth];
         for (p, o) in on.iter_mut().enumerate() {
-            *o &= self.random_param_usable(synth, p);
+            *o &= self.op_param_usable(synth, op, p);
         }
-        self.random_done[synth] = on.iter().any(|&o| o);
-        if self.random_done[synth] {
+        let any = on.iter().any(|&o| o);
+        self.op_done[op as usize][synth] = any;
+        if any {
             let mut steps = self.panel.pattern_303(synth);
-            let mask = self.scale_keys.get(synth).mask();
-            random::randomize(&mut steps, on, mask, &mut self.rng);
+            match op {
+                Op::Random => {
+                    let mask = self.scale_keys.get(synth).mask();
+                    random::randomize(&mut steps, on, mask, &mut self.rng);
+                }
+                Op::Alter => random::alter(&mut steps, on, &mut self.rng),
+            }
             self.panel.set_pattern_303(synth, steps);
         }
     }
 
-    /// A press on one of the RANDOM row's buttons: while choosing, turns its field on or off.
-    pub fn press_random_param(&mut self, synth: usize, param: usize) {
+    /// A press on one of a row's five buttons: while choosing, turns its field on or off.
+    pub fn press_op_param(&mut self, synth: usize, op: Op, param: usize) {
         self.generate_list = None;
-        if self.random_picking == Some(synth) && self.random_param_usable(synth, param) {
-            self.random_sel[synth][param] ^= true;
+        if self.op_picking == Some((synth, op)) && self.op_param_usable(synth, op, param) {
+            self.op_sel[op as usize][synth][param] ^= true;
         }
     }
 
-    /// The panel rectangle of RANDOM's name (column A, row 2).
-    pub fn random_label_rect(&self, synth: usize) -> Option<(f32, f32, f32, f32)> {
+    /// The panel rectangle of a row's name (column A).
+    pub fn op_label_rect(&self, synth: usize, op: Op) -> Option<(f32, f32, f32, f32)> {
         let (x, y, ..) = self.generate_rect(synth)?;
-        Some((x, y + CELL_H, COL_W[0], CELL_H))
+        Some((x, y + CELL_H * op.row() as f32, COL_W[0], CELL_H))
     }
 
-    /// The panel rectangle of the RANDOM row's button `param` (column B split in five).
-    pub fn random_button_rect(&self, synth: usize, param: usize) -> Option<(f32, f32, f32, f32)> {
+    /// The panel rectangle of a row's button `param` (column B split in five).
+    pub fn op_button_rect(
+        &self,
+        synth: usize,
+        op: Op,
+        param: usize,
+    ) -> Option<(f32, f32, f32, f32)> {
         let (x, y, ..) = self.generate_rect(synth)?;
         let w = COL_W[1] / random::PARAMS.len() as f32;
-        Some((x + COL_W[0] + w * param as f32, y + CELL_H, w, CELL_H))
+        let y = y + CELL_H * op.row() as f32;
+        Some((x + COL_W[0] + w * param as f32, y, w, CELL_H))
     }
 
     /// The synth whose menu is open, if any.
@@ -323,7 +358,7 @@ impl App {
                 self.generate_list = None;
             } else {
                 self.generate_open = None;
-                self.random_picking = None;
+                self.op_picking = None;
             }
             return;
         }
@@ -337,9 +372,11 @@ impl App {
             .and_then(|l| screen(self.list_rect(l.synth, l.field)));
         let item_h = CELL_H * view.scale;
         let slider_w = SLIDER_W * view.scale;
-        let random_label = screen(self.random_label_rect(k)).unwrap_or(Rect::NOTHING);
-        let random_buttons: [Rect; 5] = std::array::from_fn(|i| {
-            screen(self.random_button_rect(k, i)).unwrap_or(Rect::NOTHING)
+        // RANDOM's and ALTER's names and buttons, indexed by `Op`
+        let op_labels: [Rect; 2] = Op::ALL
+            .map(|op| screen(self.op_label_rect(k, op)).unwrap_or(Rect::NOTHING));
+        let op_buttons: [[Rect; 5]; 2] = Op::ALL.map(|op| {
+            std::array::from_fn(|i| screen(self.op_button_rect(k, op, i)).unwrap_or(Rect::NOTHING))
         });
 
         let (pressed, down, hover, wheel) = ctx.input(|i| {
@@ -355,18 +392,27 @@ impl App {
         });
 
         if let Some(p) = pressed {
-            let param = random_buttons.iter().position(|b| b.contains(p));
+            let label = Op::ALL.into_iter().find(|&op| op_labels[op as usize].contains(p));
+            let param = Op::ALL.into_iter().find_map(|op| {
+                op_buttons[op as usize]
+                    .iter()
+                    .position(|b| b.contains(p))
+                    .map(|i| (op, i))
+            });
             match list_rect {
                 Some(lr) if lr.contains(p) => self.press_list(lr, p, item_h, slider_w),
                 _ if scale_field.contains(p) => self.press_field(k, Field::Scale),
                 _ if key_field.contains(p) => self.press_field(k, Field::Key),
-                _ if random_label.contains(p) => self.press_random(k),
-                _ if param.is_some() => self.press_random_param(k, param.unwrap_or(0)),
+                _ if label.is_some() => self.press_op(k, label.unwrap_or(Op::Random)),
+                _ if param.is_some() => {
+                    let (op, i) = param.unwrap_or((Op::Random, 0));
+                    self.press_op_param(k, op, i);
+                }
                 _ => {
                     self.generate_list = None;
                     if !menu.contains(p) && !button.contains(p) {
                         self.generate_open = None;
-                        self.random_picking = None;
+                        self.op_picking = None;
                         return;
                     }
                 }
@@ -391,31 +437,36 @@ impl App {
         }
 
         let sk = self.scale_keys;
-        // the row names: green once done, else red; RANDOM blinks while its fields are chosen
-        let picking = self.random_picking == Some(k);
-        if picking {
+        // the row names: green once done, else red; a row's name blinks while its fields are
+        // chosen
+        let picking = self.op_picking.filter(|&(s, _)| s == k).map(|(_, op)| op.row());
+        if picking.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
         let blink_on = (ctx.input(|i| i.time) / BLINK).fract() < 0.5;
         let names: [Option<Color32>; 4] = std::array::from_fn(|row| {
-            if row == 1 && picking && !blink_on {
+            let blinking = picking == Some(row);
+            if blinking && !blink_on {
                 None
-            } else if self.row_done(k, row) && !(row == 1 && picking) {
+            } else if self.row_done(k, row) && !blinking {
                 Some(GREEN)
             } else {
                 Some(RED)
             }
         });
-        let buttons: [(Rect, bool, Color32); 5] = std::array::from_fn(|i| {
-            let on = self.random_sel[k][i];
-            let usable = self.random_param_usable(k, i);
-            let ink = match (on && usable, usable, picking) {
-                (true, ..) => GREEN,
-                (false, false, _) => OFF,
-                (false, true, true) => INK,
-                (false, true, false) => INK_DIM,
-            };
-            (random_buttons[i], on && usable, ink)
+        let buttons: [[(Rect, bool, Color32); 5]; 2] = Op::ALL.map(|op| {
+            let choosing = picking == Some(op.row());
+            std::array::from_fn(|i| {
+                let usable = self.op_param_usable(k, op, i);
+                let on = self.op_sel[op as usize][k][i] && usable;
+                let ink = match (on, usable, choosing) {
+                    (true, ..) => GREEN,
+                    (false, false, _) => OFF,
+                    (false, true, true) => INK,
+                    (false, true, false) => INK_DIM,
+                };
+                (op_buttons[op as usize][i], on, ink)
+            })
         });
         egui::Area::new(egui::Id::unique(("orb_generate_menu", k)))
             .order(egui::Order::Foreground)
@@ -427,7 +478,9 @@ impl App {
                 let (r, _) = ui.allocate_exact_size(menu.size(), Sense::click());
                 paint_table(ui, r, view.scale, names);
                 paint_fields(ui, &sk, k, scale_field, key_field, view.scale);
-                paint_random_buttons(ui, &buttons, view.scale);
+                for row in &buttons {
+                    paint_op_buttons(ui, row, view.scale);
+                }
             });
         if let (Some(l), Some(lr)) = (self.generate_list, list_rect) {
             egui::Area::new(egui::Id::unique(("orb_generate_list", k)))
@@ -591,9 +644,9 @@ fn paint_list(ui: &Ui, sk: &ScaleKeys, l: &List, r: Rect, hover: Option<Pos2>, s
     );
 }
 
-/// The RANDOM row's five buttons: (rect, on, ink of the symbol). A chosen button glows green;
-/// thin lines part the buttons, stopping short of the row's edges like the table's.
-fn paint_random_buttons(ui: &Ui, buttons: &[(Rect, bool, Color32); 5], scale: f32) {
+/// A row's five buttons (RANDOM, ALTER): (rect, on, ink of the symbol). A chosen button glows
+/// green; thin lines part the buttons, stopping short of the row's edges like the table's.
+fn paint_op_buttons(ui: &Ui, buttons: &[(Rect, bool, Color32); 5], scale: f32) {
     let p = ui.painter();
     let inset = LINE_INSET * scale;
     let line = Stroke::new((0.6 * scale).max(1.0), LINE);
@@ -621,7 +674,7 @@ fn paint_random_buttons(ui: &Ui, buttons: &[(Rect, bool, Color32); 5], scale: f3
     }
 }
 
-/// A RANDOM button's symbol, bold: half its height is `s` around `c`.
+/// A RANDOM or ALTER button's symbol, bold: half its height is `s` around `c`.
 fn paint_symbol(ui: &Ui, param: usize, c: Pos2, s: f32, ink: Color32, scale: f32) {
     let p = ui.painter();
     let bold = Stroke::new(1.4 * scale, ink);
