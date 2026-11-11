@@ -14,6 +14,13 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
 - its MCP tools (the `backlog` MCP server) when they are loaded in the session;
 - otherwise the `backlog` CLI, which truncates long documents in `doc view` and breaks on shell quoting.
 
+**The `orb` MCP server.** `crates/orb-mcp` serves the songs, the render, the comparison and the mod
+lookup as MCP tools (`orb_info`, `orb_render`, `orb_compare`, `orb_mod_list`), and `.mcp.json`
+registers it as `orb` (docs/mcp.md). When it is loaded in the session, prefer it over shelling out
+to `orb`: `orb_compare` is how an engine change is checked against the reference corpus, and its
+answer is the `orb` answer. The server must be on the `PATH` (`cargo build --release -p orb-mcp`);
+without it, the `orb` command line tool does the same things.
+
 **Useful commands.**
 
 | Command | Shows |
@@ -36,6 +43,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
 **Knowledge documents.** These are files edited like source: `docs/*.md`.
 - `docs/initial_investigation.md` is the engine survey; its [C] items are confirmed and its [G] items are guessed.
 - `docs/RBS42.txt` is the file format.
+- `docs/beats.md` is how to write a song from a JSON spec and hear it.
 - Later tasks add `test_machine.md`, `song_load.md`, `export_state.md` and `rbm.md`.
 - `docs/original_bugs.md` lists the defects of the original (what, addresses, trigger, effect, corpus songs, orb's model, [C]/[G]). A newly found defect of the original goes into `docs/original_bugs.md` as well as its home document.
 - A new fact about the original goes into the document it belongs to, with addresses, in the same commit as the work.

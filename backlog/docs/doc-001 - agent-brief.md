@@ -31,13 +31,17 @@ You work in your own git worktree on your own branch, and everything is relative
 - The shell is fish: put multi-step sequences in a bash script file in that subdirectory.
 - Use `/usr/bin/python3` for the Python tools.
 - Builds and tests run at their tools' default parallelism: no `-j`.
+- The `orb` MCP server (`crates/orb-mcp`, docs/mcp.md) does the song facts, the render, the
+  comparison and the mod lookup as MCP tools when it is loaded. It is the same library as the
+  `orb` command line tool: `orb_compare` is the corpus check an engine change needs, and
+  `orb_info` is `orb info --json`. Without the server, the `orb` command does the same.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | the IDA databases | **Not in the repository**, absent in your worktree: the user's local IDA databases of the original program, `Rebirth.exe.i64` (the UI, song loading, the export driver, the RBM container) and `ReBirth.dll.i64` (the engine). IDA opens a `.i64` by itself and needs no exe or dll next to it. They are references: agents never save or modify them. They live outside the repository; the supervisor gives their path in each agent's prompt, and an agent without a path asks the supervisor and does not search the disk. Take a copy, reading only; the IDA working files (`*.id0` …) belong to the user's open IDA. The original program itself (`Rebirth.exe`, `ReBirth.dll`) is not in the repository and no test or tool may need it: the tests take the same files from the CD image (`ORB_CD_ISO`, orb-testkit) and skip with a message when it is not set. |
-| `docs/` | Knowledge documents, edited like source. `RBS42.txt` is the official RBS file format; `initial_investigation.md` holds the engine's facts. New facts about the original go into a document here, in the same commit as the task. `original_bugs.md` lists the defects of the original: a newly found defect goes into `docs/original_bugs.md` as well as its home document. |
+| `docs/` | Knowledge documents, edited like source. `RBS42.txt` is the official RBS file format; `initial_investigation.md` holds the engine's facts; `beats.md` is how to write a song from a JSON spec and hear it (`tools/rbs.py build`, `orb render`). New facts about the original go into a document here, in the same commit as the task. `original_bugs.md` lists the defects of the original: a newly found defect goes into `docs/original_bugs.md` as well as its home document. |
 | `tools/` | Python tools: the test-machine runners, the `.rbs` writer, the comparator and the like. |
 | `tests/` | Test songs and reference renders (their storage is decided in a `Decide:` task). |
 | Rust workspace | At the repository root once m-1 creates it: `cargo build --release`, `cargo test`. |
