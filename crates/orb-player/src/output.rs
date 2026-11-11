@@ -9,14 +9,18 @@
 //! and `process_into_buffer` allocates nothing. Stereo goes to the first two channels of a
 //! device with more (the others are zero), and the mean of both to a mono device.
 //!
+//! The device buffer is requested as [`BUFFER_FRAMES`] (task-176; the reason is on that constant).
+//!
 //! The offline render does not use any of this: it is [`orb_engine::frame::export`].
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{ErrorKind, FromSample, SampleFormat, SizedSample, StreamConfig};
+use cpal::{
+    BufferSize, ErrorKind, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize,
+};
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{
     Async, FixedAsync, Resampler as _, SincInterpolationParameters, SincInterpolationType,
@@ -55,10 +59,39 @@ pub struct Stream {
     pub format: SampleFormat,
     /// Whether the engine's output is resampled (the device does not offer 44.1 kHz).
     pub resampled: bool,
+    /// The buffer asked for, in frames (`None`: the device's default buffer; see
+    /// [`BUFFER_FRAMES`]).
+    pub requested: Option<u32>,
     health: Health,
+    stats: CallbackStats,
 }
 
 impl Stream {
+    /// The buffer the device granted, in frames: the size of the first data callback (`None`
+    /// before it ran). cpal exposes no period getter, and the hosts hand out whole periods.
+    pub fn granted(&self) -> Option<u32> {
+        Some(self.stats.snapshot().first).filter(|&n| n > 0)
+    }
+
+    /// The data callback's statistics, which outlive borrowing the stream.
+    pub fn stats(&self) -> CallbackStats {
+        self.stats.clone()
+    }
+
+    /// The start line's buffer part, e.g. `buffer 2048 frames requested, first callback 2048
+    /// frames`. The size seen is the first callback's, which on ALSA is the frames available and
+    /// not necessarily the period, so the line does not call it "granted".
+    pub fn buffer_text(&self) -> String {
+        let req = match self.requested {
+            Some(n) => format!("{n} frames requested"),
+            None => "default size requested".into(),
+        };
+        match self.granted() {
+            Some(n) => format!("buffer {req}, first callback {n} frames"),
+            None => format!("buffer {req}, no callback yet"),
+        }
+    }
+
     /// Whether the sound has really stopped ([`Health::failure`]).
     pub fn failed(&self) -> bool {
         self.health.failure().is_some()
@@ -427,9 +460,120 @@ impl Output {
     }
 }
 
+/// The device buffer [`start`] asks for, in frames (task-176). With `BufferSize::Default` cpal's
+/// ALSA host (cpal 0.18.2, src/host/alsa/mod.rs:1642-1656) keeps the period the plugin picks and
+/// caps the ring at two periods; behind pipewire-alsa a graph cycle can pull more than that, and
+/// every cycle then underruns (GitHub issue #7: an `Xrun` 23-24 times a second). With
+/// `BufferSize::Fixed(n)` cpal sets the period to `n` and the ring to `2n` (mod.rs:1600-1636), so
+/// 2048 frames give a ring of about 93 ms at 44.1 kHz. The engine's timing does not change
+/// (commands still apply per [`CALL_FRAMES`] engine call); the buffer only adds latency. It is
+/// requested on every host (CoreAudio and WASAPI take it as a request) and clamped into the
+/// device's range; a device that does not state a range, or refuses the request, gets
+/// `BufferSize::Default`.
+pub const BUFFER_FRAMES: u32 = 2048;
+
+/// The buffer to request from a device whose buffer range is `range`: [`BUFFER_FRAMES`] clamped
+/// into a stated range, `None` (the default buffer) when the range is unknown.
+pub fn buffer_request(range: &SupportedBufferSize) -> Option<u32> {
+    match *range {
+        SupportedBufferSize::Range { min, max } if min <= max => {
+            Some(BUFFER_FRAMES.clamp(min, max))
+        }
+        _ => None,
+    }
+}
+
+/// What the data callback saw: all atomics, written with no allocation or lock.
+struct StatsInner {
+    calls: AtomicU64,
+    first: AtomicU32,
+    min: AtomicU32,
+    max: AtomicU32,
+    longest_ns: AtomicU64,
+}
+
+/// The data callback's statistics ([`Stream::stats`]).
+#[derive(Clone)]
+pub struct CallbackStats(Arc<StatsInner>);
+
+/// A copy of [`CallbackStats`] at one time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CallbackSnapshot {
+    /// The data callbacks run.
+    pub calls: u64,
+    /// The frames of the first callback (the buffer the device granted, when it hands out whole
+    /// periods), 0 before it.
+    pub first: u32,
+    /// The fewest and the most frames of a callback.
+    pub min: u32,
+    pub max: u32,
+    /// The longest callback, in nanoseconds.
+    pub longest_ns: u64,
+}
+
+impl CallbackStats {
+    fn new() -> Self {
+        CallbackStats(Arc::new(StatsInner {
+            calls: AtomicU64::new(0),
+            first: AtomicU32::new(0),
+            min: AtomicU32::new(u32::MAX),
+            max: AtomicU32::new(0),
+            longest_ns: AtomicU64::new(0),
+        }))
+    }
+
+    /// One callback of `frames` frames that took `ns` nanoseconds (audio thread; the stores only
+    /// race with readers).
+    fn record(&self, frames: u32, ns: u64) {
+        let s = &*self.0;
+        if s.calls.fetch_add(1, Ordering::Relaxed) == 0 {
+            s.first.store(frames, Ordering::Relaxed);
+        }
+        s.min.fetch_min(frames, Ordering::Relaxed);
+        s.max.fetch_max(frames, Ordering::Relaxed);
+        s.longest_ns.fetch_max(ns, Ordering::Relaxed);
+    }
+
+    /// The statistics now.
+    pub fn snapshot(&self) -> CallbackSnapshot {
+        let s = &*self.0;
+        let calls = s.calls.load(Ordering::Relaxed);
+        CallbackSnapshot {
+            calls,
+            first: s.first.load(Ordering::Relaxed),
+            min: if calls == 0 {
+                0
+            } else {
+                s.min.load(Ordering::Relaxed)
+            },
+            max: s.max.load(Ordering::Relaxed),
+            longest_ns: s.longest_ns.load(Ordering::Relaxed),
+        }
+    }
+}
+
+impl CallbackSnapshot {
+    /// The exit line of `orb play`: the callback sizes and the longest callback.
+    pub fn summary(&self) -> String {
+        if self.calls == 0 {
+            return "no audio callback ran".into();
+        }
+        format!(
+            "{} callbacks, {}..{} frames each, longest {:.2} ms",
+            self.calls,
+            self.min,
+            self.max,
+            self.longest_ns as f64 / 1e6
+        )
+    }
+}
+
 /// The configuration to open: 44.1 kHz with two channels when offered (f32 preferred), else
-/// 44.1 kHz with any channel count, else the device's default (resampled).
-fn choose(device: &cpal::Device) -> Result<(StreamConfig, SampleFormat), Error> {
+/// 44.1 kHz with any channel count, else the device's default (resampled). The third value is
+/// the device's buffer range for that configuration.
+fn choose(
+    device: &cpal::Device,
+) -> Result<(StreamConfig, SampleFormat, SupportedBufferSize), Error> {
     let ranges: Vec<_> = device
         .supported_output_configs()
         .map_err(|e| err("the output configurations", e))?
@@ -444,26 +588,56 @@ fn choose(device: &cpal::Device) -> Result<(StreamConfig, SampleFormat), Error> 
     };
     if let Some(r) = ranges.iter().max_by_key(|r| score(r)) {
         let c = r.with_sample_rate(RATE);
-        return Ok((c.config(), c.sample_format()));
+        return Ok((c.config(), c.sample_format(), *r.buffer_size()));
     }
     let c = device
         .default_output_config()
         .map_err(|e| err("the default output configuration", e))?;
-    Ok((c.config(), c.sample_format()))
+    Ok((c.config(), c.sample_format(), *c.buffer_size()))
+}
+
+/// Holds the [`Output`] inside the stream's callback and hands its [`Audio`] back when the
+/// callback is dropped, so that a refused build can be retried. The hand-back is a one-place
+/// wait-free queue, pushed to only in `drop`, never by the data callback.
+struct Keeper {
+    out: Option<Output>,
+    back: rtrb::Producer<Audio>,
+}
+
+impl Drop for Keeper {
+    fn drop(&mut self) {
+        if let Some(out) = self.out.take() {
+            let _ = self.back.push(out.audio);
+        }
+    }
 }
 
 fn build<T: SizedSample + FromSample<f32>>(
     device: &cpal::Device,
     config: StreamConfig,
-    mut out: Output,
+    out: Output,
+    back: rtrb::Producer<Audio>,
     health: Health,
+    stats: CallbackStats,
 ) -> Result<cpal::Stream, Error> {
     let h = health.clone();
+    let channels = out.channels;
+    let mut keeper = Keeper {
+        out: Some(out),
+        back,
+    };
     device
         .build_output_stream::<T, _, _>(
             config,
             move |data: &mut [T], _| {
-                out.fill(data);
+                let t = Instant::now();
+                if let Some(out) = &mut keeper.out {
+                    out.fill(data);
+                }
+                stats.record(
+                    (data.len() / channels) as u32,
+                    t.elapsed().as_nanos() as u64,
+                );
                 h.data(h.now());
             },
             move |e: cpal::Error| {
@@ -492,30 +666,67 @@ pub fn start(audio: Audio) -> Result<Stream, Error> {
         .description()
         .map(|d| d.to_string())
         .unwrap_or_else(|_| "?".into());
-    let (config, format) = choose(&device)?;
-    let out = Output::new(audio, config.channels as usize, config.sample_rate)?;
+    let (config, format, range) = choose(&device)?;
+    let requested = buffer_request(&range);
     let resampled = config.sample_rate != RATE;
     let health = Health::started();
-    let f = health.clone();
-    let stream = match format {
-        SampleFormat::F32 => build::<f32>(&device, config, out, f),
-        SampleFormat::F64 => build::<f64>(&device, config, out, f),
-        SampleFormat::I16 => build::<i16>(&device, config, out, f),
-        SampleFormat::I32 => build::<i32>(&device, config, out, f),
-        SampleFormat::U16 => build::<u16>(&device, config, out, f),
-        SampleFormat::U8 => build::<u8>(&device, config, out, f),
-        SampleFormat::I8 => build::<i8>(&device, config, out, f),
-        f => Err(Error(format!("unsupported sample format {f}"))),
-    }?;
-    stream.play().map_err(|e| err("starting the stream", e))?;
-    Ok(Stream {
-        _stream: stream,
-        device: name,
-        config,
-        format,
-        resampled,
-        health,
-    })
+    let stats = CallbackStats::new();
+    let mut audio = Some(audio);
+    // the buffer as requested, then (when that fails) the default one
+    let mut tries = vec![(None, BufferSize::Default)];
+    if let Some(n) = requested {
+        tries.insert(0, (Some(n), BufferSize::Fixed(n)));
+    }
+    let mut last = Error("no output stream".into());
+    for (req, buffer_size) in tries {
+        let Some(a) = audio.take() else {
+            break;
+        };
+        let (back, mut recover) = rtrb::RingBuffer::new(1);
+        let out = Output::new(a, config.channels as usize, config.sample_rate)?;
+        let config = StreamConfig {
+            buffer_size,
+            ..config
+        };
+        let h = health.clone();
+        let st = stats.clone();
+        let built = match format {
+            SampleFormat::F32 => build::<f32>(&device, config, out, back, h, st),
+            SampleFormat::F64 => build::<f64>(&device, config, out, back, h, st),
+            SampleFormat::I16 => build::<i16>(&device, config, out, back, h, st),
+            SampleFormat::I32 => build::<i32>(&device, config, out, back, h, st),
+            SampleFormat::U16 => build::<u16>(&device, config, out, back, h, st),
+            SampleFormat::U8 => build::<u8>(&device, config, out, back, h, st),
+            SampleFormat::I8 => build::<i8>(&device, config, out, back, h, st),
+            f => Err(Error(format!("unsupported sample format {f}"))),
+        };
+        match built {
+            Ok(stream) => {
+                stream.play().map_err(|e| err("starting the stream", e))?;
+                // the first callback tells the granted size; it comes within a few periods
+                let t = Instant::now();
+                while stats.snapshot().calls == 0 && t.elapsed().as_millis() < 300 {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                return Ok(Stream {
+                    _stream: stream,
+                    device: name,
+                    config,
+                    format,
+                    resampled,
+                    requested: req,
+                    health,
+                    stats,
+                });
+            }
+            Err(e) => {
+                // the refused callback has been dropped and handed the engine back
+                audio = recover.pop().ok();
+                last = e;
+            }
+        }
+    }
+    Err(last)
 }
 
 #[cfg(test)]
@@ -523,6 +734,36 @@ mod tests {
     use super::*;
 
     const ERR: &str = "snd_pcm_avail_delay: I/O error";
+
+    #[test]
+    fn buffer_choice() {
+        let r = |min, max| SupportedBufferSize::Range { min, max };
+        // inside the range: 2048 as is
+        assert_eq!(buffer_request(&r(64, 8192)), Some(2048));
+        assert_eq!(buffer_request(&r(2048, 2048)), Some(2048));
+        // outside: clamped to the nearer end
+        assert_eq!(buffer_request(&r(4096, 16384)), Some(4096));
+        assert_eq!(buffer_request(&r(16, 512)), Some(512));
+        // unknown (or a nonsensical range): the default buffer
+        assert_eq!(buffer_request(&SupportedBufferSize::Unknown), None);
+        assert_eq!(buffer_request(&r(512, 16)), None);
+    }
+
+    #[test]
+    fn callback_stats() {
+        let s = CallbackStats::new();
+        assert_eq!(s.snapshot().summary(), "no audio callback ran");
+        s.record(2048, 1_500_000);
+        s.record(1024, 400_000);
+        s.record(2048, 2_000_000);
+        let n = s.snapshot();
+        assert_eq!((n.calls, n.first, n.min, n.max), (3, 2048, 1024, 2048));
+        assert_eq!(n.longest_ns, 2_000_000);
+        assert_eq!(
+            n.summary(),
+            "3 callbacks, 1024..2048 frames each, longest 2.00 ms"
+        );
+    }
 
     #[test]
     fn transient_error_that_keeps_playing_does_not_fail() {

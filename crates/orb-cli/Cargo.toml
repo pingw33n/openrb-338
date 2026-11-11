@@ -27,6 +27,7 @@ claxon = "0.4.3"
 serde_json = "1.0.154"
 sha2 = "0.10"
 cab = "=0.6.0"
+ctrlc = "3.5.2"
 
 [dev-dependencies]
 # The gated tests' external inputs (task-121); a dev-dependency cycle (it uses orb_cli::cd).

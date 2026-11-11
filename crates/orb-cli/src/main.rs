@@ -604,7 +604,7 @@ fn play(input: &Path, bar: Option<u32>, seconds: Option<f64>, mods: ModOpts) -> 
     let stream =
         orb_player::output::start(audio).map_err(|e| fail(1, format!("audio output: {e}")))?;
     eprintln!(
-        "orb: playing {label} on {} ({} Hz{}, {} channels, {}); Ctrl+C stops",
+        "orb: playing {label} on {} ({} Hz{}, {} channels, {}, {}); Ctrl+C stops",
         stream.device,
         stream.config.sample_rate,
         if stream.resampled {
@@ -613,8 +613,21 @@ fn play(input: &Path, bar: Option<u32>, seconds: Option<f64>, mods: ModOpts) -> 
             ""
         },
         stream.config.channels,
-        stream.format
+        stream.format,
+        stream.buffer_text()
     );
+    let stats = stream.stats();
+    let exit_line = |_: &orb_player::output::Stream| {
+        eprintln!("orb: audio callbacks: {}", stats.snapshot().summary());
+    };
+    // The first Ctrl+C ends the loop below (with the exit line); a second one kills the process.
+    let interrupted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = interrupted.clone();
+    let _ = ctrlc::set_handler(move || {
+        if flag.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            std::process::exit(130);
+        }
+    });
     let start = std::time::Instant::now();
     let mut started = false;
     loop {
@@ -623,6 +636,7 @@ fn play(input: &Path, bar: Option<u32>, seconds: Option<f64>, mods: ModOpts) -> 
         // an error alone does not stop the song; a lost device or a stall does (Health)
         if let Some(why) = stream.failure() {
             eprintln!();
+            exit_line(&stream);
             return Err(fail(1, why));
         }
         let s = *player.snapshot();
@@ -630,11 +644,15 @@ fn play(input: &Path, bar: Option<u32>, seconds: Option<f64>, mods: ModOpts) -> 
         if s.song_mode {
             eprint!("\rbar {:4}", s.tick / TICKS_PER_BAR as i32 + 1);
         }
-        if (started && !s.playing) || seconds.is_some_and(|t| start.elapsed().as_secs_f64() >= t) {
+        if interrupted.load(std::sync::atomic::Ordering::SeqCst)
+            || (started && !s.playing)
+            || seconds.is_some_and(|t| start.elapsed().as_secs_f64() >= t)
+        {
             break;
         }
     }
     eprintln!();
+    exit_line(&stream);
     drop(stream);
     Ok(())
 }

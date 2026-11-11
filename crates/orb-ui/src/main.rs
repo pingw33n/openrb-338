@@ -248,6 +248,19 @@ fn main() -> eframe::Result {
         }
         match orb_player::output::start(audio) {
             Ok(s) => {
+                eprintln!(
+                    "OpenRB-338: audio on {} ({} Hz{}, {} channels, {}, {})",
+                    s.device,
+                    s.config.sample_rate,
+                    if s.resampled {
+                        ", resampled from 44100"
+                    } else {
+                        ""
+                    },
+                    s.config.channels,
+                    s.format,
+                    s.buffer_text()
+                );
                 audio_health = Some(s.health());
                 _stream = Some(s);
             }

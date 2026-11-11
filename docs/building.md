@@ -114,9 +114,14 @@ ReBirth" drum samples), embedded in both binaries, may ship in the public releas
 the `.tar.gz`, the `.zip`, the `.dmg`, and the later installer and AppImages.
 
 On Linux, both `orb` and OpenRB-338 link `libasound.so.2` (ALSA, package `libasound2`), so even
-`orb --help` fails without it. OpenRB-338 also loads X11 or Wayland and the GL or Vulkan driver at
-run time (dlopen): on a bare Ubuntu 22.04 it needed `libxcursor1`, `libxrandr2`, `libxi6`,
-`libegl1` and a driver (`mesa-vulkan-drivers` for software Vulkan, or
+`orb --help` fails without it. Crackling with `A buffer underrun or overrun occurred` many times a
+second (issue #7, pipewire-alsa) means the device buffer is too small for the sound server's
+cycle; the output asks for 2048 frames (`BUFFER_FRAMES`, crates/orb-player/src/output.rs). Report
+the two lines `orb play SONG.rbs --seconds 10` prints (the start line with `buffer ... requested,
+first callback ... frames` and the exit line with the callback sizes; Ctrl+C prints it too), and
+the sound server's quantum (`pw-top`). OpenRB-338 also loads X11 or Wayland and the GL or Vulkan
+driver at run time (dlopen): on a bare Ubuntu 22.04 it needed `libxcursor1`, `libxrandr2`,
+`libxi6`, `libegl1` and a driver (`mesa-vulkan-drivers` for software Vulkan, or
 Mesa's OpenGL and EGL drivers, `libgl1-mesa-dri` and `libegl-mesa0`; see "The AppImage"; the
 `.tar.gz` also needs `libxkbcommon-x11-0`, which the AppImage bundles). The most
 recent glibc symbol the binaries use is `GLIBC_2.35` (OpenRB-338) and `GLIBC_2.34` (orb), on both
