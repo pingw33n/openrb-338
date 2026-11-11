@@ -22,6 +22,7 @@ use crate::behavior::{self, Mods};
 use crate::browser::{Browser, Mode, Poll};
 use crate::document::Document;
 use crate::generate;
+use crate::scale::ScaleKeys;
 use crate::keys::{self, Action, KeyMode};
 use crate::layout::{self, Ctl, PANEL_H, PANEL_W};
 use crate::link::Link;
@@ -174,8 +175,11 @@ pub struct App {
     /// `info_serial`; `App::about_ui`).
     pub(crate) about_open: bool,
     pub(crate) about_serial: u32,
-    /// The bass synth (0 or 1) whose GENERATE menu is open, if any (`generate.rs`).
+    /// The bass synth (0 or 1) whose GENERATE menu is open, if any, the menu's open list, and
+    /// the scale and key note chosen for each synth (`generate.rs`, `scale.rs`).
     pub(crate) generate_open: Option<usize>,
+    pub(crate) generate_list: Option<generate::List>,
+    pub(crate) scale_keys: ScaleKeys,
     /// Whether the logo plays its startup animation (task-114): the panel once, from the first
     /// frame it is drawn, and the About window at each open. Off by default, so the headless
     /// tests and `--screenshot` see the final state; `enable_logo_anim` turns it on.
@@ -240,6 +244,8 @@ impl App {
             about_open: false,
             about_serial: 0,
             generate_open: None,
+            generate_list: None,
+            scale_keys: ScaleKeys::default(),
             logo_anim: false,
             logo_start: None,
             about_start: None,
@@ -856,6 +862,10 @@ impl App {
                         self.panel.set_switch(&c.id, v);
                     }
                     _ => {}
+                }
+                // the 303's keys of the chosen scale glow under the key (generate.rs)
+                if generate::glows(&self.scale_keys, &c.id) {
+                    generate::paint_glow(ui, rect, view.scale);
                 }
                 let name = self.panel.part_name(c, down, now);
                 paint_part(ui, &name, rect);

@@ -3,7 +3,9 @@
 
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect, Vec2};
 use orb_ui::app::App;
-use orb_ui::generate::{CELL_H, COL_W, ROWS};
+use eframe::egui::{MouseWheelSource, MouseWheelUnit, TouchPhase};
+use orb_ui::generate::{self, CELL_H, COL_W, Field, LIST_ROWS, ROWS};
+use orb_ui::scale::{KEYS, SCALES};
 use orb_ui::layout::{self, PANEL_H, PANEL_W};
 use orb_ui::model::Panel;
 
@@ -49,6 +51,35 @@ impl Harness {
                 modifiers: Modifiers::NONE,
             }]);
         }
+    }
+
+    /// The mouse wheel over `p`, `lines` lines down (negative: up), then frames for egui's
+    /// smooth scrolling to pass it all on.
+    fn wheel_at(&mut self, p: Pos2, lines: f32) {
+        self.frame(vec![Event::PointerMoved(p)]);
+        self.frame(vec![Event::MouseWheel {
+            unit: MouseWheelUnit::Point,
+            delta: Vec2::new(0.0, -lines * CELL_H),
+            phase: TouchPhase::Move,
+            source: MouseWheelSource::Wheel,
+            modifiers: Modifiers::NONE,
+        }]);
+        for _ in 0..60 {
+            self.frame(vec![]);
+        }
+    }
+
+    /// A click in the middle of a field of row 1.
+    fn click_field(&mut self, synth: usize, field: Field) {
+        let (x, y, w, h) = self.app.field_rect(synth, field).unwrap();
+        self.click_at(Pos2::new(x + w / 2.0, y + h / 2.0));
+    }
+
+    /// A click on the open list's visible row `row` (0 is the top), left of the slider.
+    fn click_list_row(&mut self, row: usize) {
+        let (synth, field) = self.app.generate_list().unwrap();
+        let (x, y, ..) = self.app.list_rect(synth, field).unwrap();
+        self.click_at(Pos2::new(x + 8.0, y + CELL_H * (row as f32 + 0.5)));
     }
 
     fn key(&mut self, key: Key) {
@@ -110,4 +141,84 @@ fn the_menu_is_under_its_button_inside_the_panel_with_column_b_twice_as_wide() {
         assert!(y > b.y, "the menu is under the button");
         assert!(x >= 0.0 && y >= 0.0 && x + w <= PANEL_W && y + h_ <= PANEL_H);
     }
+}
+
+fn scale(name: &str) -> usize {
+    SCALES.iter().position(|(n, _)| *n == name).unwrap()
+}
+
+fn key(name: &str) -> usize {
+    KEYS.iter().position(|n| *n == name).unwrap()
+}
+
+#[test]
+fn baze_1_chooses_a_scale_then_a_key_and_its_keys_glow() {
+    let mut h = Harness::new();
+    h.click_at(button(0));
+    // the key note waits for the scale
+    h.click_field(0, Field::Key);
+    assert_eq!(h.app.generate_list(), None);
+    h.click_field(0, Field::Scale);
+    assert_eq!(h.app.generate_list(), Some((0, Field::Scale)));
+    // a second press on the field closes its list, a third opens it again
+    h.click_field(0, Field::Scale);
+    assert_eq!(h.app.generate_list(), None);
+    h.click_field(0, Field::Scale);
+    h.click_list_row(1);
+    assert_eq!(h.app.generate_list(), None);
+    assert_eq!(h.app.generate_open(), Some(0), "choosing keeps the menu open");
+    assert_eq!(h.app.scale_keys().get(0).scale, Some(scale("MINOR")));
+    assert!(!generate::glows(h.app.scale_keys(), "tb303_1.key0"));
+    h.click_field(0, Field::Key);
+    assert_eq!(h.app.generate_list(), Some((0, Field::Key)));
+    // A is the tenth key note: the wheel brings it into view
+    let (x, y, w, _) = h.app.list_rect(0, Field::Key).unwrap();
+    h.wheel_at(Pos2::new(x + w / 2.0, y + 10.0), 7.0);
+    h.click_list_row(key("A") - (KEYS.len() - LIST_ROWS));
+    assert_eq!(h.app.scale_keys().get(0).key, Some(key("A")));
+    // A minor: the white keys glow, the black ones and the LEDs do not; BAZE 2's do not
+    let sk = h.app.scale_keys();
+    for n in [0, 2, 4, 5, 7, 9, 11, 12] {
+        assert!(generate::glows(sk, &format!("tb303_1.key{n}")), "key{n}");
+    }
+    for n in [1, 3, 6, 8, 10] {
+        assert!(!generate::glows(sk, &format!("tb303_1.key{n}")), "key{n}");
+    }
+    assert!(!generate::glows(sk, "tb303_1.key0_led"));
+    assert!(!generate::glows(sk, "tb303_2.key0"));
+}
+
+#[test]
+fn baze_2_waits_for_baze_1_and_lists_only_what_fits() {
+    let mut h = Harness::new();
+    h.click_at(button(1));
+    h.click_field(1, Field::Scale);
+    assert_eq!(h.app.generate_list(), None, "nothing to offer before BAZE 1");
+    // BAZE 1: C major
+    h.click_at(button(0));
+    h.click_field(0, Field::Scale);
+    h.click_list_row(0);
+    h.click_field(0, Field::Key);
+    h.click_list_row(0);
+    assert_eq!(h.app.scale_keys().get(0).mask().unwrap(), 0b1010_1011_0101);
+    // BAZE 2: its list has the 9 scales that fit C major, slider and all
+    h.click_at(button(1));
+    h.click_field(1, Field::Scale);
+    let (_, _, _, lh) = h.app.list_rect(1, Field::Scale).unwrap();
+    assert_eq!(lh, CELL_H * LIST_ROWS as f32);
+    // the second item is MINOR, whose only fitting key is A
+    h.click_list_row(1);
+    assert_eq!(h.app.scale_keys().get(1).scale, Some(scale("MINOR")));
+    h.click_field(1, Field::Key);
+    let (_, _, _, lh) = h.app.list_rect(1, Field::Key).unwrap();
+    assert_eq!(lh, CELL_H, "one key note fits");
+    h.click_list_row(0);
+    assert_eq!(h.app.scale_keys().get(1).key, Some(key("A")));
+    assert!(generate::glows(h.app.scale_keys(), "tb303_2.key9"));
+    // a list's Escape closes the list only, the next closes the menu
+    h.click_field(1, Field::Scale);
+    h.key(Key::Escape);
+    assert_eq!((h.app.generate_list(), h.app.generate_open()), (None, Some(1)));
+    h.key(Key::Escape);
+    assert_eq!(h.app.generate_open(), None);
 }
