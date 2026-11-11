@@ -24,6 +24,7 @@ pub mod menu;
 pub mod mod_info;
 pub mod model;
 pub mod palette;
+pub mod random;
 pub mod scale;
 pub mod session;
 pub mod settings;

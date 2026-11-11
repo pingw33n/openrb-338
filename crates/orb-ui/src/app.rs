@@ -180,6 +180,13 @@ pub struct App {
     pub(crate) generate_open: Option<usize>,
     pub(crate) generate_list: Option<generate::List>,
     pub(crate) scale_keys: ScaleKeys,
+    /// The RANDOM row (`generate.rs`, `random.rs`): each synth's chosen fields, the synth
+    /// whose fields are being chosen (its RANDOM blinks), whether each synth's last RANDOM
+    /// randomized something, and the random numbers.
+    pub(crate) random_sel: [[bool; 5]; 2],
+    pub(crate) random_picking: Option<usize>,
+    pub(crate) random_done: [bool; 2],
+    pub(crate) rng: crate::random::Rng,
     /// Whether the logo plays its startup animation (task-114): the panel once, from the first
     /// frame it is drawn, and the About window at each open. Off by default, so the headless
     /// tests and `--screenshot` see the final state; `enable_logo_anim` turns it on.
@@ -246,6 +253,10 @@ impl App {
             generate_open: None,
             generate_list: None,
             scale_keys: ScaleKeys::default(),
+            random_sel: [[false; 5]; 2],
+            random_picking: None,
+            random_done: [false; 2],
+            rng: crate::random::Rng::from_time(),
             logo_anim: false,
             logo_start: None,
             about_start: None,

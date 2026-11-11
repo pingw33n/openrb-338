@@ -170,7 +170,7 @@ fn baze_1_chooses_a_scale_then_a_key_and_its_keys_glow() {
     assert_eq!(h.app.scale_keys().get(0).scale, Some(scale("MINOR")));
     assert!(!generate::glows(h.app.scale_keys(), "tb303_1.key0"));
     // SCALE/KEY turns green only with the key note too
-    assert!(!generate::row_done(h.app.scale_keys(), 0, 0));
+    assert!(!h.app.row_done(0, 0));
     h.click_field(0, Field::Key);
     assert_eq!(h.app.generate_list(), Some((0, Field::Key)));
     // A is the tenth key note: the wheel brings it into view
@@ -179,10 +179,9 @@ fn baze_1_chooses_a_scale_then_a_key_and_its_keys_glow() {
     h.click_list_row(key("A") - (KEYS.len() - LIST_ROWS));
     assert_eq!(h.app.scale_keys().get(0).key, Some(key("A")));
     // the row is complete: SCALE/KEY is green on BAZE 1, not on BAZE 2; the other rows stay red
-    let sk = h.app.scale_keys();
-    assert!(generate::row_done(sk, 0, 0));
-    assert!(!generate::row_done(sk, 1, 0));
-    assert!((1..ROWS.len()).all(|row| !generate::row_done(sk, 0, row)));
+    assert!(h.app.row_done(0, 0));
+    assert!(!h.app.row_done(1, 0));
+    assert!((1..ROWS.len()).all(|row| !h.app.row_done(0, row)));
     // A minor: the white keys glow, the black ones and the LEDs do not; BAZE 2's do not
     let sk = h.app.scale_keys();
     for n in [0, 2, 4, 5, 7, 9, 11, 12] {
@@ -228,4 +227,93 @@ fn baze_2_waits_for_baze_1_and_lists_only_what_fits() {
     assert_eq!((h.app.generate_list(), h.app.generate_open()), (None, Some(1)));
     h.key(Key::Escape);
     assert_eq!(h.app.generate_open(), None);
+}
+
+/// A click in the middle of RANDOM's name, or of the RANDOM row's button `param`.
+fn random_label(h: &Harness, synth: usize) -> Pos2 {
+    let (x, y, w, hh) = h.app.random_label_rect(synth).unwrap();
+    Pos2::new(x + w / 2.0, y + hh / 2.0)
+}
+
+fn random_button(h: &Harness, synth: usize, param: usize) -> Pos2 {
+    let (x, y, w, hh) = h.app.random_button_rect(synth, param).unwrap();
+    Pos2::new(x + w / 2.0, y + hh / 2.0)
+}
+
+#[test]
+fn random_chooses_its_fields_while_blinking_then_randomizes_the_pattern() {
+    use orb_ui::random::{ACCENT, NOTE, SLIDE};
+    let mut h = Harness::new();
+    h.app.set_random_seed(5);
+    h.click_at(button(0));
+    let before = h.app.panel.pattern_303(0);
+    // the buttons do nothing until RANDOM is pressed
+    let p = random_button(&h, 0, ACCENT);
+    h.click_at(p);
+    assert_eq!(h.app.random_selection(0), [false; 5]);
+    let l = random_label(&h, 0);
+    h.click_at(l);
+    assert_eq!(h.app.random_picking(), Some(0));
+    // NOTE waits for the scale and key
+    let p = random_button(&h, 0, NOTE);
+    h.click_at(p);
+    assert!(!h.app.random_selection(0)[NOTE]);
+    let p = random_button(&h, 0, ACCENT);
+    h.click_at(p);
+    let p = random_button(&h, 0, SLIDE);
+    h.click_at(p);
+    // a second click turns a field off again
+    h.click_at(p);
+    h.click_at(p);
+    assert_eq!(h.app.random_selection(0), [false, false, true, true, false]);
+    assert!(!h.app.row_done(0, 1));
+    h.click_at(l);
+    assert_eq!(h.app.random_picking(), None);
+    assert!(h.app.row_done(0, 1), "RANDOM is green after a run");
+    let after = h.app.panel.pattern_303(0);
+    assert_ne!(after, before);
+    // only the chosen fields changed (a cleared pattern: rests on low C)
+    for (a, b) in after.iter().zip(before.iter()) {
+        assert_eq!((a.note, a.rest, a.up, a.down), (b.note, b.rest, b.up, b.down));
+    }
+    // the engine is told every change
+    assert!(h.app.panel.events.iter().any(|e| matches!(
+        e,
+        orb_ui::model::Event::Step303 { synth: 0, field: 2, .. }
+    )));
+    // the choice is kept for the next time; Escape stops choosing without a run
+    h.click_at(l);
+    assert_eq!(h.app.random_selection(0), [false, false, true, true, false]);
+    let kept = h.app.panel.pattern_303(0);
+    h.key(Key::Escape);
+    assert_eq!((h.app.random_picking(), h.app.generate_open()), (None, None));
+    assert_eq!(h.app.panel.pattern_303(0), kept);
+    // BAZE 2's pattern was left alone
+    assert_eq!(h.app.panel.pattern_303(1), orb_ui::model::Panel::new().pattern_303(1));
+}
+
+#[test]
+fn random_notes_follow_the_scale_and_key() {
+    use orb_ui::random::NOTE;
+    let mut h = Harness::new();
+    h.app.set_random_seed(9);
+    h.click_at(button(0));
+    // C major pentatonic: C D E G A
+    h.click_field(0, Field::Scale);
+    let (x, y, w, _) = h.app.list_rect(0, Field::Scale).unwrap();
+    h.wheel_at(Pos2::new(x + w / 2.0, y + 10.0), 8.0);
+    h.click_list_row(scale("MAJ PENTA") - (SCALES.len() - LIST_ROWS));
+    h.click_field(0, Field::Key);
+    h.click_list_row(0);
+    let mask = h.app.scale_keys().get(0).mask().unwrap();
+    let l = random_label(&h, 0);
+    h.click_at(l);
+    let p = random_button(&h, 0, NOTE);
+    h.click_at(p);
+    h.click_at(l);
+    let steps = h.app.panel.pattern_303(0);
+    assert!(steps.iter().any(|s| !s.rest), "some steps became notes");
+    for s in steps {
+        assert!(orb_ui::scale::key_in(mask, s.note as usize), "note {}", s.note);
+    }
 }

@@ -965,6 +965,39 @@ impl Panel {
         self.set_event("transport.position", position);
     }
 
+    /// The 16 steps of 303 `k`'s selected pattern (the GENERATE menu's RANDOM, generate.rs).
+    pub fn pattern_303(&self, k: usize) -> [Step303; 16] {
+        self.synth[k].patterns[self.rows[k].pattern as usize]
+    }
+
+    /// Writes the 16 steps of 303 `k`'s selected pattern and sends each field that changed, as
+    /// a press of its button or key would (the GENERATE menu's RANDOM, generate.rs).
+    pub fn set_pattern_303(&mut self, k: usize, steps: [Step303; 16]) {
+        let pattern = self.rows[k].pattern;
+        let old = std::mem::replace(&mut self.synth[k].patterns[pattern as usize], steps);
+        for (step, (o, n)) in old.iter().zip(steps.iter()).enumerate() {
+            let fields = [
+                (o.note, n.note),
+                (o.slide as u8, n.slide as u8),
+                (o.accent as u8, n.accent as u8),
+                (o.up as u8, n.up as u8),
+                (o.down as u8, n.down as u8),
+                (o.rest as u8, n.rest as u8),
+            ];
+            for (field, (a, b)) in fields.into_iter().enumerate() {
+                if a != b {
+                    self.emit(Event::Step303 {
+                        synth: k,
+                        pattern,
+                        step,
+                        field: field as u8,
+                        value: b,
+                    });
+                }
+            }
+        }
+    }
+
     /// Tab / Shift+Tab on the focused 303: the step that is playing becomes a note
     /// (`rest` false) or a rest (`rest` true), in the pattern it plays. Nothing when the 303
     /// does not play.
