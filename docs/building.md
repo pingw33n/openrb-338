@@ -410,6 +410,18 @@ git push origin v2026.1028.1930
   (`ORB_BUILD_BRANCH=main`, `scripts/release-env.sh`); a tag on another branch shows `dev-`.
 - `workflow_dispatch` ("Run workflow" on a branch) builds all the artifacts (on the run's page) with the build time now, and creates no release:
   the `release` job runs only when the ref is a tag. Run on a tag it does what the tag push does.
+- **A pull request's packages.** Add the label `build-release` to the PR (the Labels menu of the
+  PR page): the workflow builds all the artifacts from the PR's head commit
+  (`refs/pull/N/head`, a fork's too), shown in the PR's Checks with the artifacts on the run's
+  page, and creates no release. "Re-run jobs" there, or removing and adding the label, runs it
+  again; any other label skips every job. A labeled run takes `release.yml` from the PR merged
+  with main, so a PR whose branch predates the label trigger (or that edits `release.yml`) runs
+  that version. GitHub runs no pull_request workflow on a PR with a merge conflict. For those
+  (or any PR) use "Run workflow" on main with the `pr` input set to the PR's number: main's
+  `release.yml` builds the PR's head, and no release is created even when started on a tag.
+  A PR run has the read-only token and no secret; for a first-time contributor GitHub asks to
+  approve the run ("Approve and run"), so read the PR's changes first: the run builds and runs
+  them. The binaries show `dev-` (the PR head is not on `origin/main`).
 
 `scripts/changelog.sh [--since REV] [PREV] NEW` writes the body: the commits of `PREV..NEW`,
 without merge commits and without `backlog:` ones, grouped under `engine`, `player`, `cli`, `ui`,

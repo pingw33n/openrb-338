@@ -1,14 +1,28 @@
 # Builds the packages of orb (the CLI) and OpenRB-338 (the UI) for the six targets on native
-# runners and uploads them as workflow artifacts (task-108). Runs on a release tag (v*) or by
-# hand. Needs no secret, and fetches no Propellerhead file: the standard mod is in the
-# repository (assets/Standard.rbm). The draft release, the installers, the .dmg and the
-# AppImages build on this file (tasks 110 to 113): `bin-<target>` holds the binaries they pack.
+# runners and uploads them as workflow artifacts (task-108). Runs on a release tag (v*), by
+# hand, or for a pull request. Needs no secret, and fetches no Propellerhead file: the standard
+# mod is in the repository (assets/Standard.rbm). The draft release, the installers, the .dmg
+# and the AppImages build on this file (tasks 110 to 113): `bin-<target>` holds the binaries
+# they pack.
+#
+# A pull request is built from its head commit (refs/pull/N/head, a fork's too), never
+# released, when the user adds the label `build-release` to it, or by hand with the `pr` input
+# (Actions > release > Run workflow), which also works for a PR GitHub runs no pull_request
+# workflow on (one with a merge conflict). The run has the read-only token of `permissions`
+# and no secret; GitHub asks to approve the run of a first-time contributor.
 name: release
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      pr:
+        description: "A pull request number to build (its head commit); empty for this branch"
+        required: false
+        default: ""
+  pull_request:
+    types: [labeled]
 
 permissions:
   contents: read
@@ -16,6 +30,11 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # The ref every checkout builds: a PR's head for a PR run, else "" (the run's own ref).
+  BUILD_REF: >-
+    ${{ github.event_name == 'pull_request'
+    && format('refs/pull/{0}/head', github.event.pull_request.number)
+    || inputs.pr && format('refs/pull/{0}/head', inputs.pr) || '' }}
 
 # `shell: bash` is bash -eo pipefail; the default of a step without it is bash -e, where a
 # pipe hides the failure of its first command (task-141).
@@ -25,25 +44,38 @@ defaults:
 
 jobs:
   prepare:
-    # One build time and one main/not-main flag for every package of the run.
+    # One build time and one main/not-main flag for every package of the run. A pull request
+    # label other than build-release skips it, and with it every job.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'build-release'
     runs-on: ubuntu-latest
     outputs:
       source_date_epoch: ${{ steps.env.outputs.SOURCE_DATE_EPOCH }}
       build_branch: ${{ steps.env.outputs.ORB_BUILD_BRANCH }}
     steps:
+      # The pr input must be a number; else the run stops here, before anything is checked out.
+      - name: Check the pr input
+        env:
+          PR: ${{ inputs.pr }}
+        run: |
+          if [ -n "$PR" ] && ! [[ "$PR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "the pr input is not a pull request number: $PR" >&2
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.BUILD_REF }}
           fetch-depth: 0
       # A tag that is not v<YYYY.MMDD.HHMM> (or names a date that does not exist) fails here,
       # with the message of version.sh, and every later job is skipped: nothing is built and
-      # no release is created. On a branch (workflow_dispatch) the build time is now.
+      # no release is created. On a branch (workflow_dispatch) or for a PR the build time is
+      # now, and a PR run ignores the tag it was started from.
       - id: env
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           tag=""
-          if [ "$REF_TYPE" = tag ]; then tag=$REF_NAME; fi
+          if [ "$REF_TYPE" = tag ] && [ -z "$BUILD_REF" ]; then tag=$REF_NAME; fi
           scripts/release-env.sh ${tag:+"$tag"} | tee -a "$GITHUB_OUTPUT"
 
   package:
@@ -72,6 +104,7 @@ jobs:
         run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.BUILD_REF }}
           fetch-depth: 0
       - name: Install the ALSA headers (cpal)
         if: runner.os == 'Linux'
@@ -126,6 +159,7 @@ jobs:
         run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.BUILD_REF }}
           fetch-depth: 0
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -167,6 +201,8 @@ jobs:
       - name: Refuse an empty build time
         run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BUILD_REF }}
       - name: Install NSIS
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
@@ -202,6 +238,8 @@ jobs:
       - name: Refuse an empty build time
         run: '[ -n "$SOURCE_DATE_EPOCH" ] || { echo "empty SOURCE_DATE_EPOCH from prepare" >&2; exit 1; }'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BUILD_REF }}
       - name: Install the ALSA headers (ui-art links the workspace's cpal) and the keyboard libraries to bundle
         run: |
           sudo apt-get update
@@ -226,12 +264,13 @@ jobs:
           if-no-files-found: error
 
   release:
-    # The draft release (task-113), only for a tag (a run by hand on a branch builds the
-    # artifacts and stops here). The one job with `contents: write`. It never publishes:
-    # the release stays a draft until the user publishes it by hand. Re-running replaces the
-    # draft of the tag (body and assets); a release already published is not touched.
+    # The draft release (task-113), only for a tag (a run by hand on a branch, or any pull
+    # request run, builds the artifacts and stops here; a pr input on a tag too). The one job
+    # with `contents: write`. It never publishes: the release stays a draft until the user
+    # publishes it by hand. Re-running replaces the draft of the tag (body and assets); a
+    # release already published is not touched.
     name: draft release
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' && github.event_name != 'pull_request' && !inputs.pr
     needs: [prepare, package, dmg, installer, appimage]
     runs-on: ubuntu-latest
     permissions:
