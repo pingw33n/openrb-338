@@ -42,6 +42,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use eframe::egui;
+use eframe::egui_wgpu::wgpu::Backends;
+use eframe::egui_wgpu::{WgpuError, WgpuSetup, WgpuSetupCreateNew};
 use orb_engine::tables::Tables;
 use orb_ui::app::{App, Shot};
 use orb_ui::browser::Mode;
@@ -284,11 +286,12 @@ fn main() -> eframe::Result {
         // The minimum is half the native panel size (decision task-040).
         .with_min_inner_size([PANEL_W / 2.0, PANEL_H / 2.0 + MENU_H])
         .with_maximized(!sized);
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport,
         ..Default::default()
     };
-    eframe::run_native(
+    options.wgpu_options.wgpu_setup = wgpu_setup();
+    let result = eframe::run_native(
         "OpenRB-338",
         options,
         Box::new(move |cc| {
@@ -350,12 +353,99 @@ fn main() -> eframe::Result {
             }
             Ok(Box::new(app))
         }),
-    )
+    );
+    if let Err(e) = &result {
+        report_start_error(e);
+        // the report is the one message; returning the error would print it a second time
+        std::process::exit(1);
+    }
+    result
+}
+
+/// What the user is told when the window cannot be made: eframe's error, and for a wgpu
+/// error (no adapter for the backends asked for) how to pick another backend.
+fn start_error_text(e: &eframe::Error) -> String {
+    let mut text = format!("OpenRB-338 could not open its window: {e}");
+    if matches!(
+        e,
+        eframe::Error::Wgpu(WgpuError::RequestAdapterError(_) | WgpuError::CreateSurfaceError(_))
+    ) {
+        text.push_str(concat!(
+            "\n\nNo graphics adapter was found for the backends tried. The WGPU_BACKEND ",
+            "environment variable picks the graphics backend: vulkan, gl or dx12 (Windows ",
+            "uses dx12 by default)."
+        ));
+    }
+    text
+}
+
+/// Prints `start_error_text` and shows it in a box (a release build on Windows has no console;
+/// `ORB_UI_NO_CRASH_DIALOG` turns the box off).
+fn report_start_error(e: &eframe::Error) {
+    let text = start_error_text(e);
+    eprintln!("{text}");
+    if !orb_ui::crash::no_dialog() {
+        let _ = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("OpenRB-338")
+            .set_description(text)
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+    }
+}
+
+/// The wgpu backends to ask for: `WGPU_BACKEND` when set, else DX12 only on Windows (Intel's
+/// Vulkan driver, igvk64.dll, crashes at startup while wgpu enumerates it; issue #10) and
+/// egui-wgpu's own `PRIMARY | GL` elsewhere.
+fn wgpu_backends(from_env: Option<Backends>, windows: bool) -> Backends {
+    from_env.unwrap_or(if windows {
+        Backends::DX12
+    } else {
+        Backends::PRIMARY | Backends::GL
+    })
+}
+
+/// egui-wgpu's default setup, with the backends of `wgpu_backends`.
+fn wgpu_setup() -> WgpuSetup {
+    let mut setup = WgpuSetupCreateNew::without_display_handle();
+    setup.instance_descriptor.backends =
+        wgpu_backends(Backends::from_env(), cfg!(target_os = "windows"));
+    WgpuSetup::CreateNew(setup)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_no_adapter_error_names_wgpu_backend() {
+        let e = eframe::Error::Wgpu(WgpuError::CustomNativeAdapterSelectionError("x".into()));
+        let t = start_error_text(&e);
+        assert!(t.contains("could not open its window"), "{t}");
+        assert!(!t.contains("WGPU_BACKEND"), "{t}");
+        let e = eframe::Error::Wgpu(WgpuError::RequestAdapterError(
+            eframe::wgpu::RequestAdapterError::NotFound {
+                active_backends: Backends::DX12,
+                requested_backends: Backends::DX12,
+                supported_backends: Backends::DX12,
+                no_fallback_backends: Backends::empty(),
+                no_adapter_backends: Backends::DX12,
+                incompatible_surface_backends: Backends::empty(),
+            },
+        ));
+        assert!(start_error_text(&e).contains("WGPU_BACKEND"));
+    }
+
+    #[test]
+    fn backends_default_is_dx12_on_windows_and_the_env_wins() {
+        assert_eq!(wgpu_backends(None, true), Backends::DX12);
+        assert_eq!(wgpu_backends(None, false), Backends::PRIMARY | Backends::GL);
+        assert_eq!(
+            wgpu_backends(Some(Backends::VULKAN), true),
+            Backends::VULKAN
+        );
+        assert_eq!(wgpu_backends(Some(Backends::GL), false), Backends::GL);
+    }
 
     fn parse(a: &[&str]) -> Result<Args, Exit> {
         parse_args(a.iter().map(|s| s.to_string()))

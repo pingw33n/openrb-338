@@ -731,6 +731,16 @@ or `libdl`, and its container does not install the three libraries (it fails whe
   `libEGL.so.1` and without a Vulkan ICD the program stops with
   "FailedToCreateSurfaceForAnyBackend"; that was the error of the first task-112 smoke run,
   whose OpenGL run only lacked `libegl1` (task-135: the fallback needed no wgpu setting).
+  **Windows (task-177)** asks for DX12 only when `WGPU_BACKEND` is unset (`main.rs`
+  `wgpu_backends`; macOS and Linux keep egui-wgpu's `PRIMARY | GL`), and there is no fallback
+  probe: `WGPU_BACKEND=vulkan` or `gl` overrides it, and a machine with no DX12 adapter stops
+  with a box (and a stderr line) that names `WGPU_BACKEND`. Why: with the default, wgpu loaded
+  and enumerated every Vulkan driver, and Intel's (`igvk64.dll` 31.0.101.2140) crashes there
+  with an access violation, so v2026.1103.0917 exited silently before the window appeared
+  (GitHub issue #10; the same crash is reported for another egui/wgpu app, storytold/wordcraft
+  #170). The crash itself could not be reproduced (no such driver on the test machine); the
+  test machine (AMD Radeon) printed `gpu: Dx12 IntegratedGpu ...` with nothing set,
+  `gpu: Vulkan ...` with `WGPU_BACKEND=vulkan` and `gpu: Gl ...` with `WGPU_BACKEND=gl`.
   `ORB_GPU_INFO=1` makes OpenRB-338 print the adapter it chose (`gpu: Vulkan Cpu
   llvmpipe ...`). The smoke test (xvfb, `ubuntu:22.04`, aarch64) takes a `--screenshot` with
   `WGPU_BACKEND=vulkan`, with `WGPU_BACKEND=gl`, with nothing forced and a Vulkan ICD present

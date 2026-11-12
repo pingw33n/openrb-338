@@ -85,7 +85,10 @@ and Windows.
      Open > Open works too. Or, in Terminal: `xattr -dr com.apple.quarantine
      /Applications/OpenRB-338.app`.
    - **Windows:** SmartScreen says "Windows protected your PC". Click "More info", then
-     "Run anyway".
+     "Run anyway". If v2026.1103.0917 exits silently at start on a PC with an Intel GPU (a
+     crash in Intel's Vulkan driver), set the environment variable `WGPU_BACKEND=dx12` (for
+     example `set WGPU_BACKEND=dx12` in `cmd`, then start `OpenRB-338.exe`); newer releases
+     use DX12 on Windows by default.
    - **Linux:** nothing more. If the AppImage does not start because FUSE is missing, install
      `libfuse2` or run it with `--appimage-extract-and-run`.
 

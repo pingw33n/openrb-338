@@ -197,7 +197,7 @@ pub fn box_text(message: &str, location: Option<&str>, log: &Result<PathBuf, Str
 
 /// Whether the box is turned off (`ORB_UI_NO_CRASH_DIALOG` set and not empty or `0`): for
 /// tests, and for a machine with no desktop.
-fn no_dialog() -> bool {
+pub fn no_dialog() -> bool {
     std::env::var_os("ORB_UI_NO_CRASH_DIALOG").is_some_and(|v| !v.is_empty() && v != "0")
 }
 
