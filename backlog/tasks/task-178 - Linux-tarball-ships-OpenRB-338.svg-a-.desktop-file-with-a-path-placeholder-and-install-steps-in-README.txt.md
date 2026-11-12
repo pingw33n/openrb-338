@@ -3,10 +3,11 @@ id: TASK-178
 title: >-
   Linux tarball ships OpenRB-338.svg, a .desktop file with a path placeholder,
   and install steps in README.txt
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
 created_date: '2026-11-12T13:01:00Z'
+updated_date: '2026-11-12T13:15:00Z'
 labels:
   - tools
   - docs
@@ -44,7 +45,47 @@ What (Linux targets of scripts/package.sh only; macOS and Windows packages uncha
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The Linux tarballs contain OpenRB-338.svg and OpenRB-338.desktop (Exec and Icon with @DIR@, StartupWMClass=OpenRB-338, file name OpenRB-338.desktop); macOS and Windows packages are unchanged; the entry's common lines have one source shared with the AppImage, whose .desktop is unchanged
-- [ ] #2 README.txt in the Linux tarballs gives the one-line install from the unpacked folder, the removal, and the rename and move caveats; after that sed (path with a space) desktop-file-validate passes; results in the notes
-- [ ] #3 docs/building.md and README.md mention the files; scripts/package.sh for a Linux target runs in CI unchanged otherwise; the task notes hold a reply text for issue #7
+- [x] #1 The Linux tarballs contain OpenRB-338.svg and OpenRB-338.desktop (Exec and Icon with @DIR@, StartupWMClass=OpenRB-338, file name OpenRB-338.desktop); macOS and Windows packages are unchanged; the entry's common lines have one source shared with the AppImage, whose .desktop is unchanged
+- [x] #2 README.txt in the Linux tarballs gives the one-line install from the unpacked folder, the removal, and the rename and move caveats; after that sed (path with a space) desktop-file-validate passes; results in the notes
+- [x] #3 docs/building.md and README.md mention the files; scripts/package.sh for a Linux target runs in CI unchanged otherwise; the task notes hold a reply text for issue #7
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. scripts/OpenRB-338.desktop.in: the entry's common lines with @EXEC@ and @ICON@ placeholders; package-appimage.sh fills them (Exec=OpenRB-338 %f, Icon=OpenRB-338) and appends X-AppImage-Version, byte-identical to today's file (diffed).
+2. package.sh, Linux targets: copy assets/ui/app_icon.svg as OpenRB-338.svg, fill the template with the quoted @DIR@ Exec and Icon, add the README.txt install section.
+3. docs/building.md and README.md one line each.
+4. Verify without Docker (not running): sed locally, diff the AppImage entry, bash -n, run package.sh with SKIP_BUILD and a fake bin for Linux, macOS and Windows targets; desktop-file-validate only if available.
+5. Notes with the reply text for issue 7.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: task-178-linux-desktop-entry
+
+Implementation:
+- scripts/OpenRB-338.desktop.in holds the common lines (@EXEC@, @ICON@). package-appimage.sh fills Exec=OpenRB-338, Icon=OpenRB-338 and appends X-AppImage-Version; cmp of the generated text against the previous heredoc output: identical.
+- package.sh (Linux targets) adds OpenRB-338.svg (cmp equal to assets/ui/app_icon.svg), OpenRB-338.desktop (Exec="@DIR@/OpenRB-338" %f, Icon=@DIR@/OpenRB-338.svg, StartupWMClass=OpenRB-338) and a README.txt menu section. With SKIP_BUILD=1 and fake bins, the aarch64-apple-darwin tar.gz and x86_64-pc-windows-msvc zip have no new files and an unchanged README.
+- docs/building.md and README.md mention the files. User addition (2026-11-12): README.md's Linux notes also say the AppImage holds its own icon and menu entry, and an AppImage tool such as Gear Lever or AppImageLauncher adds the menu item.
+
+Verification (Docker, ubuntu:22.04 aarch64, desktop-file-utils 0.26-1ubuntu3; the unfilled file fails validation as expected: Icon @DIR@ looks relative):
+- Review round 1 (on 64f8cb6): the README.txt command now writes aside and moves into place, and names the characters a path must not contain (| & \ " $ ` %; spaces are fine):
+  d=~/.local/share/applications; mkdir -p $d && sed "s|@DIR@|$PWD|g" OpenRB-338.desktop > $d/OpenRB-338.desktop.new && mv $d/OpenRB-338.desktop.new $d/OpenRB-338.desktop
+- That line, taken from the README.txt of the real fake-bin tarball, run in '/tmp/dir with space/OpenRB 338': exit 0, Exec="/tmp/dir with space/OpenRB 338/OpenRB-338" %f, desktop-file-validate: VALIDATE-OK.
+- Same line in '/tmp/pipe|dir' with an existing entry: sed fails ("unknown option to s"), exit 1, cmp shows the existing OpenRB-338.desktop untouched; a stray OpenRB-338.desktop.new is left (harmless: the menu ignores it).
+- Not done: a real Docker build of the package, seeing the menu entry on a desktop.
+- Open item: whether a menu needs update-desktop-database for a new entry was not checked. Expected not (it rebuilds only the MIME cache and the entry has no MimeType). README.txt does not mention it.
+
+Reply text for issue #7 (post nothing):
+Thanks for the report. The Linux .tar.gz now has OpenRB-338.svg (the icon) and OpenRB-338.desktop. A desktop file needs absolute paths, so the file holds @DIR@ where the folder goes. The package's README.txt has a one-line command to run in the unpacked folder that fills in the folder and installs the file as ~/.local/share/applications/OpenRB-338.desktop. Keep that file name: the desktop matches the window's icon to it. If you move the folder, run the line again; remove the entry with rm ~/.local/share/applications/OpenRB-338.desktop. The AppImage already has its own entry and icon.
+
+Review round 2 (on e4233b1): the install line had a shell variable assignment, which fish rejects. It is now one line without variables (mkdir -p ~/.local/share/applications && sed "s|@DIR@|$PWD|g" OpenRB-338.desktop > ~/.local/share/applications/OpenRB-338.desktop.new && mv ...new ...desktop), and README.txt says it works in bash, zsh and fish and that a failed run leaves a deletable OpenRB-338.desktop.new. Re-run in ubuntu:22.04 (fish 3.3.1, desktop-file-utils 0.26), the line taken from the tarball's README.txt, path '/tmp/dir with space/OpenRB 338': under sh and under fish -c exit 0, Exec="/tmp/dir with space/OpenRB 338/OpenRB-338" %f, desktop-file-validate VALIDATE-OK both times; path with | and an existing entry: sed fails, exit 1, entry untouched. The earlier notes' mention of the old d=... line is superseded.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The Linux tarballs now ship OpenRB-338.svg and OpenRB-338.desktop (@DIR@ placeholder, StartupWMClass=OpenRB-338) and README.txt install, removal and move steps. The install line writes to a temporary name and moves it into place, and the README names the characters a folder path must not contain. The entry's common lines live in scripts/OpenRB-338.desktop.in, shared with package-appimage.sh, whose output is byte-identical to before. docs/building.md and README.md updated (README.md also points AppImage users to Gear Lever or AppImageLauncher). Branch task-178-linux-desktop-entry, one commit. Tested: package.sh with fake binaries for Linux, macOS and Windows targets; the README line on a path with a space plus desktop-file-validate in ubuntu:22.04 pass; a path with | leaves an existing entry untouched. Not done: a real package build, seeing the menu entry. Open item: whether the menu needs update-desktop-database was not checked (not mentioned in README.txt).
+<!-- SECTION:FINAL_SUMMARY:END -->

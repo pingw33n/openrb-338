@@ -91,19 +91,10 @@ chmod 755 "$appdir/AppRun"
 
 # The desktop entry: the file name and StartupWMClass are the app id the window sets
 # (with_app_id("OpenRB-338") in orb-ui), so Wayland and X11 shells match the window to it.
-cat > "$appdir/usr/share/applications/OpenRB-338.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=OpenRB-338
-GenericName=Bass line and drum machine
-Comment=A reimplementation of the audio engine of Propellerhead ReBirth RB-338
-Exec=OpenRB-338 %f
-Icon=OpenRB-338
-Terminal=false
-Categories=AudioVideo;Audio;Music;
-StartupWMClass=OpenRB-338
-X-AppImage-Version=$version
-EOF
+{
+    sed -e 's|@EXEC@|OpenRB-338|' -e 's|@ICON@|OpenRB-338|' "$root/scripts/OpenRB-338.desktop.in"
+    echo "X-AppImage-Version=$version"
+} > "$appdir/usr/share/applications/OpenRB-338.desktop"
 cp "$appdir/usr/share/applications/OpenRB-338.desktop" "$appdir/OpenRB-338.desktop"
 
 # The icon: the committed app_icon part (assets/ui/app_icon.svg) rendered with resvg by ui-art,

@@ -69,11 +69,15 @@ and Windows.
    | Linux, ARM64 | `OpenRB-338-<version>-aarch64.AppImage` |
 
    Plain archives (`.tar.gz`, or `.zip` on Windows) with the two binaries are there too.
+   The Linux `.tar.gz` also holds an icon and a `.desktop` file; its `README.txt` shows how to add
+   a menu entry.
 
 2. **Install it.**
    - macOS: open the `.dmg` and drag OpenRB-338 to Applications.
    - Windows: run the installer. It can add `orb` to the PATH.
    - Linux: make the AppImage executable (`chmod +x OpenRB-338-*.AppImage`).
+     It holds its own icon and menu entry: for a menu item, open it with an AppImage tool such
+     as Gear Lever or AppImageLauncher.
 
 3. **Optionally, get songs and mods:** download the
    [song collection](https://github.com/pingw33n/rb-songs) and the

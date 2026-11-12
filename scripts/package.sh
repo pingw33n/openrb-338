@@ -28,6 +28,17 @@ cp "$dist/$target/bin/"* "$stage/"
 cp "$root/LICENSE" "$stage/LICENSE"
 
 case $target in
+    *-linux-*)
+        # the menu entry (task-178): the icon, and the AppImage's desktop entry (the shared
+        # scripts/OpenRB-338.desktop.in) with @DIR@ for the install folder, which the user
+        # fills in; Exec and Icon must be absolute
+        cp "$root/assets/ui/app_icon.svg" "$stage/OpenRB-338.svg"
+        sed -e 's|@EXEC@|"@DIR@/OpenRB-338"|' -e 's|@ICON@|@DIR@/OpenRB-338.svg|' \
+            "$root/scripts/OpenRB-338.desktop.in" > "$stage/OpenRB-338.desktop"
+        ;;
+esac
+
+case $target in
     *-windows-*) run="OpenRB-338.exe (the app) and orb.exe (the command line)" ;;
     *) run="OpenRB-338 (the app) and orb (the command line)" ;;
 esac
@@ -46,6 +57,30 @@ Neither needs any file of the original program: the standard drum kit is built i
 The binaries are not signed (docs/building.md says what the system shows for that).
 Licensed under the GNU General Public License, version 3 only (GPL-3.0-only; see LICENSE).
 EOF
+case $target in
+    *-linux-*)
+        cat >> "$stage/README.txt" <<'EOF'
+
+Menu entry (optional)
+---------------------
+OpenRB-338.desktop and OpenRB-338.svg make OpenRB-338 appear in the application menu with its
+icon. A desktop file needs absolute paths, so OpenRB-338.desktop holds @DIR@ where the folder
+goes. In this unpacked folder, run:
+
+  mkdir -p ~/.local/share/applications && sed "s|@DIR@|$PWD|g" OpenRB-338.desktop > ~/.local/share/applications/OpenRB-338.desktop.new && mv ~/.local/share/applications/OpenRB-338.desktop.new ~/.local/share/applications/OpenRB-338.desktop
+
+The line works in bash, zsh and fish. The file is written aside and moved into place, so a
+failure leaves an existing entry alone (and a stray OpenRB-338.desktop.new, which you can delete).
+The folder's path must not contain | & \ " $ ` or %; spaces are fine.
+
+Keep the file name OpenRB-338.desktop: the desktop matches the running window (and its icon) to
+the file of that name. If you move or rename this folder, run the line again. To remove the
+entry:
+
+  rm ~/.local/share/applications/OpenRB-338.desktop
+EOF
+        ;;
+esac
 
 # owner, group and (with GNU tar) mtime and order are fixed; bsdtar keeps the file mtimes
 epoch=${SOURCE_DATE_EPOCH:-$(date +%s)}

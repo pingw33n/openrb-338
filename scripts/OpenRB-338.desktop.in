@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OpenRB-338
+GenericName=Bass line and drum machine
+Comment=A reimplementation of the audio engine of Propellerhead ReBirth RB-338
+Exec=@EXEC@ %f
+Icon=@ICON@
+Terminal=false
+Categories=AudioVideo;Audio;Music;
+StartupWMClass=OpenRB-338

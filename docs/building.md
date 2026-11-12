@@ -24,6 +24,9 @@ Every OS has an amd64 and an arm64 variant:
 A package is `OpenRB-338-<YYYY.MMDD.HHMM>-<target>.tar.gz|zip` holding a folder of the same
 name with `orb` (`orb.exe`), `OpenRB-338` (`OpenRB-338.exe`), `LICENSE` and `README.txt`. The
 binaries are built with `--locked` and the `dist` profile (below).
+The Linux `.tar.gz` also holds `OpenRB-338.svg` (`assets/ui/app_icon.svg`) and `OpenRB-338.desktop`
+(task-178: the AppImage's entry, from `scripts/OpenRB-338.desktop.in`, with `@DIR@` in `Exec` and
+`Icon`); its `README.txt` has the one-line `sed` that installs the menu entry.
 
 ### The dist profile (task-132)
 
