@@ -2059,7 +2059,7 @@ fn the_about_window_opens_centered_and_closes() {
         shapes.contains(orb_ui::about::VERSION),
         "the version is drawn"
     );
-    assert_eq!(orb_ui::about::URL, "https://github.com/pingw33n/openrb-338");
+    assert_eq!(orb_ui::about::URL, "https://github.com/pingw33n/OpenRB-338");
     assert_eq!(
         orb_ui::about::SONGS_URL,
         "https://github.com/pingw33n/rb-songs"

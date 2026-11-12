@@ -27,7 +27,7 @@ const TEXT_X: f32 = 108.0;
 /// The name of the app.
 pub const NAME: &str = "OpenRB-338";
 /// The project page.
-pub const URL: &str = "https://github.com/pingw33n/openrb-338";
+pub const URL: &str = "https://github.com/pingw33n/OpenRB-338";
 /// The user's public collections, shown under the project page as `label url` (task-138).
 /// The user's song collection.
 pub const SONGS_URL: &str = "https://github.com/pingw33n/rb-songs";

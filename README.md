@@ -9,7 +9,7 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/pingw33n/openrb-338/releases"><b>Download</b></a> ·
+  <a href="https://github.com/pingw33n/OpenRB-338/releases"><b>Download</b></a> ·
   <a href="assets/readme/screenshot.png"><b>Screenshot</b></a> ·
   <a href="https://github.com/pingw33n/rb-songs"><b>Song collection</b></a> ·
   <a href="https://github.com/pingw33n/rb-mods"><b>Mod collection</b></a>
@@ -57,7 +57,7 @@ and Windows.
 ## Quick start
 
 1. **Download** the package for your system and CPU from
-   [Releases](https://github.com/pingw33n/openrb-338/releases):
+   [Releases](https://github.com/pingw33n/OpenRB-338/releases):
 
    | System | File |
    |---|---|
