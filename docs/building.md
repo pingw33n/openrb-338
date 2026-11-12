@@ -412,11 +412,13 @@ git push origin v2026.1028.1930
   the `release` job runs only when the ref is a tag. Run on a tag it does what the tag push does.
 
 `scripts/changelog.sh [--since REV] [PREV] NEW` writes the body: the commits of `PREV..NEW`,
-without merge commits and without `backlog:` ones, grouped under `engine`, `cli`, `tools`,
-`tests`, `docs` (then `other` for a subject with no such prefix), each as the subject without its
-prefix and the task ids of its `Task:` lines in parentheses. Without `PREV` it is the greatest
-earlier tag of the release form (text order is version order; `vfoo` and `v2026.1028.1500x` are
-ignored). The first release has no earlier tag: the whole history is listed, and the first line
+without merge commits and without `backlog:` ones, grouped under `engine`, `player`, `cli`, `ui`,
+`tools`, `tests`, `docs` (then `other` for a subject with no such prefix), each as the subject
+without its prefix and the task ids of its `Task:` lines in parentheses. A subject with several
+areas (`player,cli,ui: ...`) is listed once, under its first known area, with the others noted
+(`(task-176; also cli, ui)`). Without `PREV` it is the greatest tag of the release form in NEW's
+history other than NEW itself, so `HEAD` previews the next release (text order is version order;
+`vfoo` and `v2026.1028.1500x` are ignored). The first release has no earlier tag: the whole history is listed, and the first line
 says so; `--since REV` lists the commits after REV instead. Example (a scratch clone with fake
 tags):
 

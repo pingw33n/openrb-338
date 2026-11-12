@@ -10,13 +10,16 @@
 #   scripts/changelog.sh --since abc1234 v2026.1028.1930  # since a commit (the first release)
 #
 # NEW is a tag or any revision. Without PREV the previous release tag is the greatest tag
-# matching ^v[0-9]{4}\.[0-9]{4}\.[0-9]{4}$ that sorts before NEW (the form is zero-padded, so
-# the text order is the version order). With no such tag (the first release), and without
+# matching ^v[0-9]{4}\.[0-9]{4}\.[0-9]{4}$ in NEW's history, other than NEW itself (the form is
+# zero-padded, so the text order is the version order). With no such tag (the first release), and without
 # --since, the whole history up to NEW is listed and the text says so. The tags are read from
 # the repository the script runs in.
 #
-# Areas, in this order: engine, cli, tools, tests, docs; a subject with another prefix (or
-# none) goes to "other". Commits of the area backlog are left out, merge commits are skipped.
+# Areas, in this order: engine, player, cli, ui, tools, tests, docs; a subject with none of them
+# (or no prefix) goes to "other". A prefix may name several areas, comma-separated
+# (`player,cli,ui: ...`, AGENTS.md): the commit is listed once, under its first known area,
+# with the others after its task ids ("also cli, ui"). Commits whose areas are all backlog are
+# left out, merge commits are skipped.
 set -euo pipefail
 
 since=
@@ -39,9 +42,10 @@ git rev-parse --verify --quiet "$new^{commit}" >/dev/null || {
 
 pattern='^v[0-9]{4}\.[0-9]{4}\.[0-9]{4}$'
 if [ -z "$prev" ] && [ -z "$since" ]; then
-    # the latest release tag before NEW, in version order
-    prev=$(git tag --list 'v*' | { grep -E "$pattern" || true; } | LC_ALL=C sort |
-        LC_ALL=C awk -v new="$new" '$0 < new { p = $0 } END { print p }')
+    # the latest release tag in NEW's history other than NEW itself, in version order (NEW may
+    # be HEAD or a commit, which a text comparison with the tags would not order)
+    prev=$(git tag --merged "$new" --list 'v*' | { grep -E "$pattern" || true; } |
+        { grep -vxF "$new" || true; } | LC_ALL=C sort | tail -n 1)
 fi
 if [ -n "$prev" ]; then
     git rev-parse --verify --quiet "$prev^{commit}" >/dev/null || {
@@ -66,7 +70,8 @@ fi
 git log --no-merges --format='%s%x1f%b%x1e' "$range" | LC_ALL=C awk -v from="$from" -v new="$new" '
 BEGIN {
     RS = "\036"; FS = "\037"
-    n = split("engine cli tools tests docs other", order, " ")
+    n = split("engine player cli ui tools tests docs other", order, " ")
+    for (k = 1; k < n; k++) known[order[k]] = 1
     total = 0; listed = 0
 }
 {
@@ -74,13 +79,20 @@ BEGIN {
     sub(/^\n/, "", subj)
     if (subj == "") next
     total++
-    area = "other"; text = subj
-    if (match(subj, /^[a-z]+: /)) {
-        a = substr(subj, 1, RLENGTH - 2)
-        if (a == "backlog") next
-        if (a == "engine" || a == "cli" || a == "tools" || a == "tests" || a == "docs") {
-            area = a; text = substr(subj, RLENGTH + 1)
+    area = "other"; text = subj; also = ""
+    if (match(subj, /^[a-z]+(,[a-z]+)*: /)) {
+        na = split(substr(subj, 1, RLENGTH - 2), as, ",")
+        backlog_only = 1; first = ""; delete got
+        for (i = 1; i <= na; i++) {
+            if (as[i] != "backlog") backlog_only = 0
+            if (!(as[i] in known) || (as[i] in got)) continue
+            got[as[i]] = 1
+            if (first == "") first = as[i]
+            else also = also (also == "" ? "" : ", ") as[i]
         }
+        if (backlog_only) next
+        if (first != "") { area = first; text = substr(subj, RLENGTH + 1) }
+        else also = ""
     }
     # the task ids of the Task: lines of the body
     nb = split(body, lines, "\n"); ids = ""; delete seen
@@ -94,7 +106,9 @@ BEGIN {
         }
     }
     count[area]++
-    items[area, count[area]] = "- " text (ids == "" ? "" : " (" ids ")")
+    note = ids
+    if (also != "") note = note (note == "" ? "" : "; ") "also " also
+    items[area, count[area]] = "- " text (note == "" ? "" : " (" note ")")
     listed++
 }
 END {

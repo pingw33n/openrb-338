@@ -105,7 +105,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
 
 ## Commit messages
 
-Subject: `<area>: <what>`, at most 72 characters. The area is one of `engine`, `cli`, `ui`, `tools`, `tests`, `docs` or `backlog`; `ui` is the desktop UI (`orb-ui`, `orb-ui-art`), `tools` the Python tools and scripts.
+Subject: `<area>: <what>`, at most 72 characters. The area is one of `engine`, `player`, `cli`, `ui`, `tools`, `tests`, `docs` or `backlog`; `player` is the real-time player and audio output (`orb-player`), `ui` the desktop UI (`orb-ui`, `orb-ui-art`), `tools` the Python tools and scripts. A change to several areas names them comma-separated, without spaces, the main one first: `player,cli,ui: <what>` (`scripts/changelog.sh` lists it under the first).
 
 Body, in this order:
 1. **Change**: what and where.
