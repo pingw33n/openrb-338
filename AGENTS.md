@@ -88,7 +88,7 @@ Planning, progress and decisions live in `backlog/` (Backlog.md). The shared age
   - why it exists, and the context not recoverable from the code;
   - testable acceptance criteria;
   - `--ref`;
-  - labels, from: `re`, `engine`, `cli`, `tools`, `tests`, `testmachine`, `rbm`, `ui`, `docs`, `decision`;
+  - labels, from: `re`, `engine`, `player`, `cli`, `tools`, `tests`, `testmachine`, `rbm`, `ui`, `docs`, `decision`;
   - a type (`bug`, `feature`, `enhancement`, `task`, `chore`, `docs`, `spike`);
   - a priority, a milestone and its dependencies.
 
