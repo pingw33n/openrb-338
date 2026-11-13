@@ -478,3 +478,14 @@ fn view_keeps_the_aspect_ratio_and_letterboxes() {
     let p = wide.to_panel(wide.origin + Vec2::new(100.0, 50.0));
     assert_eq!(p, Pos2::new(100.0, 50.0));
 }
+
+#[test]
+fn a_double_click_on_a_knob_of_the_panel_without_a_song_does_nothing() {
+    // the reset is to the knob's value in a new empty song (tests/wired.rs); a panel without a
+    // link (the demo) has no song
+    let mut h = Harness::new();
+    h.app.panel.set_knob("tb303_1.cutoff", 300);
+    h.click("tb303_1.cutoff");
+    h.click("tb303_1.cutoff");
+    assert_eq!(h.app.panel.knob("tb303_1.cutoff"), 300);
+}
