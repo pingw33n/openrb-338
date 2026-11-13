@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/pingw33n/OpenRB-338/releases"><b>Download</b></a> ·
-  <a href="assets/readme/screenshot.png"><b>Screenshot</b></a> ·
+  <a href="https://raw.githubusercontent.com/pingw33n/OpenRB-338/main/assets/readme/screenshot.png"><b>Screenshot</b></a> ·
   <a href="https://github.com/pingw33n/rb-songs"><b>Song collection</b></a> ·
   <a href="https://github.com/pingw33n/rb-mods"><b>Mod collection</b></a>
 </p>

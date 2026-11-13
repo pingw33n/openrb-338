@@ -9,9 +9,17 @@
   - `logo.gif`: the README's logo, the About window's icon and wordmark on its gray plate with
     the startup animation (task-114), played once. Since task-179 made from the app itself: 56
     `--about --screenshot` captures at `ORB_LOGO_T` = 0, 1/30, ... s (the last one the final
-    state), cropped to the icon and the plate: 740 x 216 px (2x), 30 fps.
+    state), cropped to the icon and the plate: 740 x 215 px (2x), 30 fps. Row 215 of the 216-row
+    capture holds the tops of the subtitle's letters in every frame, so the last row is
+    cropped (task-180). The generator script is not in the repository; after the 56 captures
+    are joined into a 740 x 216 GIF, run `gifsicle -O3 --lossy=30 --crop 0,0+740x215 IN.gif
+    -o logo.gif` (no `--colors`: a shared palette flattens the plate's drop shadow).
   - `screenshot.png`: the README's screenshot of OpenRB-338 on macOS (2026-11-13, task-179's
-    redesign; `OpenRB-338 --demo --size 1100x700 --ppp 2 --screenshot`).
+    redesign; `OpenRB-338 --demo --size 1100x700 --ppp 2 --screenshot`), then
+    `pngquant --quality=80-95 --strip --speed 1` and `oxipng -o max --strip all` (task-180: 4.6
+    MB to 1.1 MB).
+  - The art's previews (`assets/ui/preview/`) and `docs/ui_app/` stay lossless: after a
+    regeneration run `oxipng -o max --strip all` on them (pixels identical).
 
 ## Standard.rbm
 
