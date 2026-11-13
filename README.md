@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/readme/logo.gif" alt="OpenRB-338" width="378">
+  <img src="assets/readme/logo.webp" alt="OpenRB-338" width="378">
 </p>
 
 <div align="center">

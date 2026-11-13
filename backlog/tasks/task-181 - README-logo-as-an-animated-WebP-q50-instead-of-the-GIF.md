@@ -1,10 +1,11 @@
 ---
 id: TASK-181
 title: README logo as an animated WebP (q50) instead of the GIF
-status: To Do
+status: Done
 assignee:
   - '@agent-worker'
-created_date: '2026-11-13 14:24'
+created_date: 2026-11-13 14:24
+updated_date: '2026-11-13T14:26:00Z'
 labels:
   - docs
   - ui
@@ -53,9 +54,29 @@ On 2026-11-13 the user (@pingw33n) chose lossy q50 (mean difference 4.6 out of 2
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 assets/readme/logo.webp exists: animated, 740x215, 56 frames at 30 ms, looping, lossy q50 from the full-quality GIF of 17a224b with the 0,0+740x215 crop; size in the notes
-- [ ] #2 assets/readme/logo.gif is removed and nothing outside backlog/ refers to it (git grep)
-- [ ] #3 README.md shows logo.webp at width 378 with the same alt text
-- [ ] #4 assets/README.md describes logo.webp and records the commands that make it
-- [ ] #5 One commit; only README.md, assets/README.md, assets/readme/logo.{gif,webp} and the task file change
+- [x] #1 assets/readme/logo.webp exists: animated, 740x215, 56 frames at 30 ms, looping, lossy q50 from the full-quality GIF of 17a224b with the 0,0+740x215 crop; size in the notes
+- [x] #2 assets/readme/logo.gif is removed and nothing outside backlog/ refers to it (git grep)
+- [x] #3 README.md shows logo.webp at width 378 with the same alt text
+- [x] #4 assets/README.md describes logo.webp and records the commands that make it
+- [x] #5 One commit; only README.md, assets/README.md, assets/readme/logo.{gif,webp} and the task file change
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Build crop.gif from 17a224b with gifsicle, encode with gif2webp -lossy -q 50 -m 6. 2. git rm logo.gif, repoint README.md. 3. Update assets/README.md. 4. Verify with Pillow/webpmux, git grep.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch: task-181-logo-webp (rebased on main e7b2d6e)
+
+logo.webp: gif2webp -lossy -q 50 -m 6 from the 17a224b GIF cropped 0,0+740x215 = 484,304 B (-m 4 gave 521,976 B, as the task says). Verified: Pillow 740x215, 56 frames; webpmux -info shows every frame at 30 ms, Loop Count 1. The source GIF has no loop extension (plays once), so loop count 1 keeps its behavior. The search for the old file name outside backlog/ finds nothing.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+assets/readme/logo.webp (484,304 B, lossy q50, -m 6, 56 frames, 30 ms, 740x215, loop count 1 as in the source GIF) replaces the 2.04 MB GIF; README.md and assets/README.md updated. Branch task-181-logo-webp, one commit. Tests: none (docs and asset).
+<!-- SECTION:FINAL_SUMMARY:END -->
