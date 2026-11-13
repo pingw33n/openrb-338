@@ -126,12 +126,14 @@ column. Values passed to the engine are 0..127 unless stated.
   the 18 x 19 knobs, 54 for the 303's 30 x 30, 36 for the 808's 13 x 13, 41 for the 909's
   12 x 12, 12 for the 808 instrument selector).
 - No detents: every knob is continuous over 0..127 (the 808 selector is quantized by its user,
-  section 6). No double-click, wheel or keyboard behavior exists.
+  section 6). The original's knob has no double-click, wheel or keyboard behavior; orb adds a
+  double-click reset of its own (the **orb** item below).
 - Measured in the app (2026-10-27): CUTOFF dragged to 0, then 31 px up, saved as 64
   (`1000*31/62 = 500`, value 64); RESO with Shift, 31 px up from 0, saved as 13 [C].
-- **orb**: a double click sets a knob to its value in a new empty song (File > New), whatever
-  song is open (`Link::knob_default`): a pan knob to the center (64), a mixer delay send to 0.
-  The value is sent and recorded as a drag's. The faders and the demo panel have no reset.
+- **orb** (an extension; the original has no reset gesture): a double click sets a knob to its
+  value in a new empty song (File > New), whatever song is open (`Link::knob_default`): a pan
+  knob to the center (64), a mixer delay send to 0. The value is sent and recorded as a drag's.
+  The faders and the demo panel have no reset.
 
 **Fader** (`CBitmapFaderView`, ctor 0x469240, mouse-down 0x469708, drag 0x46965F) [C].
 - Handle 15 x 11 (resource 12031) on a 15 x 54 track (12032); position p in 0..999.
