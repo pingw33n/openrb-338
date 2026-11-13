@@ -171,13 +171,33 @@ fn main() {
         })
         .collect();
     names.sort();
-    let mut out = String::from("pub static PARTS: &[(&str, &str, &[u8])] = &[\n");
+    // (name, uri, bytes, bleed, w, h): the control's rectangle w x h and the bleed, how far
+    // the art reaches beyond it, read from the viewBox (`-bleed -bleed w+2bleed h+2bleed`,
+    // assets/ui/README.md, task-179)
+    let mut out = String::from(concat!(
+        "/// A part's row: name, URI, SVG bytes, bleed, width, height.\n",
+        "pub type PartRow = (&'static str, &'static str, &'static [u8], f32, f32, f32);\n",
+        "pub static PARTS: &[PartRow] = &[\n"
+    ));
     for n in &names {
         let path = dir.join(format!("{n}.svg"));
+        let svg = fs::read_to_string(&path).unwrap();
+        let vb: Vec<f32> = svg
+            .split("viewBox=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .unwrap_or_else(|| panic!("{n}.svg has no viewBox"))
+            .split(' ')
+            .map(|v| v.parse().unwrap())
+            .collect();
+        let b = -vb[0];
         writeln!(
             out,
-            "    ({n:?}, \"bytes://orb-ui/{n}.svg\", include_bytes!({:?})),",
-            path.display().to_string()
+            "    ({n:?}, \"bytes://orb-ui/{n}.svg\", include_bytes!({:?}), {:?}, {:?}, {:?}),",
+            path.display().to_string(),
+            b,
+            vb[2] - 2.0 * b,
+            vb[3] - 2.0 * b
         )
         .unwrap();
     }

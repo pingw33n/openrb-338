@@ -6,11 +6,12 @@
   `crates/orb-ui/build.rs` (task-111).
 - `Standard.rbm`: the standard mod, orb's built-in kit (task-067, docs/rbm.md section 13).
 - `readme/`: the README's pictures (CI ignores this folder, `.github/workflows/ci.yml`):
-  - `logo.gif`: the README's logo, the About window's icon and wordmark with the startup animation
-    (task-114), played once. Composed from the `app_icon` and `logo_*` parts of `ui/` with the
-    timing of `crates/orb-ui/src/logo_anim.rs`: 756 x 228 px (2x), 30 fps, on egui's dark window
-    fill with rounded corners.
-  - `screenshot.png`: the README's screenshot of OpenRB-338 on macOS (2026-10-29).
+  - `logo.gif`: the README's logo, the About window's icon and wordmark on its gray plate with
+    the startup animation (task-114), played once. Since task-179 made from the app itself: 56
+    `--about --screenshot` captures at `ORB_LOGO_T` = 0, 1/30, ... s (the last one the final
+    state), cropped to the icon and the plate: 740 x 216 px (2x), 30 fps.
+  - `screenshot.png`: the README's screenshot of OpenRB-338 on macOS (2026-11-13, task-179's
+    redesign; `OpenRB-338 --demo --size 1100x700 --ppp 2 --screenshot`).
 
 ## Standard.rbm
 

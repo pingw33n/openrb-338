@@ -1,7 +1,6 @@
-//! A stroke font for the panel's labels. Text is drawn as vector paths, so
-//! the art needs no font file and renders the same everywhere (usvg has no
-//! guaranteed system fonts). Capital letters, digits and a few signs; the
-//! glyph grid is 6 units high (cap height) and the stroke is round.
+//! A stroke font: the glyphs of the wordmark `OPENRB-338` and the names on the parts sheet.
+//! The panel's labels are Inter outlines since task-179 (`text.rs`). Capital letters, digits
+//! and a few signs; the glyph grid is 6 units high (cap height) and the stroke is round.
 
 use crate::svg::{Svg, n};
 
@@ -103,6 +102,11 @@ fn glyph(c: char) -> Option<(f32, &'static str)> {
         ' ' => (2.0, ""),
         _ => return None,
     })
+}
+
+/// The width and the path of a glyph on the 6-unit grid (the wordmark's glyphs, task-179).
+pub fn glyph_path(c: char) -> (f32, &'static str) {
+    glyph(c).unwrap_or_else(|| panic!("no glyph for {c:?}"))
 }
 
 #[derive(Clone, Copy, PartialEq)]

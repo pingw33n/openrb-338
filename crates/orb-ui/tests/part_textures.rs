@@ -81,7 +81,16 @@ fn the_textures_of_a_size_left_behind_are_dropped() {
     };
     run(a, 3, &mut app);
     let one_size = PartTextures::count(&ctx);
+    // during the resize the old size's textures are drawn (task-179); once the size has
+    // settled for RESIZE_SETTLE_S the new size is rasterized
     run(b, 3, &mut app);
+    // (but the desk's tile, which the wider window shows for the first time)
+    assert_eq!(
+        PartTextures::count(&ctx),
+        one_size + 1,
+        "a resize in progress rasterizes no part of the panel"
+    );
+    run(b, 8, &mut app);
     assert!(
         PartTextures::count(&ctx) > one_size,
         "the second size adds textures"

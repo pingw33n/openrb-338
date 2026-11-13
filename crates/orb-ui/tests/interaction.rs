@@ -395,7 +395,21 @@ fn every_part_loads_and_rasterizes_at_1x_2x_3x() {
                         .unwrap_or_else(|| panic!("{}: pending", part.name));
                     let meta = ui.ctx().tex_manager().read().meta(id).map(|m| m.size);
                     let want = [(w * ppp).round() as usize, (h * ppp).round() as usize];
-                    assert_eq!(meta, Some(want), "{} at {ppp}x", part.name);
+                    // a canvas of a fractional size (a 13.6 x 14.6 control and its bleed,
+                    // task-179) is fitted by the loader keeping its aspect ratio: a side may
+                    // be a pixel short
+                    let [mw, mh] = meta.unwrap_or_else(|| panic!("{}: no texture", part.name));
+                    let near = |a: usize, b: usize| a.abs_diff(b) <= 1;
+                    let exact = w.fract() == 0.0 && h.fract() == 0.0;
+                    if exact {
+                        assert_eq!([mw, mh], want, "{} at {ppp}x", part.name);
+                    } else {
+                        assert!(
+                            near(mw, want[0]) && near(mh, want[1]),
+                            "{} at {ppp}x",
+                            part.name
+                        );
+                    }
                     count += 1;
                 }
             });

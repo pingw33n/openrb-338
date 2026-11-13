@@ -20,9 +20,17 @@ const ICON_SIZE: f32 = 64.0;
 const CONTENT_W: f32 = 450.0;
 /// The width of the label column of the collection lines (the links start at TEXT_X + this).
 const LABEL_W: f32 = 100.0;
-/// 156 with one link line (task-115), plus two lines at the same 22 pt spacing (task-138).
-const CONTENT_H: f32 = 200.0;
+/// 156 with one link line (task-115), plus two lines at the same 22 pt spacing (task-138),
+/// plus 6 since the text rows moved down to clear the wordmark's plate (task-179).
+const CONTENT_H: f32 = 206.0;
 const TEXT_X: f32 = 108.0;
+/// The gray plate under the wordmark (task-179): the part and its place in the content (the
+/// logo canvas at 2x, 4 less below); the icon is centered on it.
+const PLATE_PART: &str = "about_plate";
+const PLATE: (f32, f32, f32, f32) = (92.0, 14.0, 268.0, 92.0);
+const ICON_Y: f32 = 28.0;
+/// The first text row's top: 6 below task-138's, so the version line clears the plate.
+const ROW0: f32 = 110.0;
 
 /// The name of the app.
 pub const NAME: &str = "OpenRB-338";
@@ -105,8 +113,17 @@ impl App {
                 app::paint_part_tinted(
                     ui,
                     ICON_PART,
-                    egui::Rect::from_min_size(at(18.0, 18.0), egui::vec2(ICON_SIZE, ICON_SIZE)),
+                    egui::Rect::from_min_size(at(18.0, ICON_Y), egui::vec2(ICON_SIZE, ICON_SIZE)),
                     egui::Color32::WHITE.gamma_multiply(icon_a),
+                );
+                // only the wordmark sits on the panel's gray (task-179); the rest of the
+                // window keeps its own colors
+                let (px, py, pw, ph) = PLATE;
+                app::paint_part_tinted(
+                    ui,
+                    PLATE_PART,
+                    egui::Rect::from_min_size(at(px, py), egui::vec2(pw, ph)),
+                    egui::Color32::WHITE,
                 );
                 let logo_size = egui::vec2(LOGO_W, LOGO_H) * LOGO_SCALE;
                 logo_anim::paint_logo(ui, egui::Rect::from_min_size(at(92.0, 14.0), logo_size), t);
@@ -117,16 +134,16 @@ impl App {
                 let line = |ui: &mut egui::Ui, y: f32, f: &dyn Fn(&mut egui::Ui)| {
                     line_at(ui, TEXT_X, y, f);
                 };
-                line(ui, 104.0, &|ui| {
+                line(ui, ROW0, &|ui| {
                     ui.label(RichText::new(format!("Version {VERSION}")).color(INK_DIM));
                 });
-                line(ui, 126.0, &|ui| {
+                line(ui, ROW0 + 22.0, &|ui| {
                     ui.hyperlink_to(URL, URL);
                 });
                 for (i, (label, url)) in COLLECTIONS.into_iter().enumerate() {
                     // the label and the link each in a rect of their own, so the links start at
                     // exactly the same x whatever the width of the label
-                    let y = 148.0 + 22.0 * i as f32;
+                    let y = ROW0 + 44.0 + 22.0 * i as f32;
                     line(ui, y, &|ui| {
                         ui.label(RichText::new(label).color(INK_DIM));
                     });
@@ -161,5 +178,19 @@ mod tests {
                 .iter()
                 .any(|b| b.0 == LOGO_PART)
         );
+    }
+
+    /// The wordmark's plate (task-179) is the art generator's, under the logo at 2x, and the
+    /// text rows start below it.
+    #[test]
+    fn the_plate_is_under_the_wordmark() {
+        let (x, y, w, h) = PLATE;
+        assert_eq!(PLATE, orb_ui_art::parts::ABOUT_PLATE);
+        let p = art::part(PLATE_PART).expect("the plate part");
+        assert_eq!((p.w, p.h), (w, h));
+        assert_eq!((x, y), (92.0, 14.0));
+        assert_eq!(w, LOGO_W * LOGO_SCALE);
+        assert!(ROW0 > y + h, "the version line clears the plate");
+        assert_eq!(ICON_Y + ICON_SIZE / 2.0, y + h / 2.0);
     }
 }

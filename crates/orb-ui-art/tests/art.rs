@@ -49,6 +49,36 @@ fn every_part_renders_at_1x_2x_3x() {
     assert_eq!(names.len(), parts.len(), "duplicate part names");
 }
 
+/// task-179: no file of assets/ui holds text; the labels are Inter outlines made from the
+/// fonts bundled with the generator, which differ by weight.
+#[test]
+fn the_labels_are_inter_outlines() {
+    for e in fs::read_dir(root().join("assets/ui")).unwrap().flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".svg") {
+            let svg = fs::read_to_string(e.path()).unwrap();
+            assert!(!svg.contains("<text"), "{name} has a <text> element");
+            assert!(!svg.contains("font-family"), "{name} names a font");
+        }
+    }
+    use orb_ui_art::text::{Anchor, Label, outline};
+    let label = |weight| Label {
+        x: 10.0,
+        y: 20.0,
+        text: "MIX",
+        size: 9.2,
+        anchor: Anchor::Middle,
+        weight,
+        spacing: 1.2,
+    };
+    let (regular, medium, bold) = (
+        outline(&label(400)),
+        outline(&label(500)),
+        outline(&label(700)),
+    );
+    assert!(!regular.is_empty() && regular != medium && medium != bold);
+}
+
 /// Controls lie inside the panel.
 #[test]
 fn controls_are_inside_the_panel() {
@@ -124,5 +154,26 @@ fn ico_has_the_sizes_and_the_committed_file_matches() {
             let ph = u32::from_be_bytes(png[20..24].try_into().unwrap());
             assert_eq!((pw, ph), (w, h));
         }
+    }
+}
+
+/// The time to rasterize each part at 2x, slowest first (task-179: the filters' cost).
+/// `cargo test --release -p orb-ui-art --test art -- --ignored --nocapture part_cost`
+#[test]
+#[ignore = "a measurement"]
+fn part_cost() {
+    let mut v: Vec<(f64, String)> = all_parts()
+        .iter()
+        .map(|p| {
+            let t = std::time::Instant::now();
+            orb_ui_art::render(&p.to_svg(), 2).unwrap();
+            (t.elapsed().as_secs_f64() * 1000.0, p.name.clone())
+        })
+        .collect();
+    v.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let total: f64 = v.iter().map(|x| x.0).sum();
+    println!("total {total:.1} ms");
+    for (ms, name) in v.iter().take(15) {
+        println!("{ms:8.1} ms  {name}");
     }
 }

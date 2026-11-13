@@ -203,6 +203,8 @@ fn attach_parent_console() {
 }
 
 fn main() -> eframe::Result {
+    // `ORB_UI_START_STATS` counts from here (task-179)
+    let _ = orb_ui::app::PROCESS_START.set(std::time::Instant::now());
     #[cfg(all(windows, not(debug_assertions)))]
     attach_parent_console();
     // before anything that can panic: a panic writes a crash log and shows a box (task-157)

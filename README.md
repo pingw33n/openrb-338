@@ -27,7 +27,8 @@ and Windows.
   175-render reference corpus.
 - **The whole machine on screen:** the two 303s, the 808 and the 909, the mixer, the delay,
   distortion, PCF and compressor, with pattern and song mode, the loop, shuffle and recording.
-- **A scalable vector-graphics panel** that stays sharp at any window size and pixel density.
+- **A scalable vector-graphics panel** in the original's layout and look, drawn from scratch,
+  that stays sharp at any window size and pixel density.
 - **Songs:** opens ReBirth 2.x songs (`.rbs`, RBS 4.0 to 4.2) and ReBirth 1.x songs, and saves
   RBS 4.2 files that the original opens. File > Info shows and edits the song's title, text, web
   page and copyright.
@@ -143,4 +144,6 @@ Copyright (C) 2026 the OpenRB-338 authors.
 
 ReBirth RB-338 is a trademark of Propellerhead Software (now Reason Studios). OpenRB-338 is not
 affiliated with or endorsed by them. The built-in standard kit (`assets/Standard.rbm`) holds
-ReBirth's own drum samples and panel pictures. See [assets/README.md](assets/README.md).
+ReBirth's own drum samples and panel pictures. See [assets/README.md](assets/README.md). The
+panel's labels are outlines of the Inter typeface (SIL Open Font License 1.1,
+[crates/orb-ui-art/fonts/LICENSE.txt](crates/orb-ui-art/fonts/LICENSE.txt)).

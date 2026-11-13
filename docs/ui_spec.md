@@ -422,7 +422,7 @@ mouse `sub_4432F9` [C]. The level knobs are red, the others white (art).
 | BD tone knob | 36 | 31 | 13 | 13 | 0.2019 | 0.6098 | 0.0208 | 0.0255 | knob | ctrl 4 |
 | BD decay knob | 36 | 54 | 13 | 13 | 0.2019 | 0.6549 | 0.0208 | 0.0255 | knob | ctrl 5 |
 | SD level knob | 58 | 9 | 13 | 13 | 0.2372 | 0.5667 | 0.0208 | 0.0255 | knob | ctrl 6 |
-| SD tone knob | 58 | 31 | 13 | 13 | 0.2372 | 0.6098 | 0.0208 | 0.0255 | knob | ctrl 7 |
+| SD tone knob (labeled TUNE, section 19) | 58 | 31 | 13 | 13 | 0.2372 | 0.6098 | 0.0208 | 0.0255 | knob | ctrl 7 |
 | SD snappy knob | 58 | 54 | 13 | 13 | 0.2372 | 0.6549 | 0.0208 | 0.0255 | knob | ctrl 8 |
 | LT level knob | 80 | 9 | 13 | 13 | 0.2724 | 0.5667 | 0.0208 | 0.0255 | knob | ctrl 9 |
 | LT tuning knob | 80 | 31 | 13 | 13 | 0.2724 | 0.6098 | 0.0208 | 0.0255 | knob | ctrl 10 |
@@ -1040,7 +1040,7 @@ the window, `App::menu`; the headless panel tests run without it) and the comman
 | Options | Play Mod Startup Sound | `Settings::startup_sound`, saved to the settings file at once (a save error goes to the error message box); the original has it in Edit > Preferences (task-086, task-089); the logo click plays the sound whatever it is |
 | Options | Program Synth (Ctrl+F, Cmd+F on macOS), Select Patterns (Ctrl+G, Cmd+G) | `App::key_mode` (section 10, task-070) |
 | Help | Keyboard Shortcuts... | a centered, closable, scrollable window (Escape closes it) that lists every key orb-ui handles by group (menu shortcuts with Cmd on macOS, always-active keys, mode-dependent transport keys, Program Synth with a 303 or a drum machine focused, Select Patterns, windows and the browser); it names the current keyboard mode and marks its groups (task-105; below) |
-| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the app icon (the `app_icon` part), the wordmark (the `logo` part, at 2x), `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the links https://github.com/pingw33n/OpenRB-338, `Song collection:` https://github.com/pingw33n/rb-songs and `Mod collection:` https://github.com/pingw33n/rb-mods (task-102, task-138, laid out in task-115; below) |
+| Help | About OpenRB-338... | a centered, closable window (Escape closes it) with the app icon (the `app_icon` part), the wordmark (the `logo` part, at 2x), `Version YYYY.MMDD.HHMM (<[dev-]hash[-dirty]>)` and the links https://github.com/pingw33n/OpenRB-338, `Song collection:` https://github.com/pingw33n/rb-songs and `Mod collection:` https://github.com/pingw33n/rb-mods (task-102, task-138, laid out in task-115; since task-179 the wordmark sits on a gray plate, section 19; below) |
 
 The Help menu is last in the bar. Its items are the list `HELP_ITEMS` in `menu.rs`, so a new item
 is one more entry.
@@ -1465,48 +1465,151 @@ mod's sound, mixed as the player mixes it, none with the preference off) and
   only after the button had been pressed, and never for a pattern section's on/off switch
   (`Panel::adopt`); both now follow the song, and the save needs them.
 
-## 19. OpenRB-338's own panel art and placement (task-115)
+## 19. OpenRB-338's panel art and placement (task-179)
 
-Sections 3 to 9 give the original's rectangles; OpenRB-338 draws its own art and places a control
-inside its section as it likes (`assets/ui/layout.tsv`, written by `crates/orb-ui-art`). The
-mockup session of 2026-10-29 (six review rounds with the user) set the following; all numbers are
-panel pixels, relative to the section unless said otherwise. Control ids, kinds and behavior are
-unchanged.
+The user asked on 2026-11-13 for the panel to follow the original ReBirth RB-338 2.01 panel as
+closely as possible, as scalable SVG. A mockup was drawn and reviewed with the user in many
+rounds and approved the same day; task-179 ported it into `crates/orb-ui-art` and the app. The
+approved render (the mockup at 2x) is ![the approved mockup](ui_spec/redesign_mockup_2x.png)
+(`docs/ui_spec/redesign_mockup_2x.png`); `assets/ui/preview/panel_2x.png` is the generator's
+panel in the same demo state. The look and the part list are in `assets/ui/README.md`. This
+section replaces task-115's own placement (orb's own control places of task-085 and task-115 are
+gone). All numbers are panel pixels, relative to the section unless said otherwise.
 
-- **303** (both). "WAVEFORM" (cap 3.6) centered at (35, 5.5) labels one 40 x 14 switch at
-  (15, 20) that has the saw and the square printed on its black frame, an 18 x 12 track between
-  them and a steel thumb (8 x 11) at x 12 (saw) or 20 (square); the bare glyphs on the paper are
-  gone. The six knobs are centered in the paper: first knob at x 95, 40 apart (labels at the
-  centers). The key band is three blocks of one height (y 46..112, radius 4): pitch and clear
-  (black, x 12, 34 wide), the keys (gray, x 52, 184 wide), the flags (black, x 242, 112 wide).
-  Pitch and clear: "PITCH" at (29, 51.5), the LED at (25, 56), the pill (now 22 x 10) at (18, 66);
-  "CLEAR" at (29, 88.5), its pill at (18, 95). White keys at x 66 + 21 i (y 89, LEDs at y 78),
-  black keys 11 px right of the white key to their left (y 60, LEDs y 49). The edit step display
-  (19 x 16) is the flags block's top row at (296, 50), its arrows at (316, 49) and (316, 58),
-  "EDIT STEP" (cap 3.2) centered at (279.5, 58). The flags at x 250.5 + 22 j: LED y 78, key y 89,
-  label y 109. The pills, white keys and flag keys have a discreet 3D (a darker base, the face
-  0.5 px in at the sides and 1.5 px short); the black keys are unchanged.
-- **Pattern sections.** Header color rust `#bf4a2b`. The pattern and bank buttons are 14 x 15
-  keycaps on a 16 px grid (x 4 + 16 i; rows y 25 and 43; bank row y 64): a face over a 1.8 px
-  darker lip with a 0.5 px outline. Pattern: light (`#dde1e6`) with a black digit, selected
-  `#e8503f` with a white digit. Bank: slate with a dim letter, selected orange with a black
-  letter. SHUFFLE (30 x 12) is the same keycap; its place and the steps display are unchanged.
-- **Mixer channels.** Header color sea `#3b8a8f`. Pan at (8, 26) and the delay send at (40, 26)
-  side by side (labels at y 52.5), the fader at (11.5, 58), and the three routing keys
-  (`mixsw_*`, now 28 x 13: a key with an amber 3D LED and a left-aligned label, ink when on and
-  dim when off) stacked at x 38, y 62 + 16 i. The master's COMP is the same key at section
-  (27, 82).
-- **Headers** (pattern, mix, master and the four effects) are 3D: a lip in the header color
-  darkened to 0.62, a face 1.3 px shorter with a light-to-dark gradient and a faint white line
-  below its top edge. Sizes and label places are unchanged.
-- **The on/off buttons** (`power_13x13`, `power_14x14`) are round 3D LEDs (radius 2.6, no
-  bezel) in a translucent socket that takes the header's color; lit, they glow green.
-- **The wordmark** (`logo`) has a four-segment underline in the 808's step colors (red, orange,
-  yellow, white), each 28.4 x 1.5 at (8 + 29.9 i, 28). Its pieces (`LOGO_PIECES`: `logo_open`,
-  `logo_rb338`, `logo_line_0` .. `logo_line_3`, `logo_sub`) are separate parts, for the startup
-  animation (task-114).
-- **The app icon** is the 303's saw running into a square wave in orange over four step keys in
-  the 808's colors, on the same slate tile as before.
-- **Help > About** is laid out as section 18 says.
+**The user's decisions (2026-11-13).** SVG stays the foundation (no pre-rendered art). The
+layout is the original's sections and control places (sections 3 to 9). Kept: the mod's splash
+and name where the original has the 808's selector, and the animated wordmark at the top right.
+Knobs are flat-topped, seen from above, a static body and a turning pointer with short cast
+shadows, no value arc. A pressed push button is "variant F, dimmed" (the bevel and the cast
+shadow go, the face turns flat and a little lighter with a faint gradient). The routing keys
+(DIST, PCF, COMP, the master's COMP) show pressed (variant F) only while the mouse button is
+held on them, like the 303's BACK and CLEAR, and never stay down: their lamp alone shows the
+state (the user's request, 2026-11-13). The effects' on/off lamps (PCF, DELAY, DIST, COMP) are
+as big as the mixer channels' (9.6 panel pixels square, in their 16 x 16 control; the user's
+request, 2026-11-13).
+The labels are Inter 4.1 (SIL OFL 1.1), as outlines made when the art is generated. Help >
+About: only the wordmark sits on a gray speckled plate. Wide and tall windows: a dark desk with
+the unit's cast shadow around the panel. The Sync and MIDI LEDs and labels are drawn, dark.
+Texts stay generic (PATTERN, MIX, MASTER, PCF, DELAY, DIST, COMP; no product name, no Roland or
+Propellerhead mark).
 
-The art part list, sizes and generator functions are in `assets/ui/README.md`.
+**Where the panel leaves the tables of sections 3 to 9** (the mockup's places win):
+
+- 303 waveform switch: 16 x 12 at (24.65, 18.5), not (24, 10): centered between the plate's left
+  edge and the divider, and vertically in the plate.
+- Pattern and bank keys: white keycaps of 14.6 x 14.6 on a 15.6 pitch, centers at
+  x 11.6 + 15.6 i, y 30.9 and 46.5 (patterns) and 72.9 (banks), not the 17 x 20 cells of the
+  original's grid; the hit rectangles are the keys. SHUFFLE is a keycap of 15 at (4.5, 94.7).
+- PCF faders at y 50, not 55 (their captions under them need the room).
+- Comp knobs at y 57, not 56 (level with the mixer's DELAY knob beside them).
+- Effect header meters 14 x 14 at (63, header y + 0.5), not 13 x 16 at (64, 2 or 3); the
+  mixer's at (51, 4).
+- No 808 instrument selector knob (unchanged): the mod window, 84.4 x 106 at (277.2, 4.2), with
+  the picture 76 x 76 at (281.4, 7.9) and the mod's name under the line at y 89.4.
+- The LEDs' and the round controls' rectangles are their drawn size, not the original's 8 x 8
+  sprites: the 303's LEDs are 6 x 6 around the lamp (the white keys' and the flags' at
+  (x + 1.5, 82) of their key, the black keys' at (key center - 3, 56)), the Note and Rest LEDs at
+  (247, 60) and (285, 60); the compressor's nine LEDs 7 x 7 at (8 + 7 i, 26.5); the transport's
+  loop toggle 15 x 18 at (317, 3) (the bat toggle and its LED).
+- The 909's step keys are 16.4 x 16.8 at (29 + 21 i, 85.4) and the 808's 12.6 x 19 at
+  (16 + 16 i, 90.2); the step strips' cells (16 px from x 14, 21 px from x 26) are unchanged,
+  their rows are y 90..110 (808) and 85..103 (909), and the 909's name row selects in
+  y 74..84 (the step keys start below it).
+- The 303 has the original's Rest LED again (control `tb303_N.rest_led`, lit when the edit step
+  rests), beside the Note LED.
+
+**The header meters** (the mixer channels' and the effects') have four segments, green,
+yellow-green, amber and red from the bottom; the engine's meter has 11 states (0 to 10, the
+meter byte mapped as section 16 says). The app shows state s as `[0, 1, 1, 1, 2, 2, 2, 3, 3, 4,
+4][s]` lit segments (`model::header_meter_segments`): any signal lights the first segment, the
+amber one lights from state 7 and the red one from 9, the states at which the master's 10-segment
+meters light their amber and red segments. The master's meters keep 10 segments and 11 states.
+The compressor's gain-reduction LEDs light in the colors section 16 gives (the center green,
+the reduction amber then red to its left); unlit, each shows its place's color, dark (the
+center green, the two beside it amber, the outer two red, the right side mirrored).
+
+**The knobs' TUNE and TONE labels** (the user's decision, 2026-11-13). On the 808 every tune or
+tone knob is labeled TUNE, except BD's and CY's, which are TONE (so the SD knob that drives the
+SD tone, section 6, reads TUNE, as on the mockup). On the 909 every one is labeled TUNE, except
+SD's knob in the second row (left of SNAP), which is TONE.
+
+**Selection marks.** The selected 808 instrument's chip turns lighter with an orange ring (the
+upper label's chip when its shared slot's switch is up); the selected 909 instrument's label on
+the chips at the top glows and its LED lights (in the AC box for AC, in the name row for the
+others). They are parts drawn over the backgrounds (`sel808_*`, `sel909_*`, `led909*_on`).
+
+**States the mockup does not show**, derived in the same style (on `assets/ui/preview/parts_2x.png`):
+the transport keys pressed (variant F on the key's face), Play at rest (no halo, a darker
+green), Record lit (red with a halo like Play's green), the arrows pressed (variant F), every
+303 button pressed (variant F), the routing keys pressed with their lamp off and on
+(`mixsw_off_pressed`, `mixsw_on_pressed`, variant F), the loop switch off (lever up, LED dark), the mode switch in
+pattern mode (lever up, the green Pattern LED lit, the yellow Song LED dark), the slide switches
+in both positions, the master meters' 11 states, the header meters' 5, the gain-reduction LEDs
+lit in green, amber and red and unlit in each color, every LED lit and unlit, every 808 and 909
+selection mark, the 909's step values 0 to 3 (the running light shows a set step as 0 and an
+empty one as 2, as before), the flam button off. In pattern mode the song displays are all
+`seg_blank` (unlit segments).
+
+**Help > About.** The window keeps the app's dark window colors, text colors and the flat icon;
+only the wordmark (the `logo` part at 2x, at (92, 14) of the content) sits on a gray plate
+(`about_plate`, 268 x 92 at (92, 14), with the plate's bevel, speckle and a soft shadow). The
+icon is at (18, 28), centered on the plate; the text rows start at y 110 (6 lower than
+task-138's, so the version line clears the plate) and the content is 450 x 206. The animation
+(task-114) is unchanged and plays over the plate.
+
+**The desk.** In a window whose shape is not the panel's, the free space around the unit is a
+dark matte desk (`crates/orb-ui/src/backdrop.rs`): a vertical gradient from `#1d2023` to
+`#131517`, darker toward the window's edges (a radial vignette), the speckle and a faint
+horizontal brushing from the 256-point tile `desk_tile` repeated over the window (drawn only
+where the desk shows), and the unit's soft cast shadow, stronger on the right and below (bands
+of 12 and 20 panel pixels blurred with a deviation of 5, at 55 % and 85 %). The gradients and
+the shadows are meshes with colored vertices and the tile is rasterized once, at one pixel per
+point, so a resize rasterizes nothing of the desk. Under the panel the app paints the panel's
+seam color `#14181b`.
+
+**What the panel differs in from the approved mockup** (`preview/panel_2x.png` against the
+mockup's render, the mod window left out: with the mockup's speckle laid in panel coordinates
+0.28 % of the pixels differed by more than 8 of 255, mean 0.09; with the fine speckle as a
+repeating tile, below, 18.4 % differ by more than 8 and 1.9 % by more than 32, mean 4.4, all of
+it the speckle's specks; every control, label and section is in the mockup's place):
+
+- the fine speckle of the plates (`grD`, `grL`) is a stitched tile of 64 x 64 panel pixels
+  repeated in panel coordinates, not one noise over the whole plate, for the cost (below); the
+  specks are the same kind, at other places;
+- the effects' on/off lamps are 9.6 square like the mixer's (the mockup's were 11.6; the user's
+  request after trying the app, 2026-11-13), and the routing keys show pressed while held (the
+  mockup drew them only at rest);
+- the mod window's picture and name: the app paints them, `panel.svg` has none;
+- the gain-reduction LEDs: the mockup lit LEDs 1 to 5 in fixed colors by place (green, green,
+  green, amber, amber); the app lights them in the link's colors (section 16: the center green,
+  then amber and red to its left), so the demo shows red, red, amber, amber, green;
+- the PCF and delay lamps' halo tints the display frame below them a little (the mockup drew
+  the frame after the lamp; here the frame is background);
+- the labels are outlines of the same Inter glyphs, so their antialiasing differs by a few
+  levels from the mockup's text rendering.
+
+**Cost (task-179).** The blurs and the noise filters make the parts slower to rasterize than the
+flat art (all parts once at 2x: about 0.9 s on one core of an M-series Mac, the backgrounds most
+of it). What keeps the start and a resize as quick as before, in `crates/orb-ui/src/app.rs`:
+
+- The parts a frame misses are rasterized together at the end of the frame on all the CPU's
+  cores (`flush_part_textures`; the frame drew placeholder textures whose images are set
+  before the frame goes to the GPU).
+- The window's very first frame rasterizes nothing: eframe draws it before the window has its
+  size (a content area of 20000 x 20000 points was seen), which with the filters took seconds.
+- When a frame misses more than 8 parts, a part denser than 1.25 pixels per panel pixel is
+  first rasterized at 1 pixel per panel pixel and then at its full size on a background thread
+  (`PREVIEW_DENSITY`): the panel shows at once, a little soft, and sharp a moment later. Not
+  with `--screenshot`, and not where there are no threads (the web build).
+- During a resize each part is drawn from its texture at the old size until the size has not
+  changed for 0.3 s (`RESIZE_SETTLE_S`), then the new size is rasterized (with the preview).
+- The fine speckle is a repeating tile; the desk's tile is rasterized once at 1x and only when
+  the desk shows.
+
+Measured on 2026-11-13 (release build, this M-series Mac; main 080f0a8 against task-179):
+the first complete frame after the start, `ORB_UI_START_STATS=1`, maximized window 0.37 to
+0.45 s before, 0.43 to 0.51 s after (all parts sharp at 0.74 to 0.99 s); 624 x 510 at ppp 2
+0.37 to 0.57 s before, 0.40 to 0.62 s after; at `--ppp 1` 0.88 to 1.32 s before, 0.43 to 0.61 s
+after. A resize drag of 40 frames, headless (`crates/orb-ui/tests/startup_resize_cost.rs`):
+284 ms (1x) and 611 ms (2x) before, every frame rasterizing everything; 52 and 86 ms after,
+plus one rasterizing of 63 and 128 ms when the size settles.

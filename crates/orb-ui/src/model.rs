@@ -304,6 +304,19 @@ impl Default for Panel {
 }
 
 /// `c` for a section name like `mixer3` -> 2.
+/// The lit segments (0..=4) of a header meter (the mixer channels' and the effects') for the
+/// meter's state 0..=10 (`link::meter_state`, the 11 frames of the original's meter): any
+/// signal lights the first segment, the amber third segment lights from 7 and the red top one
+/// from 9, where the master's 10-segment meters light their amber and red segments
+/// (task-179; docs/ui_spec.md section 19).
+pub fn header_meter_segments(state: u8) -> u8 {
+    [0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4][state.min(10) as usize]
+}
+
+/// The color of each unlit gain-reduction LED, left to right: the center ("0") green, the two
+/// beside it amber and the outer ones red, the colors the link lights them in.
+pub const GR_OFF: [&str; 9] = ["r", "r", "y", "y", "g", "y", "y", "r", "r"];
+
 fn index_of(section: &str, prefix: &str) -> Option<usize> {
     section
         .strip_prefix(prefix)?
@@ -1027,7 +1040,14 @@ impl Panel {
     pub fn part_name(&self, c: &crate::layout::Ctl, pressed: bool, now: f64) -> String {
         let fam = c.family();
         let (sec, name) = (c.section.as_str(), c.name());
-        let on_off = |on: bool| format!("{fam}{}", if on { "on" } else { "off" });
+        // A routing key (`mixsw_`) shows pressed while the mouse is down on it, never after:
+        // its lamp alone shows the state.
+        let held = if pressed && fam == "mixsw_" {
+            "_pressed"
+        } else {
+            ""
+        };
+        let on_off = |on: bool| format!("{fam}{}{held}", if on { "on" } else { "off" });
         let push = || format!("{fam}{}", if pressed { "pressed" } else { "rest" });
         match c.kind.as_str() {
             "toggle" if c.id == "transport.record" => {
@@ -1063,14 +1083,21 @@ impl Panel {
             }
             "steps" => self.step_part(c),
             "meter" if name.starts_with("gr") => {
-                let i: usize = name[2..].parse().unwrap_or(1);
-                let s = ["off", "green", "amber", "red"][self.gr_leds[i - 1].min(3) as usize];
-                format!("gr_led_{s}")
+                let i: usize = name[2..].parse::<usize>().unwrap_or(1).clamp(1, 9);
+                match self.gr_leds[i - 1].min(3) {
+                    // unlit, in the color of its place (task-179)
+                    0 => format!("gr_led_off_{}", GR_OFF[i - 1]),
+                    s => format!("gr_led_{}", ["", "green", "amber", "red"][s as usize]),
+                }
             }
-            "meter" => format!(
-                "{fam}{}",
-                self.meters.get(&c.id).copied().unwrap_or(0).min(10)
-            ),
+            "meter" => {
+                let state = self.meters.get(&c.id).copied().unwrap_or(0).min(10);
+                if fam == "meter_14x14_" {
+                    format!("{fam}{}", header_meter_segments(state))
+                } else {
+                    format!("{fam}{state}")
+                }
+            }
             _ => c.part.clone(),
         }
     }
@@ -1100,6 +1127,7 @@ impl Panel {
             "accent_led" => step.accent,
             "slide_led" => step.slide,
             "note_led" => !step.rest,
+            "rest_led" => step.rest,
             n => n
                 .strip_prefix("key")
                 .and_then(|n| n.strip_suffix("_led"))
@@ -1126,16 +1154,11 @@ impl Panel {
             if self.playing_step909 == Some(step) {
                 v = if v == 0 { 2 } else { 0 };
             }
-            let grp = if (step / 4).is_multiple_of(2) {
-                "a"
-            } else {
-                "b"
-            };
             // A song's step byte may be above 3. The original draws every value above 2 as the
             // flam frame (0x444F0C..0x444F18, docs/ui_spec.md section 7), and that is what the
             // engine plays: the flam pass retriggers every value above 2 (tr909.rs, 0x1002B320),
             // so 4 is an accent with a flam and 5..=255 the flam hit alone.
-            format!("step909_{grp}_{}", v.min(3))
+            format!("step909_{}", v.min(3))
         }
     }
 }
@@ -1370,7 +1393,94 @@ mod tests {
             .find(|c| c.id == "tr909.step5")
             .unwrap();
         p.playing_step909 = Some(4);
-        assert_eq!(p.part_name(&c9, false, 0.0), "step909_b_2");
+        assert_eq!(p.part_name(&c9, false, 0.0), "step909_2");
+    }
+
+    /// task-179: the header meters have four segments; the 11 states map so that any signal
+    /// lights one and the red one lights where the master's red segments do (state 9).
+    #[test]
+    fn header_meters_map_the_11_states_to_4_segments() {
+        let seg: Vec<u8> = (0..=10).map(header_meter_segments).collect();
+        assert_eq!(seg, [0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4]);
+        assert!(seg.windows(2).all(|w| w[0] <= w[1]));
+        let mut p = Panel::new();
+        let c = crate::layout::controls()
+            .into_iter()
+            .find(|c| c.id == "mixer2.meter")
+            .unwrap();
+        for (state, want) in [(0, 0), (1, 1), (6, 2), (8, 3), (10, 4), (200, 4)] {
+            p.meters.insert(c.id.clone(), state);
+            assert_eq!(p.part_name(&c, false, 0.0), format!("meter_14x14_{want}"));
+        }
+        // the master's keep their 11 states
+        let m = crate::layout::controls()
+            .into_iter()
+            .find(|c| c.id == "master.meter_l")
+            .unwrap();
+        p.meters.insert(m.id.clone(), 7);
+        assert_eq!(p.part_name(&m, false, 0.0), "meter_15x56_7");
+    }
+
+    /// task-179 (review round 2): a routing key shows pressed only while the mouse is down on
+    /// it, in its lamp's state; the other toggles (the on/off lamps) have no pressed look.
+    #[test]
+    fn routing_keys_show_pressed_only_while_held() {
+        let mut p = Panel::new();
+        let ctl = |id: &str| {
+            crate::layout::controls()
+                .into_iter()
+                .find(|c| c.id == id)
+                .unwrap()
+        };
+        for id in ["mixer1.dist", "mixer1.pcf", "mixer1.comp", "master.comp"] {
+            let c = ctl(id);
+            let on = p.toggle_on(id);
+            let state = if on { "on" } else { "off" };
+            assert_eq!(
+                p.part_name(&c, false, 0.0),
+                format!("mixsw_{state}"),
+                "{id}"
+            );
+            assert_eq!(p.part_name(&c, true, 0.0), format!("mixsw_{state}_pressed"));
+            p.press(id, 0.0);
+            let state = if p.toggle_on(id) { "on" } else { "off" };
+            assert_eq!(
+                p.part_name(&c, false, 0.0),
+                format!("mixsw_{state}"),
+                "{id}"
+            );
+        }
+        let mute = ctl("mixer1.mute");
+        assert!(!p.part_name(&mute, true, 0.0).ends_with("_pressed"));
+        let fx = ctl("pcf.on");
+        assert!(!p.part_name(&fx, true, 0.0).ends_with("_pressed"));
+    }
+
+    /// task-179: the gain-reduction LEDs light in the link's colors and are unlit in their
+    /// place's; the 303 has a rest LED beside the note LED.
+    #[test]
+    fn gain_reduction_and_rest_leds() {
+        let mut p = Panel::new();
+        p.gr_leds = [3, 2, 0, 0, 1, 0, 0, 0, 0];
+        let part = |p: &Panel, id: &str| {
+            let c = crate::layout::controls()
+                .into_iter()
+                .find(|c| c.id == id)
+                .unwrap();
+            p.part_name(&c, false, 0.0)
+        };
+        assert_eq!(part(&p, "comp.gr1"), "gr_led_red");
+        assert_eq!(part(&p, "comp.gr2"), "gr_led_amber");
+        assert_eq!(part(&p, "comp.gr3"), "gr_led_off_y");
+        assert_eq!(part(&p, "comp.gr5"), "gr_led_green");
+        assert_eq!(part(&p, "comp.gr9"), "gr_led_off_r");
+        let rest = p.synth[0].step(0).rest;
+        let led = |on: bool| if on { "led_303_on" } else { "led_303_off" };
+        assert_eq!(part(&p, "tb303_1.note_led"), led(!rest));
+        assert_eq!(part(&p, "tb303_1.rest_led"), led(rest));
+        p.press("tb303_1.note_pause", 0.0);
+        assert_eq!(part(&p, "tb303_1.note_led"), led(rest));
+        assert_eq!(part(&p, "tb303_1.rest_led"), led(!rest));
     }
 
     #[test]
@@ -1487,8 +1597,7 @@ mod tests {
                         (true, _) => 0,
                         (false, _) => v.min(3),
                     };
-                    let grp = if (k / 4).is_multiple_of(2) { "a" } else { "b" };
-                    assert_eq!(n, format!("step909_{grp}_{frame}"), "{} = {v}", c.id);
+                    assert_eq!(n, format!("step909_{frame}"), "{} = {v}", c.id);
                 }
             }
         }

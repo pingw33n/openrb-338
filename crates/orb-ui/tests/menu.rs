@@ -2075,11 +2075,12 @@ fn the_about_window_opens_centered_and_closes() {
     }
     assert_eq!(orb_ui::about::COLLECTIONS[0].0, "Song collection:");
     assert_eq!(orb_ui::about::COLLECTIONS[1].0, "Mod collection:");
-    // the icon and the wordmark: two more images than without the window
+    // the icon, the wordmark's gray plate (task-179) and the wordmark: three more images than
+    // without the window
     assert_eq!(
         images(&shapes),
-        before + 2,
-        "the icon and the logo are drawn"
+        before + 3,
+        "the icon, the plate and the logo are drawn"
     );
     // the version is `YYYY.MMDD.HHMM (<git>)` (task-133)
     let v = orb_ui::about::VERSION;

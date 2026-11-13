@@ -151,9 +151,9 @@ pub fn tr808_hit(x: f32, y: f32) -> Option<usize> {
 }
 
 /// The TR-909 instrument under a point of its section: the legend row (y 4..18, AC at
-/// x 4..26) and the name row (y 74..89).
+/// x 4..26) and the name row (y 74..84; the step keys start at 85.4 since task-179).
 pub fn tr909_hit(x: f32, y: f32) -> Option<usize> {
-    if !((4.0..18.0).contains(&y) || (74.0..89.0).contains(&y)) {
+    if !((4.0..18.0).contains(&y) || (74.0..84.0).contains(&y)) {
         return None;
     }
     let dx = x as i32;
@@ -322,7 +322,8 @@ mod tests {
         assert_eq!(tr909_hit(26.0, 10.0), Some(1));
         assert_eq!(tr909_hit(235.0, 10.0), Some(5));
         assert_eq!(tr909_hit(236.0, 75.0), Some(6));
-        assert_eq!(tr909_hit(361.0, 88.0), Some(11));
+        assert_eq!(tr909_hit(361.0, 83.0), Some(11));
+        assert_eq!(tr909_hit(361.0, 86.0), None);
         assert_eq!(tr909_hit(362.0, 10.0), None);
         assert_eq!(tr909_hit(10.0, 50.0), None);
         assert_eq!(tr909_hit(100.0, 50.0), None);

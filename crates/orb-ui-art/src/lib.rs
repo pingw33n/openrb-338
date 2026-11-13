@@ -6,11 +6,12 @@ pub mod font;
 pub mod layout;
 pub mod parts;
 pub mod svg;
+pub mod text;
 
 use resvg::{tiny_skia, usvg};
 
 use font::{Anchor, text};
-use svg::{Part, Svg, n};
+use svg::{Part, Svg, defs_for, n};
 
 /// The scales the art is checked at.
 pub const SCALES: [u32; 3] = [1, 2, 3];
@@ -113,7 +114,9 @@ pub fn check_parts(parts: &[Part]) -> Vec<String> {
             match render(&p.to_svg(), scale) {
                 Err(e) => problems.push(format!("{} at {scale}x: {e}", p.name)),
                 Ok(px) => {
-                    let (w, h) = ((p.w * scale as f32) as u32, (p.h * scale as f32) as u32);
+                    let (cw, ch) = p.canvas();
+                    let s = scale as f32;
+                    let (w, h) = ((cw * s).ceil() as u32, (ch * s).ceil() as u32);
                     if (px.width(), px.height()) != (w, h) {
                         problems.push(format!(
                             "{} at {scale}x: {}x{} pixels, want {w}x{h}",
@@ -132,7 +135,8 @@ pub fn check_parts(parts: &[Part]) -> Vec<String> {
     problems
 }
 
-/// A sheet showing every part with its name, as one SVG document.
+/// A sheet showing every part with its name, as one SVG document: the control's rectangle
+/// in gray, the bleed around it outlined in magenta.
 pub fn contact_sheet(parts: &[Part]) -> String {
     const W: f32 = 700.0;
     let mut order: Vec<&Part> = parts.iter().collect();
@@ -140,21 +144,22 @@ pub fn contact_sheet(parts: &[Part]) -> String {
     let mut s = Svg::new();
     let (mut x, mut y, mut row_h) = (4.0_f32, 4.0_f32, 0.0_f32);
     for p in order {
-        let cell_w = p.w.max(font::text_width(3.0, &p.name)) + 6.0;
-        let cell_h = p.h + 10.0;
+        let (cw, ch) = p.canvas();
+        let cell_w = cw.max(font::text_width(3.0, &p.name)) + 6.0;
+        let cell_h = ch + 10.0;
         if x + cell_w > W && x > 4.0 {
             x = 4.0;
             y += row_h + 4.0;
             row_h = 0.0;
         }
-        s.g_at(x, y);
-        s.rect(-1.0, -1.0, p.w + 2.0, p.h + 2.0, 0.0, "#ff00ff30");
+        s.g_at(x + p.bleed, y + p.bleed);
+        s.rect_stroke(-p.bleed, -p.bleed, cw, ch, 0.0, "#ff00ff60", 0.3);
         s.rect(0.0, 0.0, p.w, p.h, 0.0, "#79808a");
         s.raw(&p.body);
         text(
             &mut s,
-            0.0,
-            p.h + 6.0,
+            -p.bleed,
+            ch - p.bleed + 6.0,
             3.0,
             Anchor::Start,
             "#ffffff",
@@ -168,12 +173,13 @@ pub fn contact_sheet(parts: &[Part]) -> String {
     format!(
         concat!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" ",
-            "viewBox=\"0 0 {} {}\"><rect width=\"{}\" height=\"{}\" fill=\"#2b2f36\"/>{}</svg>\n",
+            "viewBox=\"0 0 {} {}\">{}<rect width=\"{}\" height=\"{}\" fill=\"#2b2f36\"/>{}</svg>\n",
         ),
         n(W),
         n(h),
         n(W),
         n(h),
+        defs_for(&s.s),
         n(W),
         n(h),
         s.s

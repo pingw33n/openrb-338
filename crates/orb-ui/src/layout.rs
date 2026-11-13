@@ -57,17 +57,26 @@ pub fn controls() -> Vec<Ctl> {
         .collect()
 }
 
-/// The section backgrounds drawn first: (part, x, y). The row focus bars are not here.
+/// The section backgrounds drawn first: (part, x, y). The row focus bars are not here. The
+/// pattern sections and the mixer channels have one background each: the speckle of the
+/// gray plates is laid in panel coordinates, so no two plates look alike (task-179).
 pub fn backgrounds() -> Vec<(&'static str, f32, f32)> {
+    const PATTERN: [&str; 4] = [
+        "bg_pattern_1",
+        "bg_pattern_2",
+        "bg_pattern_3",
+        "bg_pattern_4",
+    ];
+    const MIXER: [&str; 4] = ["bg_mixer_1", "bg_mixer_2", "bg_mixer_3", "bg_mixer_4"];
     let mut v = vec![
-        ("wood", 0.0, 0.0),
-        ("wood", 608.0, 0.0),
+        ("wood_left", 0.0, 0.0),
+        ("wood_right", 608.0, 0.0),
         ("bg_transport", 16.0, 0.0),
         ("logo", 474.0, 1.0),
     ];
     for r in 0..4 {
         let y = 50.0 + 115.0 * r as f32;
-        v.push(("bg_pattern", 16.0, y));
+        v.push((PATTERN[r], 16.0, y));
         v.push((
             match r {
                 0 | 1 => "bg_tb303",
@@ -77,7 +86,7 @@ pub fn backgrounds() -> Vec<(&'static str, f32, f32)> {
             90.0,
             y,
         ));
-        v.push(("bg_mixer", 456.0, y));
+        v.push((MIXER[r], 456.0, y));
     }
     v.push(("bg_master", 526.0, 50.0));
     v.push(("bg_pcf", 526.0, 148.0));
@@ -85,6 +94,15 @@ pub fn backgrounds() -> Vec<(&'static str, f32, f32)> {
     v.push(("bg_dist", 526.0, 352.0));
     v.push(("bg_comp", 526.0, 417.0));
     v
+}
+
+/// The static art drawn over the controls: (part, x, y, w, h). The 808's upper labels lie
+/// over the tone knobs' cast shadows, the PCF's fader captions over the handles (task-179).
+pub fn foregrounds() -> [(&'static str, f32, f32, f32, f32); 2] {
+    [
+        ("fg_tr808", 90.0 + 78.0, 280.0 + 44.0, 107.0, 10.0),
+        ("fg_pcf", 526.0 + 4.0, 148.0 + 103.0, 76.0, 7.0),
+    ]
 }
 
 /// The focus bar of row `r` (0..=3): (x, y, w, h).
@@ -118,7 +136,8 @@ mod tests {
     #[test]
     fn layout_has_every_control() {
         let c = controls();
-        assert_eq!(c.len(), 348);
+        // 348 before task-179, which added each 303's rest LED
+        assert_eq!(c.len(), 350);
         assert!(c.iter().all(|c| c.w > 0.0 && c.h > 0.0));
         let play = c.iter().find(|c| c.id == "transport.play").unwrap();
         assert_eq!((play.x, play.y, play.w, play.h), (112.0, 21.0, 32.0, 25.0));
@@ -142,6 +161,16 @@ mod tests {
         want.sort_by(|a, b| a.partial_cmp(b).unwrap());
         got.sort_by(|a, b| a.partial_cmp(b).unwrap());
         assert_eq!(got, want);
+        // the foregrounds: the generator's places and the parts' sizes
+        let fg: Vec<(String, f32, f32)> = foregrounds()
+            .iter()
+            .map(|f| (f.0.to_string(), f.1, f.2))
+            .collect();
+        assert_eq!(fg, l.foregrounds);
+        for (name, _, _, w, h) in foregrounds() {
+            let p = parts.iter().find(|p| p.name == name).unwrap();
+            assert_eq!((p.w, p.h), (w, h), "{name}");
+        }
     }
 
     #[test]

@@ -1,16 +1,17 @@
-//! Where every control sits, and the composition of the full panel from the
-//! parts. The list is written to `layout.tsv` and drawn into `panel.svg`.
-//! The sections and the controls' functions are the original's
-//! (docs/ui_spec.md); the placement inside a section is orb's own design and
-//! may differ from the original's rectangles.
+//! Where every control sits, and the composition of the full panel from the parts. The list is
+//! written to `layout.tsv` and drawn into `panel.svg`. The sections and the controls' places
+//! are the original's (docs/ui_spec.md sections 3 to 9) as the redesign of task-179 draws them
+//! (the approved mockup; docs/ui_spec.md section 19 lists where it leaves the spec's tables).
+//! A control's rectangle is its hit area; its part may draw beyond it (`Part::bleed`).
 
 use std::collections::HashMap;
 
 use crate::parts::{
-    EDIT_303, FLAGS_303, KNOB_SWEEP, KNOB_X0_303, KNOBS, KNOBS_909, LEFT_X_303, LOGO_X, LOGO_Y,
-    MOD_VIEW_808, STEPS_Y_909, WHITE_303, column_909, knob_y_909,
+    BANK_Y, BLACK_303, FG_PCF, FG_TR808, GR_OFF, KEY_X, KEY_Y, KEYCAP, KNOB_SWEEP, KNOB_X_303,
+    KNOBS, KNOBS_909, LEGEND_808, LOGO_X, LOGO_Y, MOD_PICTURE, MOD_VIEW_808, NAMES_808, NAMES_909,
+    SEAM, WHITE_303, chip_909, led_909,
 };
-use crate::svg::{Part, Svg, arc_path, n, pal};
+use crate::svg::{Part, Svg, defs_for, n};
 
 pub const PANEL_W: f32 = 624.0;
 pub const PANEL_H: f32 = 510.0;
@@ -19,15 +20,11 @@ pub const PANEL_H: f32 = 510.0;
 pub enum Extra {
     /// One part at (x, y).
     Plain,
-    /// `<knob>_body`, the value arc, and `<knob>_pointer` rotated by the value.
-    Knob {
-        design: usize,
-        v: f32,
-        bipolar: bool,
-    },
+    /// `<knob>_body` and `<knob>_pointer` rotated by the value.
+    Knob { design: usize, v: f32 },
     /// `fader_track` and `fader_handle` at `(1 - v) * 43` px from the top.
     Fader { v: f32 },
-    /// `n` digit frames, right-aligned in the display rectangle.
+    /// `n` digit frames, centered in the display rectangle.
     Digits { n: usize, text: String },
 }
 
@@ -47,6 +44,11 @@ pub struct Layout {
     /// Section backgrounds: part name and panel position.
     pub backgrounds: Vec<(String, f32, f32)>,
     pub ctls: Vec<Ctl>,
+    /// What the app lays over the controls in the demo state: the selected instruments' marks
+    /// and the glass over the mod's picture (part, panel position).
+    pub overlays: Vec<(String, f32, f32)>,
+    /// Static art drawn over the controls (part, panel position): `fg_tr808`, `fg_pcf`.
+    pub foregrounds: Vec<(String, f32, f32)>,
 }
 
 struct Builder<'a> {
@@ -95,34 +97,13 @@ impl Builder<'_> {
     }
 
     fn knob(&mut self, id: &str, design: usize, x: f32, y: f32, v: f32) {
-        let name = KNOBS[design].name;
         self.push(
             id,
             "knob",
-            name,
+            KNOBS[design].name,
             x,
             y,
-            Extra::Knob {
-                design,
-                v,
-                bipolar: false,
-            },
-        );
-    }
-
-    fn pan(&mut self, id: &str, design: usize, x: f32, y: f32, v: f32) {
-        let name = KNOBS[design].name;
-        self.push(
-            id,
-            "knob",
-            name,
-            x,
-            y,
-            Extra::Knob {
-                design,
-                v,
-                bipolar: true,
-            },
+            Extra::Knob { design, v },
         );
     }
 
@@ -130,7 +111,7 @@ impl Builder<'_> {
         self.push(id, "fader", "fader_track", x, y, Extra::Fader { v });
     }
 
-    /// A seven-segment display: the rectangle holds `digits` frames of 9 x 16.
+    /// A seven-segment display: the rectangle holds `digits` cells of 9 x 16, centered.
     fn display(&mut self, id: &str, x: f32, y: f32, w: f32, digits: usize, text: &str) {
         self.layout.ctls.push(Ctl {
             id: format!("{}.{id}", self.section),
@@ -147,16 +128,29 @@ impl Builder<'_> {
             },
         });
     }
+
+    /// The up and down arrows of a display, at (x, y) and (x, y + 9).
+    fn arrows(&mut self, id: &str, kind: &'static str, x: f32, y: f32) {
+        self.part(&format!("{id}_up"), kind, "arrow_inc_rest", x, y);
+        self.part(&format!("{id}_down"), kind, "arrow_dec_rest", x, y + 9.0);
+    }
+
+    /// A part laid over the controls in the demo (section coordinates).
+    fn overlay(&mut self, part: &str, x: f32, y: f32) {
+        self.layout
+            .overlays
+            .push((part.to_string(), self.ox + x, self.oy + y));
+    }
 }
 
-const KNOB_303: usize = 0;
-const KNOB_808_RED: usize = 1;
-const KNOB_808_WHITE: usize = 2;
-const KNOB_909: usize = 3;
-const KNOB_22: usize = 4;
+pub const KNOB_303: usize = 0;
+pub const KNOB_808_RED: usize = 1;
+pub const KNOB_808_WHITE: usize = 2;
+pub const KNOB_909: usize = 3;
+pub const KNOB_GRAY: usize = 4;
 
-/// The control rectangles of the whole panel, with the demo state used for
-/// the composed preview (pattern mode off, song mode, playing).
+/// The control rectangles of the whole panel, with the demo state of the mockup (song mode,
+/// playing, loop on, tempo 140, bar 9; row 1 has the focus; README.md of assets/ui).
 pub fn layout(parts: &[Part]) -> Layout {
     let sizes: HashMap<String, (f32, f32)> =
         parts.iter().map(|p| (p.name.clone(), (p.w, p.h))).collect();
@@ -165,13 +159,15 @@ pub fn layout(parts: &[Part]) -> Layout {
         layout: Layout {
             backgrounds: Vec::new(),
             ctls: Vec::new(),
+            overlays: Vec::new(),
+            foregrounds: Vec::new(),
         },
         section: String::new(),
         ox: 0.0,
         oy: 0.0,
     };
-    b.section("wood_left", "wood", 0.0, 0.0);
-    b.section("wood_right", "wood", 608.0, 0.0);
+    b.section("wood_left", "wood_left", 0.0, 0.0);
+    b.section("wood_right", "wood_right", 608.0, 0.0);
     transport(&mut b);
     for r in 0..4 {
         pattern(&mut b, r);
@@ -194,43 +190,44 @@ fn transport(b: &mut Builder) {
     b.layout
         .backgrounds
         .push(("logo".to_string(), LOGO_X, LOGO_Y));
-    // centered with its label in the space left of the tempo display (0..44)
-    b.knob("shuffle", KNOB_22, 11.0, 10.3, 0.3);
+    b.knob("shuffle", KNOB_GRAY, 11.0, 13.0, 0.35);
     b.display("tempo", 44.0, 27.0, 27.0, 3, "140");
-    b.part("tempo_up", "repeat", "arrow_inc_rest", 73.0, 26.0);
-    b.part("tempo_down", "repeat", "arrow_dec_rest", 73.0, 35.0);
+    b.arrows("tempo", "repeat", 73.0, 26.0);
     b.part("mode", "switch", "switch_mode_1", 161.0, 2.0);
     b.part("play", "trigger", "btn_play_lit", 96.0, 21.0);
     b.part("stop", "trigger", "btn_stop_rest", 128.0, 21.0);
     b.part("rewind", "wind", "btn_rewind_rest", 160.0, 21.0);
     b.part("ff", "wind", "btn_ff_rest", 192.0, 21.0);
     b.part("record", "toggle", "btn_record_rest", 224.0, 21.0);
-    b.display("bar", 271.0, 27.0, 27.0, 3, "  5");
-    b.part("bar_up", "wind", "arrow_inc_rest", 300.0, 26.0);
-    b.part("bar_down", "wind", "arrow_dec_rest", 300.0, 35.0);
-    b.display("loop_start", 329.0, 27.0, 27.0, 3, "  5");
-    b.part("loop_start_up", "repeat", "arrow_inc_rest", 358.0, 26.0);
-    b.part("loop_start_down", "repeat", "arrow_dec_rest", 358.0, 35.0);
-    b.display("loop_length", 372.0, 27.0, 27.0, 3, "  4");
-    b.part("loop_length_up", "repeat", "arrow_inc_rest", 401.0, 26.0);
-    b.part("loop_length_down", "repeat", "arrow_dec_rest", 401.0, 35.0);
-    // level with the length arrows (26..44)
-    b.part("loop", "toggle", "toggle_loop_on", 417.0, 26.0);
+    b.display("bar", 271.0, 27.0, 27.0, 3, "  9");
+    b.arrows("bar", "wind", 300.0, 26.0);
+    b.display("loop_start", 329.0, 27.0, 27.0, 3, "  1");
+    b.arrows("loop_start", "repeat", 358.0, 26.0);
+    b.display("loop_length", 372.0, 27.0, 27.0, 3, " 16");
+    b.arrows("loop_length", "repeat", 401.0, 26.0);
+    b.part("loop", "toggle", "toggle_loop_on", 317.0, 3.0);
 }
 
 fn pattern(b: &mut Builder, r: usize) {
     let oy = 50.0 + 115.0 * r as f32;
-    b.section(&format!("pattern{}", r + 1), "bg_pattern", 16.0, oy);
-    b.part("on", "toggle", "power_13x13_on", 4.0, 4.0);
-    let lit = [0usize, 2, 1, 5][r];
+    b.section(
+        &format!("pattern{}", r + 1),
+        &format!("bg_pattern_{}", r + 1),
+        16.0,
+        oy,
+    );
+    let on = if r == 1 { "off" } else { "on" };
+    b.part("on", "toggle", &format!("power_pat_{on}"), 5.0, 4.0);
+    let lit = if r == 3 { 1 } else { 0 };
+    let half = KEYCAP / 2.0;
     for i in 0..8 {
         let state = if i == lit { "on" } else { "off" };
         b.part(
             &format!("pattern{}", i + 1),
             "grid",
             &format!("pat_btn_{}_{state}", i + 1),
-            4.0 + 16.0 * (i % 4) as f32,
-            25.0 + 18.0 * (i / 4) as f32,
+            KEY_X[i % 4] - half,
+            KEY_Y[i / 4] - half,
         );
     }
     for (i, name) in ["A", "B", "C", "D"].into_iter().enumerate() {
@@ -239,15 +236,20 @@ fn pattern(b: &mut Builder, r: usize) {
             &format!("bank{name}"),
             "grid",
             &format!("bank_btn_{name}_{state}"),
-            4.0 + 16.0 * i as f32,
-            64.0,
+            KEY_X[i] - half,
+            BANK_Y - half,
         );
     }
-    // level with the steps display (95..111)
-    b.part("shuffle", "toggle", "toggle_shuffle_off", 3.0, 97.0);
+    let shuffle = if r == 1 { "on" } else { "off" };
+    b.part(
+        "shuffle",
+        "toggle",
+        &format!("toggle_shuffle_{shuffle}"),
+        4.5,
+        94.7,
+    );
     b.display("steps", 36.0, 95.0, 19.0, 2, "16");
-    b.part("steps_up", "repeat", "arrow_inc_rest", 56.0, 94.0);
-    b.part("steps_down", "repeat", "arrow_dec_rest", 56.0, 103.0);
+    b.arrows("steps", "repeat", 56.0, 94.0);
     b.section(
         &format!("focus{}", r + 1),
         if r == 0 { "focus_on" } else { "focus_off" },
@@ -259,68 +261,115 @@ fn pattern(b: &mut Builder, r: usize) {
 fn tb303(b: &mut Builder, r: usize) {
     let oy = 50.0 + 115.0 * r as f32;
     b.section(&format!("tb303_{}", r + 1), "bg_tb303", 90.0, oy);
-    // The waveform switch carries the saw and the square on its frame, under the label.
-    b.part("wave", "hswitch", "switch_wave_0", 15.0, 20.0);
-    let vals = [0.5, 0.35, 0.6, 0.45, 0.4, 0.55];
+    let first = r == 0;
+    b.part(
+        "wave",
+        "hswitch",
+        if first {
+            "switch_wave_1"
+        } else {
+            "switch_wave_0"
+        },
+        24.65,
+        18.5,
+    );
+    let vals = if first {
+        [0.42, 0.34, 0.5, 0.32, 0.5, 0.5]
+    } else {
+        [0.5, 0.28, 0.62, 0.3, 0.72, 0.4]
+    };
     for (k, name) in ["tune", "cutoff", "reso", "envmod", "decay", "accent"]
         .into_iter()
         .enumerate()
     {
-        b.knob(name, KNOB_303, KNOB_X0_303 + 40.0 * k as f32, 12.0, vals[k]);
+        b.knob(name, KNOB_303, KNOB_X_303[k], 12.0, vals[k]);
     }
-    let (ex, ey) = EDIT_303;
-    b.display("edit_step", ex, ey, 19.0, 2, " 1");
-    b.part("step", "trigger", "arrow303_inc_rest", ex + 20.0, ey - 1.0);
-    b.part("back", "trigger", "arrow303_dec_rest", ex + 20.0, ey + 8.0);
-    // Pitch mode and clear, centered in the band's left block (x 12..46).
-    b.part("pitch_led", "led", "led_8_off", LEFT_X_303 - 4.0, 56.0);
+    b.display("edit_step", 330.0, 25.0, 19.0, 2, " 1");
+    let pressed = if first { "rest" } else { "pressed" };
     b.part(
-        "pitch_button",
+        "back",
         "trigger",
-        "btn_pill_22x10_rest",
-        LEFT_X_303 - 11.0,
-        66.0,
+        &format!("btn_pill_17x10_{pressed}"),
+        328.0,
+        62.0,
     );
     b.part(
-        "clear",
+        "step",
         "trigger",
-        "btn_pill_22x10_rest",
-        LEFT_X_303 - 11.0,
-        95.0,
+        &format!("btn_step_{pressed}"),
+        324.6,
+        90.0,
     );
-    // The keys; each LED's top is 11 px above its key's top (a 3 px gap).
-    let white_notes = [0, 2, 4, 5, 7, 9, 11, 12];
-    let black_notes = [(0, 1), (1, 3), (3, 6), (4, 8), (5, 10)];
-    let note_lit = 0; // C
-    for (x, note) in WHITE_303.into_iter().zip(white_notes) {
+    let led = |on: bool| if on { "on" } else { "off" };
+    b.part(
+        "pitch_led",
+        "led",
+        &format!("led_303s_{}", led(first)),
+        24.0,
+        67.0,
+    );
+    b.part("pitch_button", "trigger", "btn_pill_15x8_rest", 19.5, 73.6);
+    b.part("clear", "trigger", "btn_pill_17x10_rest", 18.0, 96.0);
+    // the keys (C lit) with their LEDs
+    for (i, note) in WHITE_303.into_iter().enumerate() {
+        let x = 52.0 + 21.0 * i as f32;
         b.part(&format!("key{note}"), "trigger", "key_white_rest", x, 89.0);
-        let led = if note == note_lit {
-            "led_8_on"
-        } else {
-            "led_8_off"
-        };
-        b.part(&format!("key{note}_led"), "led", led, x + 0.5, 78.0);
-    }
-    for (i, note) in black_notes {
-        let x = WHITE_303[i] + 11.0;
-        b.part(&format!("key{note}"), "trigger", "key_black_rest", x, 60.0);
-        b.part(&format!("key{note}_led"), "led", "led_8_off", x, 49.0);
-    }
-    // The flags and note/rest (its LED lit = note) in one row, LEDs like the keys'.
-    for (x, (name, led, lit)) in FLAGS_303.into_iter().zip([
-        ("down", "down_led", false),
-        ("up", "up_led", false),
-        ("accent", "accent_led", true),
-        ("slide", "slide_led", false),
-        ("note_pause", "note_led", true),
-    ]) {
-        b.part(name, "trigger", "btn_flag_rest", x, 89.0);
+        let state = led(note == 0);
         b.part(
-            led,
+            &format!("key{note}_led"),
             "led",
-            if lit { "led_8_on" } else { "led_8_off" },
-            x + 0.5,
-            78.0,
+            &format!("led_303_{state}"),
+            x + 1.5,
+            82.0,
+        );
+    }
+    for (bx, note) in BLACK_303 {
+        b.part(
+            &format!("key{note}"),
+            "trigger",
+            "key_black_rest",
+            bx - 4.2,
+            62.6,
+        );
+        b.part(
+            &format!("key{note}_led"),
+            "led",
+            "led_303s_off",
+            bx - 3.0,
+            56.0,
+        );
+    }
+    // the step's note and rest LEDs and the note / pause button, then the flags
+    let flags: &[&str] = if first {
+        &["rest"]
+    } else {
+        &["note", "accent"]
+    };
+    b.part(
+        "note_led",
+        "led",
+        &format!("led_303_{}", led(flags.contains(&"note"))),
+        247.0,
+        60.0,
+    );
+    b.part(
+        "rest_led",
+        "led",
+        &format!("led_303_{}", led(flags.contains(&"rest"))),
+        285.0,
+        60.0,
+    );
+    b.part("note_pause", "trigger", "btn_pill_17x10_rest", 294.0, 58.0);
+    for (i, name) in ["down", "up", "accent", "slide"].into_iter().enumerate() {
+        let x = 224.0 + 25.0 * i as f32;
+        b.part(name, "trigger", "btn_flag_rest", x, 89.0);
+        let state = led(flags.contains(&name));
+        b.part(
+            &format!("{name}_led"),
+            "led",
+            &format!("led_303_{state}"),
+            x + 1.5,
+            82.0,
         );
     }
 }
@@ -351,23 +400,46 @@ const KNOBS_808: [(f32, f32, usize, &str); 22] = [
     (256.0, 9.0, KNOB_808_RED, "ch_level"),
 ];
 
+/// The 808's step keys: their left edges are 16 + 16 i, their tops 90.2.
+pub const STEP_X0_808: f32 = 16.0;
+pub const STEP_Y_808: f32 = 90.2;
+
 fn tr808(b: &mut Builder) {
     b.section("tr808", "bg_tr808", 90.0, 280.0);
-    for (i, &(x, y, design, id)) in KNOBS_808.iter().enumerate() {
-        b.knob(id, design, x, y, 0.35 + 0.03 * (i % 12) as f32);
+    let level = [
+        0.62, 0.78, 0.66, 0.7, 0.7, 0.7, 0.72, 0.68, 0.64, 0.7, 0.66, 0.7,
+    ];
+    for &(x, y, design, id) in KNOBS_808.iter() {
+        let col = ((x - 14.0) / 22.0) as usize;
+        let v = match y as i32 {
+            9 => level[col],
+            31 => 0.5,
+            _ => [0.45, 0.55, 0.3, 0.6][(col * 7) % 4],
+        };
+        b.knob(id, design, x, y, v);
     }
     for (i, x) in [81.0, 103.0, 125.0, 146.0, 169.0].into_iter().enumerate() {
+        let pos = if i < 3 { 1 } else { 0 };
         b.part(
             &format!("slot{}_switch", i + 3),
             "vswitch",
-            "switch_808_1",
+            &format!("switch_808_{pos}"),
             x,
             55.0,
         );
     }
+    let (fx, fy, _, _) = FG_TR808;
+    b.layout
+        .foregrounds
+        .push(("fg_tr808".into(), b.ox + fx, b.oy + fy));
     let (x, y, _, _) = MOD_VIEW_808;
     b.part("mod_view", "modview", "mod_view", x, y);
-    b.part("select_bd", "area", "sel_22x14", 32.0, 71.0);
+    let (px, py, _) = MOD_PICTURE;
+    b.overlay("mod_view_glass", x + px, y + py);
+    // BD selected: its legend chip's mark
+    let (lx, ly, _, _) = LEGEND_808;
+    b.part("select_bd", "area", "sel808_BD", lx + 22.0, ly);
+    b.overlay(&format!("sel808_{}", NAMES_808[1]), lx + 22.0, ly);
     let colors = ["red", "orange", "yellow", "white"];
     for i in 0..16 {
         let on = i % 4 == 0;
@@ -379,39 +451,59 @@ fn tr808(b: &mut Builder) {
                 colors[i / 4],
                 if on { "on" } else { "off" }
             ),
-            // centered under the legend row (10..274)
-            14.0 + 16.0 * i as f32,
-            91.0,
+            STEP_X0_808 + 16.0 * i as f32,
+            STEP_Y_808,
         );
     }
 }
 
+/// The 909's step keys: their left edges are 29 + 21 i, their tops 85.4.
+pub const STEP_X0_909: f32 = 29.0;
+pub const STEP_Y_909: f32 = 85.4;
+/// The 909's flam button.
+pub const FLAM_909: (f32, f32) = (7.6, 92.6);
+
 fn tr909(b: &mut Builder) {
     b.section("tr909", "bg_tr909", 90.0, 395.0);
-    let half = KNOBS[KNOB_909].w / 2.0;
-    for (i, (group, col, lower, id, _)) in KNOBS_909.into_iter().enumerate() {
-        let (x, y) = (column_909(group, col) - half, knob_y_909(group, lower));
-        b.knob(id, KNOB_909, x, y, 0.3 + 0.025 * (i % 16) as f32);
+    let r1 = [
+        0.5, 0.74, 0.5, 0.66, 0.5, 0.66, 0.5, 0.66, 0.5, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66,
+    ];
+    for (i, (x, y, id, label)) in KNOBS_909.into_iter().enumerate() {
+        let v = match id {
+            "ac_level" => 0.5,
+            "flam" => 0.75,
+            _ if y < 50.0 => r1[i - 1],
+            _ if label == "DEC" && x < 250.0 => 0.86,
+            _ => 0.5,
+        };
+        b.knob(id, KNOB_909, x, y, v);
     }
-    // level with the steps' lights, centered in the AC column
     b.part(
         "flam_button",
         "toggle",
-        "toggle_flam_off",
-        8.0,
-        STEPS_Y_909 + 1.5,
+        "toggle_flam_on",
+        FLAM_909.0,
+        FLAM_909.1,
     );
-    b.part("select_bd", "area", "sel_42x14", 26.0, 4.0);
+    // BD selected: its chip's label lit and its name label's LED
+    let (cx, _, _) = chip_909(1);
+    b.part("select_bd", "area", "sel909_BD", cx, 4.6);
+    b.overlay(&format!("sel909_{}", NAMES_909[1]), cx, 4.6);
+    let (lx, ly) = led_909(1);
+    b.overlay("led909_on", lx - 2.5, ly - 2.5);
     for i in 0..16 {
-        let value = [1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 3, 0, 2, 0, 0, 0][i];
-        let grp = if (i / 4) % 2 == 0 { "a" } else { "b" };
+        let value = match i {
+            0 | 4 | 8 | 12 => 2,
+            14 => 1,
+            10 => 3,
+            _ => 0,
+        };
         b.part(
             &format!("step{}", i + 1),
             "steps",
-            &format!("step909_{grp}_{value}"),
-            // under the name row's cells (26..362)
-            26.0 + 21.0 * i as f32,
-            STEPS_Y_909,
+            &format!("step909_{value}"),
+            STEP_X0_909 + 21.0 * i as f32,
+            STEP_Y_909,
         );
     }
 }
@@ -419,108 +511,98 @@ fn tr909(b: &mut Builder) {
 fn mixer(b: &mut Builder, c: usize) {
     b.section(
         &format!("mixer{}", c + 1),
-        "bg_mixer",
+        &format!("bg_mixer_{}", c + 1),
         456.0,
         50.0 + 115.0 * c as f32,
     );
-    // The header (2..20): the on/off button and the meter 2 px from its edges.
-    b.part("mute", "toggle", "power_14x14_on", 4.0, 4.0);
+    b.part("mute", "toggle", "power_mix_on", 3.0, 4.0);
     b.part(
         "meter",
         "meter",
-        &format!("meter_8x14_{}", [6, 5, 8, 3][c]),
-        58.0,
+        &format!("meter_14x14_{}", [2, 2, 3, 1][c]),
+        51.0,
         4.0,
     );
-    // Pan and the delay send side by side under the header (labels at 52.5), then the fader
-    // at the left and the three routing keys stacked at the right.
-    b.pan("pan", KNOB_22, 8.0, 26.0, 0.5);
-    b.knob("delay", KNOB_22, 40.0, 26.0, [0.0, 0.25, 0.1, 0.0][c]);
-    b.fader("level", 11.5, 58.0, [0.7, 0.7, 0.8, 0.75][c]);
-    b.part("dist", "toggle", "mixsw_dist_off", 38.0, 62.0);
-    b.part(
-        "pcf",
-        "radio",
-        if c == 1 {
-            "mixsw_pcf_on"
-        } else {
-            "mixsw_pcf_off"
-        },
-        38.0,
-        78.0,
-    );
-    b.part("comp", "radio", "mixsw_comp_off", 38.0, 94.0);
+    b.knob("pan", KNOB_GRAY, 10.0, 25.0, 0.5);
+    b.knob("delay", KNOB_GRAY, 42.0, 79.0, 0.2);
+    b.fader("level", 10.0, 59.0, 0.72);
+    let dist = if c == 1 { "mixsw_on" } else { "mixsw_off" };
+    b.part("dist", "toggle", dist, 42.0, 19.0);
+    b.part("pcf", "radio", "mixsw_off", 42.0, 37.0);
+    b.part("comp", "radio", "mixsw_off", 42.0, 55.0);
 }
 
 fn master(b: &mut Builder) {
     b.section("master", "bg_master", 526.0, 50.0);
-    b.part("meter_l", "meter", "meter_15x56_8", 16.0, 24.0);
-    b.part("meter_r", "meter", "meter_15x56_7", 51.0, 24.0);
+    b.part("meter_l", "meter", "meter_15x56_6", 16.0, 24.0);
+    b.part("meter_r", "meter", "meter_15x56_6", 51.0, 24.0);
     b.fader("fader", 33.0, 25.0, 0.8);
-    // centered under the meters
-    b.part("comp", "radio", "mixsw_comp_off", 27.0, 82.0);
+    b.part("comp", "radio", "mixsw_on", 42.0, 81.0);
 }
 
-/// An effect's header (2..20): the on/off button and the meter 2 px from its edges.
-fn fx_header(b: &mut Builder, on: bool, level: u8) {
+/// An effect's header lamp and meter, the header at `y` of the section.
+fn fx_header(b: &mut Builder, y: f32, on: bool, level: u8) {
     let state = if on { "on" } else { "off" };
-    b.part("on", "toggle", &format!("power_14x14_{state}"), 4.0, 4.0);
-    b.part("meter", "meter", &format!("meter_8x14_{level}"), 70.0, 4.0);
+    b.part("on", "toggle", &format!("power_fx_{state}"), 3.0, y - 0.5);
+    b.part(
+        "meter",
+        "meter",
+        &format!("meter_14x14_{level}"),
+        63.0,
+        y + 0.5,
+    );
 }
 
 fn effects(b: &mut Builder) {
     b.section("pcf", "bg_pcf", 526.0, 148.0);
-    fx_header(b, true, 4);
+    fx_header(b, 2.5, true, 0);
     b.display("pattern", 10.0, 23.0, 18.0, 2, "25");
-    b.part("pattern_up", "repeat", "arrow_inc_rest", 29.0, 22.0);
-    b.part("pattern_down", "repeat", "arrow_dec_rest", 29.0, 31.0);
-    // level with the pattern arrows (22..40)
-    b.part("mode", "vswitch", "switch_fx_1", 49.0, 22.0);
-    for (x, id, v) in [
-        (4.0, "freq", 0.6),
-        (23.0, "q", 0.3),
-        (42.0, "amt", 0.5),
-        (61.0, "dec", 0.4),
-    ] {
-        b.fader(id, x, 46.0, v);
+    b.arrows("pattern", "repeat", 29.0, 22.0);
+    b.part("mode", "vswitch", "switch_fx_1", 49.0, 21.0);
+    for (i, (id, v)) in [("freq", 0.0), ("q", 0.55), ("amt", 1.0), ("dec", 0.3)]
+        .into_iter()
+        .enumerate()
+    {
+        b.fader(id, 4.0 + 19.0 * i as f32, 50.0, v);
     }
+    let (fx, fy, _, _) = FG_PCF;
+    b.layout
+        .foregrounds
+        .push(("fg_pcf".into(), b.ox + fx, b.oy + fy));
 
-    // The knobs are centered in the two halves (x 21 and 62).
     b.section("delay", "bg_delay", 526.0, 259.0);
-    fx_header(b, false, 0);
+    fx_header(b, 3.0, true, 4);
     b.display("steps", 9.0, 23.0, 19.0, 2, " 3");
-    b.part("steps_up", "repeat", "arrow_inc_rest", 29.0, 22.0);
-    b.part("steps_down", "repeat", "arrow_dec_rest", 29.0, 31.0);
-    b.part("triplet", "vswitch", "switch_fx_0", 49.0, 22.0);
-    b.pan("pan", KNOB_22, 10.0, 55.0, 0.5);
-    b.knob("feedback", KNOB_22, 51.0, 55.0, 0.4);
+    b.arrows("steps", "repeat", 29.0, 22.0);
+    b.part("triplet", "vswitch", "switch_fx_1", 49.0, 22.0);
+    b.knob("pan", KNOB_GRAY, 12.0, 58.0, 0.5);
+    b.knob("feedback", KNOB_GRAY, 53.0, 58.0, 0.42);
 
     b.section("dist", "bg_dist", 526.0, 352.0);
-    fx_header(b, false, 0);
-    b.knob("amount", KNOB_22, 10.0, 27.0, 0.4);
-    b.knob("shape", KNOB_22, 51.0, 27.0, 0.5);
+    fx_header(b, 3.0, true, 1);
+    b.knob("amount", KNOB_GRAY, 12.0, 28.0, 0.5);
+    b.knob("shape", KNOB_GRAY, 53.0, 28.0, 0.36);
 
     b.section("comp", "bg_comp", 526.0, 417.0);
-    fx_header(b, true, 3);
-    for i in 0..9 {
-        // Demo: a little reduction (LEDs left of the middle), the rest dark.
+    fx_header(b, 3.0, true, 3);
+    for (i, off) in GR_OFF.into_iter().enumerate() {
+        // the demo's reduction: the center and the four LEDs left of it, as the app lights them
         let state = match i {
-            0..=2 => "off",
-            3 => "amber",
-            4 => "green",
-            _ => "off",
+            0 | 1 => "red".to_string(),
+            2 | 3 => "amber".to_string(),
+            4 => "green".to_string(),
+            _ => format!("off_{off}"),
         };
         b.part(
             &format!("gr{}", i + 1),
             "meter",
             &format!("gr_led_{state}"),
-            // the 63 px meter centered at x 41
-            9.5 + 7.0 * i as f32,
-            25.0,
+            8.0 + 7.0 * i as f32,
+            26.5,
         );
     }
-    b.knob("ratio", KNOB_22, 10.0, 54.0, 0.3);
-    b.knob("threshold", KNOB_22, 51.0, 54.0, 0.6);
+    b.knob("ratio", KNOB_GRAY, 12.0, 57.0, 0.52);
+    b.knob("threshold", KNOB_GRAY, 53.0, 57.0, 0.5);
 }
 
 /// The `layout.tsv` text: one control per line, panel pixel rectangles.
@@ -550,26 +632,22 @@ pub fn compose(parts: &[Part], l: &Layout) -> String {
             .unwrap_or_else(|| panic!("missing part {name}"))
     };
     let mut s = Svg::new();
-    s.rect(0.0, 0.0, PANEL_W, PANEL_H, 0.0, pal::BG);
+    s.rect(0.0, 0.0, PANEL_W, PANEL_H, 0.0, SEAM);
     for (name, x, y) in &l.backgrounds {
         s.g_at(*x, *y).raw(&get(name).body).end_g();
     }
     for c in &l.ctls {
         match &c.extra {
             Extra::Plain => {
-                s.g_at(c.x, c.y).raw(&get(&c.part).body).end_g();
+                if c.kind != "area" {
+                    s.g_at(c.x, c.y).raw(&get(&c.part).body).end_g();
+                }
             }
-            Extra::Knob { design, v, bipolar } => {
+            Extra::Knob { design, v } => {
                 let k = &KNOBS[*design];
                 s.g_at(c.x, c.y);
                 s.raw(&get(&format!("{}_body", k.name)).body);
                 let a = -KNOB_SWEEP + v * 2.0 * KNOB_SWEEP;
-                if k.ring_r > 0.0 {
-                    let a0 = if *bipolar { 0.0 } else { -KNOB_SWEEP };
-                    if (a - a0).abs() > 0.5 {
-                        s.path_stroke(&arc_path(k.cx, k.cy, k.ring_r, a0, a), k.arc, k.ring_w);
-                    }
-                }
                 s.g_rotate(a, k.cx, k.cy);
                 s.raw(&get(&format!("{}_pointer", k.name)).body);
                 s.end_g().end_g();
@@ -582,6 +660,7 @@ pub fn compose(parts: &[Part], l: &Layout) -> String {
             }
             Extra::Digits { n: count, text } => {
                 let chars: Vec<char> = text.chars().collect();
+                let x0 = c.x + (c.w - 9.0 * *count as f32) / 2.0;
                 for i in 0..*count {
                     let ch = chars.get(i).copied().unwrap_or(' ');
                     let name = if ch == ' ' {
@@ -589,16 +668,21 @@ pub fn compose(parts: &[Part], l: &Layout) -> String {
                     } else {
                         format!("seg_{ch}")
                     };
-                    let x = c.x + c.w - 9.0 * (*count - i) as f32;
-                    s.g_at(x, c.y).raw(&get(&name).body).end_g();
+                    s.g_at(x0 + 9.0 * i as f32, c.y)
+                        .raw(&get(&name).body)
+                        .end_g();
                 }
             }
         }
     }
+    for (name, x, y) in l.foregrounds.iter().chain(&l.overlays) {
+        s.g_at(*x, *y).raw(&get(name).body).end_g();
+    }
     let (w, h) = (n(PANEL_W), n(PANEL_H));
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" \
-         viewBox=\"0 0 {w} {h}\">{}</svg>\n",
+         viewBox=\"0 0 {w} {h}\">{}{}</svg>\n",
+        defs_for(&s.s),
         s.s
     )
 }

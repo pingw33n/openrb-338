@@ -2,19 +2,38 @@
 
 include!(concat!(env!("OUT_DIR"), "/parts_gen.rs"));
 
-/// A part: its URI for egui's loaders and its SVG bytes.
+/// A part: its URI for egui's loaders, its SVG bytes and its bleed: how far, in panel pixels,
+/// the art reaches beyond its control's rectangle on every side (shadows, halos, glows;
+/// task-179). The SVG's canvas is the rectangle grown by the bleed.
 #[derive(Clone, Copy)]
 pub struct Part {
     pub name: &'static str,
     pub uri: &'static str,
     pub svg: &'static [u8],
+    pub bleed: f32,
+    /// The control's rectangle (panel pixels) the part is drawn for.
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Part {
+    fn from_row(row: &PartRow) -> Self {
+        let &(name, uri, svg, bleed, w, h) = row;
+        Self {
+            name,
+            uri,
+            svg,
+            bleed,
+            w,
+            h,
+        }
+    }
 }
 
 /// The part called `name` (`PARTS` is sorted by name).
 pub fn part(name: &str) -> Option<Part> {
     let i = PARTS.binary_search_by(|p| p.0.cmp(name)).ok()?;
-    let (name, uri, svg) = PARTS[i];
-    Some(Part { name, uri, svg })
+    Some(Part::from_row(&PARTS[i]))
 }
 
 /// The part names asked for that no art has, in this process.
@@ -35,24 +54,17 @@ pub fn missing() -> Vec<String> {
 
 /// Every part.
 pub fn all() -> impl Iterator<Item = Part> {
-    PARTS
-        .iter()
-        .map(|&(name, uri, svg)| Part { name, uri, svg })
+    PARTS.iter().map(Part::from_row)
 }
 
-/// A knob design: the layers are `<name>_body`, the arc painted by the app and
-/// `<name>_pointer` rotated about `(cx, cy)` (assets/ui/README.md).
+/// A knob design: the layers are `<name>_body` (static) and `<name>_pointer`, rotated about
+/// `(cx, cy)` (assets/ui/README.md). The knobs have no value arc since task-179.
 pub struct KnobDesign {
     pub name: &'static str,
     pub w: f32,
     pub h: f32,
     pub cx: f32,
     pub cy: f32,
-    /// The value arc's radius and width, 0 for none.
-    pub ring_r: f32,
-    pub ring_w: f32,
-    /// The arc color as RGB.
-    pub arc: [u8; 3],
 }
 
 pub const KNOBS: [KnobDesign; 5] = [
@@ -62,9 +74,6 @@ pub const KNOBS: [KnobDesign; 5] = [
         h: 30.0,
         cx: 15.0,
         cy: 15.0,
-        ring_r: 13.6,
-        ring_w: 1.6,
-        arc: [0xf0, 0x8a, 0x24],
     },
     KnobDesign {
         name: "knob_808_red",
@@ -72,9 +81,6 @@ pub const KNOBS: [KnobDesign; 5] = [
         h: 13.0,
         cx: 6.5,
         cy: 6.5,
-        ring_r: 5.9,
-        ring_w: 0.9,
-        arc: [0xf2, 0xc5, 0x31],
     },
     KnobDesign {
         name: "knob_808_white",
@@ -82,9 +88,6 @@ pub const KNOBS: [KnobDesign; 5] = [
         h: 13.0,
         cx: 6.5,
         cy: 6.5,
-        ring_r: 5.9,
-        ring_w: 0.9,
-        arc: [0xf0, 0x8a, 0x24],
     },
     KnobDesign {
         name: "knob_909",
@@ -92,19 +95,13 @@ pub const KNOBS: [KnobDesign; 5] = [
         h: 12.0,
         cx: 6.0,
         cy: 6.0,
-        ring_r: 5.4,
-        ring_w: 0.9,
-        arc: [0xe2, 0x41, 0x3b],
     },
     KnobDesign {
-        name: "knob_22",
-        w: 22.0,
-        h: 22.0,
-        cx: 11.0,
-        cy: 11.0,
-        ring_r: 10.1,
-        ring_w: 1.4,
-        arc: [0xff, 0xb0, 0x00],
+        name: "knob_gray",
+        w: 18.0,
+        h: 19.0,
+        cx: 9.0,
+        cy: 9.5,
     },
 ];
 
@@ -150,21 +147,32 @@ mod tests {
 
     #[test]
     fn knob_designs_match_the_art_generator() {
+        assert_eq!(KNOBS.len(), orb_ui_art::parts::KNOBS.len());
         for (a, b) in KNOBS.iter().zip(orb_ui_art::parts::KNOBS.iter()) {
             assert_eq!(a.name, b.name);
             assert_eq!((a.w, a.h, a.cx, a.cy), (b.w, b.h, b.cx, b.cy));
-            assert_eq!((a.ring_r, a.ring_w), (b.ring_r, b.ring_w));
-            let hex = format!("#{:02x}{:02x}{:02x}", a.arc[0], a.arc[1], a.arc[2]);
-            assert_eq!(hex, b.arc, "{}", a.name);
+            // the pointer turns about the canvas's center: the art centers the knob
+            assert_eq!((a.cx * 2.0, a.cy * 2.0), (a.w, a.h), "{}", a.name);
         }
     }
 
     #[test]
     fn all_generated_parts_are_embedded_and_sorted() {
-        assert_eq!(PARTS.len(), orb_ui_art::parts::all_parts().len());
+        let generated = orb_ui_art::parts::all_parts();
+        assert_eq!(PARTS.len(), generated.len());
         assert!(PARTS.windows(2).all(|w| w[0].0 < w[1].0));
         assert!(part("btn_play_lit").is_some());
         assert!(part("panel").is_none());
         assert!(part("nope").is_none());
+        // the bleed read from each file is the generator's
+        for g in generated {
+            let p = part(&g.name).unwrap();
+            assert_eq!(p.bleed, g.bleed, "{}", g.name);
+            assert!(
+                (p.w - g.w).abs() < 1e-4 && (p.h - g.h).abs() < 1e-4,
+                "{}",
+                g.name
+            );
+        }
     }
 }
